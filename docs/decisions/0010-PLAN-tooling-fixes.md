@@ -409,3 +409,22 @@ starts. The records are committed alone.
   excluded from `other-packages`.
 * **Checks:** `make lint` rc 0 on three GOOS; markdownlint on AGENTS.md
   rc 0.
+
+### Phase T7: the recovery runbook, D15 (2026-10-03)
+
+* **`README.md`,** "Publishing releases", gains "When a publish fails":
+  * a re-run is refused while any release for the tag exists, drafts
+    included;
+  * a failure between "Create a draft release" and "Publish the draft"
+    leaves a draft. Delete it with `gh release delete <tag> --repo
+    <owner>/<repo> --yes`, then re-run;
+  * a failure before that leaves nothing to delete;
+  * a failure after publication cannot reuse the tag. Fix forward with a
+    new patch tag.
+* **The same section** now says that a stable tag below the current latest
+  is published without becoming latest. That is T4's D9, described where
+  the workflow is.
+* **Checks:**
+  * markdownlint on `README.md`: rc 0, after the bullets were changed to
+    dashes for MD004;
+  * the link checker: 17 links, 0 broken.

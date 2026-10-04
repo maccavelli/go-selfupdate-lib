@@ -84,7 +84,9 @@ ported, so it never publishes a manifest the client cannot read. Extra asset
 names must match `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`, and staged entries
 must be regular files. The optional `prerelease-channels-json` names the
 channels it may publish `vX.Y.Z-NAME.N` prereleases for, which never become
-the latest release; the default `[]` publishes stable tags only.
+the latest release; the default `[]` publishes stable tags only. A stable
+tag lower than the current latest, such as a backport, is published without
+becoming the latest release either, so clients keep seeing the newest one.
 
 ```yaml
 release:
@@ -101,6 +103,23 @@ release:
     # Optional; for prereleases tagged vX.Y.Z-rc.N or vX.Y.Z-beta.N:
     # prerelease-channels-json: '["rc","beta"]'
 ```
+
+#### When a publish fails
+
+A re-run is refused while any release for the tag exists, drafts included.
+
+- **Failed after "Create a draft release" and before "Publish the draft"**
+  (in the upload or the attestation): the release is still a draft. Delete
+  it, then re-run the job. A failure before "Create a draft release" leaves
+  nothing to delete.
+
+  ```sh
+  gh release delete <tag> --repo <owner>/<repo> --yes
+  ```
+
+- **Failed after "Publish the draft"** (waiting for immutability): the
+  release is published, and immutable once GitHub marks it so. Its tag can never be reused, even if the release is deleted. Fix
+  forward with a new patch tag.
 
 ## I want to…
 
