@@ -520,6 +520,20 @@ started.*
 * **Decided.** `v1.6.0` corrects the comment, in S8's docs step. It is a
   comment only; `make apicheck` is unaffected.
 
+### A3 (2026-10-04): `ServiceStarted` reaches `Result` and its document
+
+*Status: accepted (2026-10-04). The owner chose "Mirror to Result and JSON"
+at a PLAN stop, deviation D1 of
+[0010-PLAN-v1-6-0-owner-contracts.md](0010-PLAN-v1-6-0-owner-contracts.md).*
+
+* **Found.** §3 adds `InstallResult.ServiceStarted`. `Updater.Run` copies
+  `InstallResult`'s other service fields, `ServiceInstalled` and
+  `ServiceWasRunning`, into `Result` and its `ResultDocument`. A program
+  that uses `Run` or the CLI would never see the new one.
+* **Decided.** `Result.ServiceStarted` and the document's
+  `service_started` key, set in `Run` as the other service fields are. Both
+  are additions. The key ships with S3's raised document schema version.
+
 ## More Information
 
 * **The reviewers' probe tests and plant scripts** stayed in the

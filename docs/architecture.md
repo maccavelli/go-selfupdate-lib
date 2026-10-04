@@ -161,7 +161,10 @@ docs/
   - reports a failed restore with the backup's path, in
     `Result.PendingBackup` with `Applied` false, and in the error;
   - runs the restore after a failed directory sync, and managed recovery,
-    on contexts the caller's cancellation does not reach.
+    on contexts the caller's cancellation does not reach;
+  - starts a managed service after the update only when it was running, or
+    an `EnabledLifecycle` reports it configured to start, and recovery
+    restarts only what was running or what the update started.
 
   On Windows, a busy running image is retried until the installer's lock
   timeout or the caller's context ends. An access-denied error on a

@@ -71,6 +71,9 @@ The v1.5.1 PLAN's rules apply, with two differences:
 
 ### Phase S2: a stopped service (Q2)
 
+*(Deviation D1, 2026-10-04: `ServiceStarted` is also copied to `Result`
+and to the JSON document; MADR amendment A3.)*
+
 1. **The interface.** An exported optional interface:
 
    ```go
@@ -295,6 +298,86 @@ lands in a commit after `v1.6.0`. The docs step also corrects the
   `"unknown"` literal, which became `CheckOutcome(N)`.
 * **Docs.** The `CheckCached` and `CheckRecord` godoc, `doc.go`, the
   extending guide, and `architecture.md`.
+* **Checks** (`gate.sh`, every one rc 0):
+  * `make lint`, 0 issues;
+  * race and shuffle;
+  * `make apicheck`: `compatible with v1.5.1`;
+  * fuzz, vuln, tidy;
+  * every script test;
+  * cross vet;
+  * markdownlint on the changed docs.
+
+### Deviation D1 (2026-10-04): `ServiceStarted` reaches `Result`
+
+* **Found,** before any S2 code. Step 3 adds `InstallResult.ServiceStarted`
+  only. `Updater.Run` copies the other service fields into `Result`
+  (`updater.go`, after `sess.Install`) and `Result.Document` writes them as
+  JSON. Without the same copy, `Run`'s and the CLI's callers cannot see
+  the new field.
+* **Decision.** The owner chose "Mirror to Result and JSON". MADR amendment
+  A3 records it. S2 also:
+  * adds `Result.ServiceStarted`, set in `Run`;
+  * adds `ResultDocument.ServiceStarted`, key `service_started`, after
+    `service_was_running`;
+  * updates the goldens that carry the document.
+
+### Phase S2: a stopped service, Q2 (B3) (2026-10-04)
+
+* **Tests first.** `managed_stopped_test.go` uses only the `v1.5.1` API;
+  its fakes' `Enabled` method compiles there, and is never called. Against
+  `HEAD`'s code:
+
+  ```text
+  TestManagedStartRule                     stopped, not enabled / stopped, no Enabled: lifecycle [start health], want []
+  TestManagedEnabledErrorReplacesNothing   res = {… Applied:true …}: the target was replaced
+  TestManagedRecoveryRestartsOnlyWhatRan   stopped, reconcile fails (with and without Enabled): lifecycle [start health], want []
+  TestManagedCommitRefusedStartRule        stopped, not enabled: lifecycle [start health stop start health], want []
+  ```
+
+  The running cases and "stopped, enabled" pass on both trees: they were
+  right before. Two plants, in scratch copies:
+  * a refused commit always restarting: `lifecycle [stop start health],
+    want []`;
+  * a failed health check after this install's start not restarting the
+    old binary: `lifecycle [start health stop], want [start health stop
+    start health]`.
+
+  `managed_started_test.go` covers `ServiceStarted` on `InstallResult`, on
+  `Result` through `Run`, and in the document.
+* **The API, additions only.** `EnabledLifecycle`;
+  `InstallResult.ServiceStarted`; and, by deviation D1,
+  `Result.ServiceStarted` and `ResultDocument.ServiceStarted`
+  (`service_started`).
+* **The rule** in `managedSession.Install`:
+  * `Enabled` is asked only when the service is stopped. A running service
+    is restarted whatever `Enabled` would say, and an `Enabled` error
+    matters only for a stopped one. It fails the install before anything
+    is replaced.
+  * Start and the health check run only when the service was running or
+    is enabled.
+  * Recovery restarts what was running. Once this install's `Start`
+    succeeded, recovery stops the new binary and starts the old one. A
+    refused commit recovers with `start` for both.
+* **One existing test asserted the reversed contract.**
+  `TestManagedDownHeals` expected a stopped service to be started. It is
+  now `TestManagedStoppedStaysStopped`: no stop, start or health check,
+  and `ServiceStarted` false.
+* **Goldens.** The document gains `service_started`. Ten cli goldens were
+  regenerated with `-update`. A script checked that each changed line
+  differs only by the added key. `events_test.go` and `example_test.go`
+  were edited the same way.
+* **Lint caught one thing in my first draft.** `staticcheck` ST1008:
+  `installWith` returned its error before a string. It now returns it
+  last.
+* **Docs.** The `EnabledLifecycle` and `ServiceStarted` godoc, `doc.go`, the
+  extending guide, and `architecture.md`.
+* **Windows test host.**
+  * `go test -race -count=1 ./...` rc 0 for all four packages;
+    `selfupdate` took 49.5 s.
+  * The S2 tests, run verbose, pass.
+  * `TestManagedCommitRefusedStartRule` skips there: Windows refuses to
+    rename the locked directory, as it does for the existing
+    `TestManagedCommitRefusesMovedDirectory`.
 * **Checks** (`gate.sh`, every one rc 0):
   * `make lint`, 0 issues;
   * race and shuffle;

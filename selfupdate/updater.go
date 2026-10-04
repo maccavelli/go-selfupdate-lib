@@ -315,6 +315,7 @@ func (u *run) apply(ctx context.Context, req Request, result Result, target Targ
 	resultOut.InstalledDigest = installedDigest
 	resultOut.ServiceInstalled = installed.ServiceInstalled
 	resultOut.ServiceWasRunning = installed.ServiceWasRunning
+	resultOut.ServiceStarted = installed.ServiceStarted
 	resultOut.PendingBackup = installed.PendingBackup
 	resultOut.Previous = installed.Previous
 	if installed.RolledBack {

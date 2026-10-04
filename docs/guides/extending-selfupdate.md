@@ -233,6 +233,15 @@ install.
     restarted and checked;
   - `AppliedReplacement.State` carries your session's private state from
     `Apply` to `Commit` or `Rollback`.
+- **A stopped service:** since `v1.6.0` the managed installer starts a
+  service after the update only when it was running, or when your
+  `Lifecycle` also implements `EnabledLifecycle` and `Enabled` reports it
+  configured to start (systemd `is-enabled`, launchd `RunAtLoad` or
+  `KeepAlive`, a Windows automatic start type). Otherwise the binary is
+  replaced and the service stays stopped. An `Enabled` error fails the
+  install before anything changes. `InstallResult.ServiceStarted`,
+  `Result.ServiceStarted` and the document's `service_started` say whether
+  it was started. Before `v1.6.0`, a stopped service was always started.
 - **With a `Transformer`:** the session must implement `StagingOwner`, so
   the transformed staging file can be proven to be yours. A session without
   it owns nothing, and the run stops before install.
@@ -242,6 +251,8 @@ Pointers:
 - `ExampleNewManagedInstallerFor`, `ExampleNewManagedInstaller`
 - `selfupdate/twophase_test.go`: a custom session driven by the managed
   installer, in order
+- `selfupdate/managed_stopped_test.go`, `selfupdate/managed_started_test.go`:
+  the start rule, and recovery
 
 ## Test a program that self-updates
 

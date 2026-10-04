@@ -90,31 +90,44 @@ func (s *managedSession) Install(ctx context.Context, req InstallRequest) (Insta
 	if err != nil {
 		return InstallResult{}, fmt.Errorf("selfupdate: probe running: %w", errors.Join(ErrManagedInstall, err))
 	}
-	stopped := false
+	// A running service is started again. A stopped one is started only
+	// when it is configured to start, which only an EnabledLifecycle can
+	// say; otherwise it stays stopped (0010-MADR Q2).
+	start := running
+	if el, ok := s.life.(EnabledLifecycle); ok && !running {
+		enabled, err := el.Enabled(ctx, product)
+		if err != nil {
+			return InstallResult{}, fmt.Errorf("selfupdate: probe enabled: %w", errors.Join(ErrManagedInstall, err))
+		}
+		start = enabled
+	}
 	if running {
 		if err := s.life.Stop(ctx, product); err != nil {
 			return InstallResult{}, fmt.Errorf("selfupdate: stop service: %w", errors.Join(ErrManagedInstall, err))
 		}
-		stopped = true
 	}
+	// Until Start succeeds, recovery restarts only what was running.
 	applied, err := s.inner.Apply(ctx, req)
 	if err != nil {
 		// applied carries a backup when the new binary is live and the
 		// restore inside replaceTarget failed; recovery retries it
 		// (0003-MADR B1).
-		return s.recover(ctx, product, applied, ReconcileResult{}, stopped, false, err)
+		return s.recover(ctx, product, applied, ReconcileResult{}, running, false, err)
 	}
 	receipt, recErr := s.rec.Reconcile(ctx, product, s.inner.Target().Path)
 	if recErr != nil {
-		return s.recover(ctx, product, applied, receipt, true, false, recErr)
+		return s.recover(ctx, product, applied, receipt, running, false, recErr)
 	}
-	if err := s.life.Start(ctx, product); err != nil {
-		return s.recover(ctx, product, applied, receipt, true, false, err)
-	}
-	if err := s.life.WaitHealthy(ctx, product); err != nil {
-		// The new binary was started: it is stopped before the old one is
-		// restored under it (0010-MADR B4).
-		return s.recover(ctx, product, applied, receipt, true, true, err)
+	if start {
+		if err := s.life.Start(ctx, product); err != nil {
+			return s.recover(ctx, product, applied, receipt, running, false, err)
+		}
+		if err := s.life.WaitHealthy(ctx, product); err != nil {
+			// The new binary was started: it is stopped before the old one
+			// is restored under it, and the old one is started in its place
+			// (0010-MADR B4).
+			return s.recover(ctx, product, applied, receipt, true, true, err)
+		}
 	}
 	result, err := s.inner.Commit(ctx, applied)
 	if errors.Is(err, ErrConcurrentUpdate) {
@@ -123,10 +136,11 @@ func (s *managedSession) Install(ctx context.Context, req InstallRequest) (Insta
 		// binary live and the backup behind (0010-MADR B7). Any other commit
 		// error is a cleanup failure after a healthy update, and is
 		// returned as it is.
-		return s.recover(ctx, product, applied, receipt, true, true, err)
+		return s.recover(ctx, product, applied, receipt, start, start, err)
 	}
 	result.ServiceInstalled = true
 	result.ServiceWasRunning = running
+	result.ServiceStarted = start
 	return result, err
 }
 

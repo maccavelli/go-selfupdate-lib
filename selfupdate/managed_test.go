@@ -147,19 +147,27 @@ func TestManagedRunningStopReconcileStart(t *testing.T) {
 	}
 }
 
-func TestManagedDownHeals(t *testing.T) {
+// TestManagedStoppedStaysStopped: a stopped service whose Lifecycle cannot
+// say it is configured to start is updated and left stopped. It was
+// TestManagedDownHeals, which started it: the owner's answer to 0010-MADR
+// Q2 reversed that.
+func TestManagedStoppedStaysStopped(t *testing.T) {
 	life := &fakeLife{installed: true, running: false}
 	rec := &fakeRec{changed: true}
-	_, _, sess, _ := managedEnv(t, life, rec)
+	_, _, sess, exe := managedEnv(t, life, rec)
 	path := stageNew(t, sess)
-	if _, err := sess.Install(context.Background(), InstallRequest{
+	res, err := sess.Install(context.Background(), InstallRequest{
 		Product:  "demo",
 		Artifact: StagedArtifact{Path: path},
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
-	if life.stops != 0 || life.starts != 1 || life.healths != 1 {
+	if life.stops != 0 || life.starts != 0 || life.healths != 0 {
 		t.Fatalf("lifecycle counts %+v", life)
+	}
+	if !res.Applied || !res.ServiceInstalled || res.ServiceWasRunning || res.ServiceStarted || readString(t, exe) != "new-bytes" {
+		t.Fatalf("res = %+v", res)
 	}
 }
 

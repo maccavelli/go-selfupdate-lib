@@ -108,8 +108,10 @@
 // and StandaloneInstaller.CleanupPending, called at startup, processes what
 // an earlier update left behind. NewManagedInstaller adds service lifecycle
 // and definition reconciliation; NewManagedInstallerFor does the same for any
-// Installer whose sessions implement TwoPhaseSession. A custom session used
-// with a Transformer must implement StagingOwner.
+// Installer whose sessions implement TwoPhaseSession. A managed update starts
+// the service only when it was running, or when the Lifecycle is an
+// EnabledLifecycle that reports it configured to start. A custom session
+// used with a Transformer must implement StagingOwner.
 //
 // # The canonical update command
 //

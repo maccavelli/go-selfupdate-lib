@@ -144,6 +144,9 @@ type Result struct {
 	ServiceInstalled bool
 	// ServiceWasRunning reports whether that definition's process was active.
 	ServiceWasRunning bool
+	// ServiceStarted reports whether the update started the service, as
+	// InstallResult.ServiceStarted does.
+	ServiceStarted bool
 	// PendingBackup is a backup of the previous binary left beside the
 	// target. With Applied true, it is the Windows running-image backup the
 	// active image kept open after commit; it is validated and removed
@@ -395,6 +398,10 @@ type InstallResult struct {
 	ServiceInstalled bool
 	// ServiceWasRunning reports whether that definition's process was active.
 	ServiceWasRunning bool
+	// ServiceStarted reports whether the update started the service: it was
+	// running, or it was stopped and EnabledLifecycle reported it
+	// configured to start. A stopped service that is not stays stopped.
+	ServiceStarted bool
 	// PendingBackup is the path of the Windows running-image backup when it
 	// could not be removed after commit.
 	PendingBackup string
@@ -459,6 +466,15 @@ type Lifecycle interface {
 	Stop(context.Context, string) error
 	Start(context.Context, string) error
 	WaitHealthy(context.Context, string) error
+}
+
+// EnabledLifecycle is a Lifecycle that can report whether a service is
+// configured to start: systemd is-enabled, launchd RunAtLoad or KeepAlive,
+// a Windows SCM automatic start type. A managed update starts a service
+// that was stopped only when Enabled reports true; without this interface,
+// it starts only a service that was running (0010-MADR Q2).
+type EnabledLifecycle interface {
+	Enabled(context.Context, string) (bool, error)
 }
 
 // ReconcileResult is the restoration receipt for a definition change.

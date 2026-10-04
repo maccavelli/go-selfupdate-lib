@@ -22,6 +22,7 @@ type ResultDocument struct {
 	InstalledDigest   string `json:"installed_digest,omitempty"`
 	ServiceInstalled  bool   `json:"service_installed"`
 	ServiceWasRunning bool   `json:"service_was_running"`
+	ServiceStarted    bool   `json:"service_started"`
 	PendingBackup     string `json:"pending_backup,omitempty"`
 	Previous          string `json:"previous,omitempty"`
 }
@@ -44,6 +45,7 @@ func (r Result) Document() ResultDocument {
 		InstalledDigest:   r.InstalledDigest,
 		ServiceInstalled:  r.ServiceInstalled,
 		ServiceWasRunning: r.ServiceWasRunning,
+		ServiceStarted:    r.ServiceStarted,
 		PendingBackup:     r.PendingBackup,
 		Previous:          r.Previous,
 	}
