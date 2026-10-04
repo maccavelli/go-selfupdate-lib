@@ -257,7 +257,10 @@ type AssetSelector interface {
 	Select(Release, string, Platform) (Selection, error)
 }
 
-// VersionPolicy validates and compares strict stable release tags.
+// VersionPolicy decides which release tags it accepts, and orders them.
+// NewStrictVersionPolicy accepts only stable vMAJOR.MINOR.PATCH tags;
+// NewSemverPolicy can also accept prereleases, on the channels it offers
+// as a ChannelPolicy (0010-MADR D16).
 type VersionPolicy interface {
 	Validate(string) error
 	Compare(string, string) (int, error)

@@ -19,11 +19,11 @@ Module: `github.com/maccavelli/go-selfupdate-lib`
 
 ## Status
 
-The module requires Go 1.27.1. The current release is `v1.5.0`, the first
-under this path:
+The module requires Go 1.27.1. The current release is `v1.6.0`. `v1.5.0` was
+the first under this path:
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.5.0
+go get github.com/maccavelli/go-selfupdate-lib@v1.6.0
 ```
 
 | Package | What it does |

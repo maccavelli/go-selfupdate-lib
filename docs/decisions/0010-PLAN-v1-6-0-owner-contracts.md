@@ -720,3 +720,66 @@ lands in a commit after `v1.6.0`. The docs step also corrects the
   * markdownlint on the changed docs.
 
   The Windows host is not required for S7 (V3).
+
+### Phase S8: docs and release notes (2026-10-04)
+
+* **Docs.**
+  * The migration guide's step 2 now says `go get …@v1.6.0`, and points to
+    a new last section, "6. From v1.5 to v1.6". It covers the warnings, the
+    schema 2 document, the platform refusal, the managed start rule, the
+    special-bits policy, and the smaller changes, each with what to do.
+  * D16 (MADR amendment A2): the `VersionPolicy` comment says the policy
+    decides which tags it accepts, and names both constructors.
+  * `README.md` and `architecture.md` called `v1.5.0` the current release.
+    The v1.5.1 PLAN's P7 should have moved them, and did not. They now
+    name `v1.6.0`. `architecture.md` gives the tag's commit, which the
+    commit after the tag adds, with the workflow pins (step 3, as
+    amended).
+  * The guides and `architecture.md` were updated phase by phase, S1 to S7.
+* **Checks** (`gate.sh`, every one rc 0, and markdownlint on the changed
+  docs).
+
+### Release notes for `v1.6.0` (2026-10-04)
+
+Additions only: `make apicheck` reports `compatible with v1.5.1`. What a
+consumer may notice, by finding:
+
+* **Q1 (A3), CheckCached.** It also caches `ErrLatestOlder`,
+  `ErrUnsupportedPlatform` and `ErrMutableRelease`, for `maxAge`, as the new
+  `CheckRecord.Outcome` (`CheckOutcome`). A cached one returns an error that
+  matches its sentinel. The check file is schema 3, and an older one loads as
+  a miss.
+* **Q2 (B3), a stopped service.** A managed update starts a service only
+  when it was running, or when the `Lifecycle` also implements the new
+  `EnabledLifecycle` and reports it configured to start. Otherwise it stays
+  stopped; it used to be started. `ServiceStarted` is new on
+  `InstallResult` and `Result`, and in the document (`service_started`).
+* **Q3 (C2, C11), one terminal event.** An error after `complete`, such as
+  a failed unlock, a failed report of `complete`, or an installer's error
+  after commit, is now an `EventWarning`, listed in `Result.Warnings` (type
+  `Warnings`), and the run succeeds with exit code 0. The CLI prints
+  `warning: …`. The result document is schema 2 and carries `warnings`. A
+  dry run's `complete` has the `detail` `dry-run`.
+* **Q4 (C7), Request.Platform.** An apply for a platform other than the
+  running one is refused with `ErrUnsupportedPlatform`, before any network
+  call. A check or a dry run may still name one.
+* **Q5 (C9), zero-value replies.** `Answer`, `Supply` and `Cancel` on a
+  zero `ConfirmNeeded` or `CredentialNeeded` return at once.
+* **Q6 (B11, B12), leftovers and modes.**
+  * `Begin` and `CleanupPending` remove a crashed update's staging files
+    and backups.
+  * A setuid or setgid target is refused unless the new
+    `TargetPolicy.AllowSpecialModeBits` is set. Then the bits are kept.
+  * The sticky bit is kept.
+  * On Unix, the new binary gets the old one's owner and group where
+    permitted.
+* **A14, selfupdatetest.**
+  * `GitHubServer.RequireCredential(header, value)` requires a
+    custom-header credential.
+  * `RecordedRequest.CredentialHeaders` (type `HeaderNames`) names the
+    credential headers each request carried.
+* **D16.** The `VersionPolicy` comment is corrected.
+
+`Result`, `Finished`, `ResultDocument` and `RecordedRequest` stay
+comparable. The new list fields use string types whose JSON form is an
+array (amendments A4 and A5).

@@ -20,8 +20,11 @@ at least that. Move it deliberately first, and run your full test suite at
 ## 2. The Go import
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.5.0
+go get github.com/maccavelli/go-selfupdate-lib@v1.6.0
 ```
+
+`v1.6.0` changes a few behaviours that `v1.5.x` had; they are listed in
+[6. From v1.5 to v1.6](#6-from-v15-to-v16).
 
 Replace every `github.com/maccavelli/mcplib/selfupdate` import with
 `github.com/maccavelli/go-selfupdate-lib/selfupdate`. No identifier or signature
@@ -346,3 +349,86 @@ the real stdout in `o.Stdout` when `--json` is given.
   last with `"kind":"result"`.
 - `make -n build-all` names `buildinfo.version` and `buildinfo.kind`, once
   for each platform.
+
+## 6. From v1.5 to v1.6
+
+```bash
+go get github.com/maccavelli/go-selfupdate-lib@v1.6.0
+```
+
+Every exported change is an addition, so a program that built on `v1.5.x`
+builds unchanged. These are the behaviours that change, and what to do about
+each. Why, and how, is in
+[0010-MADR](../decisions/0010-MADR-remediate-second-debugging-pass-findings.md)
+§3 and its amendments A2 to A5.
+
+### An error after the update is a warning
+
+Once a run has reported `complete`, a later error no longer fails it. Such an
+error is a failed unlock, a failed report of `complete`, or an installer that
+committed and still returned an error. Each is an `EventWarning` after
+`complete`, and an entry in `Result.Warnings`, and `Run` returns no error.
+The exit code is 0, where it was 1 with the binary already replaced.
+
+- `Result.Warnings` is of type `Warnings`: `List()` returns the entries.
+  `NewWarnings` builds one, for a test.
+- `cli` prints `warning: <text>` on stderr for each one, in either mode.
+- A reporter that switches on the event kind sees `warning` after
+  `complete`. Treat it as advisory, as `rolled-back` is.
+
+### The JSON result is schema 2
+
+`Result.Document`, and so the `--json` result object, has `schema_version`
+2. It adds `service_started`, and `warnings`, an array that is omitted when
+there are none. A program that reads the document checks `schema_version`.
+
+A dry run's `complete` event has the `detail` `dry-run`. It was the sentence
+"dry run: verified, nothing installed".
+
+### An apply for another platform is refused
+
+`Request.Platform` set to anything but the running platform is refused with
+`ErrUnsupportedPlatform`, before any network call, unless the request is a
+check or a dry run. Leave `Platform` zero to update the running program.
+To ask about another platform, use `CheckOnly` or `DryRun`.
+
+### A stopped service stays stopped
+
+`ManagedInstaller` used to start a service after the update even when it had
+been stopped. Now it starts one only when it was running, or when your
+`Lifecycle` also implements `EnabledLifecycle` and `Enabled` reports it
+configured to start. To keep starting a stopped service that is enabled,
+implement `Enabled`: systemd `is-enabled`, launchd `RunAtLoad` or
+`KeepAlive`, a Windows automatic start type. `InstallResult.ServiceStarted`,
+`Result.ServiceStarted` and `service_started` say what happened.
+
+### A setuid or setgid binary needs the policy
+
+A target with the setuid or setgid bit is refused, where it used to be
+replaced and lose the bit. Set `TargetPolicy.AllowSpecialModeBits` if the
+program is installed that way: the new binary keeps the bits. The sticky
+bit is always kept. On Unix the new binary also gets the old one's owner
+and group, when the updater may give them.
+
+### Smaller changes
+
+- `CheckCached` also caches `ErrLatestOlder`, `ErrUnsupportedPlatform` and
+  `ErrMutableRelease`, for `maxAge`, as `CheckRecord.Outcome`. A cached one
+  returns an error that matches its sentinel. A check file written before
+  `v1.6.0` loads as a miss: the first check after the upgrade asks the
+  network once.
+- `Begin` and `CleanupPending` remove what a crashed update left beside the
+  target: staging files and backups that nothing else owns under the lock.
+- A zero `ConfirmNeeded` or `CredentialNeeded`, such as one a UI test
+  builds, can be answered: the call returns at once.
+- `selfupdatetest.GitHubServer.RequireCredential(header, value)` requires a
+  custom-header credential, and `RecordedRequest.CredentialHeaders` names
+  the credential headers each request carried.
+
+### Check
+
+- `go build ./...`, `go vet ./...` and `go test ./...` pass.
+- A test or a script that reads the `--json` result accepts
+  `schema_version` 2.
+- A managed service that is stopped but enabled is started after an update
+  only if your `Lifecycle` implements `Enabled`.
