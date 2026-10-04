@@ -11,12 +11,15 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
+
+	"golang.org/x/term"
 
 	"github.com/maccavelli/go-selfupdate-lib/buildinfo"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
@@ -353,5 +356,124 @@ func TestNoStdoutOutsideStdio(t *testing.T) {
 	}
 	if scanned < 3 {
 		t.Fatalf("scanned %d files", scanned)
+	}
+}
+
+// checkNoLeak fails the test when more goroutines run once it has cleaned
+// up than when it was called. It polls for up to 2 s, because a goroutine
+// that is ending is still counted for a moment (0004-MADR H6). The sleep
+// only paces that poll; it orders nothing. Call it first.
+func checkNoLeak(t testing.TB) {
+	t.Helper()
+	base := runtime.NumGoroutine()
+	t.Cleanup(func() {
+		deadline := time.Now().Add(2 * time.Second)
+		for runtime.NumGoroutine() > base {
+			if time.Now().After(deadline) {
+				t.Errorf("goroutines: %d now, %d when the test began", runtime.NumGoroutine(), base)
+				return
+			}
+			runtime.Gosched()
+			time.Sleep(10 * time.Millisecond)
+		}
+	})
+}
+
+// TestRunsLeakNothing: the runs that drive a prompt confirmer, a timeout
+// and a cancellation end every goroutine they start (0010-MADR C12).
+func TestRunsLeakNothing(t *testing.T) {
+	checkNoLeak(t)
+	for _, sc := range []scenario{
+		{name: "prompt yes", latest: "v1.1.0", id: releaseID, stdin: "y\n", interactive: true},
+		{name: "prompt no", latest: "v1.1.0", id: releaseID, stdin: "n\n", interactive: true},
+		{name: "no confirmer", latest: "v1.1.0", id: releaseID},
+	} {
+		sc.run(t, false)
+		sc.run(t, true)
+	}
+	fake := selfupdatetest.NewFakeSource("v1.1.0", release("demo", "v1.1.0"))
+	_, err := Run(context.Background(), newUpdater(t, blockSource{FakeSource: fake, inLatest: true}, newTarget(t)),
+		selfupdate.Request{Product: "demo", CurrentVersion: "v1.0.0", CurrentBuild: selfupdate.ReleaseBuild, Yes: true},
+		Options{Stderr: &bytes.Buffer{}, Timeout: time.Millisecond, Signals: []os.Signal{}})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("timed-out run: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	ready := make(chan struct{})
+	done := make(chan error, 1)
+	blocked := newUpdater(t, blockSource{FakeSource: fake, ready: func() { close(ready) }}, newTarget(t))
+	go func() {
+		_, err := Run(ctx, blocked,
+			selfupdate.Request{Product: "demo", CurrentVersion: "v1.0.0", CurrentBuild: selfupdate.ReleaseBuild, Yes: true},
+			Options{Stderr: &bytes.Buffer{}, Signals: []os.Signal{}})
+		done <- err
+	}()
+	<-ready
+	cancel()
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled run: %v", err)
+	}
+}
+
+// failOn fails the one Write that contains marker, and keeps the rest. It
+// does not embed its buffer: io.WriteString would find the buffer's
+// WriteString and bypass Write.
+type failOn struct {
+	buf    bytes.Buffer
+	marker string
+}
+
+var errWriteRefused = errors.New("fixture: write refused")
+
+func (w *failOn) Write(p []byte) (int, error) {
+	if w.marker != "" && bytes.Contains(p, []byte(w.marker)) {
+		return 0, errWriteRefused
+	}
+	return w.buf.Write(p)
+}
+
+func (w *failOn) String() string { return w.buf.String() }
+
+// TestCheckResultWriteFails: a check whose result object or summary
+// cannot be written fails with the write error and exit 1, and Exit says
+// so; it is not reported as an available update (0010-MADR C3).
+func TestCheckResultWriteFails(t *testing.T) {
+	req := selfupdate.Request{Product: "demo", CurrentVersion: "v1.0.0", CurrentBuild: selfupdate.ReleaseBuild, CheckOnly: true}
+	for _, tc := range []struct {
+		name           string
+		json           bool
+		stdout, stderr *failOn
+	}{
+		{"json", true, &failOn{marker: `"kind":"result"`}, &failOn{}},
+		{"text", false, &failOn{}, &failOn{marker: "demo: update available: "}},
+	} {
+		src, tg := scenario{latest: "v1.1.0"}.fixture(t, "demo")
+		res, err := Run(context.Background(), newUpdater(t, src, tg), req,
+			Options{Stdout: tc.stdout, Stderr: tc.stderr, JSON: tc.json, Signals: []os.Signal{}})
+		if !errors.Is(err, errWriteRefused) || errors.Is(err, selfupdate.ErrUpdateAvailable) {
+			t.Errorf("%s: err %v, want the write error alone", tc.name, err)
+		}
+		if code := Exit(tc.stderr, res, err); code != 1 {
+			t.Errorf("%s: exit %d, want 1", tc.name, code)
+		}
+		if !strings.Contains(tc.stderr.String(), "update failed: fixture: write refused\n") {
+			t.Errorf("%s: stderr %q, want the failure reported", tc.name, tc.stderr.String())
+		}
+		tg.unchanged(t)
+	}
+}
+
+// TestStdioOptions: the process's own streams, interactive only on a
+// terminal, and every other option at its default (0010-MADR C12).
+func TestStdioOptions(t *testing.T) {
+	o := StdioOptions()
+	if o.Stdout != os.Stdout || o.Stderr != os.Stderr || o.Stdin != os.Stdin {
+		t.Fatalf("streams %v %v %v, want the process's own", o.Stdout, o.Stderr, o.Stdin)
+	}
+	if want := term.IsTerminal(int(os.Stdin.Fd())); o.Interactive != want {
+		t.Fatalf("Interactive = %t, want %t", o.Interactive, want)
+	}
+	if o.JSON || o.Confirmer != nil || o.Timeout != 0 || o.Signals != nil {
+		t.Fatalf("options %+v, want the defaults", o)
 	}
 }

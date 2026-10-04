@@ -525,7 +525,7 @@ func hashAndValidateStaging(sess InstallSession, path string, limit int64) (stri
 	if info.Size() > limit {
 		return "", 0, fmt.Errorf("selfupdate: transformed staging exceeds executable limit")
 	}
-	if filepath.Base(path) != filepath.Base(sess.Target().Path) && !sessOwns(sess, path) {
+	if !sessOwns(sess, path) {
 		return "", 0, fmt.Errorf("selfupdate: transformed staging is not owned by the session")
 	}
 	sum, err := hashFile(path)

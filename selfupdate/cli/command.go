@@ -50,6 +50,11 @@ func Command(ctx context.Context, args []string, product string, id buildinfo.In
 	if err != nil {
 		return o.report(product, id, err)
 	}
+	// Run refuses these too, but before it could write a result object
+	// (0010-MADR C4).
+	if err := o.check(u); err != nil {
+		return o.report(product, id, err)
+	}
 	res, err := Run(ctx, u, req, o)
 	return Exit(o.Stderr, res, err)
 }

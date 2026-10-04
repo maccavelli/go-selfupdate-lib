@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/maccavelli/go-selfupdate-lib/buildinfo"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
@@ -132,6 +133,35 @@ func TestCommandJSONEarlyError(t *testing.T) {
 			t.Errorf("%v: exit %d, stdout %q", args, code, stdout.String())
 		}
 	}
+}
+
+// TestCommandJSONRefusedOptions: a nil updater and a negative timeout fail
+// after flag parsing, so under --json they write the one result object
+// (0010-MADR C4).
+func TestCommandJSONRefusedOptions(t *testing.T) {
+	src, tg := scenario{latest: "v1.1.0"}.fixture(t, "demo")
+	for _, tc := range []struct {
+		name       string
+		newUpdater func() (*selfupdate.Updater, error)
+		timeout    time.Duration
+		want       string
+	}{
+		{"nil updater", func() (*selfupdate.Updater, error) { return nil, nil }, 0, "cli: updater is nil"},
+		{"negative timeout", func() (*selfupdate.Updater, error) { return buildUpdater(src, tg) }, -time.Second, "cli: Options.Timeout is negative"},
+	} {
+		var stdout, stderr bytes.Buffer
+		code := Command(context.Background(), []string{"--check", "--json"}, "demo", releaseID, tc.newUpdater,
+			Options{Stdout: &stdout, Stderr: &stderr, Timeout: tc.timeout, Signals: []os.Signal{}})
+		lines := strings.Split(strings.TrimSuffix(stdout.String(), "\n"), "\n")
+		if code != 1 || len(lines) != 1 ||
+			!strings.HasPrefix(lines[0], `{"kind":"result","exit_code":1,"error":"`+tc.want+`"`) {
+			t.Errorf("%s: exit %d, stdout %q", tc.name, code, stdout.String())
+		}
+		if stderr.String() != "update failed: "+tc.want+"\n" {
+			t.Errorf("%s: stderr %q", tc.name, stderr.String())
+		}
+	}
+	tg.unchanged(t)
 }
 
 func TestCommandOverridesJSON(t *testing.T) {

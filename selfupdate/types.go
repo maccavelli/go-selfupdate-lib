@@ -53,12 +53,16 @@ type Request struct {
 	// Product is the executable basename used in exact asset names.
 	Product string
 	// CurrentVersion is the running identity. For ReleaseBuild it must be a
-	// strict vMAJOR.MINOR.PATCH tag. For LocalBuild it is not ordered.
+	// tag the configured VersionPolicy validates: under
+	// NewStrictVersionPolicy, a strict vMAJOR.MINOR.PATCH. For LocalBuild it
+	// is not ordered.
 	CurrentVersion string
 	// CurrentBuild distinguishes release and local binaries.
 	CurrentBuild BuildKind
-	// TargetVersion selects an exact stable tag. Empty means the latest
-	// stable release.
+	// TargetVersion selects an exact tag, which the VersionPolicy must
+	// validate. Under a ChannelPolicy, a prerelease tag also needs a Channel
+	// that admits it. Empty means the latest release on Channel: with no
+	// Channel, the latest stable release.
 	TargetVersion string
 	// Platform selects the asset matrix entry. Zero means runtime GOOS/GOARCH.
 	Platform Platform

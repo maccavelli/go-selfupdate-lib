@@ -111,6 +111,12 @@ func Run(ctx context.Context, u *selfupdate.Updater, req selfupdate.Request, o O
 	}
 	res, err := u.RunWith(ctx, req, selfupdate.WithReporter(rep), selfupdate.WithConfirmer(conf))
 	if werr := o.finish(res, err); werr != nil {
+		// An update nobody was told about is not "update available": the
+		// write error alone decides, so the exit code is 1 and Exit
+		// reports it (0010-MADR C3).
+		if errors.Is(err, selfupdate.ErrUpdateAvailable) {
+			return res, werr
+		}
 		return res, errors.Join(err, werr)
 	}
 	return res, err

@@ -540,3 +540,65 @@ records the mechanism; the steps below stand, carried out through it.)*
   * fuzz, vuln, tidy;
   * every script test;
   * cross vet.
+
+### Phase P6: coordinator and CLI, C3, C4, C6, D12, C12 (2026-10-03)
+
+* **Tests first.** Against `HEAD`'s code with the new tests, in a scratch
+  copy:
+
+  ```text
+  TestTransformSameBasenameRequiresStagingOwner  Run = <nil>, want the ownership refusal
+  TestCommandJSONRefusedOptions                  nil updater: exit 1, stdout ""
+                                                 negative timeout: exit 1, stdout ""
+  TestCheckResultWriteFails                      json: err selfupdate: update available; exit 10, want 1; stderr ""
+                                                 text: err selfupdate: update available; exit 10, want 1
+  ```
+
+  `TestRunsLeakNothing` and `TestStdioOptions` cover the C12 gaps, so they
+  pass on both trees. Each was seen to fail on a planted defect, in a
+  scratch copy:
+  * a goroutine that outlives the test: `goroutines: 3 now, 2 when the
+    test began`;
+  * `StdioOptions` returning `os.Stderr` as `Stdout`: `streams …, want the
+    process's own`.
+* **C3.** When `finish` cannot write the result object or the summary, and
+  the run's error is `ErrUpdateAvailable`, `Run` returns the write error
+  alone, so the exit code is 1 and `Exit` prints it. Any other run error
+  is still joined with the write error.
+* **C4.** `Command` calls `Options.check` on the built updater before
+  `Run`, and a refusal goes through `report`, which writes the `--json`
+  result object. `Run` still checks for its own callers.
+* **C6.** `hashAndValidateStaging` requires `sessOwns` for every
+  transformed staging path; the basename exception is removed. Nothing
+  recorded a reason for it; it came with the original move from mcplib.
+  `TestTransformRequiresStagingOwner` and `TestManagedWithTransformer`
+  still pass.
+* **D12.** The `Request.CurrentVersion` and `TargetVersion` comments name
+  the configured `VersionPolicy`, and the `ChannelPolicy` rule for a
+  pinned prerelease.
+* **C12.**
+  * `TestStdioOptions`: the process's streams, `Interactive` exactly when
+    standard input is a terminal, and every other option at its default.
+  * `checkNoLeak` in `cli/run_test.go`, used by `TestRunsLeakNothing`. It
+    covers runs with a prompt confirmer (yes, no, not interactive, text and
+    JSON), a timed-out run and a cancelled one.
+* **Mistakes in my own tests.**
+  * `failOn` first embedded `bytes.Buffer`, so `io.WriteString` used the
+    buffer's `WriteString` and never reached the failing `Write`. The text
+    case passed the summary through on the fixed tree. The buffer is now a
+    named field.
+  * An empty `marker` matched every write. A writer with no marker now
+    fails nothing.
+* **Found, out of scope.** The `VersionPolicy` comment (`types.go`) still
+  says it "validates and compares strict stable release tags", the same
+  staleness as D12. D12 names only the `Request` comments, so it is left
+  for the owner.
+* **Windows test host,** not required for this phase: `go vet ./...` rc 0,
+  and `go test -race -count=1 ./...` rc 0 for all four packages.
+* **Checks** (`gate.sh`, every one rc 0):
+  * `make lint`, 0 issues;
+  * race and shuffle;
+  * `make apicheck`: `compatible with v1.5.0`;
+  * fuzz, vuln, tidy;
+  * every script test;
+  * cross vet.
