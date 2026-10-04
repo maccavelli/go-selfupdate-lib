@@ -10,12 +10,16 @@
 #                (docs/decisions/0003-MADR-remediate-debugging-pass-findings.md D8).
 #
 #   gh-repo      a step whose run script calls a repository-scoped gh command,
-#                or runs refuse-existing-release.sh (which calls gh), has
+#                directly or by path, or runs refuse-existing-release.sh or
+#                release-latest-flag.sh (which call gh), has
 #                GH_REPO in the step's, the job's or the workflow's env. The
 #                reusable release job never checks the caller out, so gh has no
 #                local repository to infer from, and without GH_REPO it fails or
 #                silently checks nothing (0003-MADR D4). A command that is
 #                itself a --help probe resolves no repository and is exempt.
+#                Scripts are split into commands by a shell tokenizer, so a #
+#                inside quotes starts no comment
+#                (docs/decisions/0010-MADR-remediate-second-debugging-pass-findings.md D6).
 #
 # Usage: check-workflows.sh [--rule expressions|gh-repo|all] [workflow...]
 # With no workflow, the reusable release workflow is checked. Exit 0 when
@@ -41,7 +45,9 @@ if [ $# -eq 0 ]; then
 fi
 
 python3 - "$RULE" "$@" <<'PY'
+import os
 import re
+import shlex
 import sys
 
 try:
@@ -71,31 +77,78 @@ def construct_mapping(loader, node, deep=False):
 UniqueKeyLoader.add_constructor(
     yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, construct_mapping)
 
-# Repository-scoped gh command groups.
-GH_CALL = re.compile(
-    r"(?:^|[\s;&|(`])gh\s+(?:release|api|repo|run|workflow|pr|issue|attestation)\b")
-REFUSE = re.compile(r"refuse-existing-release\.sh\b")
-SEGMENT = re.compile(r"\n|;|&&|\|\||\|")
-COMMENT = re.compile(r"(?:^|\s)#.*$")
+# Repository-scoped gh command groups, and the scripts that call gh.
+GH_GROUPS = {"release", "api", "repo", "run", "workflow", "pr", "issue", "attestation"}
+GH_SCRIPTS = {"refuse-existing-release.sh", "release-latest-flag.sh"}
+OPERATORS = set(";&|()\n")
 
 rule = sys.argv[1]
 paths = sys.argv[2:]
 
 
+def strip_comments(script):
+    """Remove shell comments: a # outside quotes, at the start of a word,
+    up to the end of its line. The newline is kept, so it still ends the
+    command before it."""
+    out, quote, i = [], None, 0
+    while i < len(script):
+        c = script[i]
+        if quote == "'":
+            quote = None if c == "'" else quote
+        elif c == "\\" and i + 1 < len(script):
+            out.append(c + script[i + 1])
+            i += 2
+            continue
+        elif quote == '"':
+            quote = None if c == '"' else quote
+        elif c in "'\"":
+            quote = c
+        elif c == "#" and (i == 0 or script[i - 1] in " \t\n;&|()"):
+            while i < len(script) and script[i] != "\n":
+                i += 1
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
 def commands(script):
-    """Split a shell script into command segments, comments removed."""
-    script = script.replace("\\\n", " ")
-    lines = [COMMENT.sub("", line) for line in script.splitlines()]
-    return [seg for seg in SEGMENT.split("\n".join(lines)) if seg.strip()]
+    """Split a shell script into commands, each a list of words, with a
+    shell tokenizer: quotes are honoured, a # starts a comment only outside
+    them, and newlines, ;, &, | and parentheses end a command."""
+    text = strip_comments(script.replace("\\\n", " "))
+    lex = shlex.shlex(text, posix=True, punctuation_chars=";&|()\n")
+    lex.whitespace = " \t\r"
+    lex.whitespace_split = True
+    lex.commenters = ""
+    try:
+        tokens = list(lex)
+    except ValueError:
+        # An unbalanced quote: fall back to whitespace words, so a call is
+        # never hidden by a parse failure.
+        tokens = text.replace("\n", " ; ").split()
+    cmds, cmd = [], []
+    for tok in tokens:
+        if tok and set(tok) <= OPERATORS:
+            if cmd:
+                cmds.append(cmd)
+            cmd = []
+        else:
+            cmd.append(tok)
+    if cmd:
+        cmds.append(cmd)
+    return cmds
 
 
 def calls_gh(script):
-    for seg in commands(script):
-        if not (GH_CALL.search(seg) or REFUSE.search(seg)):
+    for words in commands(script):
+        if "--help" in words:
             continue
-        if re.search(r"(?:^|\s)--help(?:\s|$)", seg):
-            continue
-        return seg.strip()
+        names = [os.path.basename(w) for w in words]
+        gh = any(n == "gh" and i + 1 < len(words) and words[i + 1] in GH_GROUPS
+                 for i, n in enumerate(names))
+        if gh or GH_SCRIPTS.intersection(names):
+            return " ".join(words)
     return None
 
 

@@ -131,6 +131,13 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: ./scripts/check-release-tag_test.sh
+      # The release workflow's latest-flag rule: a backport below the current
+      # latest is not made latest
+      # (docs/decisions/0010-MADR-remediate-second-debugging-pass-findings.md D9).
+      - name: Verify the latest-release rule
+        if: runner.os == 'Linux'
+        shell: bash
+        run: ./scripts/release-latest-flag_test.sh
       # The pre-add gate's own test: a deletion still checks its package, and
       # an unreachable vulnerability database fails
       # (docs/decisions/0010-MADR-remediate-second-debugging-pass-findings.md D3, D4).

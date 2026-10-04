@@ -60,10 +60,10 @@ expect "ci workflow, expressions" 0 expressions "$CI"
 
 echo "expressions"
 awk -v expr="$EXPR" '
-	/gh release edit "\$TAG" --draft=false/ { sub(/"\$TAG"/, "\"" expr "\"") }
+	/gh release edit "\$TAG"/ { sub(/"\$TAG"/, "\"" expr "\"") }
 	{ print }
 ' "$WORKFLOW" >"$WORK/block.yml"
-grep -qF "$EXPR\" --draft=false" "$WORK/block.yml"
+grep -qF "gh release edit \"$EXPR\"" "$WORK/block.yml"
 expect "in a run block" 1 expressions "$WORK/block.yml"
 
 plant "$WORK/oneline.yml" "      - name: One line
@@ -167,6 +167,45 @@ plant "$WORK/jobenv.yml" "  planted:
     steps:
       - run: $VIEW"
 expect "R8: job-level GH_REPO counts" 0 gh-repo "$WORK/jobenv.yml"
+
+echo "0010-MADR D6: comments and paths"
+# The literal $TAG in planted YAML is workflow content, not shell here.
+# shellcheck disable=SC2016
+plant "$WORK/hashquote.yml" '      - name: Hash inside quotes
+        run: |
+          echo "build #1"; gh release create "$TAG"'
+expect "a # inside quotes hides no gh call" 1 gh-repo "$WORK/hashquote.yml"
+# shellcheck disable=SC2016
+plant "$WORK/abspath.yml" '      - name: gh by path
+        run: /usr/bin/gh release view "$TAG"'
+expect "gh called by path" 1 gh-repo "$WORK/abspath.yml"
+# shellcheck disable=SC2016
+plant "$WORK/realcomment.yml" '      - name: A real comment
+        run: echo hi # gh release view "$TAG"'
+expect "a real comment is still not a call" 0 gh-repo "$WORK/realcomment.yml"
+# shellcheck disable=SC2016
+plant "$WORK/latestflag.yml" '      - name: Latest flag without GH_REPO
+        run: sh scripts/release-latest-flag.sh "$TAG"'
+expect "release-latest-flag.sh without GH_REPO" 1 gh-repo "$WORK/latestflag.yml"
+
+echo "0010-MADR D5, D9: the release workflow"
+# --help exits 0 for any subcommand or field, so an exit-code probe proves
+# nothing; the capability step must parse the help text instead.
+if grep -nE -- '--help *(>|2>|$)' "$WORKFLOW" >/dev/null; then
+	echo "  FAIL the workflow still probes gh by --help exit code"
+	FAIL=$((FAIL + 1))
+else
+	echo "  ok   no --help exit-code probe"
+	PASS=$((PASS + 1))
+fi
+n=$(grep -c 'release-latest-flag.sh' "$WORKFLOW" || true)
+if [ "$n" -eq 2 ]; then
+	echo "  ok   create and publish both take the latest flag"
+	PASS=$((PASS + 1))
+else
+	echo "  FAIL release-latest-flag.sh is used $n times, want 2 (create, publish)"
+	FAIL=$((FAIL + 1))
+fi
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

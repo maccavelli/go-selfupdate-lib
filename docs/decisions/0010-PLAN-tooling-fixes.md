@@ -293,3 +293,64 @@ starts. The records are committed alone.
   * actionlint v1.7.12;
   * `check-workflows.sh`;
   * every `scripts/*_test.sh`.
+
+### Phase T4: the release workflow and its checker, D5, D6, D9 (2026-10-03)
+
+* **Tests first.** `check-workflows_test.sh` gains six cases:
+  * `echo "build #1"; gh release create` in a block scalar, with no
+    `GH_REPO`;
+  * `/usr/bin/gh release view`, with no `GH_REPO`;
+  * a real trailing comment holding a `gh` call (allowed);
+  * `release-latest-flag.sh` with no `GH_REPO`;
+  * no `--help` exit-code probe in the release workflow;
+  * the latest-flag script used twice, once to create and once to publish.
+
+  Against `HEAD`'s checker and workflow, exactly the five that must fail
+  did: `25 passed, 5 failed`.
+* **D6.** `check-workflows.sh` tokenizes each run script:
+  * a quote-aware pass strips comments and keeps newlines;
+  * `shlex`, with `punctuation_chars=";&|()\n"`, splits commands;
+  * a `gh` word is matched by basename, then a repository-scoped group;
+  * `refuse-existing-release.sh` and `release-latest-flag.sh` count as gh
+    calls.
+
+  An unbalanced quote falls back to whitespace words, so a parse failure
+  never hides a call.
+* **D5.** The capability step parses help text, not exit codes:
+  * `gh release --help` must list `verify:`;
+  * `gh release view --help` must name `isImmutable`;
+  * `gh --version` must be at least 2.81.0. The floor is read from gh's own
+    release notes: 2.76.0 added "Display immutable field in `release view`",
+    and 2.81.0 "introduces the `release verify` and `release verify-asset`
+    commands".
+* **D9 (Q7).** The new `scripts/release-latest-flag.sh TAG` prints
+  `--latest=false` for a stable tag below the current latest, compared
+  numerically. A prerelease always gets `--latest=false`. The first
+  release, or a higher tag, gets nothing. Any gh failure other than
+  "release not found" exits 1.
+  * The create step keeps 0005's prerelease `case` block unchanged. Its
+    shape is asserted by `check-release-tag_test.sh`. For a stable tag, it
+    adds the script's flag, and writes a line to the job summary.
+  * The publish step applies the flag again, because publication is where
+    GitHub picks the latest release.
+* **`release-latest-flag_test.sh`,** with a stubbed `gh`, passes `10 passed,
+  0 failed`. Plants on scratch copies fail it:
+  * a lexical comparison fails both "numeric, not lexical" cases;
+  * dropping the prerelease branch fails "prerelease", and "a prerelease
+    asks gh nothing".
+* **Fixed during the phase:**
+  * My first tokenizer joined lines with ` ; `, so a comment line swallowed
+    the rest of the script. Three existing cases caught it. Comments are
+    now stripped before tokenizing, with newlines kept as separators.
+  * The first version of my `# inside quotes` plant used a plain YAML
+    scalar, where ` #` is a YAML comment. It now uses `run: |`.
+  * The existing expression plant was retargeted from `gh release edit
+    "$TAG" --draft=false` to `gh release edit "$TAG"`, because the publish
+    step now passes its arguments as an array.
+* **CI.** ci.yml runs `release-latest-flag_test.sh` on Linux.
+* **Checks:**
+  * `check-workflows_test.sh`: `30 passed, 0 failed`;
+  * `check-workflows.sh` over both workflows: ok;
+  * actionlint v1.7.12;
+  * shellcheck on `scripts/*.sh`;
+  * every `scripts/*_test.sh`.

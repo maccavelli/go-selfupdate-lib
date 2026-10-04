@@ -40,13 +40,31 @@ jobs:
     steps:
       - name: Check gh release capabilities
         shell: bash
-        # No GH_REPO here on purpose: these are --help probes, which resolve no
-        # repository. Every OTHER gh step in this workflow needs it, because
-        # the job never checks the calling repository out at top level.
+        # No GH_REPO here on purpose: these read gh's own help and version,
+        # which resolve no repository. Every OTHER gh step in this workflow
+        # needs it, because the job never checks the calling repository out
+        # at top level. --help exits 0 for any subcommand or field, so the
+        # help text is parsed instead. gh 2.76.0 added the immutable field to
+        # release view, and 2.81.0 added release verify
+        # (docs/decisions/0010-MADR-remediate-second-debugging-pass-findings.md D5).
         run: |
           set -euo pipefail
-          gh release verify --help >/dev/null
-          gh release view --json isImmutable --help >/dev/null
+          release_help=$(gh release --help)
+          grep -qE '^[[:space:]]+verify:' <<<"$release_help" || {
+            echo "publish-selfupdate-release: this gh has no 'release verify'" >&2
+            exit 1
+          }
+          view_help=$(gh release view --help)
+          grep -qw isImmutable <<<"$view_help" || {
+            echo "publish-selfupdate-release: this gh's release view has no isImmutable" >&2
+            exit 1
+          }
+          min=2.81.0
+          have=$(gh --version | sed -n 's/^gh version \([0-9.]*\).*/\1/p')
+          if [ "$(printf '%s\n%s\n' "$min" "$have" | sort -V | head -n 1)" != "$min" ]; then
+            echo "publish-selfupdate-release: gh $have is older than $min" >&2
+            exit 1
+          fi
 
       - name: Check out the called workflow commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -137,11 +155,22 @@ jobs:
           set -euo pipefail
           # A suffixed tag passed the channel check above. It is created as
           # a prerelease that can never become the repository's latest
-          # release, which stable clients read (0005-MADR §5).
+          # release, which stable clients read (0005-MADR §5). A stable tag
+          # lower than the current latest, a backport, is not made latest
+          # either (0010-MADR D9).
           args=(--draft --verify-tag --generate-notes)
           case "$TAG" in
           *-*) args+=(--prerelease --latest=false) ;;
           esac
+          latest_flag=""
+          case "$TAG" in
+          *-*) ;;
+          *) latest_flag=$(sh .core-lib-release-tools/scripts/release-latest-flag.sh "$TAG") ;;
+          esac
+          if [ -n "$latest_flag" ]; then
+            args+=("$latest_flag")
+            echo "$TAG is lower than the current latest release; it is published with $latest_flag." >>"$GITHUB_STEP_SUMMARY"
+          fi
           gh release create "$TAG" "${args[@]}"
           # Upload the explicit validated file list, one argument per file
           # (0003-MADR D5). --clobber is forbidden.
@@ -164,7 +193,19 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          gh release edit "$TAG" --draft=false
+          # Publication is where GitHub picks the latest release, so the
+          # flag from the create step is applied again here (0010-MADR D9).
+          args=(--draft=false)
+          case "$TAG" in
+          *-*) ;;
+          *)
+            latest_flag=$(sh .core-lib-release-tools/scripts/release-latest-flag.sh "$TAG")
+            if [ -n "$latest_flag" ]; then
+              args+=("$latest_flag")
+            fi
+            ;;
+          esac
+          gh release edit "$TAG" "${args[@]}"
 
       - name: Wait for immutability and release attestation
         shell: bash
