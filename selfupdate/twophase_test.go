@@ -142,7 +142,9 @@ func TestManagedRollsBackCustomSession(t *testing.T) {
 	if !errors.Is(err, ErrManagedInstall) || !errors.Is(err, unhealthy) {
 		t.Fatalf("err = %v, want ErrManagedInstall joined with the health failure", err)
 	}
-	want := []string{"Stop", "Apply", "Reconcile", "Start", "WaitHealthy", "Restore", "Rollback", "Start", "WaitHealthy"}
+	// The started, unhealthy binary is stopped before the old one is
+	// restored (0010-MADR B4).
+	want := []string{"Stop", "Apply", "Reconcile", "Start", "WaitHealthy", "Stop", "Restore", "Rollback", "Start", "WaitHealthy"}
 	if !slices.Equal(*log, want) {
 		t.Fatalf("calls = %v, want %v", *log, want)
 	}

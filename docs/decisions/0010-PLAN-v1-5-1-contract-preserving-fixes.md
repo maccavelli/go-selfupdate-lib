@@ -409,3 +409,49 @@ Associated MADR: [0010-MADR-remediate-second-debugging-pass-findings.md](0010-MA
   * fuzz, vuln, tidy;
   * every script test;
   * cross vet.
+
+### Phase P4: managed install, B4, B7 (managed), C5, test gaps (2026-10-03)
+
+* **Tests first.** `managed_regression_test.go`. Against the unfixed code:
+
+  ```text
+  TestManagedStopsBeforeRollback   lifecycle "stop start health start health", want stop start health stop start health
+  TestManagedCommitSwapRecovers    err = selfupdate: target directory changed during the update: selfupdate: concurrent update, want a managed failure from the concurrent update
+  TestManagedRefusesTypedNil       a typed nil Lifecycle was accepted
+  ```
+
+  `TestManagedWithTransformer`, the test gap, passes on both. It runs a
+  Transformer through `Run` with a `ManagedInstaller`: the session owns the
+  transformed staging, and the service is stopped, updated and started
+  once each.
+* **B4.** `recover` takes `stopFirst`. The path where `Start` succeeded and
+  the health check failed stops the new binary before the receipt restore
+  and the rollback. The test also records the target at each `Stop`: the
+  second `Stop` sees `new-bytes`, before the rollback.
+* **B7, managed.**
+  * A `Commit` refused with `ErrConcurrentUpdate` goes through `recover`
+    (stop, restore, roll back, start). Any other commit error is a cleanup
+    failure after a healthy update, and is returned as it was.
+  * `installSession.Rollback` undoes through the locked directory's handle
+    when the directory has changed since `Begin`, as `Install` already
+    does.
+* **C5.** `NewManagedInstallerFor` uses `isNil` for the `Lifecycle` and
+  the `Reconciler`.
+* **Two existing tests asserted the defects, and were brought to the
+  fixed contract.** No assertion was loosened:
+  * `TestManagedRollsBackCustomSession`: the expected call order gains the
+    `Stop` before `Restore` (B4).
+  * `TestManagedCommitRefusesMovedDirectory` expected the refused commit to
+    stay `Applied` with the new binary live. It now expects a rollback, and
+    reads the old binary back in the moved directory (B7). Its swap hook
+    runs once: the recovery checks health again, and the second swap failed
+    with `file exists`.
+* **Windows test host:** `go vet` rc 0. `go test -race -count=1 ./...` rc 0
+  for all four packages; `selfupdate` took 43.3 s.
+* **Checks** (`gate.sh`, every one rc 0):
+  * `make lint`, 0 issues;
+  * race and shuffle;
+  * `make apicheck`: `compatible with v1.5.0`;
+  * fuzz, vuln, tidy;
+  * every script test;
+  * cross vet.

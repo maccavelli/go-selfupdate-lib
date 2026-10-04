@@ -309,6 +309,12 @@ func (s *installSession) Rollback(ctx context.Context, a AppliedReplacement) err
 	if s.closed {
 		return fmt.Errorf("selfupdate: session is closed")
 	}
+	// A directory swapped since Begin: the backup is in the locked
+	// directory, wherever it is now, so the undo goes through its handle
+	// (0004-MADR R3; 0010-MADR B7).
+	if s.checkDir() != nil {
+		return s.rollbackInRoot(applied)
+	}
 	return rollbackReplacement(withRetryBudget(ctx, s.lockTimeout), s.target, applied)
 }
 

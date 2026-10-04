@@ -31,10 +31,12 @@ func NewManagedInstallerFor(inner Installer, life Lifecycle, rec Reconciler) (*M
 	if isNil(inner) {
 		return nil, fmt.Errorf("selfupdate: managed installer requires an installer")
 	}
-	if life == nil {
+	// isNil refuses a typed nil too, which would otherwise panic in Install
+	// after the download, with the lock held (0010-MADR C5).
+	if isNil(life) {
 		return nil, fmt.Errorf("selfupdate: managed installer requires a lifecycle")
 	}
-	if rec == nil {
+	if isNil(rec) {
 		return nil, fmt.Errorf("selfupdate: managed installer requires a reconciler")
 	}
 	return &ManagedInstaller{inner: inner, life: life, rec: rec}, nil
@@ -100,19 +102,29 @@ func (s *managedSession) Install(ctx context.Context, req InstallRequest) (Insta
 		// applied carries a backup when the new binary is live and the
 		// restore inside replaceTarget failed; recovery retries it
 		// (0003-MADR B1).
-		return s.recover(ctx, product, applied, ReconcileResult{}, stopped, err)
+		return s.recover(ctx, product, applied, ReconcileResult{}, stopped, false, err)
 	}
 	receipt, recErr := s.rec.Reconcile(ctx, product, s.inner.Target().Path)
 	if recErr != nil {
-		return s.recover(ctx, product, applied, receipt, true, recErr)
+		return s.recover(ctx, product, applied, receipt, true, false, recErr)
 	}
 	if err := s.life.Start(ctx, product); err != nil {
-		return s.recover(ctx, product, applied, receipt, true, err)
+		return s.recover(ctx, product, applied, receipt, true, false, err)
 	}
 	if err := s.life.WaitHealthy(ctx, product); err != nil {
-		return s.recover(ctx, product, applied, receipt, true, err)
+		// The new binary was started: it is stopped before the old one is
+		// restored under it (0010-MADR B4).
+		return s.recover(ctx, product, applied, receipt, true, true, err)
 	}
 	result, err := s.inner.Commit(ctx, applied)
+	if errors.Is(err, ErrConcurrentUpdate) {
+		// The directory changed after the replacement: undo it in the locked
+		// directory, as the standalone path does, rather than leave the new
+		// binary live and the backup behind (0010-MADR B7). Any other commit
+		// error is a cleanup failure after a healthy update, and is
+		// returned as it is.
+		return s.recover(ctx, product, applied, receipt, true, true, err)
+	}
 	result.ServiceInstalled = true
 	result.ServiceWasRunning = running
 	return result, err
@@ -127,10 +139,15 @@ const recoveryTimeout = 2 * time.Minute
 // recover undoes a failed managed install. Its result names the backup
 // when the rollback failed and the backup still exists, so the caller
 // learns where the previous binary is (0004-MADR R1).
-func (s *managedSession) recover(parent context.Context, product string, applied AppliedReplacement, receipt ReconcileResult, restart bool, origin error) (InstallResult, error) {
+func (s *managedSession) recover(parent context.Context, product string, applied AppliedReplacement, receipt ReconcileResult, restart, stopFirst bool, origin error) (InstallResult, error) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), recoveryTimeout)
 	defer cancel()
 	var recov error
+	if stopFirst {
+		if err := s.life.Stop(ctx, product); err != nil {
+			recov = errors.Join(recov, err)
+		}
+	}
 	if receipt.Changed || receipt.State != nil {
 		if err := s.rec.Restore(ctx, product, receipt); err != nil {
 			recov = errors.Join(recov, err)

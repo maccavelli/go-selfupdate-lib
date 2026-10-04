@@ -141,7 +141,14 @@ func TestManagedCommitRefusesMovedDirectory(t *testing.T) {
 	dir := filepath.Dir(exe)
 	moved := dir + ".moved"
 	var swapErr error
+	swapped := false
 	life.onHealth = func() {
+		// Only the first health check swaps: the recovery checks health
+		// again (0010-MADR B7).
+		if swapped {
+			return
+		}
+		swapped = true
 		if swapErr = os.Rename(dir, moved); swapErr == nil {
 			if err := os.Mkdir(dir, 0o755); err != nil {
 				t.Error(err)
@@ -165,8 +172,13 @@ func TestManagedCommitRefusesMovedDirectory(t *testing.T) {
 		t.Logf("the OS refused the swap: %v", swapErr)
 		return
 	}
-	if !errors.Is(err, ErrConcurrentUpdate) || !res.Applied {
-		t.Fatalf("Applied=%v err=%v; want an applied install whose commit was refused", res.Applied, err)
+	// The refused commit is recovered in the locked directory, not left
+	// live (0010-MADR B7; it used to be Applied with the error).
+	if !errors.Is(err, ErrConcurrentUpdate) || !errors.Is(err, ErrManagedInstall) || res.Applied || !res.RolledBack {
+		t.Fatalf("Applied=%v RolledBack=%v err=%v; want the refused commit rolled back", res.Applied, res.RolledBack, err)
+	}
+	if got := readString(t, filepath.Join(moved, filepath.Base(exe))); got != "old-bytes" {
+		t.Fatalf("locked directory's target = %q, want the old binary back", got)
 	}
 }
 
