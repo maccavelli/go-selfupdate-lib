@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: in-progress
 date: 2026-10-03
 associated-madr: "0010-MADR-remediate-second-debugging-pass-findings.md"
 ---
@@ -186,14 +186,22 @@ The v1.5.1 PLAN's rules apply, with two differences:
 
 ### Phase S8: docs and release
 
+*(Amended 2026-10-04, at the owner's answers when this PLAN started. The
+pin moves after the tag, as the v1.5.1 PLAN's deviation D3 did: step 3
+lands in a commit after `v1.6.0`. The docs step also corrects the
+`VersionPolicy` comment, MADR amendment A2, D16.)*
+
 1. **Docs:**
    * the guides and `architecture.md` describe each change;
    * the migration guide gains "From v1.5 to v1.6", covering `Warnings`,
      the platform refusal, the managed start rule and the special-bits
-     policy.
+     policy;
+   * D16: the `VersionPolicy` comment says the policy decides which tags
+     it accepts.
 2. **Release notes** in this PLAN's execution record.
-3. `README.md` and the migration guide pin the reusable workflow to the
-   `v1.6.0` commit.
+3. After the tag, a separate commit moves the `README.md` and migration
+   guide pins of the reusable workflow to the `v1.6.0` tag's commit,
+   labelled `# v1.6.0`.
 4. **The owner** pushes, waits for CI, tags `v1.6.0` (annotated), and pushes
    the tag.
 5. **The agent** checks:
@@ -222,4 +230,12 @@ The v1.5.1 PLAN's rules apply, with two differences:
 
 ## Execution Record
 
-Not started.
+### Start (2026-10-04)
+
+* `v1.5.1` is released (the v1.5.1 PLAN is `complete`), so this PLAN may
+  run. The owner said "Proceed to the v1.6.0 plan", and the status is
+  `in-progress`.
+* **Amendments before S1,** at the owner's answers:
+  * S8's pin moves after the tag, as the v1.5.1 PLAN's D3 did;
+  * S8's docs step corrects the `VersionPolicy` comment (MADR amendment
+    A2, D16).

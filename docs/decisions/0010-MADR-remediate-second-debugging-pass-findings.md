@@ -505,6 +505,21 @@ PLAN stop, deviation D2 of
   * **B6:** with `KeepPrevious`, a `.previous` that a running image holds
     puts the new backup on the list, instead of failing `Commit`.
 
+### A2 (2026-10-04): D16, the `VersionPolicy` comment, joins `v1.6.0`
+
+*Status: accepted (2026-10-04). The owner chose "Add to S8 docs" when
+[0010-PLAN-v1-6-0-owner-contracts.md](0010-PLAN-v1-6-0-owner-contracts.md)
+started.*
+
+* **Found** during `v1.5.1`'s P6, recorded there as out of scope:
+  **D16.** The `VersionPolicy` comment (`types.go`) says it "validates and
+  compares strict stable release tags". Since 0005 the policy decides
+  which tags it accepts: `NewSemverPolicy` accepts prereleases on its
+  channels. It is the same staleness as D12, in the type D12's comments
+  point to.
+* **Decided.** `v1.6.0` corrects the comment, in S8's docs step. It is a
+  comment only; `make apicheck` is unaffected.
+
 ## More Information
 
 * **The reviewers' probe tests and plant scripts** stayed in the

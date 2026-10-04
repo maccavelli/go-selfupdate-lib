@@ -36,7 +36,7 @@ name, and the files they cite moved with the rename
 | 0010 | MADR | [Fix the second debugging pass's findings: a v1.5.1 of contract-preserving fixes, the tooling fixes with no release, and a v1.6.0 for the contracts the owner decides](decisions/0010-MADR-remediate-second-debugging-pass-findings.md) | accepted |
 | 0010 | PLAN | [Implement the tooling fixes and the roadmap amendment (no release)](decisions/0010-PLAN-tooling-fixes.md) | complete |
 | 0010 | PLAN | [Implement v1.5.1: the fixes that keep every documented contract](decisions/0010-PLAN-v1-5-1-contract-preserving-fixes.md) | complete |
-| 0010 | PLAN | [Implement v1.6.0: the contracts the owner decided (Q1–Q6, A14)](decisions/0010-PLAN-v1-6-0-owner-contracts.md) | proposed |
+| 0010 | PLAN | [Implement v1.6.0: the contracts the owner decided (Q1–Q6, A14)](decisions/0010-PLAN-v1-6-0-owner-contracts.md) | in-progress |
 
 ## I want to…
 
