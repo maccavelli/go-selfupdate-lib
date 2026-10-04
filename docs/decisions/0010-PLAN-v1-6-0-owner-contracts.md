@@ -239,3 +239,67 @@ lands in a commit after `v1.6.0`. The docs step also corrects the
   * S8's pin moves after the tag, as the v1.5.1 PLAN's D3 did;
   * S8's docs step corrects the `VersionPolicy` comment (MADR amendment
     A2, D16).
+
+### Phase S1: what `CheckCached` caches, Q1 (A3) (2026-10-04)
+
+* **Tests first.** `checkcache_outcome_test.go`. Its behaviour tests use
+  only the `v1.5.1` API, so they ran against the unfixed code:
+
+  ```text
+  TestCheckCachedDeterministicErrorCached  latest older, mutable release, unsupported platform:
+                                           network calls 5, saves 0; want 1 and 1
+  TestFileCheckStoreOlderSchemaIsMiss      an older record loaded: {Request:{Product:demo …
+  ```
+
+  `TestCheckCachedTransientErrorNotCached` guards what was already true,
+  and passed on both trees. Four plants, in scratch copies, each made it
+  fail:
+  * `outcomeOf` caching every error;
+  * the `context.Canceled` exclusion removed;
+  * the `context.DeadlineExceeded` exclusion removed;
+  * the `ErrRateLimited` exclusion removed.
+
+  The first draft listed only a plain error and a plain deadline. Neither
+  carries a sentinel, so removing the deadline exclusion went unseen. It
+  now also lists a cancellation, a deadline and a rate limit, each joined
+  with a deterministic sentinel.
+* **The API, additions only.**
+  * `CheckOutcome`, with `CheckAnswered` (the zero value),
+    `CheckLatestOlder`, `CheckUnsupportedPlatform` and
+    `CheckMutableRelease`. `String` gives the stable name, the same as
+    EventFailed's Detail class, or `CheckOutcome(N)` for an unknown value.
+    `Err` gives the sentinel.
+  * `CheckRecord.Outcome`. A custom `CheckStore` written before `v1.6.0`
+    returns the zero value, an answer, as it always meant. A record with
+    an outcome this package does not know is a miss.
+* **`CheckCached`.**
+  * A deterministic error is saved with its outcome, `CheckedAt`, and an
+    `Availability` holding only the product and the current version.
+  * For `maxAge`, a cached one returns
+    `selfupdate: <product>: cached check from <time>: <sentinel>`.
+  * A rate limit, a cancellation, a deadline or any other error is not
+    saved, as before.
+* **The file.**
+  * Schema 3 adds `outcome`, after `channel`.
+  * Schemas 1 and 2 load as `ErrNoCheckRecord`, a miss. The first check
+    after the upgrade goes to the network once.
+* **Existing tests moved to the new contract.**
+  * `TestFileCheckStoreReadsSchema1` asserted that a schema-1 record
+    loads. S1 step 2 makes it a miss. `TestFileCheckStoreOlderSchemaIsMiss`
+    replaces it, and covers schemas 1 and 2.
+  * The golden document is schema 3, with `"outcome":"answered"`.
+  * The schema-mismatch test uses 4 as the future schema. The corrupt
+    record cases use schema 3, and add an unknown outcome.
+* **Lint caught three things in my first draft.** `errorlint` flagged two
+  error comparisons in the test, now `errors.Is`. `goconst` flagged a third
+  `"unknown"` literal, which became `CheckOutcome(N)`.
+* **Docs.** The `CheckCached` and `CheckRecord` godoc, `doc.go`, the
+  extending guide, and `architecture.md`.
+* **Checks** (`gate.sh`, every one rc 0):
+  * `make lint`, 0 issues;
+  * race and shuffle;
+  * `make apicheck`: `compatible with v1.5.1`;
+  * fuzz, vuln, tidy;
+  * every script test;
+  * cross vet;
+  * markdownlint on the changed docs.

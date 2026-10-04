@@ -83,7 +83,8 @@ docs/
 - The Phase 1 API, by file:
   - **asking without installing:** `checker.go` (`Checker`, shared with
     `Run`'s discovery) and `checkcache.go` (`CheckCached`, `CheckStore`,
-    `NewFileCheckStore`);
+    `NewFileCheckStore`, and since `v1.6.0` `CheckOutcome`, which caches
+    the deterministic errors);
   - **output:** `jsonreporter.go`, `document.go` (`Result.Document`),
     `adapters.go` (the `…Func` adapters, `DiscardReporter`,
     `MultiReporter`, `NonInteractiveConfirmer`), and the progress and

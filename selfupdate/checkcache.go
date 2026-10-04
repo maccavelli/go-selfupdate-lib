@@ -7,19 +7,102 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 )
 
 // Cached, rate-limit-aware checks for startup banners
 // (docs/decisions/0004-MADR-evolve-selfupdate-api-and-tui-support.md §3).
 
+// CheckOutcome is how a cached check ended: with an answer, or with an
+// error that the same question would get again until a release changes
+// (0010-MADR Q1). Its zero value is CheckAnswered, so a CheckStore written
+// before outcomes existed returns answers.
+type CheckOutcome uint8
+
+const (
+	// CheckAnswered means the check succeeded: Availability is the answer.
+	CheckAnswered CheckOutcome = iota
+	// CheckLatestOlder means the check failed with ErrLatestOlder.
+	CheckLatestOlder
+	// CheckUnsupportedPlatform means the check failed with
+	// ErrUnsupportedPlatform: the release has no asset for the platform.
+	CheckUnsupportedPlatform
+	// CheckMutableRelease means the check failed with ErrMutableRelease.
+	CheckMutableRelease
+)
+
+// checkOutcomes pairs each failed outcome with its error, and with the
+// name a CheckStore may persist. Names match EventFailed's Detail classes.
+var checkOutcomes = []struct {
+	outcome CheckOutcome
+	err     error
+	name    string
+}{
+	{CheckAnswered, nil, "answered"},
+	{CheckLatestOlder, ErrLatestOlder, "latest-older"},
+	{CheckUnsupportedPlatform, ErrUnsupportedPlatform, "unsupported-platform"},
+	{CheckMutableRelease, ErrMutableRelease, "mutable-release"},
+}
+
+// String implements fmt.Stringer. A known outcome's name is stable, and
+// safe to persist; an unknown value prints as CheckOutcome(N).
+func (o CheckOutcome) String() string {
+	if int(o) < len(checkOutcomes) {
+		return checkOutcomes[o].name
+	}
+	return "CheckOutcome(" + strconv.Itoa(int(o)) + ")"
+}
+
+// Err returns the error a failed outcome stands for, which errors.Is
+// matches against the exported sentinel. It is nil for CheckAnswered and
+// for an unknown value.
+func (o CheckOutcome) Err() error {
+	if int(o) < len(checkOutcomes) {
+		return checkOutcomes[o].err
+	}
+	return nil
+}
+
+// valid reports whether o is a known outcome.
+func (o CheckOutcome) valid() bool {
+	return int(o) < len(checkOutcomes)
+}
+
+// outcomeOf classifies a check's error. Only a deterministic error has an
+// outcome; a rate limit, a cancellation or any other error does not.
+func outcomeOf(err error) (CheckOutcome, bool) {
+	if errors.Is(err, ErrRateLimited) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return CheckAnswered, false
+	}
+	for _, c := range checkOutcomes[1:] {
+		if errors.Is(err, c.err) {
+			return c.outcome, true
+		}
+	}
+	return CheckAnswered, false
+}
+
+func parseCheckOutcome(s string) (CheckOutcome, error) {
+	for _, c := range checkOutcomes {
+		if c.name == s {
+			return c.outcome, nil
+		}
+	}
+	return CheckAnswered, fmt.Errorf("unknown check outcome %q", s)
+}
+
 // CheckRecord is one cached answer and its back-off state.
 type CheckRecord struct {
 	// Request is the question, with Platform normalized (never zero).
 	Request CheckRequest
 	// Availability is the answer as of CheckedAt. It is meaningful only
-	// when CheckedAt is non-zero.
+	// when CheckedAt is non-zero. After a failed outcome it holds only
+	// Product and CurrentVersion, and Available is false.
 	Availability Availability
+	// Outcome is how the check at CheckedAt ended. It is meaningful only
+	// when CheckedAt is non-zero.
+	Outcome CheckOutcome
 	// CheckedAt is when the answer was obtained.
 	CheckedAt time.Time
 	// NotBefore defers any network check until this instant, after a rate
@@ -46,13 +129,19 @@ var (
 // and younger than maxAge, and otherwise runs Check and saves the answer. It
 // never prompts and never applies anything.
 //
+// An answer is a success, or one of the errors the same question gets again
+// until a release changes: ErrLatestOlder, ErrUnsupportedPlatform and
+// ErrMutableRelease. Each is saved with its CheckOutcome and served for
+// maxAge; a cached one returns an error that matches its sentinel. Any other
+// error is returned and not saved, so the next call checks again.
+//
 // While a saved NotBefore is in the future it returns the saved record and
 // ErrCheckDeferred without touching the network. A rate-limited check saves
 // a NotBefore taken from the error's Reset and RetryAfter, or one minute
 // ahead when the response gave neither.
 //
 // Whatever the error, a returned record with a non-zero CheckedAt holds a
-// real answer as of CheckedAt.
+// real answer as of CheckedAt, and its Outcome says which.
 func (c *Checker) CheckCached(ctx context.Context, cr CheckRequest, store CheckStore, maxAge time.Duration) (CheckRecord, error) {
 	if isNil(store) {
 		return CheckRecord{}, fmt.Errorf("selfupdate: check store is required")
@@ -68,7 +157,8 @@ func (c *Checker) CheckCached(ctx context.Context, cr CheckRequest, store CheckS
 	key.Platform = req.Platform
 	now := timeNow()
 	rec, lerr := store.Load(ctx)
-	matched := lerr == nil && rec.Request == key
+	// An outcome this package does not know is not one it wrote.
+	matched := lerr == nil && rec.Request == key && rec.Outcome.valid()
 	if !matched {
 		rec = CheckRecord{}
 	}
@@ -81,6 +171,9 @@ func (c *Checker) CheckCached(ctx context.Context, cr CheckRequest, store CheckS
 		return rec, ErrCheckDeferred
 	}
 	if matched && !rec.CheckedAt.IsZero() && !now.Before(rec.CheckedAt) && now.Sub(rec.CheckedAt) < maxAge {
+		if err := rec.Outcome.Err(); err != nil {
+			return rec, wrapRun(req, fmt.Errorf("cached check from %s: %w", formatRecordTime(rec.CheckedAt), err))
+		}
 		return rec, nil
 	}
 	avail, cerr := c.checkPrepared(withRunMark(ctx), req)
@@ -90,6 +183,18 @@ func (c *Checker) CheckCached(ctx context.Context, cr CheckRequest, store CheckS
 			return fresh, fmt.Errorf("selfupdate: save check record: %w", serr)
 		}
 		return fresh, nil
+	}
+	if outcome, ok := outcomeOf(cerr); ok {
+		fresh := CheckRecord{
+			Request:      key,
+			Availability: Availability{Product: req.Product, CurrentVersion: req.CurrentVersion},
+			Outcome:      outcome,
+			CheckedAt:    now,
+		}
+		if serr := store.Save(ctx, fresh); serr != nil {
+			return fresh, errors.Join(cerr, fmt.Errorf("selfupdate: save check record: %w", serr))
+		}
+		return fresh, cerr
 	}
 	var rl *RateLimitError
 	if errors.As(cerr, &rl) {
@@ -157,8 +262,9 @@ type fileCheckPlatform struct {
 	Arch string `json:"arch"`
 }
 
-// fileCheckRecord is the on-disk schema, version 2: version 1 plus channel
-// (0005-PLAN Step 3). Field order is the document's key order.
+// fileCheckRecord is the on-disk schema, version 3: version 2 plus outcome
+// (0010-PLAN-v1-6-0 S1). Version 2 added channel (0005-PLAN Step 3). Field
+// order is the document's key order.
 type fileCheckRecord struct {
 	SchemaVersion   int               `json:"schema_version"`
 	Product         string            `json:"product"`
@@ -167,6 +273,7 @@ type fileCheckRecord struct {
 	TargetVersion   string            `json:"target_version"`
 	Platform        fileCheckPlatform `json:"platform"`
 	Channel         string            `json:"channel"`
+	Outcome         string            `json:"outcome"`
 	Available       bool              `json:"available"`
 	ForceRequired   bool              `json:"force_required"`
 	Operation       string            `json:"operation"`
@@ -178,10 +285,11 @@ type fileCheckRecord struct {
 }
 
 // checkRecordSchema is written; oldestCheckRecordSchema is the oldest still
-// read. A schema-1 document has no channel, so it reads as the stable one.
+// read. An older document is a miss: it costs one check, and is never an
+// error (0010-PLAN-v1-6-0 S1).
 const (
-	checkRecordSchema       = 2
-	oldestCheckRecordSchema = 1
+	checkRecordSchema       = 3
+	oldestCheckRecordSchema = 3
 )
 
 func (s fileCheckStore) Load(context.Context) (CheckRecord, error) {
@@ -257,6 +365,7 @@ func newFileCheckRecord(rec CheckRecord) fileCheckRecord {
 		TargetVersion:   rec.Request.TargetVersion,
 		Platform:        fileCheckPlatform{OS: rec.Request.Platform.OS, Arch: rec.Request.Platform.Arch},
 		Channel:         rec.Request.Channel,
+		Outcome:         rec.Outcome.String(),
 		Available:       rec.Availability.Available,
 		ForceRequired:   rec.Availability.ForceRequired,
 		Operation:       rec.Availability.Operation.String(),
@@ -285,6 +394,10 @@ func (d fileCheckRecord) record() (CheckRecord, error) {
 	if err != nil {
 		return CheckRecord{}, err
 	}
+	outcome, err := parseCheckOutcome(d.Outcome)
+	if err != nil {
+		return CheckRecord{}, err
+	}
 	req := CheckRequest{
 		Product:        d.Product,
 		CurrentVersion: d.CurrentVersion,
@@ -305,6 +418,7 @@ func (d fileCheckRecord) record() (CheckRecord, error) {
 			Available:      d.Available,
 			ForceRequired:  d.ForceRequired,
 		},
+		Outcome:   outcome,
 		CheckedAt: checked,
 		NotBefore: nb,
 	}, nil

@@ -164,8 +164,8 @@ func TestCheckCachedArguments(t *testing.T) {
 	}
 }
 
-const wantCheckRecordJSON = `{"schema_version":2,"product":"demo","current_version":"v1.0.0","current_build":"release",` +
-	`"target_version":"","platform":{"os":"linux","arch":"amd64"},"channel":"","available":true,"force_required":false,` +
+const wantCheckRecordJSON = `{"schema_version":3,"product":"demo","current_version":"v1.0.0","current_build":"release",` +
+	`"target_version":"","platform":{"os":"linux","arch":"amd64"},"channel":"","outcome":"answered","available":true,"force_required":false,` +
 	`"operation":"upgrade","selected_version":"v1.1.0","release_url":"https://example.invalid/v1.1.0",` +
 	`"asset_name":"demo-linux-amd64","checked_at":"2026-09-30T12:00:00Z","not_before":""}` + "\n"
 
@@ -226,7 +226,7 @@ func TestFileCheckStoreCorruptIsMiss(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	for _, body := range []string{"not json", `{"schema_version":1,"operation":"sideways"}`, ""} {
+	for _, body := range []string{"not json", `{"schema_version":3,"outcome":"answered","operation":"sideways"}`, `{"schema_version":3,"outcome":"sideways"}`, ""} {
 		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -241,8 +241,8 @@ func TestFileCheckStoreSchemaMismatch(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	for _, schema := range []string{`"schema_version":3`, `"schema_version":0`} {
-		if err := os.WriteFile(path, []byte(strings.Replace(wantCheckRecordJSON, `"schema_version":2`, schema, 1)), 0o600); err != nil {
+	for _, schema := range []string{`"schema_version":4`, `"schema_version":0`} {
+		if err := os.WriteFile(path, []byte(strings.Replace(wantCheckRecordJSON, `"schema_version":3`, schema, 1)), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := s.Load(context.Background()); !errors.Is(err, ErrNoCheckRecord) {
@@ -292,28 +292,12 @@ func TestNewFileCheckStoreNeedsAbsolutePath(t *testing.T) {
 
 // Tests for docs/decisions/0005-PLAN-opt-in-prerelease-channels.md Step 3.
 
-// schema1CheckRecordJSON is a record as v1.2.0 wrote it: no channel.
+// schema1CheckRecordJSON is a record as v1.2.0 wrote it: no channel. Since
+// schema 3 it loads as a miss (TestFileCheckStoreOlderSchemaIsMiss).
 const schema1CheckRecordJSON = `{"schema_version":1,"product":"demo","current_version":"v1.0.0","current_build":"release",` +
 	`"target_version":"","platform":{"os":"linux","arch":"amd64"},"available":true,"force_required":false,` +
 	`"operation":"upgrade","selected_version":"v1.1.0","release_url":"https://example.invalid/v1.1.0",` +
 	`"asset_name":"demo-linux-amd64","checked_at":"2026-09-30T12:00:00Z","not_before":""}` + "\n"
-
-func TestFileCheckStoreReadsSchema1(t *testing.T) {
-	s, path := fileStore(t)
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte(schema1CheckRecordJSON), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	got, err := s.Load(context.Background())
-	if err != nil {
-		t.Fatalf("a schema-1 record did not load: %v", err)
-	}
-	if want := sampleRecord(); got.Request != want.Request || got.Request.Channel != "" {
-		t.Fatalf("schema-1 request = %+v, want %+v on the stable channel", got.Request, want.Request)
-	}
-}
 
 func TestFileCheckStoreKeepsChannel(t *testing.T) {
 	s, _ := fileStore(t)

@@ -26,8 +26,18 @@ the record is younger than `maxAge`. After a rate limit it returns
 `ErrCheckDeferred` and the saved answer until the limit has passed, without
 touching the network.
 
+Since `v1.6.0` the cache keeps the errors the same question would get again:
+`ErrLatestOlder`, `ErrUnsupportedPlatform` and `ErrMutableRelease`. The
+record's `Outcome` names which one, and for `maxAge` a cached one returns an
+error that matches its sentinel with `errors.Is`, with no network call. A
+program that ran on a newer build than any release, or on a platform with
+no asset, no longer asks GitHub on every start. Any other error is not
+saved. A record written before `v1.6.0` loads as a miss, which costs one
+check.
+
 - `ExampleNewChecker`, `ExampleChecker_CheckCached`
-- `selfupdate/checker_test.go`, `selfupdate/checkcache_test.go`
+- `selfupdate/checker_test.go`, `selfupdate/checkcache_test.go`,
+  `selfupdate/checkcache_outcome_test.go`
 
 ## Offer a beta channel
 
