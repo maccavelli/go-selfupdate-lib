@@ -168,6 +168,12 @@ func (s *installSession) commitLocked(ctx context.Context, applied applyResult) 
 	}
 	previous = previousPath(s.target)
 	if err := replacePath(withRetryBudget(ctx, s.lockTimeout), applied.backup, previous); err != nil {
+		// A .previous a running image holds cannot be replaced: on Windows
+		// the new backup goes on the cleanup receipt instead, and the
+		// commit stands (0010-MADR B6).
+		if pending, ok, kerr := keepAsPending(s.target, applied, err); ok {
+			return pending, "", kerr
+		}
 		return "", "", fmt.Errorf("selfupdate: keep previous: %w", err)
 	}
 	return "", previous, syncDirFn(s.target.Dir)

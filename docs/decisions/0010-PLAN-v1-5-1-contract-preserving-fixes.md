@@ -151,6 +151,9 @@ Associated MADR: [0010-MADR-remediate-second-debugging-pass-findings.md](0010-MA
 
 ### Phase P5: Windows busy backups (B5, B6)
 
+*(Deviation D2, 2026-10-03: the receipt holds a list. MADR amendment A1
+records the mechanism; the steps below stand, carried out through it.)*
+
 1. When the receipt's backup is still a running image (`isBusyRunningImage`)
    in `beginSession` and `CleanupPending`, the receipt is kept, and the
    session continues. The next `Begin` tries again.
@@ -448,6 +451,88 @@ Associated MADR: [0010-MADR-remediate-second-debugging-pass-findings.md](0010-MA
     with `file exists`.
 * **Windows test host:** `go vet` rc 0. `go test -race -count=1 ./...` rc 0
   for all four packages; `selfupdate` took 43.3 s.
+* **Checks** (`gate.sh`, every one rc 0):
+  * `make lint`, 0 issues;
+  * race and shuffle;
+  * `make apicheck`: `compatible with v1.5.0`;
+  * fuzz, vuln, tidy;
+  * every script test;
+  * cross vet.
+
+### Deviation D2 (2026-10-03): the cleanup receipt holds a list
+
+* **Found,** before any P5 code was written. P5 step 1 keeps a busy
+  receipt and lets `Begin` continue. But `writeCleanupReceipt` creates the
+  target's one receipt, `.<base>.selfupdate.cleanup` (`cleanup.go:9`), with
+  `O_EXCL` (`cleanup_windows.go:135`). The next update's commit, whose
+  backup links the running image, could then write no receipt. The binary
+  would be replaced, `Commit` would fail, and that backup would leak. Step 2
+  (B6) needs the same "more than one pending backup".
+* **Decision.** The owner chose "Receipt holds a list". MADR amendment A1
+  records it:
+  * a version 2 receipt with `backups`, written as version 1 when it holds
+    one entry;
+  * processing keeps the busy entries;
+  * a commit adds its backup to the list, through an atomic rewrite.
+* **Files.** As carried out, the phase changes `cleanup_windows.go`,
+  `session.go` and `replace_windows.go`, and adds `keepAsPending` to
+  `replace_unix.go`, where it is a stub that keeps nothing. `standalone.go`
+  is unchanged. So are `commitReplacement`'s signature and the existing
+  Windows receipt tests: `writeCleanupReceipt` adds to the receipt it finds,
+  so the callers did not change.
+
+### Phase P5: Windows busy backups, B5, B6 (2026-10-03)
+
+* **Tests first.** `cleanup_busy_windows_test.go`, Windows only. Its
+  helper `holdBusy` opens a file without `FILE_SHARE_DELETE`, as a running
+  image is held. Against `HEAD`'s code with the new tests:
+
+  ```text
+  TestWindowsBusyPendingBackupKept        a busy pending backup failed the session: selfupdate: remove pending backup: … being used by another process.
+  TestWindowsReceiptKeepsOnlyBusy         process: selfupdate: malformed cleanup receipt
+  TestWindowsCommitAddsToPendingReceipt   commit with a pending receipt: selfupdate: remove backup: …
+  TestWindowsKeepPreviousBusy             Install with a busy .previous: selfupdate: keep previous: Access is denied.
+  TestWindowsKeepPreviousRunningPrevious  install SECOND: … err = selfupdate: keep previous: Access is denied.
+  ```
+
+  Step 3 names a running program. `TestWindowsKeepPreviousRunningPrevious`
+  runs the test binary as one, and two updates with `KeepPrevious` make its
+  image the `.previous` and then try to replace it. For B5,
+  `TestE2EUpdateRunningCopy` already ran the old program from its pending
+  backup. Its Windows branch asserted the defect: `CleanupPending` had to
+  fail with "remove pending backup" while the old program ran. It now
+  requires `nil`, with the receipt and the backup both kept, and still
+  requires both gone after the program exits and `CleanupPending` runs
+  again. `CleanupPending` goes through `beginSession`, so this covers
+  `Begin` too.
+* **B5.** `processCleanupReceipt` keeps every entry whose backup a running
+  image holds (`isBusyRunningImage`), and removes the rest:
+  * it returns `nil` when every entry is kept;
+  * it removes the receipt when none is;
+  * otherwise it rewrites the receipt with the kept entries.
+* **Amendment A1.**
+  * `cleanupReceipt` reads version 1 (`backup`, `digest`) and version 2
+    (`backups`), and writes version 1 when it holds one entry.
+  * `writeCleanupReceipt` adds to the receipt it finds.
+  * `writeCleanupEntries` writes a temporary sibling, restricts it to the
+    current user, and moves it over the receipt.
+* **B6.** `commitLocked` calls `keepAsPending` when the keep-previous
+  rename fails. On Windows, a busy `.previous` puts the new backup on the
+  receipt and returns it as `PendingBackup`, and the commit stands. Any
+  other error fails `Commit` as before. On other platforms the stub keeps
+  nothing.
+* **Mistake in my own test.** The first draft of
+  `TestWindowsKeepPreviousRunningPrevious` passed one `Target` to both
+  updates. `Begin` refused the stale target ("target changed during
+  confirmation"), on both trees. The test now resolves the target before
+  each update, as a caller does.
+* **Windows test host:**
+  * the five new tests, `TestWindowsReceiptConsumedByBegin`,
+    `TestKeepPreviousRunningImage` and `TestE2EUpdateRunningCopy` pass, run
+    verbose;
+  * `go vet ./...` rc 0;
+  * `go test -race -count=1 ./...` rc 0 for all four packages;
+    `selfupdate` took 48.4 s.
 * **Checks** (`gate.sh`, every one rc 0):
   * `make lint`, 0 issues;
   * race and shuffle;

@@ -475,6 +475,36 @@ recommendations. Q2 is answered below.
   schedule it in Phase 4, beside `codesign`, since archive releases are
   self-update input.*
 
+## Amendments
+
+### A1 (2026-10-03): the Windows cleanup receipt holds a list (B5, B6)
+
+*Status: accepted (2026-10-03). The owner chose "Receipt holds a list" at a
+PLAN stop, deviation D2 of
+[0010-PLAN-v1-5-1-contract-preserving-fixes.md](0010-PLAN-v1-5-1-contract-preserving-fixes.md).*
+
+* **Found.** §2 says a busy pending backup keeps its receipt, and the
+  session continues. But a target has one receipt,
+  `.<base>.selfupdate.cleanup`, created with `O_EXCL`. The next update's
+  commit usually needs a receipt of its own, for a backup linked to the
+  running image. It could not write one: the binary would be replaced, the
+  commit would fail, and that backup would leak with no receipt.
+* **Decided.**
+  * The receipt lists every pending backup, with its digest. Version 2
+    holds `backups: [{backup, digest}, …]`.
+  * A receipt with one entry is still written as version 1, which every
+    earlier release reads. A release before `v1.5.1` refuses a version 2
+    receipt, as it refuses any receipt it cannot parse. That happens only
+    while two pending backups exist at once.
+  * Processing the receipt removes each backup it can, keeps those a
+    running image still holds, and rewrites the receipt, or removes it
+    when it is empty. A busy backup is not an error.
+  * A commit whose backup is busy adds it to the list. The list is
+    rewritten atomically, through a temporary file and a replace, under
+    the session's lock.
+  * **B6:** with `KeepPrevious`, a `.previous` that a running image holds
+    puts the new backup on the list, instead of failing `Commit`.
+
 ## More Information
 
 * **The reviewers' probe tests and plant scripts** stayed in the

@@ -326,11 +326,14 @@ func TestE2EUpdateRunningCopy(t *testing.T) {
 	if res.PendingBackup == "" || !exists(e.receipt()) {
 		t.Fatalf("pending %q, receipt %v; want both while the old image runs", res.PendingBackup, exists(e.receipt()))
 	}
-	if err := e.inst.CleanupPending(context.Background()); err == nil || !strings.Contains(err.Error(), "remove pending backup") {
-		t.Fatalf("CleanupPending while the old image runs = %v, want the refused removal", err)
+	// A backup the old image still holds is kept, and is not an error: it
+	// used to fail every later update until the old process exited
+	// (0010-MADR B5).
+	if err := e.inst.CleanupPending(context.Background()); err != nil {
+		t.Fatalf("CleanupPending while the old image runs = %v, want the busy backup kept without an error", err)
 	}
-	if !exists(e.receipt()) {
-		t.Fatal("the refused cleanup dropped the receipt")
+	if !exists(e.receipt()) || !exists(res.PendingBackup) {
+		t.Fatalf("receipt %v, backup %v; want both kept while the old image runs", exists(e.receipt()), exists(res.PendingBackup))
 	}
 	if err := e.running.stop(); err != nil {
 		t.Fatalf("the old process did not exit cleanly: %v", err)

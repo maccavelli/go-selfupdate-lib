@@ -59,6 +59,12 @@ func replaceTarget(ctx context.Context, target Target, staging string) (applyRes
 	return applyResult{backup: backup, renamed: true}, nil
 }
 
+// keepAsPending applies on Windows only: a Unix rename replaces a running
+// binary's name (0010-MADR B6).
+func keepAsPending(Target, applyResult, error) (pending string, ok bool, kerr error) {
+	return "", false, nil
+}
+
 func commitReplacement(target Target, result applyResult) (pending string, err error) {
 	if result.backup == "" {
 		return "", nil
