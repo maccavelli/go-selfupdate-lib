@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 date: 2026-10-03
 associated-madr: "0010-MADR-remediate-second-debugging-pass-findings.md"
 ---
@@ -680,3 +680,52 @@ a consumer may notice, by finding:
   and B13 remove dead code. Nothing a consumer can see changes.
 * **Tests only.** A13's surviving mutations are killed, and the B14 and
   C12 gaps are covered.
+
+### Phase P7: tag, pin and checks (2026-10-04)
+
+* **Push and tag.** The owner asked the agent to push and tag, so the agent
+  did step 3:
+  * `main` to `c7a8b4c`, with CI green on all three runners;
+  * `scripts/check-release-tag.sh v1.5.1` exit 0;
+  * the annotated tag `v1.5.1` on `c7a8b4c`, with message `v1.5.1`, as
+    `v1.5.0`'s was. `git ls-remote origin 'refs/tags/v1.5.1^{}'` gives
+    `c7a8b4c`.
+* **Step 2, after the tag (D3).**
+  * `README.md` and the migration guide pin
+    `publish-selfupdate-release.yml@c7a8b4ca8045bdb26b0908206b775192358c8253 # v1.5.1`.
+  * The guide said the workflow was "unchanged from `v1.3.0` to
+    `v1.4.1`", with a `v1.4.1` `ls-remote` command. It now says it is
+    unchanged up to `v1.5.0`, names what `v1.5.1` changes, and resolves
+    `v1.5.1`. Between `v1.4.1` and `v1.5.0` only the API-check scripts
+    changed.
+* **Step 4.**
+  * **CI on the tag:** green on ubuntu-24.04, macos-15 and windows-2025.
+  * **The proxy:** `go list -m …@latest` against `proxy.golang.org` gives
+    `v1.5.1`.
+  * **A scratch consumer** builds on `v1.5.1` and runs `cli.Command` with
+    `StdioOptions` offline:
+    * `--check` exits 10 with the summary;
+    * `--check --json` exits 10 with one result object;
+    * `--yes` applies, exit 0;
+    * cross builds for linux and windows pass.
+
+    My first two drafts left out the GitHub source's `Client` and the
+    `Reporter`, which `New` requires. The second run showed C4 in the
+    published module: under `--json` the updater's error came out as one
+    result object.
+  * **prepare-commit-msg**, on a scratch clone: `go get …@v1.5.1` changes
+    only `go.mod` and `go.sum`, and `make verify` passes, with total
+    coverage 84.1 %. No code change was needed.
+* **Checks** on the pin commit (`gate.sh`, every one rc 0). `make apicheck`
+  now compares against the newest tag: `compatible with v1.5.1`.
+
+**Verification.**
+* V1: every finding's test failed on the unfixed code; the outputs are
+  recorded per phase.
+* V2: `make apicheck` stayed compatible with `v1.5.0` through P1–P7.
+* V3: rule 3's checks passed at every phase, and the Windows test host
+  passed P3–P5, and P6 too.
+* V4: CI is green on `main` and on `v1.5.1`.
+* V5: prepare-commit-msg builds and verifies on `v1.5.1` unchanged.
+
+This PLAN is `complete`.

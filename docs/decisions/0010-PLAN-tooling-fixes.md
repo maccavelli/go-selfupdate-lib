@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 date: 2026-10-03
 associated-madr: "0010-MADR-remediate-second-debugging-pass-findings.md"
 ---
@@ -447,3 +447,18 @@ first live run of the release workflow changes, at the `v1.5.1` tag, and is
 recorded in
 [0010-PLAN-v1-5-1-contract-preserving-fixes.md](0010-PLAN-v1-5-1-contract-preserving-fixes.md).
 This PLAN becomes `complete` when V3 holds.
+
+### Close-out (2026-10-04)
+
+* **V3.** CI is green on `main`: on `a65f429`, which carries T0–T8 and the
+  new `permissions:` block, and again on `c7a8b4c`. All three runners
+  passed both times.
+* **V4.** The `v1.5.1` tag ran CI only. This module publishes no binary,
+  so the tag does not call `publish-selfupdate-release.yml`. The release
+  workflow's changes stay proven by their script tests. Their first live
+  run is a consumer's next release on the new pin, which
+  [0010-PLAN-v1-5-1-contract-preserving-fixes.md](0010-PLAN-v1-5-1-contract-preserving-fixes.md)
+  moved to `v1.5.1`'s commit (its deviation D3). Consumers now get T4
+  through that pin, as Rollout says.
+
+This PLAN is `complete`.

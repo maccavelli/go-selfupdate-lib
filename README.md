@@ -94,7 +94,7 @@ release:
     contents: write
     id-token: write
     attestations: write
-  uses: maccavelli/go-selfupdate-lib/.github/workflows/publish-selfupdate-release.yml@58411f1f7b00b5c98391c0f94503d09e0687d078 # v1.4.1
+  uses: maccavelli/go-selfupdate-lib/.github/workflows/publish-selfupdate-release.yml@c7a8b4ca8045bdb26b0908206b775192358c8253 # v1.5.1
   with:
     artifact-name: <the uploaded artifact holding the staged release>
     products-json: '["<product>"]'
