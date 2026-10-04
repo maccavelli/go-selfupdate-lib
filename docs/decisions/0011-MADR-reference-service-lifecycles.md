@@ -612,6 +612,25 @@ func ReadHandOffResult(path string) (HandOffResult, error)
   service program re-implements the seams.
 * Bad, because it abandons 0004 §7's scheduled scope.
 
+## Amendments
+
+### A1 (2026-10-04): the old version restores in-process
+
+*Status: accepted (2026-10-04). The owner chose "RestoreFunc in-process"
+at a PLAN stop, deviation D1 of
+[0011-PLAN-reference-service-lifecycles.md](0011-PLAN-reference-service-lifecycles.md).*
+
+* **Found.** §6 says `Restore` runs "by the new binary or, by option, by
+  the old one". In the managed flow, `Restore` runs before the binary is
+  rolled back. The target path then holds the new binary, the old one is
+  at a backup path the reconciler is never given, and the updater's own
+  executable path has been renamed over. No old binary can be run.
+* **Decided.** The updater process is the old version. `ExecOptions` gains
+  `RestoreFunc func(ctx context.Context, product string, r Receipt) error`.
+  When it is set, `Restore` calls it in-process, which is what
+  magic-cli-remote does today. Otherwise `Restore` runs the new binary's
+  restore arguments, with the receipt on standard input.
+
 ## More Information
 
 ### Probe evidence

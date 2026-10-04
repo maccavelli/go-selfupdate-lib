@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: in-progress
 date: 2026-10-04
 associated-madr: "0011-MADR-reference-service-lifecycles.md"
 ---
@@ -100,15 +100,18 @@ In addition:
    tests do not sleep.
 4. **`ExecReconciler`:**
    * `NewExecReconciler(ExecOptions{Reconcile, Restore []string;
-     RestoreWithOld bool; Runner Runner})`.
+     RestoreFunc func(ctx, product, Receipt) error; Runner Runner})`.
+     *(Deviation D1, 2026-10-04: `RestoreFunc` replaces `RestoreWithOld
+     bool`; MADR amendment A1.)*
    * It runs the new binary's reconcile arguments, and decodes the version
      1 receipt (MADR §6) from standard output. A missing `schema_version`
      reads as 1, and unknown fields are ignored.
    * A non-zero exit with a receipt is an error that keeps the receipt in
      `ReconcileResult.State`, so `Restore` can run. A non-zero exit with no
      receipt is an error with nothing to restore.
-   * `Restore` passes the receipt on standard input to the restore
-     arguments, run by the new or the old binary as configured.
+   * `Restore` calls `RestoreFunc` in-process when it is set, and
+     otherwise passes the receipt on standard input to the new binary's
+     restore arguments.
 5. **The handoff core** (MADR §9):
    * `Detacher`, `HandOff`, `Detached`, `HandOffResult`;
    * `HandOffIfInside`;
@@ -143,7 +146,7 @@ In addition:
      * the receipt kept on a failed child;
      * no receipt on a crash;
      * magic-cli-remote's receipt with no `schema_version`;
-     * restore by the new binary and by the old.
+     * restore by the new binary, and in-process by `RestoreFunc`.
    * The handoff core:
      * `HandOffIfInside` with a fake `Detacher`, inside and outside;
      * no second handoff under `SELFUPDATE_HANDOFF`;
@@ -401,4 +404,89 @@ In addition:
 
 ## Execution Record
 
-Not started.
+### Phase V0: records (2026-10-04)
+
+* The MADR and the PLAN were drafted from five research reports: systemd,
+  launchd, Windows SCM, Go prior art, and the two in-house programs. The
+  owner answered Q1 (build the helpers), Q2 (magic-cli-remote's receipt
+  shape) and Q3 (include `sd_notify`). The MADR is `accepted`, and the
+  owner approved this PLAN.
+
+### Deviation D1 (2026-10-04): the old version restores in-process
+
+* **Found,** before any V1 code. Step 4 specified `RestoreWithOld bool`.
+  In the managed flow, `Restore` runs before the binary rollback, so no
+  old binary exists at a path the reconciler knows, and the updater's own
+  executable path has been renamed over.
+* **Decision.** The owner chose "RestoreFunc in-process". MADR amendment
+  A1 records it. Step 4 is amended in place.
+
+### Phase V1: `selfupdate/service` (2026-10-04)
+
+* **Built,** as steps 1 to 7 specify:
+  * the runner (`Runner`, `RunnerFunc`, `ExecRunner`);
+  * the six typed errors;
+  * `PollHealthy`;
+  * `ExecReconciler` with the version 1 `Receipt` and `ExecState`;
+  * the handoff core: `Detacher`, `HandOff`, `Detached`,
+    `HandOffResult`, `HandOffIfInside`, `HandOffFunc`, `ReportFunc`,
+    `ReadHandOffResult`, `WriteHandOffResult`, `DefaultResultPath`;
+  * `DetachProcess`;
+  * the depguard rules `service`, `service-launchd`, `service-scm` and
+    `service-systemd`, each excluded from `other-packages`.
+* **Small additions within the MADR's §9,** none changing a decision:
+  * `HandOff.ID`, so a caller can name its handoff;
+  * `Detached.Where`, naming the unit, job or process;
+  * `ProcessDetacher(inside)`, a `Detacher` over `DetachProcess` for a
+    lifecycle with no backend here.
+* **Hardening found while linting.** `gosec` flagged that the result path
+  comes from the environment. `WriteHandOffResult` refuses a path that is
+  not absolute and clean, and `HandOffIfInside` refuses a relative
+  `ResultPath`.
+* **Tests:**
+  * `poll_test.go` runs on a fake clock. `TestMain` makes the test binary
+    the fake tool for the runner, the reconciler and the detach tests.
+  * **The live detach tests:**
+    * **Unix:** the detached child outlives a `SIGKILL` of its parent's
+      whole process group.
+    * **Windows:** with a job that allows breakaway, the child outlives
+      `TerminateJobObject`. With one that does not, breakaway is refused,
+      the start is retried inside the job, and the child dies with it.
+      That case is pinned as found.
+* **Plants,** in scratch copies, each caught by its test:
+  * no `Setsid`: `the detached child died with its parent's process
+    group`;
+  * `Previous` counted: `TestPollHealthyPreviousNeverCounts`;
+  * the receipt dropped on a failed child:
+    `TestExecReconcilerKeepsReceiptOnFailure`;
+  * an `Inside` error read as outside: `TestHandOffIfInsideFailsClosed`;
+  * the output cap raised: `TestExecRunnerCapsOutput`;
+  * a detached run handing off again: `TestDetachedRunNeverHandsOffAgain`;
+  * the clean-path check removed:
+    `TestWriteHandOffResultNeedsCleanAbsolutePath`;
+  * a `golang.org/x/term` import in each of the four packages: depguard
+    refused it four times, each by its own rule (`import
+    'golang.org/x/term' is not allowed from list 'service-systemd'`, and so
+    on).
+* **Mistakes in my own tests, caught by the plants or the hosts:**
+  * `TestPollHealthyPreviousNeverCounts` first timed out before its
+    default 10 s settle window could end, so the plant passed. It now sets
+    no settle window.
+  * The output-cap test derived its sizes from the constant under test, so
+    the plant passed. It now uses fixed sizes.
+  * The first depguard plant used a blank import. `revive` reported that
+    line first, and golangci-lint keeps one finding per line, so depguard
+    was hidden. The plant now uses a named import.
+  * `filepath.Join` cleaned the unclean path in the clean-path test. It is
+    now built by hand.
+  * `TestHandOffFunc` used `/r/x`, which is not absolute on Windows. It
+    now uses a temporary directory.
+* **Windows test host:** `go test -race -count=1 ./...` rc 0 for all five
+  packages; `selfupdate/service` took 25.2 s.
+* **Checks** (`gate.sh`, every one rc 0):
+  * `make lint`, 0 issues;
+  * race and shuffle;
+  * `make apicheck`: `compatible with v1.6.0`;
+  * fuzz, vuln, tidy (`go.mod` unchanged);
+  * every script test;
+  * cross vet.

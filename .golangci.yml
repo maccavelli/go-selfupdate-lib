@@ -96,6 +96,48 @@ linters:
           allow:
             - $gostd
             - github.com/maccavelli/go-selfupdate-lib/selfupdate$
+        # selfupdate/service and its three backends: the standard library,
+        # x/sys only where Windows needs it, and the module's own packages
+        # (docs/decisions/0011-MADR-reference-service-lifecycles.md §1).
+        service:
+          list-mode: strict
+          files:
+            - "**/selfupdate/service/*.go"
+            - "!$test"
+          allow:
+            - $gostd
+            - golang.org/x/sys/windows$
+            - github.com/maccavelli/go-selfupdate-lib/selfupdate$
+        service-launchd:
+          list-mode: strict
+          files:
+            - "**/selfupdate/service/launchd/*.go"
+            - "!$test"
+          allow:
+            - $gostd
+            - github.com/maccavelli/go-selfupdate-lib/selfupdate$
+            - github.com/maccavelli/go-selfupdate-lib/selfupdate/service$
+        service-scm:
+          list-mode: strict
+          files:
+            - "**/selfupdate/service/scm/*.go"
+            - "!$test"
+          allow:
+            - $gostd
+            - golang.org/x/sys/windows$
+            - golang.org/x/sys/windows/svc$
+            - golang.org/x/sys/windows/svc/mgr$
+            - github.com/maccavelli/go-selfupdate-lib/selfupdate$
+            - github.com/maccavelli/go-selfupdate-lib/selfupdate/service$
+        service-systemd:
+          list-mode: strict
+          files:
+            - "**/selfupdate/service/systemd/*.go"
+            - "!$test"
+          allow:
+            - $gostd
+            - github.com/maccavelli/go-selfupdate-lib/selfupdate$
+            - github.com/maccavelli/go-selfupdate-lib/selfupdate/service$
         # Every other package, such as a new internal/ helper, gets only the
         # standard library and this module until a record gives it its own
         # rule (docs/decisions/0010-MADR-remediate-second-debugging-pass-findings.md
@@ -110,6 +152,10 @@ linters:
             - "!**/selfupdate/*.go"
             - "!**/selfupdate/cli/*.go"
             - "!**/selfupdate/selfupdatetest/*.go"
+            - "!**/selfupdate/service/*.go"
+            - "!**/selfupdate/service/launchd/*.go"
+            - "!**/selfupdate/service/scm/*.go"
+            - "!**/selfupdate/service/systemd/*.go"
           allow:
             - $gostd
             - github.com/maccavelli/go-selfupdate-lib
