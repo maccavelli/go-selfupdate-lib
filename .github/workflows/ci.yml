@@ -48,6 +48,20 @@ jobs:
           go test -c -o "$RUNNER_TEMP/selfupdate.test" ./selfupdate
           sudo env SELFUPDATE_REQUIRE_ROOT=1 "$RUNNER_TEMP/selfupdate.test" \
             -test.run '^TestStagingTakesOwnerAsRoot$' -test.count=1 -test.v
+      # The systemd backend against the runner's real systemd: a throwaway
+      # unit in system scope under sudo, then in the runner user's own
+      # manager. The binary is built as the runner, as above
+      # (docs/decisions/0011-PLAN-reference-service-lifecycles.md V2).
+      - name: systemd live test
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          go test -c -o "$RUNNER_TEMP/systemd.test" ./selfupdate/service/systemd
+          sudo env SELFUPDATE_REQUIRE_SYSTEMD=1 FAKE_LIVE_ROOT=/var/tmp \
+            "$RUNNER_TEMP/systemd.test" -test.run '^TestLive' -test.count=1 -test.v
+          env SELFUPDATE_REQUIRE_SYSTEMD=1 SELFUPDATE_SYSTEMD_SCOPE=user FAKE_LIVE_ROOT=/var/tmp \
+            XDG_RUNTIME_DIR="/run/user/$(id -u)" \
+            "$RUNNER_TEMP/systemd.test" -test.run '^TestLive' -test.count=1 -test.v
       # The race detector needs cgo, which the Linux and macOS runners have
       # (0003-MADR D9; 0002-PLAN V3; 0004-MADR H7).
       # The manifest differential must run, not skip, where python3 is on

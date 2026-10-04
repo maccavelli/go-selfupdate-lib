@@ -1,0 +1,13 @@
+Id=selfupdate-none.service
+LoadState=not-found
+ActiveState=inactive
+SubState=dead
+FragmentPath=
+DropInPaths=
+UnitFileState=
+NeedDaemonReload=no
+InvocationID=
+MainPID=0
+Result=success
+NRestarts=0
+ControlGroup=

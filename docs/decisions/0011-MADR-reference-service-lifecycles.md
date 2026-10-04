@@ -631,6 +631,32 @@ at a PLAN stop, deviation D1 of
   magic-cli-remote does today. Otherwise `Restore` runs the new binary's
   restore arguments, with the receipt on standard input.
 
+### A2 (2026-10-04): the systemd handoff's environment goes in a private file
+
+*Status: accepted (2026-10-04). The owner chose "Private env file" at a
+PLAN stop, deviation D2 of
+[0011-PLAN-reference-service-lifecycles.md](0011-PLAN-reference-service-lifecycles.md).*
+
+* **Found.** §9 passes the detached run's environment with `systemd-run
+  --setenv`. The detached run is the same command, so it needs the
+  caller's environment, which can hold a credential such as `GH_TOKEN`.
+  A unit's `Environment` property is readable by any local user through
+  `systemctl show`, so `--setenv` would publish it.
+* **Decided.**
+  * The caller's environment, the handoff variables and `HandOff.Env` are
+    written to a file of mode 0600, in a directory of mode 0700:
+    `/run/selfupdate` in system scope, `$XDG_RUNTIME_DIR/selfupdate` in
+    user scope, both on tmpfs.
+  * `systemd-run` takes it as `-p EnvironmentFile=`, so only its path is
+    visible.
+  * On systemd 240 or later, the transient unit runs as `Type=exec`, so
+    `systemd-run` returns only once the program has started, and the file
+    is then deleted. On 236 to 239 it stays until the next handoff removes
+    it.
+  * Values are written in double quotes, with `\`, `"`, `` ` `` and `$`
+    escaped; a name that is not a valid variable name is skipped. The
+    live test pins the round trip.
+
 ## More Information
 
 ### Probe evidence

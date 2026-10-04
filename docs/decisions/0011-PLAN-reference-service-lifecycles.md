@@ -197,6 +197,8 @@ In addition:
      `ControlGroup` or below it.
    * `Detach`: `systemd-run [--user] --unit=<unit>-selfupdate-<id>
      --collect --no-block --quiet --setenv=… -- <exe> <args>`.
+     *(Deviation D2, 2026-10-04: the environment goes in a private file,
+     `-p EnvironmentFile=`, not `--setenv`; MADR amendment A2.)*
    * `systemctl --version` is read first. Below 236 the result is
      `ErrUnsupported`.
 7. **`Notify`:**
@@ -483,6 +485,104 @@ In addition:
     now uses a temporary directory.
 * **Windows test host:** `go test -race -count=1 ./...` rc 0 for all five
   packages; `selfupdate/service` took 25.2 s.
+* **Checks** (`gate.sh`, every one rc 0):
+  * `make lint`, 0 issues;
+  * race and shuffle;
+  * `make apicheck`: `compatible with v1.6.0`;
+  * fuzz, vuln, tidy (`go.mod` unchanged);
+  * every script test;
+  * cross vet.
+
+### Deviation D2 (2026-10-04): the systemd handoff's environment
+
+* **Found,** before any V2 code. Step 6 passes the environment with
+  `--setenv`. Any local user can read a unit's `Environment` with
+  `systemctl show`, and the detached run needs the caller's environment,
+  credentials included.
+* **Decision.** The owner chose "Private env file". MADR amendment A2
+  records it: a 0600 file in a 0700 directory on tmpfs, passed with
+  `-p EnvironmentFile=`, and deleted once a `Type=exec` unit has started on
+  systemd 240 or later.
+
+### Phase V2: `selfupdate/service/systemd` (2026-10-04)
+
+* **Built,** as steps 1 to 7 specify:
+  * `New`, `Options`, `Scope`, `Available`;
+  * `ValidUnitName`, `Escape`, `TemplateInstance`;
+  * the probes over one `show` per call;
+  * `Stop`, with the backstop, and `Start`;
+  * `WaitHealthy`, which requires a new `InvocationID` and an unchanged
+    `NRestarts`;
+  * `Reconcile` and `Restore`, with the `DropIn` receipt;
+  * `Inside`, by cgroup;
+  * `Detach`, by `systemd-run`, with the private environment file of
+    deviation D2;
+  * `Notify`, `Ready`, `Reloading`, `Stopping`, `Watchdog`, `Status` and
+    `WatchdogInterval`.
+* **Within the MADR's §5,** the opt-in rewrite reads the effective
+  `ExecStart=` line from the unit's files, the fragment then the drop-ins
+  in `DropInPaths` order. `show -p ExecStart` joins `argv[]` with spaces
+  and loses systemd's quoting. Only the program is replaced. A unit with
+  more than one `ExecStart` command is refused.
+* **`MONOTONIC_USEC`** is read with a raw `clock_gettime` call:
+  `x/sys/unix` is not among the package's imports in the MADR's §1.
+* **Live, on two Linux test hosts:** Ubuntu 26.04 with systemd 259, and
+  WSL on the Windows test host, Ubuntu 24.04 with systemd 255. Each ran
+  `TestLiveManagedUpdate`, `TestLiveHealthFailureRollsBack` and
+  `TestLiveHandOff`, in system scope under `sudo` and in user scope. All
+  twelve passed. The handoff test shows each step:
+  * from inside the unit, `Stop` was refused with `ErrInsideService`;
+  * the update handed off to a transient unit;
+  * the unit restarted on the handed-off build, with a new
+    `InvocationID`;
+  * the result file reported exit 0, applied and started;
+  * a value with `"`, `$`, `\`, a backquote and a newline came through
+    the environment file unchanged.
+
+  `systemctl start` returned only after the helper's delayed `READY=1`,
+  more than 1 s later.
+* **Captured output.** `testdata/` holds real `systemctl show` output
+  from both hosts: an active unit on each, and a unit that does not exist.
+  `TestCapturedShowOutput` replays it through the probes. The captures
+  settle two points the MADR listed as inferred:
+  * `show` on a unit that does not exist exits 0 with
+    `LoadState=not-found`;
+  * properties come in systemd's order, not the order `-p` asked for,
+    which is why they are parsed by key.
+
+  They also include a real `static` unit, systemd-journald, which
+  `is-enabled` would call enabled.
+* **Plants,** in scratch copies, each caught:
+  * `static` counted as enabled: `TestProbes`;
+  * the `Stop` backstop removed: `TestStopRefusesInsideUnit`;
+  * no `Previous` invocation: `TestWaitHealthyNeedsNewInvocation`;
+  * the restart check removed: `TestWaitHealthyFailsFast/restarted`;
+  * the environment file kept after a `Type=exec` start: `TestDetach`;
+  * the environment file's escaping removed: `TestEnvFileBody`;
+  * an exact cgroup match only: `TestInside`;
+  * **live,** on the systemd 259 host: `Detach` replaced by
+    `service.DetachProcess`, a plain `setsid` child. `TestLiveHandOff`
+    failed in both scopes, because the detached run was still in the unit's
+    cgroup, so its own stop was refused. That is the case the transient
+    unit exists for.
+* **Mistakes, mine, caught by the hosts and the linter:**
+  * My first WSL runner passed `$(id -u)` through Git Bash on the Windows
+    side, which expanded it to the Windows user's ID. The service then got
+    a runtime directory it could not use, and the script reported `rc=0`
+    after a failure. The runner script is now copied into the target and
+    run there. Git Bash also rewrote `/var/tmp` into a Windows path, which
+    `MSYS_NO_PATHCONV=1` stops.
+  * `TestDetach` and `TestDetachOldSystemd` assumed Linux paths and file
+    modes, and failed on Windows. They are now in `detach_unix_test.go`.
+    `New` refuses anywhere but Linux.
+  * Lint: an unchecked `os.Remove`; a directory `chmod` that `gosec` read
+    as a file's; De Morgan in `validEnvName`; and `inside` beside `Inside`,
+    now `insideUnit`.
+* **CI:** a Linux step runs the live tests in system scope under `sudo`,
+  then in the runner user's own manager. actionlint and
+  `check-workflows.sh` pass.
+* **Windows test host:** `go test -race -count=1 ./...` rc 0 for all six
+  packages. The systemd package's fake tests run there too.
 * **Checks** (`gate.sh`, every one rc 0):
   * `make lint`, 0 issues;
   * race and shuffle;

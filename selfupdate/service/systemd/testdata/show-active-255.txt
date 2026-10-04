@@ -1,0 +1,14 @@
+MainPID=39
+Result=success
+NRestarts=0
+ExecStart={ path=/usr/lib/systemd/systemd-journald ; argv[]=/usr/lib/systemd/systemd-journald ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }
+ControlGroup=/system.slice/systemd-journald.service
+Id=systemd-journald.service
+LoadState=loaded
+ActiveState=active
+SubState=running
+FragmentPath=/usr/lib/systemd/system/systemd-journald.service
+DropInPaths=/usr/lib/systemd/system/systemd-journald.service.d/nice.conf
+UnitFileState=static
+NeedDaemonReload=no
+InvocationID=ea970a5b134d446e82dc2868ea15fb94
