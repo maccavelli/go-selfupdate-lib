@@ -33,6 +33,10 @@ name, and the files they cite moved with the rename
 | 0008 | PLAN | [Implement depguard import rules](decisions/0008-PLAN-enforce-import-rules-with-depguard.md) | complete |
 | 0009 | MADR | [Rename go-core-lib to go-selfupdate-lib: rename the repository in place, deprecate the old module path first, and publish the new path from v1.5.0](decisions/0009-MADR-rename-to-go-selfupdate-lib.md) | accepted |
 | 0009 | PLAN | [Rename go-core-lib to go-selfupdate-lib (`v1.4.1`, `v1.5.0`)](decisions/0009-PLAN-rename-to-go-selfupdate-lib.md) | complete |
+| 0010 | MADR | [Fix the second debugging pass's findings: a v1.5.1 of contract-preserving fixes, the tooling fixes with no release, and a v1.6.0 for the contracts the owner decides](decisions/0010-MADR-remediate-second-debugging-pass-findings.md) | accepted |
+| 0010 | PLAN | [Implement the tooling fixes and the roadmap amendment (no release)](decisions/0010-PLAN-tooling-fixes.md) | in-progress |
+| 0010 | PLAN | [Implement v1.5.1: the fixes that keep every documented contract](decisions/0010-PLAN-v1-5-1-contract-preserving-fixes.md) | proposed |
+| 0010 | PLAN | [Implement v1.6.0: the contracts the owner decided (Q1–Q6, A14)](decisions/0010-PLAN-v1-6-0-owner-contracts.md) | proposed |
 
 ## I want to…
 
