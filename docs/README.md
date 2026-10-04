@@ -37,6 +37,8 @@ name, and the files they cite moved with the rename
 | 0010 | PLAN | [Implement the tooling fixes and the roadmap amendment (no release)](decisions/0010-PLAN-tooling-fixes.md) | complete |
 | 0010 | PLAN | [Implement v1.5.1: the fixes that keep every documented contract](decisions/0010-PLAN-v1-5-1-contract-preserving-fixes.md) | complete |
 | 0010 | PLAN | [Implement v1.6.0: the contracts the owner decided (Q1–Q6, A14)](decisions/0010-PLAN-v1-6-0-owner-contracts.md) | complete |
+| 0011 | MADR | [Build `selfupdate/service`: reference systemd, launchd and Windows SCM lifecycles on the platform tools and `x/sys`, with `PollHealthy`, `ExecReconciler`, `sd_notify`, and a handoff that keeps an updater from stopping its own service](decisions/0011-MADR-reference-service-lifecycles.md) | accepted |
+| 0011 | PLAN | [Implement `selfupdate/service`: reference systemd, launchd and Windows SCM lifecycles, the handoff and `sd_notify` (`v1.7.0`)](decisions/0011-PLAN-reference-service-lifecycles.md) | proposed |
 
 ## I want to…
 
