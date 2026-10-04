@@ -5,8 +5,8 @@
 GOPATH_BIN    := $(shell go env GOPATH)/bin
 GOBIN         := $(shell go env GOBIN)
 GOLANGCI_LINT ?= $(GOPATH_BIN)/golangci-lint
-GOVULNCHECK   ?= $(or $(wildcard $(GOBIN)/govulncheck),$(GOPATH_BIN)/govulncheck,$(shell command -v govulncheck 2>/dev/null))
-GOTESTSUM     ?= $(or $(wildcard $(GOBIN)/gotestsum),$(GOPATH_BIN)/gotestsum,$(shell command -v gotestsum 2>/dev/null))
+GOVULNCHECK   ?= $(or $(wildcard $(GOBIN)/govulncheck),$(wildcard $(GOPATH_BIN)/govulncheck),$(shell command -v govulncheck 2>/dev/null))
+GOTESTSUM     ?= $(or $(wildcard $(GOBIN)/gotestsum),$(wildcard $(GOPATH_BIN)/gotestsum),$(shell command -v gotestsum 2>/dev/null))
 FLEET_LINT_CFG := .golangci.yml
 
 .PHONY: all help test test-sum fmt vet lint tidy vuln apicheck fuzz pre-add-check
@@ -37,7 +37,7 @@ LINT_GOOS := linux darwin windows
 lint: ## Runs golangci-lint with fleet config for linux, darwin and windows
 	@if [ ! -x "$(GOLANGCI_LINT)" ]; then \
 		echo "golangci-lint not found at $(GOLANGCI_LINT)"; \
-		echo "Install: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest"; \
+		echo "Install: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0"; \
 		exit 1; \
 	fi
 	@status=0; for os in $(LINT_GOOS); do \

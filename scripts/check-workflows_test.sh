@@ -168,6 +168,16 @@ plant "$WORK/jobenv.yml" "  planted:
       - run: $VIEW"
 expect "R8: job-level GH_REPO counts" 0 gh-repo "$WORK/jobenv.yml"
 
+echo "0010-MADR D7: permissions"
+expect "release workflow, permissions" 0 permissions "$WORKFLOW"
+expect "ci workflow, permissions" 0 permissions "$CI"
+awk '
+	/^permissions:/ { skip = 1; next }
+	skip && /^[^ ]/ { skip = 0 }
+	!skip { print }
+' "$CI" >"$WORK/noperms.yml"
+expect "a workflow without top-level permissions" 1 permissions "$WORK/noperms.yml"
+
 echo "0010-MADR D6: comments and paths"
 # The literal $TAG in planted YAML is workflow content, not shell here.
 # shellcheck disable=SC2016

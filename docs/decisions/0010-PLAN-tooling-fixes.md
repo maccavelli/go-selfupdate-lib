@@ -354,3 +354,35 @@ starts. The records are committed alone.
   * actionlint v1.7.12;
   * shellcheck on `scripts/*.sh`;
   * every `scripts/*_test.sh`.
+
+### Phase T5: CI and the Makefile, D7, D10, D11 (2026-10-03)
+
+* **D7, test first.** `check-workflows_test.sh` gains three cases:
+  * "release workflow, permissions": exit 0;
+  * "ci workflow, permissions": exit 0;
+  * a copy of ci.yml with its top-level `permissions:` block removed:
+    exit 1.
+
+  Against the old checker all three failed, with exit 2: it had no such
+  rule.
+* **D7, fix.**
+  * `check-workflows.sh` gains a `permissions` rule, also run under
+    `all`: a workflow without a top-level `permissions:` is a finding.
+  * ci.yml gains `permissions: contents: read`, and `persist-credentials:
+    false` on its one checkout. No CI step uses the token or gh. CI runs
+    the new rule over ci.yml, beside the expressions rule.
+  * After the fix: `33 passed, 0 failed`.
+* **D10.** `$(GOPATH_BIN)/…` is wrapped in `$(wildcard …)` for
+  `GOVULNCHECK` and `GOTESTSUM`. Proved with `GOENV=off`, an empty
+  `GOPATH`, and a stub govulncheck only on `PATH`:
+  * `HEAD`'s Makefile gave `govulncheck not found…`, rc 2;
+  * the new one ran the stub, rc 0.
+* **D11.** The `make lint` install hint names `golangci-lint@v2.14.0`.
+* **Checks:**
+  * `make lint`: 0 issues on all three GOOS;
+  * `make pre-add-check`: `113 file(s) clean (gofmt, golangci-lint, go vet,
+    go test, govulncheck).`;
+  * actionlint v1.7.12;
+  * `check-workflows.sh` over both workflows;
+  * shellcheck;
+  * every `scripts/*_test.sh`.

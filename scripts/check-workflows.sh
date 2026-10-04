@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Check GitHub Actions workflows by parsing them as YAML, the way GitHub does,
 # rather than scanning lines (docs/decisions/0004-MADR-evolve-selfupdate-api-and-tui-support.md
-# R7, R8). Two rules:
+# R7, R8). Three rules:
 #
 #   expressions  no step's run script contains ${{ }}. GitHub substitutes an
 #                expression into the script text before the shell runs it, so
@@ -21,7 +21,11 @@
 #                inside quotes starts no comment
 #                (docs/decisions/0010-MADR-remediate-second-debugging-pass-findings.md D6).
 #
-# Usage: check-workflows.sh [--rule expressions|gh-repo|all] [workflow...]
+#   permissions  the workflow has a top-level permissions: block, so its
+#                token never takes the repository's default scope (0010-MADR
+#                D7).
+#
+# Usage: check-workflows.sh [--rule expressions|gh-repo|permissions|all] [workflow...]
 # With no workflow, the reusable release workflow is checked. Exit 0 when
 # clean, 1 on findings, 2 on a usage, parse or environment error. PyYAML is
 # required: pip install -r scripts/requirements-workflow-check.txt
@@ -34,9 +38,9 @@ if [ "${1:-}" = "--rule" ]; then
 	shift 2 || true
 fi
 case "$RULE" in
-expressions | gh-repo | all) ;;
+expressions | gh-repo | permissions | all) ;;
 *)
-	echo "usage: check-workflows.sh [--rule expressions|gh-repo|all] [workflow...]" >&2
+	echo "usage: check-workflows.sh [--rule expressions|gh-repo|permissions|all] [workflow...]" >&2
 	exit 2
 	;;
 esac
@@ -168,6 +172,9 @@ for path in paths:
     if not isinstance(doc, dict):
         print("check-workflows: %s: not a workflow mapping" % path, file=sys.stderr)
         sys.exit(2)
+    if rule in ("permissions", "all") and "permissions" not in doc:
+        print("%s: no top-level permissions: block" % path, file=sys.stderr)
+        findings += 1
     jobs = doc.get("jobs") or {}
     for job_id, job in jobs.items():
         if not isinstance(job, dict):

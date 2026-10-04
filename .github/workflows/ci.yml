@@ -5,6 +5,12 @@ on:
     tags: ['v*']
   pull_request:
 
+# The token is read-only: CI fetches and runs tools (markdownlint, actionlint),
+# and needs no write access
+# (docs/decisions/0010-MADR-remediate-second-debugging-pass-findings.md D7).
+permissions:
+  contents: read
+
 # One run per ref: a newer push, or a duplicate trigger for the same one,
 # cancels the older run
 # (docs/decisions/0003-MADR-remediate-debugging-pass-findings.md D11).
@@ -25,6 +31,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: ${{ runner.os == 'Linux' && '0' || '1' }}
+          persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
@@ -160,4 +167,5 @@ jobs:
           export PATH="$RUNNER_TEMP/wfcheck/bin:$PATH"
           ./scripts/check-workflows.sh
           ./scripts/check-workflows.sh --rule expressions .github/workflows/ci.yml
+          ./scripts/check-workflows.sh --rule permissions .github/workflows/ci.yml
           ./scripts/check-workflows_test.sh
