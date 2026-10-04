@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"unicode"
 )
@@ -107,13 +106,9 @@ func validateChecksumName(name string) error {
 	if name == "" || name == "." || name == ".." {
 		return fmt.Errorf("filename %q is not a basename: %w", name, ErrIntegrity)
 	}
-	if strings.ContainsAny(name, `/\`) {
-		return fmt.Errorf("filename %q is not a basename: %w", name, ErrIntegrity)
-	}
-	if filepath.IsAbs(name) {
-		return fmt.Errorf("filename %q is not a basename: %w", name, ErrIntegrity)
-	}
-	if filepath.Base(name) != name {
+	// ':' is refused on every OS: filepath.Base strips a drive volume on
+	// Windows only, so the result used to depend on the OS (0010-MADR A12).
+	if strings.ContainsAny(name, `/\:`) {
 		return fmt.Errorf("filename %q is not a basename: %w", name, ErrIntegrity)
 	}
 	return nil

@@ -2,6 +2,8 @@ package selfupdate
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"io"
 	"os"
@@ -203,5 +205,86 @@ func TestNewNilManifestVerifier(t *testing.T) {
 			Reporter: env.rep, Confirmer: env.conf, Limits: env.lim, ManifestVerifiers: []ManifestVerifier{mv}}); err == nil {
 			t.Errorf("manifest verifier %#v accepted", mv)
 		}
+	}
+}
+
+// TestOpenAssetChecksDigestAtSize: a verifier that reads exactly Size bytes,
+// and so never sees io.EOF, still gets ErrIntegrity for a body that does not
+// match its digest, and a matching body still reads clean
+// (0010-MADR A1).
+func TestOpenAssetChecksDigestAtSize(t *testing.T) {
+	env := newContractEnv(t)
+	u := env.build(t)
+	body := []byte("0123456789")
+	good := sha256.Sum256(body)
+	rel := Release{ID: 1, Tag: "v1.1.0", Assets: []Asset{
+		{ID: 20, Name: "bad", State: AssetStateUploaded, Size: 10, Digest: "sha256:" + strings.Repeat("0", 64)},
+		{ID: 21, Name: "good", State: AssetStateUploaded, Size: 10, Digest: "sha256:" + hex.EncodeToString(good[:])},
+	}}
+	env.src.bodies[20] = body
+	env.src.bodies[21] = body
+	r, err := u.newRun(runScope{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	open := r.openAsset(rel)
+	reads := map[string]func(io.Reader) error{
+		"ReadFull": func(rc io.Reader) error {
+			_, err := io.ReadFull(rc, make([]byte, 10))
+			return err
+		},
+		"CopyN": func(rc io.Reader) error {
+			_, err := io.CopyN(io.Discard, rc, 10)
+			return err
+		},
+		"a byte at a time": func(rc io.Reader) error {
+			b := make([]byte, 1)
+			for range 10 {
+				if _, err := io.ReadFull(rc, b); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+		"ReadAll": func(rc io.Reader) error {
+			_, err := io.ReadAll(rc)
+			return err
+		},
+	}
+	for how, read := range reads {
+		for name, wantBad := range map[string]bool{"bad": true, "good": false} {
+			rc, err := open(context.Background(), name, 1024)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = read(rc)
+			if cerr := rc.Close(); cerr != nil {
+				t.Fatalf("%s %s: close: %v", how, name, cerr)
+			}
+			if got := errors.Is(err, ErrIntegrity); got != wantBad {
+				t.Errorf("%s of %s: err = %v, want ErrIntegrity %v", how, name, err, wantBad)
+			}
+		}
+	}
+}
+
+// TestVerifierFailureIsIntegrity: a binary verifier's failure is an
+// ErrIntegrity failure, as a manifest verifier's is, and EventFailed says so
+// (0010-MADR A8).
+func TestVerifierFailureIsIntegrity(t *testing.T) {
+	env := newContractEnv(t)
+	u := env.build(t)
+	u.verifiers = []Verifier{VerifierFunc(func(context.Context, Verification) error {
+		return errors.New("signature does not verify")
+	})}
+	req := applyReq()
+	req.Yes = true
+	_, err := u.Run(context.Background(), req)
+	if !errors.Is(err, ErrIntegrity) || !strings.Contains(err.Error(), "signature does not verify") {
+		t.Fatalf("err = %v, want ErrIntegrity carrying the verifier's error", err)
+	}
+	last := env.rep.events[len(env.rep.events)-1]
+	if last.Kind != EventFailed || last.Detail != "integrity" {
+		t.Fatalf("last event %v %q, want failed integrity", last.Kind, last.Detail)
 	}
 }

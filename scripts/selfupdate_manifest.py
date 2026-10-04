@@ -83,7 +83,9 @@ def parse_manifest(raw, label):
             raise ManifestError("%s line %d: malformed filename" % (label, i))
         if not HEX_RE.fullmatch(digest) or not digest.isascii():
             raise ManifestError("%s line %d: malformed digest" % (label, i))
-        if name in (".", "..") or "/" in name or "\\" in name or os.path.basename(name) != name:
+        # ":" is refused, as the Go parser refuses it on every OS
+        # (0010-MADR A12).
+        if name in (".", "..") or "/" in name or "\\" in name or ":" in name or os.path.basename(name) != name:
             raise ManifestError("%s line %d: filename is not a basename" % (label, i))
         if name in entries:
             raise ManifestError("%s duplicate filename %s" % (label, name))

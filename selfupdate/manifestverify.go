@@ -111,13 +111,14 @@ func (u *run) openAsset(rel Release) func(ctx context.Context, name string, limi
 // checkedAsset fails with ErrIntegrity when the body is longer or shorter
 // than advertised, or its SHA-256 does not match the GitHub digest.
 type checkedAsset struct {
-	rc     io.ReadCloser
-	r      io.Reader
-	name   string
-	size   int64
-	digest string
-	h      hash.Hash
-	n      int64
+	rc      io.ReadCloser
+	r       io.Reader
+	name    string
+	size    int64
+	digest  string
+	h       hash.Hash
+	n       int64
+	checked bool
 }
 
 func (c *checkedAsset) Read(p []byte) (int, error) {
@@ -127,13 +128,18 @@ func (c *checkedAsset) Read(p []byte) (int, error) {
 	if c.n > c.size {
 		return n, fmt.Errorf("selfupdate: asset %s is longer than advertised: %w", sanitizeText(c.name), ErrIntegrity)
 	}
-	if errors.Is(err, io.EOF) {
-		if c.n != c.size {
-			return n, fmt.Errorf("selfupdate: asset %s is shorter than advertised: %w", sanitizeText(c.name), ErrIntegrity)
-		}
+	// The digest is compared on the read that reaches the advertised size:
+	// a caller that reads exactly Size bytes (io.ReadFull, io.CopyN) never
+	// sees io.EOF. A mismatch returns no bytes, because io.ReadFull drops an
+	// error that comes with a full buffer (0010-MADR A1).
+	if c.n == c.size && !c.checked {
+		c.checked = true
 		if c.digest != "" && hex.EncodeToString(c.h.Sum(nil)) != c.digest {
-			return n, fmt.Errorf("selfupdate: asset %s does not match its github digest: %w", sanitizeText(c.name), ErrIntegrity)
+			return 0, fmt.Errorf("selfupdate: asset %s does not match its github digest: %w", sanitizeText(c.name), ErrIntegrity)
 		}
+	}
+	if errors.Is(err, io.EOF) && c.n != c.size {
+		return n, fmt.Errorf("selfupdate: asset %s is shorter than advertised: %w", sanitizeText(c.name), ErrIntegrity)
 	}
 	return n, err
 }

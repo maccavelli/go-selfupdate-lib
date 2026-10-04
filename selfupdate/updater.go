@@ -390,7 +390,9 @@ func (u *run) runVerifiers(ctx context.Context, req Request, rel Release, sel Se
 			OpenAsset: u.openAsset(rel),
 		})
 		if err != nil {
-			return err
+			// As runManifestVerifiers does: a verifier's refusal is an
+			// integrity failure (0010-MADR A8).
+			return errors.Join(ErrIntegrity, err)
 		}
 	}
 	return nil

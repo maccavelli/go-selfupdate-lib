@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: in-progress
 date: 2026-10-03
 associated-madr: "0010-MADR-remediate-second-debugging-pass-findings.md"
 ---
@@ -215,4 +215,56 @@ Associated MADR: [0010-MADR-remediate-second-debugging-pass-findings.md](0010-MA
 
 ## Execution Record
 
-Not started.
+### Phase P1: integrity, A1, A8, A12, A13 (2026-10-03)
+
+* **Approval.** The owner approved the three PLANs and authorized commits
+  ("plans are approved. proceed and you have explicit permissions to
+  commit"). The tooling PLAN ran first, T0–T8. This PLAN is now
+  `in-progress`.
+* **Tests first.** Against the unfixed code:
+
+  ```text
+  --- FAIL: TestChecksumNameRefusesColon      "a:b": err = <nil>, want ErrIntegrity (and "C:x", "x:", via ParseSHA256SUMS too)
+  --- FAIL: TestOpenAssetChecksDigestAtSize    ReadFull of bad / CopyN of bad / a byte at a time of bad: err = <nil>, want ErrIntegrity true
+  --- FAIL: TestVerifierFailureIsIntegrity     err = selfupdate: demo: signature does not verify, want ErrIntegrity …
+  ```
+
+  `ReadAll` of the tampered asset already failed, which was the old check.
+  The A13 tests (`TestReleaseIdentityRequired`, `TestRedirectCap`, and the
+  `draft` and `draft by tag` checker rows) pass on the existing checks.
+  They exist to kill deletions.
+* **A1.** `checkedAsset` compares the digest on the read that reaches the
+  advertised size, once. A mismatch there returns no bytes, with
+  `ErrIntegrity`: `io.ReadFull` discards an error that comes with a full
+  buffer, so returning the bytes with the error would have hidden it.
+  The PLAN's `Close` check is not needed: with the comparison at `Size`, a
+  body that was fully read but never compared cannot occur.
+* **A8.** `runVerifiers` returns `errors.Join(ErrIntegrity, err)`, as
+  `runManifestVerifiers` does. `EventFailed.Detail` is `integrity`.
+* **A12.** `validateChecksumName` refuses `/`, `\` and `:` on every OS, and
+  no longer calls `filepath`. `scripts/selfupdate_manifest.py` refuses `:`
+  too. The differential's bad-name list gains `a:b` and `C:x`.
+* **A13.** On scratch copies, each mutation that survived the review is now
+  killed:
+
+  ```text
+  M1 fetched-release identity check deleted: KILLED rc=1 by ['TestReleaseIdentityRequired']
+  M3 listed-release identity check deleted: KILLED rc=1 by ['TestReleaseIdentityRequired']
+  M2 redirect cap disabled: KILLED rc=1 by ['TestRedirectCap']
+  M10 draft refusal removed from discover: KILLED rc=1 by ['TestCheckerAvailability']
+  ```
+
+* **Checks** (`gate.sh`, every one rc 0):
+  * gofmt;
+  * `make lint` (3 GOOS, 0 issues);
+  * `go vet`;
+  * `go test -race -count=1 ./...`;
+  * `go test -shuffle=on -count=2 ./...`;
+  * `go mod tidy -diff`;
+  * `make apicheck`: `compatible with v1.5.0`;
+  * `make fuzz`: `5 fuzz targets ran clean`;
+  * `make vuln`: `No vulnerabilities found.`;
+  * every `scripts/*_test.sh`;
+  * cross `go vet` (freebsd, openbsd, linux/386, windows).
+
+  `TestManifestDifferential` passes with the new names.

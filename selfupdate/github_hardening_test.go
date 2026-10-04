@@ -274,3 +274,44 @@ func TestRateLimitErrorText(t *testing.T) {
 		t.Fatalf("nil receiver text %q", nilErr.Error())
 	}
 }
+
+// TestReleaseIdentityRequired: a release with no ID or no tag is refused by
+// both the fetched-release check and the listed-release check
+// (0010-MADR A13: deleting either check survived the suite).
+func TestReleaseIdentityRequired(t *testing.T) {
+	for name, rel := range map[string]Release{
+		"no id":  {ID: 0, Tag: "v1.0.0", Immutable: true},
+		"no tag": {ID: 7, Tag: "", Immutable: true},
+	} {
+		if err := validateFetchedRelease(rel); err == nil || !strings.Contains(err.Error(), "incomplete") {
+			t.Errorf("validateFetchedRelease, %s: err = %v", name, err)
+		}
+		if err := validateReleaseStructure(rel); err == nil || !strings.Contains(err.Error(), "incomplete") {
+			t.Errorf("validateReleaseStructure, %s: err = %v", name, err)
+		}
+	}
+}
+
+// TestRedirectCap: the source's redirect policy stops at maxRedirects
+// (0010-MADR A13: disabling the cap survived the suite).
+func TestRedirectCap(t *testing.T) {
+	src, err := NewGitHubSource(GitHubOptions{Repository: Repository{Owner: "owner", Name: "demo"},
+		Client: &http.Client{}, UserAgent: "demo/v1.0.0", Limits: DefaultLimits()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, err := http.NewRequest(http.MethodGet, "https://api.github.com/repos/owner/demo", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	via := make([]*http.Request, maxRedirects)
+	for i := range via {
+		via[i] = req
+	}
+	if err := src.checkRedirect(req, via[:maxRedirects-1]); err != nil {
+		t.Fatalf("redirect %d refused: %v", maxRedirects-1, err)
+	}
+	if err := src.checkRedirect(req, via); err == nil || !strings.Contains(err.Error(), "too many redirects") {
+		t.Fatalf("redirect %d: err = %v, want too many redirects", maxRedirects, err)
+	}
+}

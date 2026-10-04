@@ -152,7 +152,7 @@ var (
 	}
 	diffNonSeparators = []string{"\x1c", "\x1d", "\x1e", "\x1f", "", "\x85", "\u200b"}
 	diffGoodNames     = []string{"demo-linux-amd64", "demo-windows-amd64.exe", "a", "n\u00e4me", "x.tar.gz", "\xff\xfename", "a\x00b"}
-	diffBadNames      = []string{"*", "**x", "a*b", "a/b", "a\\b", ".", "..", "/abs", "x/", "*/x"}
+	diffBadNames      = []string{"*", "**x", "a*b", "a/b", "a\\b", ".", "..", "/abs", "x/", "*/x", "a:b", "C:x"}
 )
 
 // genManifest returns one SHA256SUMS candidate. Most lines are close to

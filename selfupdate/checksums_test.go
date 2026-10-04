@@ -119,3 +119,18 @@ func TestParseGitHubDigest(t *testing.T) {
 		t.Fatal("accepted bare hex")
 	}
 }
+
+// TestChecksumNameRefusesColon: a ':' is refused on every OS. filepath.Base
+// strips a drive volume on Windows only, so it used to refuse "a:b" there and
+// accept it elsewhere (0010-MADR A12).
+func TestChecksumNameRefusesColon(t *testing.T) {
+	for _, name := range []string{"a:b", "C:x", "x:"} {
+		if err := validateChecksumName(name); !errors.Is(err, ErrIntegrity) {
+			t.Errorf("%q: err = %v, want ErrIntegrity", name, err)
+		}
+		line := strings.Repeat("a", 64) + "  " + name + "\n"
+		if _, err := ParseSHA256SUMS([]byte(line)); !errors.Is(err, ErrIntegrity) {
+			t.Errorf("ParseSHA256SUMS with %q: err = %v, want ErrIntegrity", name, err)
+		}
+	}
+}

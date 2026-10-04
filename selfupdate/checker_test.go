@@ -39,6 +39,13 @@ func checkRows() []checkRow {
 		{name: "mutable release", mutate: func(r *Release) { r.Immutable = false }, req: release, wantErr: ErrMutableRelease},
 		{name: "prerelease", mutate: func(r *Release) { r.Prerelease = true }, req: release,
 			wantText: "not a stable published release"},
+		// A custom source may return a draft; only discover refuses it
+		// (0010-MADR A13).
+		{name: "draft", mutate: func(r *Release) { r.Draft = true }, req: release,
+			wantText: "not a stable published release"},
+		{name: "draft by tag", mutate: func(r *Release) { r.Draft = true },
+			req:      with(func(r *CheckRequest) { r.CurrentVersion = "v1.2.0"; r.TargetVersion = "v1.1.0" }),
+			wantText: "not a stable published release"},
 		{name: "unsupported platform", req: with(func(r *CheckRequest) { r.Platform = Platform{OS: "plan9", Arch: "amd64"} }),
 			wantErr: ErrUnsupportedPlatform},
 		{name: "bad digest syntax", mutate: func(r *Release) { r.Assets[0].Digest = "sha256:zz" }, req: release,
