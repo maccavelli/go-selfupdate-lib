@@ -108,7 +108,9 @@
 // NewStandaloneInstaller replaces the binary under a per-target lock.
 // InstallOptions.KeepPrevious keeps the replaced binary at .<base>.previous,
 // and StandaloneInstaller.CleanupPending, called at startup, processes what
-// an earlier update left behind. NewManagedInstaller adds service lifecycle
+// an earlier update left behind, a crashed one's staging and backups
+// included. A setuid or setgid target needs
+// TargetPolicy.AllowSpecialModeBits. NewManagedInstaller adds service lifecycle
 // and definition reconciliation; NewManagedInstallerFor does the same for any
 // Installer whose sessions implement TwoPhaseSession. A managed update starts
 // the service only when it was running, or when the Lifecycle is an

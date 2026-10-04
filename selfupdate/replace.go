@@ -75,8 +75,20 @@ func backupFile(target, backup string) error {
 	return copyFile(target, backup)
 }
 
-func chmodStaging(staging string, old os.FileInfo) error {
-	return osChmod(staging, old.Mode().Perm())
+// chmodStaging gives staging the replaced binary's mode: its permissions
+// and sticky bit, and its setuid and setgid bits only when the target's
+// policy allowed them. A bit set after the target was resolved is not
+// carried (0010-MADR Q6).
+func chmodStaging(staging string, target Target, old os.FileInfo) error {
+	return osChmod(staging, stagingMode(old.Mode(), target.allowSpecial))
+}
+
+func stagingMode(old os.FileMode, allowSpecial bool) os.FileMode {
+	mode := old.Perm() | old&os.ModeSticky
+	if allowSpecial {
+		mode |= old & (os.ModeSetuid | os.ModeSetgid)
+	}
+	return mode
 }
 
 func syncDirectory(dir string) error {

@@ -241,6 +241,21 @@ func readCleanupEntries(target Target) ([]cleanupEntry, error) {
 	return parseCleanupReceipt(target, data)
 }
 
+// listedBackups names the backups the receipt still lists, which a
+// running image holds: the leftover sweep keeps them. ok is false when the
+// receipt cannot be read, and then no backup may be swept.
+func listedBackups(target Target) (names map[string]bool, ok bool) {
+	entries, err := readCleanupEntries(target)
+	if err != nil {
+		return nil, false
+	}
+	names = make(map[string]bool, len(entries))
+	for _, e := range entries {
+		names[e.Backup] = true
+	}
+	return names, true
+}
+
 // writeCleanupEntries replaces the target's receipt with one listing
 // entries: a new file, restricted to the current user, then a replace, so a
 // reader never sees a partial receipt.

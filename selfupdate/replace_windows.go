@@ -33,7 +33,7 @@ func replaceTarget(ctx context.Context, target Target, staging string) (applyRes
 	if err != nil {
 		return applyResult{}, err
 	}
-	if err := chmodStaging(staging, info); err != nil {
+	if err := chmodStaging(staging, target, info); err != nil {
 		return applyResult{}, fmt.Errorf("selfupdate: chmod staging: %w", err)
 	}
 	oldDigest, err := fileSHA256(target.Path)

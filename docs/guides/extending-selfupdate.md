@@ -227,8 +227,19 @@ transform and probe. It asks nobody, then discards the staging file. The
 beside the target at commit, over any older one, and reports it in
 `Result.Previous`. On Windows this works while the old image is still
 running. `StandaloneInstaller.CleanupPending`, called at startup, finishes
-what an earlier update left behind. An `ErrConcurrentUpdate` from it means
-another update holds the lock, which is benign.
+what an earlier update left behind. Since `v1.6.0` that includes the staging
+files and backups of an update that crashed: under the lock they belong to
+no one. An `ErrConcurrentUpdate` from it means another update holds the
+lock, which is benign.
+
+## Replace a setuid or setgid binary
+
+A target with the setuid or setgid bit is refused, so an update never
+silently grants or drops privileges. Set
+`TargetPolicy.AllowSpecialModeBits` to replace it: the new binary keeps the
+bits. The sticky bit is always kept. On Unix the new binary also gets the
+old one's owner and group, when the updater may give them; an updater that
+may not, such as one run by the file's owner without root, keeps its own.
 
 - `selfupdate/lifecycle_test.go`, `selfupdate/lifecycle_windows_test.go`
 

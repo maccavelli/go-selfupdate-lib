@@ -61,7 +61,9 @@ func TestStandaloneReplaceAndRollbackMaterial(t *testing.T) {
 	}
 }
 
-func TestChmodStagingUsesPermOnly(t *testing.T) {
+// TestChmodStagingCopiesPerm: staging takes the old binary's permissions.
+// The special bits are TestStagingMode's (0010-MADR Q6).
+func TestChmodStagingCopiesPerm(t *testing.T) {
 	dir := t.TempDir()
 	old := filepath.Join(dir, "old")
 	if err := os.WriteFile(old, []byte("old"), 0o755); err != nil {
@@ -75,7 +77,7 @@ func TestChmodStagingUsesPermOnly(t *testing.T) {
 	if err := os.WriteFile(staging, []byte("new"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := chmodStaging(staging, info); err != nil {
+	if err := chmodStaging(staging, Target{}, info); err != nil {
 		t.Fatal(err)
 	}
 	st, err := os.Stat(staging)

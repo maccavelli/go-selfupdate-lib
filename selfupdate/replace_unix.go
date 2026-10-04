@@ -7,9 +7,27 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"syscall"
 )
 
-var osRename = os.Rename
+var (
+	osRename = os.Rename
+	osLchown = os.Lchown
+)
+
+// chownStaging gives staging the replaced binary's owner and group. An
+// unprivileged updater owns what it writes, and may not give it away: EPERM
+// is not an error. Any other failure is (0010-MADR Q6).
+func chownStaging(staging string, old os.FileInfo) error {
+	st, ok := old.Sys().(*syscall.Stat_t)
+	if !ok {
+		return nil
+	}
+	if err := osLchown(staging, int(st.Uid), int(st.Gid)); err != nil && !errors.Is(err, syscall.EPERM) {
+		return err
+	}
+	return nil
+}
 
 type applyResult struct {
 	backup string
@@ -31,7 +49,12 @@ func replaceTarget(ctx context.Context, target Target, staging string) (applyRes
 	if err != nil {
 		return applyResult{}, err
 	}
-	if err := chmodStaging(staging, info); err != nil {
+	// Owner first: a chown clears setuid and setgid, which the chmod then
+	// sets.
+	if err := chownStaging(staging, info); err != nil {
+		return applyResult{}, fmt.Errorf("selfupdate: chown staging: %w", err)
+	}
+	if err := chmodStaging(staging, target, info); err != nil {
 		return applyResult{}, fmt.Errorf("selfupdate: chmod staging: %w", err)
 	}
 	backup, err := randomSibling(target.Dir, "."+target.Base+".selfupdate-bak-")

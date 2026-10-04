@@ -574,3 +574,78 @@ lands in a commit after `v1.6.0`. The docs step also corrects the
   * every script test;
   * cross vet;
   * markdownlint on the guide.
+
+### Phase S6: leftovers and mode bits, Q6 (B11, B12) (2026-10-04)
+
+* **Tests first.** `leftovers_test.go` and `modebits_unix_test.go` use only
+  the `v1.5.1` API. Against the unfixed code:
+
+  ```text
+  TestBeginRemovesLeftovers           leftover .demo.selfupdate-1234567 was not removed
+                                      leftover .demo.selfupdate-bak-7654321 was not removed
+  TestCleanupPendingRemovesLeftovers  the same
+  TestSpecialBitTargetRefused         u---------, g---------: ResolveTarget = <nil>, want the special bit refused
+  TestStickyBitCarriedOver            new binary mode -rwxr-xr-x
+  ```
+
+  `TestLeftoverSymlinkNotFollowed` guards what stays true, and passes on
+  both trees. `modepolicy_test.go` and `modepolicy_unix_test.go` cover the
+  new API and seams. Plants, in scratch copies, each caught:
+  * the setuid/setgid refusal removed: `TestSpecialBitTargetRefused`;
+  * chown ignoring every error: `TestStagingOwnership/EIO`;
+  * any suffix accepted as a leftover: `.demo.selfupdate-abc was removed`;
+  * the regular-file check removed: `the symlink was removed`. My first
+    version of this plant left a variable unused and did not build; the
+    second kept it in use.
+* **Leftovers** (`leftovers.go`). `beginSession`, which `Begin` and
+  `CleanupPending` both run, calls `removeLeftovers` under the lock, after
+  the receipt is processed.
+  * `isLeftover` matches only the names this package makes for the
+    target. A staging file is `.<base>.selfupdate-<digits>`, plus `.exe`
+    on Windows. A backup is `.<base>.selfupdate-bak-<digits>`. So another
+    target whose name starts with this one's, the lock, the receipt and
+    `.previous` never match.
+  * It skips a backup the Windows receipt still lists (`listedBackups`),
+    and every backup when the receipt cannot be read. It skips anything
+    that is not a regular file, so a symlink is never followed.
+  * Removal is best-effort, through the root (`leftoverRemove`, a seam).
+* **Special bits.**
+  * `TargetPolicy.AllowSpecialModeBits` is the new field. `resolveTarget`
+    refuses a setuid or setgid target without it. That runs at
+    `ResolveTarget`, before any download, and again when a session
+    revalidates.
+  * `Target` keeps the policy's answer, unexported. `chmodStaging` copies
+    the permissions and the sticky bit, and setuid and setgid only when
+    allowed, so a bit added after resolution is never carried.
+* **Ownership.** On Unix, `chownStaging` runs before the chmod, because a
+  chown clears setuid and setgid. It gives staging the target's uid and gid
+  with `Lchown`. EPERM is ignored; any other error fails the install.
+* **CI.** A Linux step builds the test binary as the runner, then runs only
+  `TestStagingTakesOwnerAsRoot` under `sudo`, with
+  `SELFUPDATE_REQUIRE_ROOT=1`. Here, not root: with the variable the test
+  fails, rc 1; without it, it skips, rc 0. actionlint and
+  `check-workflows.sh` pass. The root path first runs in CI after the
+  owner's push; it was not run with `sudo` on this host.
+* **Existing test moved.** `TestChmodStagingUsesPermOnly` named the B12
+  behaviour. It is now `TestChmodStagingCopiesPerm`, with the same
+  assertion, and calls the new `chmodStaging` signature.
+* **A stale doc from `v1.5.1`'s P5.** `architecture.md` still said that
+  `CleanupPending` refuses to clear a busy backup. P5 made it keep the
+  backup without an error. It is corrected here, beside S6's own text on
+  `CleanupPending`.
+* **Docs.** The `TargetPolicy.AllowSpecialModeBits` godoc, `doc.go`, the
+  extending guide (a new section, "Replace a setuid or setgid binary"),
+  and `architecture.md`.
+* **Windows test host.**
+  * `go test -race -count=1 ./...` rc 0 for all four packages;
+    `selfupdate` took 49.5 s.
+  * The S6 tests and the receipt tests pass, run verbose. The symlink test
+    runs there and does not skip.
+* **Checks** (`gate.sh`, every one rc 0):
+  * `make lint`, 0 issues;
+  * race and shuffle;
+  * `make apicheck`: `compatible with v1.5.1`;
+  * fuzz, vuln, tidy;
+  * every script test;
+  * cross vet;
+  * markdownlint on the changed docs.

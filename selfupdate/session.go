@@ -400,6 +400,10 @@ func beginSession(ctx context.Context, policy TargetPolicy, original Target, tim
 	if err := processCleanupReceipt(original, root); err != nil {
 		return nil, errors.Join(err, lock.release(), root.Close())
 	}
+	// Under the lock, what a crashed update left behind is no one's
+	// (0010-MADR Q6).
+	keep, sweepBackups := listedBackups(original)
+	removeLeftovers(original, root, keep, sweepBackups)
 	if err := revalidateTarget(original, policy); err != nil {
 		return nil, errors.Join(err, lock.release(), root.Close())
 	}

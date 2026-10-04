@@ -361,6 +361,11 @@ type TargetPolicy struct {
 	// AllowedRoots are additive canonical directories besides the user's
 	// home directory. An empty slice adds nothing.
 	AllowedRoots []string
+	// AllowSpecialModeBits permits replacing a target with the setuid or
+	// setgid bit set, and carries those bits to the new binary. Without it
+	// such a target is refused, so an update never silently grants or drops
+	// privileges. The sticky bit is always carried over (0010-MADR Q6).
+	AllowSpecialModeBits bool
 }
 
 // Target is a resolved executable path. Callers treat values as opaque and
@@ -374,6 +379,8 @@ type Target struct {
 	Base string
 
 	identity fileIdentity
+	// allowSpecial is TargetPolicy.AllowSpecialModeBits at resolution.
+	allowSpecial bool
 }
 
 type fileIdentity struct {

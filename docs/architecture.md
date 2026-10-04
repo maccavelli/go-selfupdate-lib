@@ -164,6 +164,13 @@ docs/
     `Result.PendingBackup` with `Applied` false, and in the error;
   - runs the restore after a failed directory sync, and managed recovery,
     on contexts the caller's cancellation does not reach;
+  - removes, under the lock, the staging files and backups a crashed
+    update left beside the target (`leftovers.go`), but never a backup a
+    cleanup receipt still lists or anything that is not a regular file;
+  - refuses a setuid or setgid target unless
+    `TargetPolicy.AllowSpecialModeBits` allows it, and gives the new binary
+    the old one's mode, sticky bit included, and on Unix its owner and
+    group where permitted;
   - starts a managed service after the update only when it was running, or
     an `EnabledLifecycle` reports it configured to start, and recovery
     restarts only what was running or what the update started.
@@ -225,9 +232,9 @@ interpolated into shell.
     a token), the image verifier, both version probes and the standalone
     installer.
   - **Linux and macOS:** the commit is clean.
-  - **Windows:** the running image keeps a pending backup and receipt,
-    which `CleanupPending` refuses to clear until the old process exits,
-    and then clears.
+  - **Windows:** the running image keeps a pending backup and receipt.
+    `CleanupPending` keeps both, without an error, while the old process
+    runs, and clears them once it has exited.
   - Six refusals each leave the running v1 byte-identical.
   - A channel case serves a stable `v1.2.0` and a prerelease
     `v1.3.0-rc.1` under `NewSemverPolicy`: on `rc` the running copy

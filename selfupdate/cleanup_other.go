@@ -19,3 +19,9 @@ func processCleanupReceipt(target Target, root *os.Root) error {
 	}
 	return err
 }
+
+// listedBackups names the backups a cleanup receipt still lists. Only
+// Windows writes receipts.
+func listedBackups(Target) (map[string]bool, bool) {
+	return nil, true
+}

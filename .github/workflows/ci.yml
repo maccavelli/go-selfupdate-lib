@@ -37,6 +37,17 @@ jobs:
           go-version-file: go.mod
       - run: go mod download
       - run: go test ./...
+      # Giving staging another owner needs root. The test binary is built as
+      # the runner, so root writes nothing to the Go caches, and only it runs
+      # under sudo; SELFUPDATE_REQUIRE_ROOT makes a skip a failure
+      # (docs/decisions/0010-PLAN-v1-6-0-owner-contracts.md S6).
+      - name: ownership as root
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          go test -c -o "$RUNNER_TEMP/selfupdate.test" ./selfupdate
+          sudo env SELFUPDATE_REQUIRE_ROOT=1 "$RUNNER_TEMP/selfupdate.test" \
+            -test.run '^TestStagingTakesOwnerAsRoot$' -test.count=1 -test.v
       # The race detector needs cgo, which the Linux and macOS runners have
       # (0003-MADR D9; 0002-PLAN V3; 0004-MADR H7).
       # The manifest differential must run, not skip, where python3 is on

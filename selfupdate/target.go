@@ -44,6 +44,10 @@ func resolveTarget(policy TargetPolicy) (Target, error) {
 	if resolvedInfo.Mode()&os.ModeSymlink != 0 || !resolvedInfo.Mode().IsRegular() {
 		return Target{}, fmt.Errorf("selfupdate: resolved target is not a regular file")
 	}
+	if resolvedInfo.Mode()&(os.ModeSetuid|os.ModeSetgid) != 0 && !policy.AllowSpecialModeBits {
+		return Target{}, fmt.Errorf("selfupdate: target %s has the setuid or setgid bit; "+
+			"TargetPolicy.AllowSpecialModeBits permits replacing it", resolved)
+	}
 	dir := filepath.Dir(resolved)
 	base := filepath.Base(resolved)
 	if dir == resolved || base == "" || base == "." || base == ".." {
@@ -65,6 +69,7 @@ func resolveTarget(policy TargetPolicy) (Target, error) {
 			size:  resolvedInfo.Size(),
 			mtime: resolvedInfo.ModTime().UnixNano(),
 		},
+		allowSpecial: policy.AllowSpecialModeBits,
 	}, nil
 }
 
