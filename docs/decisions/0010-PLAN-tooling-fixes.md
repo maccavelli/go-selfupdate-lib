@@ -428,3 +428,22 @@ starts. The records are committed alone.
   * markdownlint on `README.md`: rc 0, after the bullets were changed to
     dashes for MD004;
   * the link checker: 17 links, 0 broken.
+
+### Phase T8: the roadmap amendment, Q8 (2026-10-03)
+
+* **0004-MADR amendment P2,** accepted under the owner's answer to Q8:
+  * schedules `selfupdate/archive` in Phase 4, beside `selfupdate/codesign`;
+  * restates that the build-and-stage workflow (which needs its own
+    record), the installer templates, `selfupdate/service` and
+    `selfupdate/codesign` stay planned and unbuilt, each needing a PLAN;
+  * keeps §6's deferred items under their own records.
+* `docs/README.md`'s 0004 row is unchanged; the record stays `accepted`.
+* **Checks:** the link checker on 0004, 18 links with 0 broken; the
+  identifier scan; `git diff --check`.
+
+**State after T8.** Phases T0–T8 are committed. V1 and V2 hold, as recorded
+per phase. V3, CI green on `main`, waits for the owner's push. V4 is the
+first live run of the release workflow changes, at the `v1.5.1` tag, and is
+recorded in
+[0010-PLAN-v1-5-1-contract-preserving-fixes.md](0010-PLAN-v1-5-1-contract-preserving-fixes.md).
+This PLAN becomes `complete` when V3 holds.

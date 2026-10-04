@@ -1068,6 +1068,33 @@ published history as it is.
   the newest module version still carries the detail until the next
   release.
 
+### P2 (2026-10-03): `selfupdate/archive` is scheduled in Phase 4
+
+*Status: accepted (2026-10-03). The owner chose, for
+[0010-MADR-remediate-second-debugging-pass-findings.md](0010-MADR-remediate-second-debugging-pass-findings.md)
+Q8, to "follow recommendations". Its plan is
+[0010-PLAN-tooling-fixes.md](0010-PLAN-tooling-fixes.md), Phase T8.*
+
+**Found.** The second debugging pass (0010-MADR, D14) found that §1's
+target-shape table lists `selfupdate/archive`, a tar.gz and zip selector
+plus an extract transformer, as "covered here". But no phase schedules
+it: §3–§5 do not, and §7's Phase 4 lists only the build-and-stage workflow,
+the installer templates, `selfupdate/service` and `selfupdate/codesign`. No
+PLAN names it.
+
+**Decided.**
+
+* **`selfupdate/archive` belongs to Phase 4,** beside `selfupdate/codesign`.
+  An archive release is self-update input, so it fits the module's scope as
+  [0009-MADR-rename-to-go-selfupdate-lib.md](0009-MADR-rename-to-go-selfupdate-lib.md)
+  narrowed it. It still needs no record of its own (§1); it needs a PLAN.
+* **The rest of Phase 4 stays planned, and none of it is built.** That
+  covers the build-and-stage reusable workflow (which needs its own record,
+  as §7 says), the installer templates, `selfupdate/service`, and
+  `selfupdate/codesign`. Each needs its own PLAN before work starts.
+* **No other decision changes.** §6's deferred items (`verify/signednote`,
+  `verify/ghattest`, `gitlab`, `httpmanifest`) keep their own records.
+
 ## More Information
 
 ### Owner decisions (2026-09-30)
