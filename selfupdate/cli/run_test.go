@@ -72,6 +72,7 @@ type scenario struct {
 	req         *selfupdate.Request // when set, used as is, bypassing Flags.Request
 	stdin       string
 	interactive bool
+	closeErr    error // when set, the session's Close fails after the install
 }
 
 var scenarios = []scenario{
@@ -84,6 +85,8 @@ var scenarios = []scenario{
 	{name: "no-confirm", latest: "v1.1.0", id: releaseID},
 	{name: "failed", latest: "v1.1.0", id: releaseID, flags: Flags{Check: true},
 		src: func(f *selfupdatetest.FakeSource) selfupdate.ReleaseSource { return failSource{f} }},
+	// A late error is a warning: exit 0 (0010-MADR Q3).
+	{name: "warning", latest: "v1.1.0", id: releaseID, flags: Flags{Yes: true}, closeErr: errors.New("unlock failed")},
 	{name: "contradiction", latest: "v1.1.0", id: releaseID,
 		req: &selfupdate.Request{Product: "demo", CurrentVersion: "v1.0.0", CurrentBuild: selfupdate.ReleaseBuild, CheckOnly: true, Yes: true}},
 }
@@ -113,7 +116,10 @@ func (sc scenario) fixture(t *testing.T, product string) (selfupdate.ReleaseSour
 func (sc scenario) run(t *testing.T, asJSON bool) outcome {
 	t.Helper()
 	src, tg := sc.fixture(t, "demo")
-	u := newUpdater(t, src, tg)
+	u, err := buildUpdaterClosing(src, tg, sc.closeErr)
+	if err != nil {
+		t.Fatal(err)
+	}
 	var stdout, stderr bytes.Buffer
 	req, err := sc.flags.Request("demo", sc.id)
 	if sc.req != nil {

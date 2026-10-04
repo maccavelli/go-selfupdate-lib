@@ -147,7 +147,9 @@ docs/
 - The coordinator (`updater.go`) owns the order of every step. It validates
   the selected binary and manifest itself, and parses `SHA256SUMS` before any
   staging. It pins an exact `--version`, and closes the session before
-  reporting `complete`.
+  reporting `complete`, the run's one terminal event. An error after that
+  point is a `warning` event and an entry in `Result.Warnings`
+  (`warnings.go`), not a failure.
 - The install path (`session.go`, `replace_*.go`, `lock*.go`, `cleanup*.go`,
   `managed.go`):
   - locks the target directory through `os.Root`, refusing a symlinked lock

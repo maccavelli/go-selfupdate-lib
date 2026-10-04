@@ -296,9 +296,9 @@ func (u *run) apply(ctx context.Context, req Request, result Result, target Targ
 		closeErr = closeSession()
 		repErr := u.report(ctx, Event{
 			Kind: EventComplete, Product: req.Product, Current: req.CurrentVersion,
-			Target: rel.Tag, Asset: sel.Binary.Name, Detail: "dry run: verified, nothing installed",
+			Target: rel.Tag, Asset: sel.Binary.Name, Detail: "dry-run",
 		})
-		return resultOut, wrapRun(req, errors.Join(closeErr, repErr))
+		return u.warn(ctx, req, resultOut, rel, sel, closeErr, repErr), nil
 	}
 	if rerr := u.report(ctx, Event{Kind: EventInstalling, Product: req.Product, Target: rel.Tag, Asset: sel.Binary.Name}); rerr != nil {
 		return resultOut, wrapRun(req, rerr)
@@ -344,9 +344,9 @@ func (u *run) apply(ctx context.Context, req Request, result Result, target Targ
 			resultOut.PendingBackup = installed.Backup
 		}
 	}
-	// Release the session (and its lock) before the terminal event, so a
-	// Close failure is joined with the committed result rather than surfacing
-	// after "complete" has been reported.
+	// Release the session (and its lock) before the terminal event. The
+	// binary is replaced: from here an error is a warning after "complete",
+	// not a failure (0010-MADR Q3).
 	closeErr = closeSession()
 	detail := "release asset integrity verified"
 	if resultOut.PendingBackup != "" {
@@ -357,7 +357,26 @@ func (u *run) apply(ctx context.Context, req Request, result Result, target Targ
 		Kind: EventComplete, Product: req.Product, Current: req.CurrentVersion,
 		Target: rel.Tag, Asset: sel.Binary.Name, Detail: detail,
 	})
-	return resultOut, wrapRun(req, errors.Join(instErr, closeErr, repErr))
+	return u.warn(ctx, req, resultOut, rel, sel, instErr, closeErr, repErr), nil
+}
+
+// warn turns the errors that arrived after the run did its work into
+// warnings: each, in order, is reported as an advisory EventWarning and
+// added to the result's Warnings. EventComplete stays the run's one
+// terminal event (0010-MADR Q3).
+func (u *run) warn(ctx context.Context, req Request, res Result, rel Release, sel Selection, errs ...error) Result {
+	for _, err := range errs {
+		if err == nil {
+			continue
+		}
+		w := sanitizeText(err.Error())
+		res.Warnings = res.Warnings.Add(w)
+		u.reportOutcome(ctx, Event{
+			Kind: EventWarning, Product: req.Product, Current: req.CurrentVersion,
+			Target: rel.Tag, Asset: sel.Binary.Name, Detail: w,
+		})
+	}
+	return res
 }
 
 // retainedPath makes an installer-reported backup path absolute. The

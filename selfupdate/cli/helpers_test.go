@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"context"
+	"errors"
 	"flag"
 	"os"
 	"path/filepath"
@@ -100,6 +102,35 @@ func newUpdater(t *testing.T, src selfupdate.ReleaseSource, tg target) *selfupda
 // buildUpdater is newUpdater for code with no *testing.T, such as a helper
 // process.
 func buildUpdater(src selfupdate.ReleaseSource, tg target) (*selfupdate.Updater, error) {
+	return buildUpdaterClosing(src, tg, nil)
+}
+
+// closeFailInstaller's sessions fail Close, after the work is done.
+type closeFailInstaller struct {
+	selfupdate.Installer
+	err error
+}
+
+func (i closeFailInstaller) Begin(ctx context.Context, t selfupdate.Target) (selfupdate.InstallSession, error) {
+	sess, err := i.Installer.Begin(ctx, t)
+	if err != nil {
+		return nil, err
+	}
+	return closeFailSession{sess, i.err}, nil
+}
+
+type closeFailSession struct {
+	selfupdate.InstallSession
+	err error
+}
+
+func (s closeFailSession) Close() error {
+	return errors.Join(s.InstallSession.Close(), s.err)
+}
+
+// buildUpdaterClosing is buildUpdater whose sessions fail Close with
+// closeErr, when it is not nil.
+func buildUpdaterClosing(src selfupdate.ReleaseSource, tg target, closeErr error) (*selfupdate.Updater, error) {
 	assets, err := selfupdate.NewExactAssetSelector([]selfupdate.Platform{here})
 	if err != nil {
 		return nil, err
@@ -110,11 +141,15 @@ func buildUpdater(src selfupdate.ReleaseSource, tg target) (*selfupdate.Updater,
 	if err != nil {
 		return nil, err
 	}
+	var installer selfupdate.Installer = inst
+	if closeErr != nil {
+		installer = closeFailInstaller{inst, closeErr}
+	}
 	return selfupdate.New(selfupdate.Config{
 		Source:    src,
 		Versions:  selfupdate.NewStrictVersionPolicy(),
 		Assets:    assets,
-		Installer: inst,
+		Installer: installer,
 		Reporter:  selfupdate.DiscardReporter(),
 		Confirmer: selfupdate.NonInteractiveConfirmer(),
 		Limits:    selfupdate.DefaultLimits(),

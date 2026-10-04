@@ -471,16 +471,18 @@ func TestRunCompleteAfterClose(t *testing.T) {
 	}
 }
 
-// TestRunCloseErrorJoinedAfterCommit: a Close failure after a committed
-// install keeps Applied true and joins the error.
-func TestRunCloseErrorJoinedAfterCommit(t *testing.T) {
+// TestRunCloseErrorIsAWarning: a Close failure after a committed install
+// keeps Applied true, and is a warning, not an error. It was
+// TestRunCloseErrorJoinedAfterCommit, which expected the error: the owner's
+// answer to 0010-MADR Q3 reversed that.
+func TestRunCloseErrorIsAWarning(t *testing.T) {
 	env := newContractEnv(t)
 	env.inst.closeErr = errors.New("unlock failed")
 	u := env.build(t)
 	req := applyReq()
 	req.Yes = true
 	res, err := u.Run(context.Background(), req)
-	if !res.Applied || !errors.Is(err, env.inst.closeErr) {
+	if !res.Applied || err != nil || !slices.Equal(res.Warnings.List(), []string{"unlock failed"}) {
 		t.Fatalf("res=%+v err=%v", res, err)
 	}
 }
@@ -512,9 +514,8 @@ func TestRunErrorsNameProduct(t *testing.T) {
 		"report installing": func(e *contractEnv, _ *Request) {
 			e.rep.errAt, e.rep.fail = EventInstalling, sentinel
 		},
-		"report complete": func(e *contractEnv, _ *Request) {
-			e.rep.errAt, e.rep.fail = EventComplete, sentinel
-		},
+		// A failed report of complete is a warning since v1.6.0, not an
+		// error: TestLateErrorIsNotAFailure (0010-MADR Q3).
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {

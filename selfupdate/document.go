@@ -1,30 +1,32 @@
 package selfupdate
 
-// resultDocumentSchema is the schema_version of ResultDocument.
-const resultDocumentSchema = 1
+// resultDocumentSchema is the schema_version of ResultDocument. Version 2
+// adds service_started and warnings (0010-PLAN-v1-6-0 S2 and S3).
+const resultDocumentSchema = 2
 
 // ResultDocument is the JSON form of a Result, with stable snake_case keys
 // and Operation as a string. The enums keep their own JSON encoding; this
 // document is the string form (0004-MADR §3, "Structured output").
 type ResultDocument struct {
-	SchemaVersion     int    `json:"schema_version"`
-	Product           string `json:"product"`
-	CurrentVersion    string `json:"current_version"`
-	TargetVersion     string `json:"target_version,omitempty"`
-	ReleaseURL        string `json:"release_url,omitempty"`
-	AssetName         string `json:"asset_name,omitempty"`
-	Operation         string `json:"operation"`
-	Checked           bool   `json:"checked"`
-	Applied           bool   `json:"applied"`
-	Declined          bool   `json:"declined"`
-	DryRun            bool   `json:"dry_run"`
-	ReleaseDigest     string `json:"release_digest,omitempty"`
-	InstalledDigest   string `json:"installed_digest,omitempty"`
-	ServiceInstalled  bool   `json:"service_installed"`
-	ServiceWasRunning bool   `json:"service_was_running"`
-	ServiceStarted    bool   `json:"service_started"`
-	PendingBackup     string `json:"pending_backup,omitempty"`
-	Previous          string `json:"previous,omitempty"`
+	SchemaVersion     int      `json:"schema_version"`
+	Product           string   `json:"product"`
+	CurrentVersion    string   `json:"current_version"`
+	TargetVersion     string   `json:"target_version,omitempty"`
+	ReleaseURL        string   `json:"release_url,omitempty"`
+	AssetName         string   `json:"asset_name,omitempty"`
+	Operation         string   `json:"operation"`
+	Checked           bool     `json:"checked"`
+	Applied           bool     `json:"applied"`
+	Declined          bool     `json:"declined"`
+	DryRun            bool     `json:"dry_run"`
+	ReleaseDigest     string   `json:"release_digest,omitempty"`
+	InstalledDigest   string   `json:"installed_digest,omitempty"`
+	ServiceInstalled  bool     `json:"service_installed"`
+	ServiceWasRunning bool     `json:"service_was_running"`
+	ServiceStarted    bool     `json:"service_started"`
+	PendingBackup     string   `json:"pending_backup,omitempty"`
+	Previous          string   `json:"previous,omitempty"`
+	Warnings          Warnings `json:"warnings,omitempty"`
 }
 
 // Document returns the JSON form of r. It has no side effects.
@@ -48,5 +50,6 @@ func (r Result) Document() ResultDocument {
 		ServiceStarted:    r.ServiceStarted,
 		PendingBackup:     r.PendingBackup,
 		Previous:          r.Previous,
+		Warnings:          r.Warnings,
 	}
 }

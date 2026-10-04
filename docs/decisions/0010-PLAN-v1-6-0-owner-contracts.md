@@ -107,6 +107,10 @@ and to the JSON document; MADR amendment A3.)*
 
 ### Phase S3: one terminal event (Q3)
 
+*(Deviation D2, 2026-10-04: `Warnings` is an exported field of a
+string-backed type whose JSON form is an array, not a `[]string`; MADR
+amendment A4.)*
+
 1. **`EventWarning`,** appended after `EventRolledBack` so every earlier
    value keeps its number. It is advisory: a reporter error on it is
    ignored.
@@ -386,3 +390,97 @@ lands in a commit after `v1.6.0`. The docs step also corrects the
   * every script test;
   * cross vet;
   * markdownlint on the changed docs.
+
+### Deviation D2 (2026-10-04): warnings as a comparable exported field
+
+* **Found** in S3, after `EventWarning` and a `Result.Warnings []string`
+  field were added and before any other S3 code. `make apicheck`:
+
+  ```text
+  check-api-compat: incompatible with v1.5.1:
+  - ./selfupdate.Finished: old is comparable, new is not
+  - ./selfupdate.Result: old is comparable, new is not
+  ```
+
+  Step 2's field breaks the Goal's "every exported change is an
+  addition". `ResultDocument` would break the same way at step 4.
+* **Decision.**
+  * The owner first chose accessor methods over an unexported field. That
+    version was being written when the owner asked for "exported known
+    fields and json schema where possible for a consistent api". It was
+    replaced, uncommitted.
+  * MADR amendment A4 records the result. `Result.Warnings` and
+    `ResultDocument.Warnings` (`json:"warnings,omitempty"`) are of type
+    `Warnings`, a string whose entries are joined by newlines, and whose
+    JSON form is an array. `NewWarnings`, `Add`, `List` and `Len` work
+    on it.
+  * `make apicheck` then reported `compatible with v1.5.1`.
+
+### Phase S3: one terminal event, Q3 (C2, C11) (2026-10-04)
+
+* **Tests first.** `terminal_event_test.go` uses only the `v1.5.1` API.
+  Against the unfixed code:
+
+  ```text
+  TestLateErrorIsNotAFailure  close fails:            err = selfupdate: demo: fixture: unlock failed, exit 1
+                              complete report fails:  err = selfupdate: demo: fixture: reporter closed, exit 1
+                              applied with an error:  err = selfupdate: demo: fixture: backup removal failed, exit 1
+                              dry run, close fails:   err = selfupdate: demo: fixture: unlock failed, exit 1
+  TestDryRunCompleteDetail    complete Detail = "dry run: verified, nothing installed", want dry-run
+  ```
+
+  `warnings_test.go` covers the new API. Plants, in scratch copies:
+  * the dry run dropping its Close error: `events after complete: []`;
+  * the CLI's warning lines removed: `warning.text.stderr differs`;
+  * a `[]string` field added to `Result`: the build fails with `Result
+    does not satisfy comparable` and `Finished does not satisfy
+    comparable`.
+* **The API, additions only.**
+  * `EventWarning`, appended in its own block after `EventRolledBack`.
+  * The `Warnings` type, from deviation D2: `NewWarnings`, `Add`, `List`,
+    `Len`, `MarshalJSON` and `UnmarshalJSON`.
+  * `Result.Warnings` and `ResultDocument.Warnings`
+    (`json:"warnings,omitempty"`). The document's `schema_version` is 2.
+* **The rule.** `warn` turns each error after the work is done into an
+  advisory `EventWarning`, after `complete`, and an entry in
+  `Result.Warnings`. `Run` returns nil. The errors are a failed Close, a
+  failed report of complete, and an installer's error with `Applied` true,
+  and in a dry run the same Close and report errors. The dry run's
+  `complete` has `Detail` `dry-run`.
+* **The CLI** writes `warning: <text>` to stderr for each warning, in
+  either mode, before the summary or the result object. A write error there
+  is handled as `finish`'s is, under C3's rule. `cli/doc.go` documents it.
+* **Existing tests moved to the decided contract.**
+  * `TestRunCloseErrorJoinedAfterCommit` expected the joined error. It is
+    now `TestRunCloseErrorIsAWarning`: no error, and the warning listed.
+  * `TestRunErrorsNameProduct` loses its "report complete" case, which is
+    no longer an error. `TestLateErrorIsNotAFailure` covers it.
+  * `TestDryRunLeavesTargetUntouched` expects `Detail` `dry-run`.
+* **Goldens.**
+  * The reporter goldens gain a `warning` case, with a session whose Close
+    fails. `text-warning.golden` and `jsonl-warning.golden` end
+    `complete`, then `warning … unlock failed`.
+  * The cli scenarios gain `warning`: exit 0; stderr carries the warning
+    event, `warning: unlock failed` and the summary; the result object
+    carries `"warnings":["unlock failed"]`.
+  * A script checked every other changed golden line: 14 lines, each only
+    the result's `schema_version` 1 to 2, or the dry run's `Detail`. The
+    migration fixtures did not change.
+  * `events_test.go` and `example_test.go` expect schema 2.
+* **Lint caught one thing in my first draft.** The compile-time
+  comparability check written as `x == x` tripped `staticcheck` SA4000. It
+  is now a generic `isComparable[T comparable]` instantiated for each
+  type.
+* **Docs.** The `EventComplete`, `EventWarning`, `Warnings` and `Result`
+  godoc, `doc.go`, `cli/doc.go`, the extending guide's "Read JSON output",
+  and `architecture.md`.
+* **Checks** (`gate.sh`, every one rc 0):
+  * `make lint`, 0 issues;
+  * race and shuffle;
+  * `make apicheck`: `compatible with v1.5.1`;
+  * fuzz, vuln, tidy;
+  * every script test;
+  * cross vet;
+  * markdownlint on the changed docs.
+
+  The Windows host is not required for S3 (V3).

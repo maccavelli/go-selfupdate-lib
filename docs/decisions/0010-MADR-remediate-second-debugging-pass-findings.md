@@ -534,6 +534,33 @@ at a PLAN stop, deviation D1 of
   `service_started` key, set in `Run` as the other service fields are. Both
   are additions. The key ships with S3's raised document schema version.
 
+### A4 (2026-10-04): warnings as an exported field of a comparable type
+
+*Status: accepted (2026-10-04). Settled at a PLAN stop, deviation D2 of
+[0010-PLAN-v1-6-0-owner-contracts.md](0010-PLAN-v1-6-0-owner-contracts.md).
+The owner first chose accessor methods. Before any of it was committed,
+the owner asked instead for "exported known fields and json schema where
+possible for a consistent api".*
+
+* **Found.** §3 lists the warnings in `Result.Warnings`. A `[]string`
+  field makes `Result`, and `Finished`, which carries one,
+  non-comparable. `make apicheck` reported `v1.6.0` incompatible with
+  `v1.5.1`: `selfupdate.Result: old is comparable, new is not`, and the
+  same for `Finished`. A caller that compares either with `==` would stop
+  compiling. `ResultDocument` would break the same way.
+* **Decided.**
+  * `Result.Warnings` and `ResultDocument.Warnings` are exported fields of
+    a new type, `Warnings`, whose underlying type is `string`. The document
+    field's tag is `json:"warnings,omitempty"`.
+  * The entries are joined by newlines. Each is sanitized as event text
+    is, which turns a newline into a space, so the separator is never
+    ambiguous.
+  * `Warnings`' own `MarshalJSON` and `UnmarshalJSON` write and read a JSON
+    array of strings.
+  * `NewWarnings`, `Add`, `List` and `Len` build and read it.
+  * Both structs stay comparable, and `==` compares warnings by value.
+  * The document's `schema_version` is 2.
+
 ## More Information
 
 * **The reviewers' probe tests and plant scripts** stayed in the

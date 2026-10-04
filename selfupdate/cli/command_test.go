@@ -41,7 +41,7 @@ func (sc scenario) command(t *testing.T, product string, asJSON bool) outcome {
 	}
 	var stdout, stderr bytes.Buffer
 	code := Command(context.Background(), args, product, sc.id,
-		func() (*selfupdate.Updater, error) { return buildUpdater(src, tg) },
+		func() (*selfupdate.Updater, error) { return buildUpdaterClosing(src, tg, sc.closeErr) },
 		Options{Stdout: &stdout, Stderr: &stderr, Stdin: strings.NewReader(sc.stdin),
 			Interactive: sc.interactive, Signals: []os.Signal{}})
 	return outcome{stdout: normalize(stdout.String(), product), stderr: normalize(stderr.String(), product), code: code, tg: tg}
@@ -88,7 +88,7 @@ func TestCommandExitCodes(t *testing.T) {
 	for _, sc := range scenarios {
 		codes[sc.name] = sc.command(t, "demo", false).code
 	}
-	for name, want := range map[string]int{"up-to-date": 0, "available": 10, "failed": 1, "applied": 0, "declined": 0, "no-confirm": 1} {
+	for name, want := range map[string]int{"up-to-date": 0, "available": 10, "failed": 1, "applied": 0, "declined": 0, "no-confirm": 1, "warning": 0} {
 		if codes[name] != want {
 			t.Errorf("%s: exit %d, want %d", name, codes[name], want)
 		}

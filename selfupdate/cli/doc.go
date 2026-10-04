@@ -11,6 +11,12 @@
 // stderr. The exit status is 0 when up to date, declined or installed, 10
 // when --check finds an update, and 1 on any error.
 //
+// An error after the run did its work, such as a failed unlock once the
+// binary is replaced, is a warning, not a failure: the exit status stays 0,
+// stderr gets one "warning: …" line for each in either mode, and under
+// --json the result object's "result" carries them as its "warnings" array
+// (schema_version 2).
+//
 // A program with the standard flag package calls Command once:
 //
 //	case "update":

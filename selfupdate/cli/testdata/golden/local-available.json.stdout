@@ -1,4 +1,4 @@
 {"kind":"resolving-target","product":"demo","current":"dev"}
 {"kind":"fetching-release","product":"demo","current":"dev"}
 {"kind":"selected","product":"demo","current":"dev","target":"v1.1.0","asset":"{{asset}}","detail":"local build: apply requires --force"}
-{"kind":"result","exit_code":10,"error":"selfupdate: update available","result":{"schema_version":1,"product":"demo","current_version":"dev","target_version":"v1.1.0","release_url":"https://github.invalid/releases/tag/v1.1.0","asset_name":"{{asset}}","operation":"replace-local","checked":true,"applied":false,"declined":false,"dry_run":false,"service_installed":false,"service_was_running":false,"service_started":false}}
+{"kind":"result","exit_code":10,"error":"selfupdate: update available","result":{"schema_version":2,"product":"demo","current_version":"dev","target_version":"v1.1.0","release_url":"https://github.invalid/releases/tag/v1.1.0","asset_name":"{{asset}}","operation":"replace-local","checked":true,"applied":false,"declined":false,"dry_run":false,"service_installed":false,"service_was_running":false,"service_started":false}}

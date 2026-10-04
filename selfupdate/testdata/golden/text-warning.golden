@@ -4,4 +4,6 @@ selfupdate: selected product=demo current=v1.0.0 target=v1.1.0 asset=demo-linux-
 selfupdate: downloading-manifest product=demo target=v1.1.0 asset=SHA256SUMS
 selfupdate: downloading-binary product=demo target=v1.1.0 asset=demo-linux-amd64 bytes=24
 selfupdate: verified product=demo target=v1.1.0 asset=demo-linux-amd64
-selfupdate: complete product=demo current=v1.0.0 target=v1.1.0 asset=demo-linux-amd64 dry-run
+selfupdate: installing product=demo target=v1.1.0 asset=demo-linux-amd64
+selfupdate: complete product=demo current=v1.0.0 target=v1.1.0 asset=demo-linux-amd64 release asset integrity verified
+selfupdate: warning product=demo current=v1.0.0 target=v1.1.0 asset=demo-linux-amd64 unlock failed

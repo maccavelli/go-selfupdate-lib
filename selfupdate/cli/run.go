@@ -110,7 +110,7 @@ func Run(ctx context.Context, u *selfupdate.Updater, req selfupdate.Request, o O
 		conf = selfupdate.NewPromptConfirmer(o.Stdin, o.Stderr, o.Interactive)
 	}
 	res, err := u.RunWith(ctx, req, selfupdate.WithReporter(rep), selfupdate.WithConfirmer(conf))
-	if werr := o.finish(res, err); werr != nil {
+	if werr := errors.Join(o.warn(res), o.finish(res, err)); werr != nil {
 		// An update nobody was told about is not "update available": the
 		// write error alone decides, so the exit code is 1 and Exit
 		// reports it (0010-MADR C3).
@@ -120,6 +120,18 @@ func Run(ctx context.Context, u *selfupdate.Updater, req selfupdate.Request, o O
 		return res, errors.Join(err, werr)
 	}
 	return res, err
+}
+
+// warn writes "warning: <text>" to Stderr for each of the run's warnings,
+// in either mode: errors after the run did its work, which did not fail it
+// (0010-MADR Q3).
+func (o Options) warn(res selfupdate.Result) error {
+	for _, w := range res.Warnings.List() {
+		if _, err := io.WriteString(o.Stderr, "warning: "+oneLine(w)+"\n"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // finish writes the run's last line: the result object under JSON, else

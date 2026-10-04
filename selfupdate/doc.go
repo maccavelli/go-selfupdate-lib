@@ -70,8 +70,10 @@
 // lines, NewJSONReporter writes JSON Lines, and MultiReporter fans out to
 // several. EventProgress is opt-in: Config.ProgressInterval is zero by
 // default, which reports none, and the text reporter skips it. The outcome
-// events EventDeclined, EventFailed and EventRolledBack are advisory: a
-// reporter error there never changes the run's result. Result.Document is the
+// events EventDeclined, EventFailed, EventRolledBack and EventWarning are
+// advisory: a reporter error there never changes the run's result. A run has
+// one terminal event. An error after EventComplete is an EventWarning, listed
+// in Result.Warnings, and does not fail the run. Result.Document is the
 // stable JSON form of a Result. A program keeps its stdout for structured
 // output and writes human text to stderr.
 //

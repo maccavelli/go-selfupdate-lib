@@ -4,5 +4,8 @@ selfupdate: selected product=demo current=v1.0.0 target=v1.1.0 asset={{asset}}
 selfupdate: downloading-manifest product=demo target=v1.1.0 asset=SHA256SUMS
 selfupdate: downloading-binary product=demo target=v1.1.0 asset={{asset}} bytes=12
 selfupdate: verified product=demo target=v1.1.0 asset={{asset}}
-selfupdate: complete product=demo current=v1.0.0 target=v1.1.0 asset={{asset}} dry-run
-demo: dry run: v1.1.0 verified; nothing installed
+selfupdate: installing product=demo target=v1.1.0 asset={{asset}}
+selfupdate: complete product=demo current=v1.0.0 target=v1.1.0 asset={{asset}} release asset integrity verified
+selfupdate: warning product=demo current=v1.0.0 target=v1.1.0 asset={{asset}} unlock failed
+warning: unlock failed
+demo: updated v1.0.0 -> v1.1.0

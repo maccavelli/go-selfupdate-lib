@@ -161,6 +161,9 @@ type Result struct {
 	// Previous is where InstallOptions.KeepPrevious kept the previous
 	// binary.
 	Previous string
+	// Warnings lists the errors that arrived after EventComplete. None of
+	// them failed the run.
+	Warnings Warnings
 }
 
 // Repository is a GitHub owner/name pair.
@@ -539,7 +542,9 @@ const (
 	EventTransforming
 	// EventInstalling is emitted immediately before Installer.Install.
 	EventInstalling
-	// EventComplete is emitted after a healthy committed installation.
+	// EventComplete is emitted after a healthy committed installation, and
+	// at the end of a dry run, whose Detail is "dry-run". It is the run's
+	// one terminal event: a later error is an EventWarning, not a failure.
 	EventComplete
 )
 
@@ -559,6 +564,17 @@ const (
 	// EventRolledBack is emitted when the installer restored the previous
 	// binary itself. A reporter error on it is ignored.
 	EventRolledBack
+)
+
+// Event kinds added in v1.6.0, appended so every earlier value keeps its
+// number (0010-MADR Q3).
+const (
+	// EventWarning follows EventComplete, once for each error that arrived
+	// after the run had done its work: a failed Close, a failed report of
+	// complete, or an installer that committed and still returned an
+	// error. Detail is the sanitized error, which Result.Warnings also
+	// lists. The run does not fail. A reporter error on it is ignored.
+	EventWarning EventKind = iota + EventRolledBack + 1
 )
 
 // String implements fmt.Stringer.
@@ -592,6 +608,8 @@ func (k EventKind) String() string {
 		return "failed"
 	case EventRolledBack:
 		return "rolled-back"
+	case EventWarning:
+		return "warning"
 	default:
 		return "eventkind(" + itoa(uint64(k)) + ")"
 	}

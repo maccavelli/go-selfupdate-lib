@@ -22,6 +22,31 @@ type goldenCase struct {
 	release  func() selfupdatetest.ReleaseSpec
 	wantErr  error
 	wantExit int
+	// closeErr, when set, fails the session's Close after the install.
+	closeErr error
+}
+
+// closeFailInstaller's sessions fail Close, after the work is done.
+type closeFailInstaller struct {
+	selfupdate.Installer
+	err error
+}
+
+func (i closeFailInstaller) Begin(ctx context.Context, t selfupdate.Target) (selfupdate.InstallSession, error) {
+	sess, err := i.Installer.Begin(ctx, t)
+	if err != nil {
+		return nil, err
+	}
+	return closeFailSession{sess, i.err}, nil
+}
+
+type closeFailSession struct {
+	selfupdate.InstallSession
+	err error
+}
+
+func (s closeFailSession) Close() error {
+	return errors.Join(s.InstallSession.Close(), s.err)
 }
 
 func goldenRelease() selfupdatetest.ReleaseSpec {
@@ -53,6 +78,9 @@ func goldenCases() []goldenCase {
 			wantErr: selfupdate.ErrIntegrity, wantExit: 1},
 		{name: "declined", req: req(func(*selfupdate.Request) {}), answers: []bool{false}, release: goldenRelease},
 		{name: "dry-run", req: req(func(r *selfupdate.Request) { r.DryRun = true }), release: goldenRelease},
+		// A late error is a warning after complete (0010-MADR Q3).
+		{name: "warning", req: req(func(r *selfupdate.Request) { r.Yes = true }), release: goldenRelease,
+			closeErr: errors.New("unlock failed")},
 	}
 }
 
@@ -63,9 +91,13 @@ func TestGolden(t *testing.T) {
 	for _, c := range goldenCases() {
 		t.Run(c.name, func(t *testing.T) {
 			exe, policy := tempTarget(t)
-			inst, err := selfupdate.NewStandaloneInstaller(selfupdate.InstallOptions{TargetPolicy: policy})
+			standalone, err := selfupdate.NewStandaloneInstaller(selfupdate.InstallOptions{TargetPolicy: policy})
 			if err != nil {
 				t.Fatal(err)
+			}
+			var inst selfupdate.Installer = standalone
+			if c.closeErr != nil {
+				inst = closeFailInstaller{standalone, c.closeErr}
 			}
 			sel, err := selfupdate.NewExactAssetSelector([]selfupdate.Platform{goldenPlatform})
 			if err != nil {
@@ -89,7 +121,7 @@ func TestGolden(t *testing.T) {
 			if code := selfupdate.ExitCode(res, err); code != c.wantExit {
 				t.Fatalf("ExitCode = %d, want %d", code, c.wantExit)
 			}
-			if c.name != "upgrade" {
+			if c.name != "upgrade" && c.name != "warning" {
 				if got, rerr := os.ReadFile(exe); rerr != nil || string(got) != "old-bytes" {
 					t.Fatalf("target changed: %q, %v", got, rerr)
 				}

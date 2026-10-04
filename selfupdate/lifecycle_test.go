@@ -72,7 +72,7 @@ func TestDryRunLeavesTargetUntouched(t *testing.T) {
 		t.Fatalf("a dry run reported installing: %v", rep.kinds)
 	}
 	last := rep.events[len(rep.events)-1]
-	if last.Kind != EventComplete || last.Detail != "dry run: verified, nothing installed" {
+	if last.Kind != EventComplete || last.Detail != "dry-run" {
 		t.Fatalf("last event = %+v", last)
 	}
 	if len(probed) != 1 || probed[0] != ProbeStaged {

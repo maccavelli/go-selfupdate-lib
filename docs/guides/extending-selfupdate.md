@@ -93,7 +93,15 @@ a per-run choice, and a workflow input.
 `NewJSONReporter` writes one JSON object per event (JSON Lines), with the keys
 `kind`, `product`, `current`, `target`, `asset`, `bytes`, `total` and
 `detail`, in that order. `Result.Document` is the stable JSON form of the
-final `Result`, with `schema_version` 1.
+final `Result`. Its `schema_version` is 2 since `v1.6.0`, which added
+`service_started`, and `warnings` when there are any.
+
+A run has one terminal event: `complete`, `failed` or `declined`. Since
+`v1.6.0`, an error that arrives after `complete`, such as a failed unlock
+once the binary is replaced, does not fail the run. Each one is a `warning`
+event, `Result.Warnings` lists them, and `Run` returns no error. A dry run's
+`complete` has the `detail` `dry-run`. `Warnings` is a string type whose JSON
+form is an array: read it with `List`, or build one with `NewWarnings`.
 
 Keep stdout for the JSON, and write human text to stderr. `MultiReporter`
 sends each event to several reporters in order: `NewTextReporter(os.Stderr)`
