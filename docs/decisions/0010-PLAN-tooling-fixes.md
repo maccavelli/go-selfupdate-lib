@@ -229,3 +229,29 @@ starts. The records are committed alone.
   `rc,beta,alpha`) and `NewStrictVersionPolicy`. It compared them with the
   gate's answers: `21 tags agree`.
 * **Checks:** shellcheck rc 0; every `scripts/*_test.sh` rc 0.
+
+### Phase T2: the release verifier, D2 and D8 (2026-10-03)
+
+* **Tests first.** `verify-selfupdate-release_test.sh` gains four
+  `run_fail` cases:
+  * a binary whose bytes differ from its `SHA256SUMS` line;
+  * a `SHA256SUMS` that also lists `install.sh`;
+  * an extra named `SHA256SUMS-x`;
+  * a zero-byte canonical binary.
+
+  Against the unfixed verifier, only the last failed, as D8 said:
+  `not ok - empty canonical binary (expected failure)`.
+* **Fix D8.** Before hashing, a canonical binary of size 0 fails with `<name>
+  is empty`.
+* **Prove D2.** On scratch copies, each check was disabled in turn. The
+  test failed each time, on the new case meant for it:
+
+  ```text
+  digest check off: test rc=1 ['not ok - binary bytes differ from its SHA256SUMS line (expected failure)']
+  exact-set check off: test rc=1 ['not ok - SHA256SUMS also lists an extra (expected failure)']
+  SHA256SUMS- refusal off: test rc=1 ['not ok - extra named SHA256SUMS-x (expected failure)']
+  D8 check off: test rc=1 ['not ok - empty canonical binary (expected failure)']
+  real tree: test rc=0 []
+  ```
+
+* **Checks:** shellcheck rc 0; every `scripts/*_test.sh` rc 0.

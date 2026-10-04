@@ -181,6 +181,9 @@ def sha256_file(path):
 
 for name in canonical:
     path = os.path.join(dirpath, name)
+    # The client refuses an asset of size 0 (0010-MADR D8).
+    if os.path.getsize(path) == 0:
+        fail("%s is empty" % name)
     got = sha256_file(path)
     if got != sums[name]:
         fail("SHA256SUMS mismatch for %s" % name)

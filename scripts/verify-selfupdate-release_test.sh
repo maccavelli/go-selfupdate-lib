@@ -231,4 +231,30 @@ else
 	echo "skip - extra name with a trailing newline (this filesystem cannot hold one)"
 fi
 
+# 0010-MADR D2: the two core checks, each with a case only it can catch.
+TAMPERED="$WORKDIR/tampered"
+make_valid "$TAMPERED"
+printf 'tampered-body' >"$TAMPERED/demo-linux-amd64"
+run_fail "binary bytes differ from its SHA256SUMS line" \
+	--dir "$TAMPERED" --products "$PRODUCTS" --platforms "$PLATFORMS" --extras "$EXTRAS"
+LISTSEXTRA="$WORKDIR/lists-extra"
+make_valid "$LISTSEXTRA"
+printf '%s  install.sh\n' "$(digest_of "$LISTSEXTRA/install.sh")" >>"$LISTSEXTRA/SHA256SUMS"
+run_fail "SHA256SUMS also lists an extra" \
+	--dir "$LISTSEXTRA" --products "$PRODUCTS" --platforms "$PLATFORMS" --extras "$EXTRAS"
+SUMSX="$WORKDIR/sums-x"
+make_valid "$SUMSX"
+printf 'x' >"$SUMSX/SHA256SUMS-x"
+run_fail "extra named SHA256SUMS-x" \
+	--dir "$SUMSX" --products "$PRODUCTS" --platforms "$PLATFORMS" --extras '["install.sh","SHA256SUMS-x"]'
+
+# 0010-MADR D8: the client refuses an asset of size 0, so the verifier must.
+EMPTYBIN="$WORKDIR/empty-binary"
+make_valid "$EMPTYBIN"
+: >"$EMPTYBIN/demo-linux-amd64"
+printf '%s  demo-linux-amd64\n%s  demo-windows-amd64.exe\n' \
+	"$(digest_of "$EMPTYBIN/demo-linux-amd64")" "$(digest_of "$EMPTYBIN/demo-windows-amd64.exe")" >"$EMPTYBIN/SHA256SUMS"
+run_fail "empty canonical binary" \
+	--dir "$EMPTYBIN" --products "$PRODUCTS" --platforms "$PLATFORMS" --extras "$EXTRAS"
+
 echo "verify-selfupdate-release_test: all fixtures passed"
