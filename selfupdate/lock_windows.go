@@ -34,7 +34,7 @@ func acquireLock(ctx context.Context, root *os.Root, base string, timeout time.D
 		if !isLockBusy(err) {
 			return lockHandle{}, err
 		}
-		if timeout == 0 || time.Now().After(deadline) {
+		if time.Now().After(deadline) {
 			return lockHandle{}, ErrConcurrentUpdate
 		}
 		timer := time.NewTimer(10 * time.Millisecond)

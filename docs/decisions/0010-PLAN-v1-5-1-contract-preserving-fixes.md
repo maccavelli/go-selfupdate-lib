@@ -342,3 +342,70 @@ Associated MADR: [0010-MADR-remediate-second-debugging-pass-findings.md](0010-MA
   * fuzz, vuln, tidy;
   * every script test;
   * cross vet.
+
+### Phase P3: filesystem and install, B1, B2, B7–B10, B13, A15 (2026-10-03)
+
+* **Tests first.** `install_regression_test.go` ports reviewer B's probes
+  into assertions. It adds the swap helper the probes used. Against the
+  unfixed code:
+
+  ```text
+  TestProbeOutputCapped                      buffered 4194304 bytes through io.Copy, want the cap 65536
+  TestHomeUnavailableRoot                    refused although AllowedRoots covers the target: … lstat …/no-such-home / locate home directory: $HOME is not defined / filesystem root is not an allowed self-update root
+  TestApplyUndoesSwap                        Apply err = <nil>, want ErrConcurrentUpdate
+  TestRunReportsUnrestoredBackup             PendingBackup = "", backups left = [.demo.selfupdate-bak-…]: the surviving backup must be reported
+  TestProbeRollbackSyncFailure               RolledBack=false Backup="…/.demo.selfupdate-bak-…", want rolled back and no backup named
+  TestClosedSessionRefusesCommitAndRollback  Rollback after Close = <nil>
+  ```
+
+* **B1.** `cappedBuffer` holds its buffer in a named field. `Len` and
+  `String` are explicit, so `io.Copy` has no `ReadFrom` to bypass the cap.
+* **B2.** `allowedRoots` skips a home directory that is unavailable or
+  unusable. It fails only when no root is left, with `no allowed
+  self-update root: …`. An explicit `AllowedRoots` entry must still be
+  valid.
+* **B7.** `Apply` checks the directory after the rename, as `Install` does,
+  and undoes the swap through `rollbackInRoot`. If the undo fails, the
+  backup is returned with the error. The managed path's refused `Commit` is
+  P4's.
+* **B8.**
+  * After a swap whose undo fails, `Install` returns `Applied: false` with
+    `Backup`, like the restore failure at `session.go:126`. `Run` reports
+    it as `PendingBackup`, with its "kept at" message.
+  * When the commit's cleanup fails, `Run` reports `Backup` as
+    `PendingBackup` while the file exists.
+* **B9.** `rollbackReplacement`, on Unix and Windows, marks a sync failure
+  after a successful restore rename with `errRestoredUnsynced`.
+  `probeInstalled` treats that as rolled back: `RolledBack`, no `Backup`,
+  and the sync error still reported.
+* **B10.** `Commit` and `Rollback` on a closed session return `selfupdate:
+  session is closed`.
+* **B13.** `installSession.policy` is removed, and so is `acquireLock`'s
+  `timeout == 0` branch on Unix and Windows. No test calls `acquireLock` or
+  `beginSession` directly, and `NewStandaloneInstaller` maps 0 to
+  `DefaultLockTimeout`.
+* **A15.**
+  * `OpenAsset`'s ID check is removed: `validateAssetStructure`, reached
+    through `validateAssetMetadata`, already refuses `ID <= 0`.
+  * `mapStatus`'s 2xx branch is removed; every caller filters 2xx.
+  * `verifyManifest` is removed. Its test becomes `TestManifestTestdata`,
+    which reads the same testdata through `ParseSHA256SUMS` and
+    `checksumFor`. A mismatch stays covered by `TestVerifyIntegrity`.
+  * `TestEqualDigestLength` covers `equalDigest`'s length branch, which had
+    no test.
+* **The Windows test host** (the owner named its SSH alias; it is not
+  recorded). The working tree was copied with `COPYFILE_DISABLE=1 tar`.
+  * The first run failed in `cli`'s `TestNoStdoutOutsideStdio`, which
+    parses `*.go`: macOS tar had added AppleDouble `._*.go` files. That
+    came from the copy, not the code.
+  * Re-run without them: `go vet` rc 0, and `go test -race -count=1 ./...`
+    rc 0 for `buildinfo`, `selfupdate` (45.4 s), `cli` and
+    `selfupdatetest`.
+  * The temp directory was removed after each run.
+* **Checks** (`gate.sh`, every one rc 0):
+  * `make lint`, 0 issues;
+  * race and shuffle;
+  * `make apicheck`: `compatible with v1.5.0`;
+  * fuzz, vuln, tidy;
+  * every script test;
+  * cross vet.

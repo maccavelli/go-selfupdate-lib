@@ -113,22 +113,30 @@ func (p versionProber) Probe(ctx context.Context, r ProbeRequest) error {
 }
 
 // cappedBuffer keeps the first limit bytes and discards the rest, without
-// failing the writer.
+// failing the writer. The buffer is a named field, not embedded: an
+// embedded bytes.Buffer would lend it ReadFrom, which io.Copy prefers, and
+// the cap would never apply (0010-MADR B1).
 type cappedBuffer struct {
-	bytes.Buffer
+	buf   bytes.Buffer
 	limit int
 }
 
 func (b *cappedBuffer) Write(p []byte) (int, error) {
-	if room := b.limit - b.Len(); room > 0 {
+	if room := b.limit - b.buf.Len(); room > 0 {
 		if len(p) > room {
-			b.Buffer.Write(p[:room])
+			b.buf.Write(p[:room])
 		} else {
-			b.Buffer.Write(p)
+			b.buf.Write(p)
 		}
 	}
 	return len(p), nil
 }
+
+// Len is the number of bytes kept.
+func (b *cappedBuffer) Len() int { return b.buf.Len() }
+
+// String is the kept output.
+func (b *cappedBuffer) String() string { return b.buf.String() }
 
 // firstLine is the probe output's first line, sanitized and at most 200
 // bytes.

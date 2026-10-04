@@ -13,7 +13,6 @@ import (
 
 type installSession struct {
 	target   Target
-	policy   TargetPolicy
 	root     *os.Root
 	lock     lockHandle
 	staging  map[string]struct{}
@@ -55,6 +54,11 @@ func stagingSuffix() string {
 // errProbeRolledBack marks a post-install probe failure whose replacement
 // was rolled back.
 var errProbeRolledBack = errors.New("selfupdate: the replacement was rolled back")
+
+// errRestoredUnsynced marks a rollback whose rename restored the backup and
+// whose directory sync then failed: the backup no longer exists
+// (0010-MADR B9).
+var errRestoredUnsynced = errors.New("selfupdate: the backup was restored, but the directory sync failed")
 
 func (s *installSession) Target() Target {
 	return s.target
@@ -129,7 +133,10 @@ func (s *installSession) Install(ctx context.Context, req InstallRequest) (Insta
 		// The rename went into the locked directory, wherever it is now:
 		// undo it there, through the handle (0004-MADR R3).
 		if rerr := s.rollbackInRoot(applied); rerr != nil {
-			return InstallResult{Target: s.target.Path, Backup: applied.backup, Applied: true}, errors.Join(err, rerr)
+			// Not applied: the backup is the only copy of the previous
+			// binary, reported as the restore failure above is
+			// (0010-MADR B8).
+			return InstallResult{Target: s.target.Path, Backup: applied.backup}, errors.Join(err, rerr)
 		}
 		return InstallResult{Target: s.target.Path, RolledBack: true}, err
 	}
@@ -177,6 +184,14 @@ func (s *installSession) Apply(ctx context.Context, req InstallRequest) (Applied
 	defer s.mu.Unlock()
 	applied, err := s.replaceLocked(ctx, req.Artifact.Path)
 	if err == nil {
+		// The directory again, now that the rename has gone into it: Install
+		// checks here too (0004-MADR R3; 0010-MADR B7).
+		if derr := s.checkDir(); derr != nil {
+			if rerr := s.rollbackInRoot(applied); rerr != nil {
+				return AppliedReplacement{Target: s.target.Path, Backup: applied.backup, State: applied}, errors.Join(derr, rerr)
+			}
+			return AppliedReplacement{Target: s.target.Path, State: applyResult{}}, derr
+		}
 		if err = s.probeInstalled(ctx, req, applied); errors.Is(err, errProbeRolledBack) {
 			applied = applyResult{}
 		}
@@ -200,6 +215,11 @@ func (s *installSession) probeInstalled(ctx context.Context, req InstallRequest,
 	perr = fmt.Errorf("selfupdate: installed binary failed its probe: %w", perr)
 	rctx := withRetryBudget(context.WithoutCancel(ctx), s.lockTimeout)
 	if rerr := rollbackReplacement(rctx, s.target, applied); rerr != nil {
+		if errors.Is(rerr, errRestoredUnsynced) {
+			// The backup is back in place; only its sync failed. It is
+			// rolled back, and no backup is left to report (0010-MADR B9).
+			return errors.Join(perr, rerr, errProbeRolledBack)
+		}
 		return errors.Join(perr, rerr)
 	}
 	return errors.Join(perr, errProbeRolledBack)
@@ -257,6 +277,11 @@ func (s *installSession) Commit(ctx context.Context, a AppliedReplacement) (Inst
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// After Close the lock is released, and another session may hold the
+	// target (0010-MADR B10).
+	if s.closed {
+		return InstallResult{}, fmt.Errorf("selfupdate: session is closed")
+	}
 	// The replacement is live either way: a refused commit leaves the new
 	// binary and its backup in place.
 	pending, previous := "", ""
@@ -281,6 +306,9 @@ func (s *installSession) Rollback(ctx context.Context, a AppliedReplacement) err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.closed {
+		return fmt.Errorf("selfupdate: session is closed")
+	}
 	return rollbackReplacement(withRetryBudget(ctx, s.lockTimeout), s.target, applied)
 }
 
@@ -365,7 +393,6 @@ func beginSession(ctx context.Context, policy TargetPolicy, original Target, tim
 	}
 	return &installSession{
 		target:      original,
-		policy:      policy,
 		root:        root,
 		lock:        lock,
 		staging:     make(map[string]struct{}),

@@ -156,5 +156,8 @@ func rollbackReplacement(ctx context.Context, target Target, result applyResult)
 	if err := replacePath(ctx, result.backup, target.Path); err != nil {
 		return fmt.Errorf("selfupdate: restore backup: %w", err)
 	}
-	return syncDirFn(target.Dir)
+	if err := syncDirFn(target.Dir); err != nil {
+		return errors.Join(errRestoredUnsynced, err)
+	}
+	return nil
 }

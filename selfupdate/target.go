@@ -90,17 +90,17 @@ func rawExecutablePath(explicit string) (string, error) {
 	return filepath.Clean(raw), nil
 }
 
+// allowedRoots is the home directory, when it is usable, and extra. A
+// service account may have no home, or one at "/" or one that does not
+// exist: it is skipped, so a root in TargetPolicy.AllowedRoots can cover
+// the target instead (0010-MADR B2). An extra root must itself be valid.
 func allowedRoots(extra []string) ([]string, error) {
-	home, err := userHomeDir()
-	if err != nil {
-		return nil, fmt.Errorf("selfupdate: locate home directory: %w", err)
-	}
 	roots := make([]string, 0, 1+len(extra))
-	homeRoot, err := canonicalizeRoot(home)
-	if err != nil {
-		return nil, err
+	if home, err := userHomeDir(); err == nil {
+		if homeRoot, err := canonicalizeRoot(home); err == nil {
+			roots = append(roots, homeRoot)
+		}
 	}
-	roots = append(roots, homeRoot)
 	for _, r := range extra {
 		canon, err := canonicalizeRoot(r)
 		if err != nil {
@@ -109,6 +109,9 @@ func allowedRoots(extra []string) ([]string, error) {
 		if !containsRoot(roots, canon) {
 			roots = append(roots, canon)
 		}
+	}
+	if len(roots) == 0 {
+		return nil, fmt.Errorf("selfupdate: no allowed self-update root: the home directory is unavailable, and TargetPolicy.AllowedRoots is empty")
 	}
 	return roots, nil
 }

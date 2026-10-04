@@ -336,6 +336,13 @@ func (u *run) apply(ctx context.Context, req Request, result Result, target Targ
 		return resultOut, wrapRun(req, instErr)
 	}
 	resultOut.Applied = true
+	if instErr != nil && resultOut.PendingBackup == "" && installed.Backup != "" {
+		// A failed cleanup after the commit can leave the backup beside the
+		// new binary: report it while it is there (0010-MADR B8).
+		if _, err := os.Lstat(retainedPath(target, installed.Backup)); err == nil {
+			resultOut.PendingBackup = installed.Backup
+		}
+	}
 	// Release the session (and its lock) before the terminal event, so a
 	// Close failure is joined with the committed result rather than surfacing
 	// after "complete" has been reported.

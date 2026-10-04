@@ -527,9 +527,6 @@ func validateAssetMetadata(a Asset, maxSize int64) error {
 // OpenAsset implements ReleaseSource. The body is fetched from the asset API
 // path derived from owner, repository, and asset ID.
 func (s *GitHubSource) OpenAsset(ctx context.Context, rel Release, asset Asset) (io.ReadCloser, error) {
-	if asset.ID <= 0 {
-		return nil, fmt.Errorf("selfupdate: asset id is required")
-	}
 	if err := assetBelongsToRelease(rel, asset); err != nil {
 		return nil, err
 	}
@@ -788,10 +785,8 @@ func (s *GitHubSource) origin() *url.URL {
 	return &u
 }
 
+// mapStatus maps a non-2xx response; every caller has filtered 2xx.
 func (s *GitHubSource) mapStatus(resp *http.Response, body []byte) error {
-	if resp.StatusCode >= 200 && resp.StatusCode <= 299 {
-		return nil
-	}
 	if resp.StatusCode == http.StatusTooManyRequests || rateLimitedForbidden(resp) {
 		return parseRateLimit(resp, s.now)
 	}
