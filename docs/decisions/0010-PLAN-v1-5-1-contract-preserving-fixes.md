@@ -185,6 +185,9 @@ records the mechanism; the steps below stand, carried out through it.)*
 
 ### Phase P7: release
 
+*(Deviation D3, 2026-10-03: the pin moves after the tag. Step 2 lands in
+a commit after `v1.5.1`, pinned to the tag's own commit.)*
+
 1. **Release notes** in this PLAN's execution record, one line per finding,
    with the behaviour a consumer may notice:
    * B2: services without `$HOME` can now update;
@@ -602,3 +605,78 @@ records the mechanism; the steps below stand, carried out through it.)*
   * fuzz, vuln, tidy;
   * every script test;
   * cross vet.
+
+### Deviation D3 (2026-10-03): the workflow pin moves after the tag
+
+* **Found.** Step 2 pins `README.md` and the migration guide to "the
+  `v1.5.1` commit". A commit cannot contain its own hash, so the pin cannot
+  sit in the commit that is tagged. Both pin `58411f1` (`v1.4.1`) today.
+  `v1.5.0`'s tree pins it too. That workflow lacks the tooling PLAN's T4
+  and the empty-binary refusal.
+* **Decision.** The owner chose "Pin after the tag":
+  * the P7 commit holds these release notes;
+  * the owner tags it `v1.5.1` and pushes;
+  * a commit after the tag moves both pins to the tag's commit, labelled
+    `# v1.5.1`, and the owner pushes it.
+* **Consequence.** The `v1.5.1` tree shows the `v1.4.1` pin, as `v1.5.0`'s
+  did. `main` shows the `v1.5.1` pin from the next commit. The MADR's "D5
+  and D9 ship when the README's pin moves to the commit that carries them"
+  still holds, and is unchanged.
+
+### Phase P7: release notes for `v1.5.1` (2026-10-03)
+
+No exported name changes (`make apicheck`: `compatible with v1.5.0`). What
+a consumer may notice, by finding:
+
+* **Integrity.**
+  * A1: a body whose digest is wrong fails on the read that completes it,
+    with `ErrIntegrity`, not later or never.
+  * A8: a verifier's failure is wrapped in `ErrIntegrity`.
+  * A12: a checksum name with `:` is refused on every OS.
+* **Network and credentials.**
+  * A2: a credential provider that found nothing, or was refused, is asked
+    again on the next run. A program that checked at startup now prompts
+    when the user runs an update.
+  * A4: `CheckCached` defers at most 1 h, and at least 1 min only when the
+    response gave no time in the future.
+  * A5: an error's URL carries no query string.
+  * A6: only a 401 from the API origin refreshes the credential.
+  * A7: a slow credential provider no longer holds the source's lock.
+  * A9: a credential with a control byte other than a tab is refused.
+  * A10: a plain-http redirect to loopback is followed only when the API
+    itself is on loopback.
+  * A11: `ByTag` refuses `.` and `..`.
+  * C10: `CredentialRequest.Interactive` is set when the run carries a
+    stream.
+* **Install.**
+  * B1: probe output is capped on every write path.
+  * B2: a service with no usable `$HOME` can now update, when another
+    allowed root covers its target.
+  * B4: a managed update whose health check fails stops the new binary
+    before rolling back.
+  * B5: on Windows, a pending backup that a running program still holds no
+    longer fails `Begin` or `CleanupPending`. It stays on the cleanup
+    receipt until a later run can remove it.
+  * B6: on Windows, with `KeepPrevious`, a `.previous` that a running
+    program holds no longer fails `Commit`. The new backup is reported as
+    `PendingBackup` instead of `Previous`.
+  * Amendment A1: the cleanup receipt can list several backups. It is still
+    written as version 1 when it lists one. A release before `v1.5.1`
+    refuses a receipt that lists two.
+  * B7: a directory moved during an update is detected after the rename,
+    and a managed `Commit` refused for it rolls back.
+  * B8, B9: `Backup` is reported only while the file exists, and
+    `PendingBackup` whenever one is left.
+  * B10: `Commit` and `Rollback` on a closed session return an error.
+* **Coordinator and CLI.**
+  * C3: a `--check` whose result object or summary cannot be written exits
+    1, not 10, and prints the error.
+  * C4: under `--json`, a nil updater or a refused option now writes the
+    result object.
+  * C5: a typed-nil `Lifecycle` or `Reconciler` is refused.
+  * C6: a Transformer with a custom session that is not a `StagingOwner`
+    always fails before `Install`, whatever the staging file is named.
+* **Documentation and cleanup.** D12 corrects the `Request` comments. A15
+  and B13 remove dead code. Nothing a consumer can see changes.
+* **Tests only.** A13's surviving mutations are killed, and the B14 and
+  C12 gaps are covered.
