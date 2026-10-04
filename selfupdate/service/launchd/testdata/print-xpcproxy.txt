@@ -1,0 +1,69 @@
+gui/503/io.github.maccavelli.selfupdate.livetest = {
+	active count = 1
+	path = /Users/<user>/demo/io.github.maccavelli.selfupdate.livetest.plist
+	type = LaunchAgent
+	state = xpcproxy
+
+	program = /bin/sleep
+	arguments = {
+		/bin/sleep
+		600
+	}
+
+	inherited environment = {
+		SSH_AUTH_SOCK => /var/run/com.apple.launchd.<id>/Listeners
+	}
+
+	default environment = {
+		PATH => /usr/bin:/bin:/usr/sbin:/sbin
+	}
+
+	environment = {
+		OSLogRateLimit => 64
+		XPC_SERVICE_NAME => io.github.maccavelli.selfupdate.livetest
+	}
+
+	domain = gui/503 [100025]
+	asid = 100025
+	minimum runtime = 10
+	exit timeout = 5
+	runs = 1
+	pid = 71179
+	immediate reason = speculative
+	forks = 0
+	execs = 0
+	initialized = 1
+	trampolined = 0
+	started suspended = 0
+	proxy started suspended = 0
+	checked allocations = 0 (queried = 0)
+	checked allocations reason = no host
+	checked allocations flags = 0x0
+	last exit code = (never exited)
+
+	resource coalition = {
+		ID = 66566
+		type = resource
+		state = active
+		active count = 1
+		name = io.github.maccavelli.selfupdate.livetest
+	}
+
+	jetsam coalition = {
+		ID = 66567
+		type = jetsam
+		state = active
+		active count = 1
+		name = io.github.maccavelli.selfupdate.livetest
+	}
+
+	spawn type = daemon (3)
+	jetsam priority = 40
+	jetsam memory limit (active) = (unlimited)
+	jetsam memory limit (inactive) = (unlimited)
+	jetsamproperties category = daemon
+	jetsam thread limit = 32
+	cpumon = default
+
+	properties = keepalive | inferred program
+}

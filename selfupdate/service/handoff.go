@@ -160,13 +160,18 @@ func HandOffFunc(d Detacher, spec HandOff) func(context.Context, selfupdate.Requ
 // writes the update's HandOffResult to EnvHandOffResult's path; in any
 // other run it does nothing. Call it at start-up: the time it is called is
 // the result's StartedAt.
+//
+// It first applies a private environment file, LoadHandOffEnv. A failure to
+// load it is reported in the result, and returned, with the run's outcome.
 func ReportFunc() func(selfupdate.Result, error) error {
 	started := time.Now().UTC()
+	loadErr := LoadHandOffEnv()
 	return func(res selfupdate.Result, runErr error) error {
 		id, path := os.Getenv(EnvHandOff), os.Getenv(EnvHandOffResult)
 		if id == "" || path == "" {
-			return nil
+			return loadErr
 		}
+		runErr = errors.Join(loadErr, runErr)
 		r := HandOffResult{
 			SchemaVersion: HandOffResultSchema,
 			ID:            id,
@@ -178,7 +183,7 @@ func ReportFunc() func(selfupdate.Result, error) error {
 		if runErr != nil {
 			r.Error = runErr.Error()
 		}
-		return WriteHandOffResult(path, r)
+		return errors.Join(loadErr, WriteHandOffResult(path, r))
 	}
 }
 

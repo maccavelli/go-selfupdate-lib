@@ -657,6 +657,35 @@ PLAN stop, deviation D2 of
     escaped; a name that is not a valid variable name is skipped. The
     live test pins the round trip.
 
+### A3 (2026-10-04): the launchd handoff's environment goes in a private file, and a job cleans up its handoffs
+
+*Status: accepted (2026-10-04). The owner chose "Private env file" and
+"Job.CleanupHandOffs" at a PLAN stop, deviation D3 of
+[0011-PLAN-reference-service-lifecycles.md](0011-PLAN-reference-service-lifecycles.md).*
+
+* **Found.**
+  * §9's one-shot job would carry the caller's environment in its plist's
+    `EnvironmentVariables`. `launchctl print` shows a job's environment,
+    and launchctl(1) says anyone may read the system domain. On this
+    repository's development host, a non-root user read a system daemon's
+    environment with `launchctl print system/<label>`.
+  * §9 has a finished job booted out by "the next handoff or
+    `CleanupPending`". `CleanupPending` is `selfupdate`'s, which this record
+    does not change.
+* **Decided.**
+  * `selfupdate/service` gains `EnvHandOffEnv`
+    (`SELFUPDATE_HANDOFF_ENV`), `WriteHandOffEnv` and `LoadHandOffEnv`. The
+    caller's environment and `HandOff.Env` go in a file of mode 0600, in a
+    directory of mode 0700. The job's plist holds only `EnvHandOff`,
+    `EnvHandOffResult` and `EnvHandOffEnv`.
+  * The detached run applies the file and deletes it in `LoadHandOffEnv`.
+    `ReportFunc`, which a program calls at start-up, calls it first; a
+    program that reads its environment earlier calls it itself.
+  * systemd keeps its own mechanism (A2), which needs none of this.
+  * `launchd.Job.CleanupHandOffs(ctx)` boots out finished handoff jobs and
+    removes their plists. `Detach` calls it before starting a new one, and
+    a program may call it at start-up.
+
 ## More Information
 
 ### Probe evidence
@@ -669,6 +698,15 @@ PLAN stop, deviation D2 of
   as "Domain does not support specified action"; `print` shows
   `exit timeout = 5` for a job with no `ExitTimeOut` key. The live tests in
   the PLAN pin these.
+* **launchd, from the V3 live run** (2026-10-04), pinned by
+  `TestLiveExitCodes` and `TestLiveStopWaitsForSlowExit`:
+  `kickstart <missing>` exits 113 and `bootout <missing>` exits 3;
+  `bootstrap` of a job already loaded, or of a disabled label, exits 5,
+  never 119; `bootout` of a job that ignores SIGTERM returns 0 at once,
+  while `print` shows it in state `SIGTERMed` until `ExitTimeOut` lapses;
+  a job launchd is still spawning shows state `xpcproxy` with its PID.
+  `plutil -extract <key> json` refuses a boolean on its own, and `raw`
+  prints a dictionary's keys.
 * **GitHub-hosted runners:** Ubuntu runners are virtual machines with
   systemd as PID 1 and passwordless `sudo`; macOS runners have a usable
   `gui/501` domain, as public workflows show; Windows runners run as

@@ -278,6 +278,9 @@ In addition:
      `Library`. It is bootstrapped there.
    * The next handoff, and `CleanupPending`, boot out finished jobs with
      the `.selfupdate.` label prefix and remove their plists.
+     *(Deviation D3, 2026-10-04: `Job.CleanupHandOffs` does this, not
+     `CleanupPending`; and the job's environment goes in a private file;
+     MADR amendment A3.)*
 8. **Tests:**
    * Scripted-runner tables:
      * exit codes 113, 119, 5 and 37;
@@ -298,6 +301,8 @@ In addition:
      * removal afterwards.
 
      It skips with its reason when `launchctl managername` is not `Aqua`.
+     *(Deviation D4, 2026-10-04: with `SELFUPDATE_REQUIRE_LAUNCHD=1` it
+     fails instead; without it, it skips with its reason.)*
    * The exit-code probe evidence in the MADR is asserted by this test.
 9. **CI:** a macOS step running the live test.
 
@@ -583,6 +588,140 @@ In addition:
   `check-workflows.sh` pass.
 * **Windows test host:** `go test -race -count=1 ./...` rc 0 for all six
   packages. The systemd package's fake tests run there too.
+* **Checks** (`gate.sh`, every one rc 0):
+  * `make lint`, 0 issues;
+  * race and shuffle;
+  * `make apicheck`: `compatible with v1.6.0`;
+  * fuzz, vuln, tidy (`go.mod` unchanged);
+  * every script test;
+  * cross vet.
+
+### Deviation D3 (2026-10-04): the launchd handoff's environment, and its cleanup
+
+* **Found,** before any V3 code.
+  * Step 7's one-shot job would carry the caller's environment in its
+    plist. A non-root user on the development host read a system daemon's
+    environment with `launchctl print system/<label>`.
+  * Step 7 has `CleanupPending` boot out finished jobs. `CleanupPending`
+    belongs to `selfupdate`, which this PLAN does not change.
+* **Decision.** The owner chose "Private env file" and
+  "Job.CleanupHandOffs". MADR amendment A3 records both. V3 also adds, to
+  `selfupdate/service`, `EnvHandOffEnv`, `WriteHandOffEnv` and
+  `LoadHandOffEnv`, which `ReportFunc` calls.
+
+### Deviation D4 (2026-10-04): the launchd live test fails when required
+
+* **Found** while writing the live test. Step 8 has it skip when
+  `launchctl managername` is not `Aqua`; Verification V3 has no live test
+  skip in CI. With `SELFUPDATE_REQUIRE_LAUNCHD=1` on a host without a GUI
+  login session, the two cannot both hold.
+* **Decision.** The owner chose "Fail when required". Without the
+  variable the test skips with its reason, as the systemd test does; with
+  it, a host that is not `Aqua` fails the test, so CI cannot pass on a
+  skip. Step 8 is annotated in place. No MADR decision changes.
+
+### Phase V3: `selfupdate/service/launchd` (2026-10-04)
+
+* **Built,** as steps 1 to 7 specify, with deviation D3:
+  * `New`, `Options`, `Domain` (`System`, `GUI`, `User`);
+  * the probes: `list` for a domain it sees, else `print`'s top-level
+    `pid =` and `state =` lines only;
+  * `Stop`, with the backstop, `bootout`, and the wait until `print`
+    exits 113 and the old PID is gone; `Start`, as `enable`, `bootstrap`
+    with retries, and `kickstart`;
+  * `WaitHealthy`, with a settle window of at least `ThrottleInterval`;
+  * `Reconcile` and `Restore`, with the `PlistBackup` receipt;
+  * `Inside`, by process group or ancestry; `Detach`, the one-shot job;
+    `CleanupHandOffs`;
+  * in `selfupdate/service`: `EnvHandOffEnv`, `WriteHandOffEnv` and
+    `LoadHandOffEnv`, which `ReportFunc` calls first.
+* **Within the MADR's §5:**
+  * Exit 119 is mapped: its error says the job is disabled and that
+    `launchctl enable` clears it.
+  * Exit 36 ("Operation now in progress") is treated as 37 is: success
+    for `bootout`, which is then waited out, and retried for
+    `bootstrap`. No probe produced it; the mapping is defensive.
+  * A one-shot job counts as finished only in state `not running`. One
+    launchd is still spawning shows `xpcproxy` with its PID, and must not
+    be booted out by a concurrent cleanup.
+  * Paths are checked with `filepath.IsAbs`, the same as a leading `/` on
+    macOS, so the fake suite also runs on the Windows test host.
+* **Live, on the development Mac** (`gui/<uid>`, `Aqua`), with
+  `SELFUPDATE_REQUIRE_LAUNCHD=1`; all five pass, and nothing is left
+  loaded:
+  * `TestLiveManagedUpdate`: the job restarts on the new build, a new
+    PID; `print`'s `pid` and `state` agree with `list`;
+  * `TestLiveExitCodes`: the codes under "Probe evidence" in the MADR;
+    then `Start` brings back a job someone disabled;
+  * `TestLiveStopWaitsForSlowExit`: a job ignoring SIGTERM with
+    `ExitTimeOut` 3; `bootout` returns at once, and `Stop` only once the
+    PID is gone, after about 3.5 s;
+  * `TestLiveHealthFailureRollsBack`;
+  * `TestLiveHandOff`: from inside the job, `Stop` is refused with
+    `ErrInsideService`; the update hands off to a one-shot job; the job
+    restarts on the handed-off build; the result file reports exit 0,
+    applied and started; a value with `"`, `$`, `\`, a backquote and a
+    newline comes through the environment file unchanged, and the file is
+    removed.
+
+  The live test uses one fixed label. `Start` runs `launchctl enable`,
+  which keeps an override for the label in launchd's database for good,
+  and launchctl cannot delete one. The development Mac keeps six such
+  entries from runs with a label per run, before that was found; they are
+  inert.
+* **Captured output.** `testdata/` holds real `print` and `list` output
+  for a running job, an idle one, one in `xpcproxy` and one in
+  `SIGTERMed`, with the scratch path and the per-boot socket path
+  redacted. `TestCapturedOutput` replays it through the probes. It shows
+  `print`'s nested `state = active` lines, in the coalition blocks, which
+  the top-level-only reading ignores, and that `list` quotes strings
+  without escaping them.
+* **Plants,** in scratch copies, each caught:
+  * `plutil -extract … json`: `TestEnabledRealPlutil`;
+  * `print` read at every depth: `TestCapturedOutput`;
+  * the `Stop` backstop removed: `TestStopRefusesInsideJob`;
+  * the settle window below `ThrottleInterval`:
+    `TestWaitHealthySettlesAtLeastThrottle`;
+  * no `bootstrap` retry: `TestStartBootstrapsAndRetries`;
+  * no wait after `bootout`: `TestStopWaitsUntilGone`;
+  * no 119 mapping: `TestLaunchctlError`;
+  * no ancestry in `Inside`: `TestInsideByAncestry`;
+  * the whole environment in the one-shot plist: `TestDetach`;
+  * a spawning job cleaned up: `TestCleanupHandOffs`;
+  * the environment file kept, and its mode unchecked: the
+    `handoffenv_test.go` tests;
+  * **live:** `Detach` as `service.DetachProcess`, a plain `setsid`
+    child: `TestLiveHandOff` failed, because the child is a descendant of
+    the job and its own `Stop` was refused, the case the one-shot job
+    exists for; `Start` without `enable`: `TestLiveExitCodes` timed out
+    on `bootstrap`'s exit 5; `Stop` without the wait:
+    `TestLiveStopWaitsForSlowExit` saw the PID alive and `print` exit 0.
+* **Mistakes, mine, caught by the live run, the plants and the hosts:**
+  * `Enabled` read the plist with `plutil -extract … json`, not step 2's
+    `raw`. `json` refuses a boolean on its own ("Invalid object in plist
+    for JSON format"), so `Enabled` was false for every ordinary plist.
+    The fake `plutil` hid it; it now answers only `raw`, and
+    `TestEnabledRealPlutil` runs the real tool on macOS.
+  * The first live builds appended bytes to a signed binary, which fails
+    `codesign`'s strict validation. Builds are now told apart by their
+    signing identifier.
+  * The detached run was dispatched on a variable carried in the private
+    environment file, which only `ReportFunc` loads; it is dispatched on
+    `SELFUPDATE_HANDOFF`, in the plist, as a program would.
+  * The slow-exit test first stopped the job while it was still
+    `xpcproxy`, before it ignored SIGTERM; it now waits for the job's own
+    ready mark.
+  * `Reconcile` trimmed all white space from `plutil`'s value; it now
+    trims only the trailing newline.
+  * On the Windows host the fake suite failed on Unix path literals; the
+    owner-and-mode rewrite test is in `reconcile_unix_test.go`.
+  * Lint: `errorlint`, `goconst` (the domain kinds), and `gosec` G703 on
+    the environment file's checked path.
+* **CI:** a macOS step runs the live tests with
+  `SELFUPDATE_REQUIRE_LAUNCHD=1`. `check-workflows.sh` passes; actionlint
+  is not installed on the development Mac and runs in CI.
+* **Windows test host:** `go test -race -count=1 ./...` rc 0 for all seven
+  packages.
 * **Checks** (`gate.sh`, every one rc 0):
   * `make lint`, 0 issues;
   * race and shuffle;

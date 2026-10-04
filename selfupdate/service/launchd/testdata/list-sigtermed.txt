@@ -1,0 +1,13 @@
+{
+	"LimitLoadToSessionType" = "Aqua";
+	"Label" = "io.github.maccavelli.selfupdate.livetest";
+	"OnDemand" = false;
+	"LastExitStatus" = 0;
+	"PID" = 80390;
+	"Program" = "/bin/sh";
+	"ProgramArguments" = (
+		"/bin/sh";
+		"-c";
+		"trap "" TERM; while :; do sleep 1; done";
+	);
+};

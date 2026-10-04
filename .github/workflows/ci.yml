@@ -62,6 +62,14 @@ jobs:
           env SELFUPDATE_REQUIRE_SYSTEMD=1 SELFUPDATE_SYSTEMD_SCOPE=user FAKE_LIVE_ROOT=/var/tmp \
             XDG_RUNTIME_DIR="/run/user/$(id -u)" \
             "$RUNNER_TEMP/systemd.test" -test.run '^TestLive' -test.count=1 -test.v
+      # The launchd live test: a throwaway KeepAlive LaunchAgent in the
+      # runner user's GUI domain, which needs its login session ("Aqua")
+      # (docs/decisions/0011-PLAN-reference-service-lifecycles.md V3).
+      - name: launchd live test
+        if: runner.os == 'macOS'
+        env:
+          SELFUPDATE_REQUIRE_LAUNCHD: "1"
+        run: go test -count=1 -v -run '^TestLive' ./selfupdate/service/launchd
       # The race detector needs cgo, which the Linux and macOS runners have
       # (0003-MADR D9; 0002-PLAN V3; 0004-MADR H7).
       # The manifest differential must run, not skip, where python3 is on
