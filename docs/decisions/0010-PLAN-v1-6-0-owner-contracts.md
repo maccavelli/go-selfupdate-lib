@@ -184,6 +184,9 @@ amendment A4.)*
 
 ### Phase S7: the test server (A14)
 
+*(Deviation D3, 2026-10-04: `RequireCredential` and a `HeaderNames` field,
+not `GitHubServerOptions` and a slice; MADR amendment A5.)*
+
 1. `RecordedRequest` gains `CredentialHeaders []string`: the names, never
    the values, of the configured credential headers present.
    `GitHubServerOptions` gains `TokenHeader string`, which defaults to
@@ -649,3 +652,71 @@ lands in a commit after `v1.6.0`. The docs step also corrects the
   * every script test;
   * cross vet;
   * markdownlint on the changed docs.
+
+### Deviation D3 (2026-10-04): the test server's credential header
+
+* **Found,** before any S7 code.
+  * Step 1 names `GitHubServerOptions.TokenHeader`. No such type exists:
+    `NewGitHubServer(t, owner, repo, releases...)` takes no options, and
+    changing it or `RequireToken` would break the API.
+  * Step 1's `RecordedRequest.CredentialHeaders []string` would make
+    `RecordedRequest` non-comparable, which `make apicheck` refuses, as in
+    D2.
+* **Decision.** The owner chose "RequireCredential method" and
+  "HeaderNames string type". MADR amendment A5 records it.
+  * The question offered "an empty header, or Authorization, means
+    Bearer". The library sends a named header's value as-is, even for
+    `Authorization`, so `RequireCredential` follows the library: only an
+    empty header means Bearer. A test then requires what the library
+    really sends.
+
+### Phase S7: the test server, A14 (2026-10-04)
+
+* **No fail-first run on the old code.** S7 adds API to a test fixture.
+  Every new test names `RequireCredential`, `CredentialHeaders` or
+  `HeaderNames`, so on `v1.5.1` it does not compile. Plants show the tests
+  can fail, in scratch copies:
+  * recording a header's value with its name:
+    `TestRequireCredentialForms/bearer` fails;
+  * a named `Authorization` header treated as Bearer:
+    `TestRequireCredentialForms/named_Authorization_is_raw` fails;
+  * the custom header not watched: `TestCustomHeaderCredentialStaysOnAPI`,
+    `API request /repos/owner/demo/releases/latest carried "",
+    Authorization false`.
+* **The API, additions only** (deviation D3).
+  * `GitHubServer.RequireCredential(header, value)` requires what the
+    library sends for that `Credential`. An empty header means
+    `Authorization: Bearer <value>`. A named header, `Authorization`
+    included, carries the value as it is. An empty value means anonymous
+    again. `RequireToken(t)` is now `RequireCredential("", t)`, with its
+    behaviour unchanged.
+  * `RecordedRequest.CredentialHeaders` is of type `HeaderNames`:
+    canonical names joined by `", "`, with `List` and `Has`. It records
+    which of `Authorization` and the required header were present, never
+    a value.
+* **Tests.**
+  * `TestRequireCredentialForms`: eight forms, each with its status and
+    recorded names, and no value recorded.
+  * `TestHeaderNames`.
+  * `credential_header_e2e_test.go`:
+    * a custom-header credential through `Updater.Run`: every API request
+      carries `X-Demo-Key` and no `Authorization`, and no asset request
+      carries either;
+    * without the credential, or with a wrong value, the run fails with
+      the 401.
+* **Lint caught two things in my first draft.** `staticcheck` QF1002 asked
+  for a tagged switch on `r.Host`. `goconst` flagged `"Authorization"`
+  three times, which is now `authorizationHeader`.
+* **Docs.** The `RequireCredential`, `RequireToken`, `RecordedRequest` and
+  `HeaderNames` godoc, the extending guide's test section, and
+  `architecture.md`.
+* **Checks** (`gate.sh`, every one rc 0):
+  * `make lint`, 0 issues;
+  * race and shuffle;
+  * `make apicheck`: `compatible with v1.5.1`;
+  * fuzz, vuln, tidy;
+  * every script test;
+  * cross vet;
+  * markdownlint on the changed docs.
+
+  The Windows host is not required for S7 (V3).

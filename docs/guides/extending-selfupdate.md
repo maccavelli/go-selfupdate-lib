@@ -285,10 +285,16 @@ The `selfupdate/selfupdatetest` package provides:
 - `RecordingReporter`;
 - `ScriptedConfirmer`;
 - `GitHubServer`, a fake GitHub API on one TLS origin whose asset requests
-  redirect to a second. It can rate-limit and truncate, and logs every request
-  with whether it carried `Authorization`.
+  redirect to a second. It can rate-limit and truncate. `RequireToken`
+  requires a bearer token; since `v1.6.0`, `RequireCredential(header,
+  value)` requires a custom-header credential exactly as the library sends
+  it. It logs every request with whether it carried `Authorization`, and,
+  in `CredentialHeaders`, the names of the credential headers it carried,
+  never their values. So a test can prove a credential stays off the
+  download origin.
 
 Pointers:
 
 - `selfupdate/selfupdatetest/selfupdatetest_test.go`
-- `selfupdate/e2e_github_test.go`, `selfupdate/golden_test.go`
+- `selfupdate/e2e_github_test.go`, `selfupdate/golden_test.go`,
+  `selfupdate/credential_header_e2e_test.go`

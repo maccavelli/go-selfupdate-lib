@@ -26,6 +26,67 @@ func sha(b []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// TestRequireCredentialForms: each form requires exactly what selfupdate
+// sends, and Requests records the credential headers' names, never their
+// values (0010-MADR A14, amendment A5).
+func TestRequireCredentialForms(t *testing.T) {
+	type send struct{ header, value string }
+	for _, c := range []struct {
+		name          string
+		header, value string
+		send          []send
+		wantStatus    int
+		wantRecorded  selfupdatetest.HeaderNames
+	}{
+		{"bearer", "", "t1", []send{{"Authorization", "Bearer t1"}}, 200, "Authorization"},
+		{"bearer, raw value", "", "t1", []send{{"Authorization", "t1"}}, 401, "Authorization"},
+		{"named Authorization is raw", "Authorization", "token t1", []send{{"Authorization", "token t1"}}, 200, "Authorization"},
+		{"named Authorization refuses Bearer", "Authorization", "t1", []send{{"Authorization", "Bearer t1"}}, 401, "Authorization"},
+		{"custom", "x-demo-key", "k1", []send{{"X-Demo-Key", "k1"}}, 200, "X-Demo-Key"},
+		{"custom, wrong value", "X-Demo-Key", "k1", []send{{"X-Demo-Key", "k2"}}, 401, "X-Demo-Key"},
+		{"custom, both sent", "X-Demo-Key", "k1", []send{{"Authorization", "Bearer k1"}, {"X-Demo-Key", "k1"}}, 200, "Authorization, X-Demo-Key"},
+		{"anonymous", "", "", nil, 200, ""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			gh := selfupdatetest.NewGitHubServer(t, "o", "r", selfupdatetest.NewRelease("demo", "v1.0.0", plats, body))
+			gh.RequireCredential(c.header, c.value)
+			req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, gh.APIBase.String()+"/repos/o/r/releases/latest", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, s := range c.send {
+				req.Header.Set(s.header, s.value)
+			}
+			resp, err := gh.Client.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = resp.Body.Close()
+			if resp.StatusCode != c.wantStatus {
+				t.Fatalf("status %d, want %d", resp.StatusCode, c.wantStatus)
+			}
+			got := gh.Requests()
+			if len(got) != 1 || got[0].CredentialHeaders != c.wantRecorded {
+				t.Fatalf("recorded %+v, want %q", got, c.wantRecorded)
+			}
+			if strings.Contains(string(got[0].CredentialHeaders), "k1") || strings.Contains(string(got[0].CredentialHeaders), "t1") {
+				t.Fatalf("a value was recorded: %q", got[0].CredentialHeaders)
+			}
+		})
+	}
+}
+
+func TestHeaderNames(t *testing.T) {
+	h := selfupdatetest.HeaderNames("Authorization, X-Demo-Key")
+	if !slices.Equal(h.List(), []string{"Authorization", "X-Demo-Key"}) || !h.Has("x-demo-key") || h.Has("X-Other") {
+		t.Fatalf("List %q", h.List())
+	}
+	var none selfupdatetest.HeaderNames
+	if none.List() != nil || none.Has("Authorization") {
+		t.Fatal("the zero value lists names")
+	}
+}
+
 func TestNewReleaseDigests(t *testing.T) {
 	spec := selfupdatetest.NewRelease("demo", "v1.1.0", plats, body)
 	if spec.Tag != "v1.1.0" || !spec.Immutable || spec.Draft || spec.Prerelease {

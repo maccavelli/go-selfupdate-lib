@@ -143,7 +143,8 @@ docs/
 - `selfupdatetest` provides `NewRelease`, `FakeSource`,
   `RecordingReporter`, `ScriptedConfirmer`, and `GitHubServer`, a fake
   GitHub API on one TLS origin whose asset requests redirect to a second,
-  which can require a token.
+  which can require a bearer token or a custom-header credential, and
+  records the credential headers' names on each request.
 - The coordinator (`updater.go`) owns the order of every step. It validates
   the selected binary and manifest itself, and parses `SHA256SUMS` before any
   staging. It pins an exact `--version`, and closes the session before

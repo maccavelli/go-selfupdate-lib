@@ -561,6 +561,32 @@ possible for a consistent api".*
   * Both structs stay comparable, and `==` compares warnings by value.
   * The document's `schema_version` is 2.
 
+### A5 (2026-10-04): the test server's credential header, additively
+
+*Status: accepted (2026-10-04). The owner chose "RequireCredential method"
+and "HeaderNames string type" at a PLAN stop, deviation D3 of
+[0010-PLAN-v1-6-0-owner-contracts.md](0010-PLAN-v1-6-0-owner-contracts.md).*
+
+* **Found.** §3 and the PLAN's S7 describe A14 as `RequireToken` taking a
+  header name, a `GitHubServerOptions.TokenHeader`, and a
+  `RecordedRequest.CredentialHeaders []string`. Neither fits:
+  * no `GitHubServerOptions` exists, and changing `NewGitHubServer` or
+    `RequireToken` would break the API;
+  * a slice field makes `RecordedRequest` non-comparable, which `make
+    apicheck` refuses, as it did for `Result.Warnings` (amendment A4).
+* **Decided.**
+  * `GitHubServer.RequireCredential(header, value)` is added beside
+    `RequireToken`. It requires exactly what the library sends for a
+    `Credential`: an empty header means `Authorization: Bearer <value>`,
+    and a named header, `Authorization` included, carries the value
+    as-is. `RequireToken(t)` is `RequireCredential("", t)`.
+  * `RecordedRequest.CredentialHeaders` is of a new type, `HeaderNames`.
+    It is a string of canonical header names joined by `", "`, HTTP's list
+    form, with a `List` method. It records which credential headers were
+    present: `Authorization`, and the header `RequireCredential` named.
+    It never records a value. `RecordedRequest` stays comparable, and
+    `Authorization` (bool) stays.
+
 ## More Information
 
 * **The reviewers' probe tests and plant scripts** stayed in the

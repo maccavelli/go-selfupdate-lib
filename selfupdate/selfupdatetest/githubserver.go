@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,6 +24,30 @@ type RecordedRequest struct {
 	Path string
 	// Authorization reports whether an Authorization header was present.
 	Authorization bool
+	// CredentialHeaders names the credential headers the request carried:
+	// Authorization, and the header RequireCredential named. It never holds
+	// a value (0010-MADR A14).
+	CredentialHeaders HeaderNames
+}
+
+// HeaderNames lists canonical HTTP header names, joined by ", " as HTTP
+// joins a list. It is a string, so RecordedRequest stays comparable.
+type HeaderNames string
+
+// authorizationHeader carries a bearer token, and is always watched.
+const authorizationHeader = "Authorization"
+
+// List returns the names, or nil when there are none.
+func (h HeaderNames) List() []string {
+	if h == "" {
+		return nil
+	}
+	return strings.Split(string(h), ", ")
+}
+
+// Has reports whether name, in any case, is in the list.
+func (h HeaderNames) Has(name string) bool {
+	return slices.Contains(h.List(), http.CanonicalHeaderKey(name))
 }
 
 // GitHubServer is a fake GitHub REST API on one TLS origin. It serves
@@ -46,7 +71,9 @@ type GitHubServer struct {
 	limited   int
 	limitHdr  http.Header
 	truncated bool
-	token     string
+	// credHeader and credValue are what RequireCredential requires.
+	credHeader string
+	credValue  string
 }
 
 // NewGitHubServer serves releases for owner/repo. Latest is the last
@@ -96,11 +123,23 @@ func (g *GitHubServer) RateLimit(status int, header http.Header) {
 // RequireToken makes every later API request without the header
 // "Authorization: Bearer <token>" fail with 401, as GitHub does for a
 // missing or bad token on a private repository. An empty token serves
-// anonymous requests again. Asset downloads are not affected.
+// anonymous requests again. Asset downloads are not affected. It is
+// RequireCredential("", token).
 func (g *GitHubServer) RequireToken(token string) {
+	g.RequireCredential("", token)
+}
+
+// RequireCredential makes every later API request without the credential
+// fail with 401. It requires what selfupdate sends for a Credential with
+// this Header and Value: an empty header means "Authorization: Bearer
+// <value>", and a named header, Authorization included, carries the value
+// as it is. An empty value serves anonymous requests again. Asset
+// downloads are not affected, and Requests records the header's name on
+// either origin, so a test can prove it never reaches the asset one.
+func (g *GitHubServer) RequireCredential(header, value string) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	g.token = token
+	g.credHeader, g.credValue = header, value
 }
 
 // TruncateAssets makes the asset origin advertise each body's full length
@@ -121,8 +160,19 @@ func (g *GitHubServer) Requests() []RecordedRequest {
 func (g *GitHubServer) record(r *http.Request) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	watched := []string{authorizationHeader}
+	if h := http.CanonicalHeaderKey(g.credHeader); h != "" && h != authorizationHeader {
+		watched = append(watched, h)
+	}
+	var present []string
+	for _, h := range watched {
+		if r.Header.Get(h) != "" {
+			present = append(present, h)
+		}
+	}
 	g.requests = append(g.requests, RecordedRequest{
-		Host: r.Host, Path: r.URL.Path, Authorization: r.Header.Get("Authorization") != "",
+		Host: r.Host, Path: r.URL.Path, Authorization: r.Header.Get(authorizationHeader) != "",
+		CredentialHeaders: HeaderNames(strings.Join(present, ", ")),
 	})
 }
 
@@ -169,7 +219,7 @@ func notFound(w http.ResponseWriter) {
 func (g *GitHubServer) serveAPI(w http.ResponseWriter, r *http.Request) {
 	g.record(r)
 	g.mu.Lock()
-	limited, header, token := g.limited, g.limitHdr, g.token
+	limited, header, credHeader, credValue := g.limited, g.limitHdr, g.credHeader, g.credValue
 	g.mu.Unlock()
 	if limited != 0 {
 		for k, v := range header {
@@ -178,9 +228,15 @@ func (g *GitHubServer) serveAPI(w http.ResponseWriter, r *http.Request) {
 		writeMessage(w, limited, "API rate limit exceeded")
 		return
 	}
-	if token != "" && r.Header.Get("Authorization") != "Bearer "+token {
-		writeMessage(w, http.StatusUnauthorized, "Bad credentials")
-		return
+	if credValue != "" {
+		name, want := credHeader, credValue
+		if name == "" {
+			name, want = authorizationHeader, "Bearer "+credValue
+		}
+		if r.Header.Get(name) != want {
+			writeMessage(w, http.StatusUnauthorized, "Bad credentials")
+			return
+		}
 	}
 	if r.Method == http.MethodGet && r.URL.Path == strings.TrimSuffix(g.prefix, "/") {
 		g.serveList(w, r)
