@@ -386,3 +386,26 @@ starts. The records are committed alone.
   * `check-workflows.sh` over both workflows;
   * shellcheck;
   * every `scripts/*_test.sh`.
+
+### Phase T6: depguard's catch-all, D13 (2026-10-03)
+
+* **The rule.** `other-packages` sorts after `banned`, and is strict. It
+  covers `$all`, excluding tests and the four named package globs. It
+  allows only `$gostd` and this module.
+* **Proof,** on scratch copies, with a planted `internal/helper` importing
+  `golang.org/x/term`. The plan named `x/sys/unix`. `x/term` is used
+  because it builds for every lint target, and it is just as outside the
+  floor for a new package.
+
+  ```text
+  HEAD config, planted internal/helper importing x/term: rc=0 depguard=[]
+  new config, planted internal/helper importing x/term: rc=1 depguard=["internal/helper/helper.go:4:8: import 'golang.org/x/term' is not allowed from list 'other-packages' (depguard)", …]
+  real tree, new config, GOOS=linux: rc=0 depguard=[]
+  real tree, new config, GOOS=darwin: rc=0 depguard=[]
+  real tree, new config, GOOS=windows: rc=0 depguard=[]
+  ```
+
+* **AGENTS.md** names the rule. A new package gets its own rule, and is
+  excluded from `other-packages`.
+* **Checks:** `make lint` rc 0 on three GOOS; markdownlint on AGENTS.md
+  rc 0.

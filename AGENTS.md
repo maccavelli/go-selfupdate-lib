@@ -32,10 +32,15 @@ pre-add check and CI fail on a breach
 - `module` allows only the standard library, this module and the
   required modules, in every file;
 - `buildinfo`, `selfupdate`, `selfupdate-cli` and `selfupdatetest` allow
-  each package, outside its tests, only the imports its record names.
+  each package, outside its tests, only the imports its record names;
+- `other-packages` allows any other package, an `internal/` helper
+  included, only the standard library and this module
+  (`docs/decisions/0010-MADR-remediate-second-debugging-pass-findings.md`
+  D13).
 
 A record that adds a module or a package amends those rules in the same
-commit. A new rule's name must sort after `banned`.
+commit. A new package gets its own rule, and is excluded from
+`other-packages`. A new rule's name must sort after `banned`.
 
 `go.mod` and `go.sum` change with the code that needs them: a requirement is
 added in the commit that adds its first import, and removed in the commit that
