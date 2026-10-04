@@ -31,8 +31,9 @@ type CredentialRequest struct {
 	Origin *url.URL
 	// Cause is non-nil when a credential already sent was refused with 401.
 	Cause error
-	// Interactive reports whether the provider may prompt. Phase 1 sources
-	// always set it false.
+	// Interactive reports whether the provider may prompt: true when the
+	// run was started with Start, so a Stream can carry a prompt
+	// (0010-MADR C10).
 	Interactive bool
 }
 
@@ -155,8 +156,15 @@ func validateCredential(c Credential) error {
 			}
 		}
 	}
-	if len(c.Value) == 0 || strings.ContainsAny(string(c.Value), "\r\n\x00") {
+	if len(c.Value) == 0 {
 		return fmt.Errorf("selfupdate: invalid credential from %s", sanitizeText(c.Source))
+	}
+	// Every control byte but HTAB is refused, as net/http refuses it in a
+	// header value (0010-MADR A9).
+	for _, b := range c.Value {
+		if (b < 0x20 && b != '\t') || b == 0x7f {
+			return fmt.Errorf("selfupdate: invalid credential from %s", sanitizeText(c.Source))
+		}
 	}
 	return nil
 }

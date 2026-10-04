@@ -94,6 +94,8 @@ func (u *Updater) Run(ctx context.Context, req Request) (Result, error) {
 }
 
 func (u *run) execute(ctx context.Context, req Request) (res Result, err error) {
+	// Each run resolves its own negative credential outcome (0010-MADR A2).
+	ctx = withRunMark(ctx)
 	// A failed run ends with EventFailed, except when the product name is
 	// not safe to report or check mode found an update (0004-MADR G5, A7).
 	defer func() {

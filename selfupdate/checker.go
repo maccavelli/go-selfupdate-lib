@@ -105,7 +105,7 @@ func (c *Checker) Check(ctx context.Context, cr CheckRequest) (Availability, err
 	if err != nil {
 		return Availability{}, err
 	}
-	return c.checkPrepared(ctx, req)
+	return c.checkPrepared(withRunMark(ctx), req)
 }
 
 // prepare validates a CheckRequest as a check-only Request and normalizes

@@ -106,7 +106,7 @@ Associated MADR: [0010-MADR-remediate-second-debugging-pass-findings.md](0010-MA
    loopback. Test: HTTPS API to `http://127.0.0.1` refused; the loopback
    test server is unchanged.
 7. **A11.** `ByTag` refuses `.` and `..`. Test: no request is sent.
-8. **A4.** `NotBefore` is clamped to [now + 1 min, now + 1 h], and a stored
+8. **A4.** *(Deviation D1: the minute applies only when the headers give no future time.)* `NotBefore` is clamped to [now + 1 min, now + 1 h], and a stored
    value beyond the cap is a miss. Tests: a reset in 2200, a reset in the
    past, and no headers.
 9. **C10.** The run sets `CredentialRequest.Interactive` when its context
@@ -268,3 +268,77 @@ Associated MADR: [0010-MADR-remediate-second-debugging-pass-findings.md](0010-MA
   * cross `go vet` (freebsd, openbsd, linux/386, windows).
 
   `TestManifestDifferential` passes with the new names.
+
+### Phase P2: network and credentials, A2, A4–A7, A9–A11, C10 (2026-10-03)
+
+* **Tests first.** `network_hardening_test.go` (internal) and
+  `credentials_run_test.go` (external) hold one test per finding, ported
+  from the reviewers' probes into assertions. Against the unfixed code,
+  every one failed:
+
+  ```text
+  TestNotBeforeClamped                  reset in 2200: deferred 1518708h0m0s, want 1h0m0s; reset in the past: deferred -2m0s, want 1m0s
+  TestRedirectErrorHidesQuery           error echoes the redirect query: Get "http://downloads.example.invalid/blob?X-Amz-Signature=SECRET1#frag": …
+  TestForeign401DoesNotRefresh          the provider was asked 2 times, want 1
+  TestCredentialWaitHonoursContext      second Latest returned after 2.001453666s … context deadline exceeded, want its own deadline
+  TestCredentialRefusesControlBytes     "tok\x01en" accepted (and DEL, ESC)
+  TestLoopbackRedirectOnlyFromLoopback  a remote API's redirect to plain-http loopback was followed
+  TestByTagRefusesDotSegments           ByTag("..") = … github http 404 …; 2 requests were sent
+  TestPromptAfterStartupCheck           later Start: prompts=0 applied=false err=… github http 401
+  TestPromptAgainAfterSkip              second Start: prompts=0 applied=false err=… github http 401
+  TestCredentialRequestInteractive      viaStart=true: Interactive = false
+  ```
+
+  The first version of `TestCredentialWaitHonoursContext` released the
+  blocking provider only after the second request returned. On the old
+  code that is a deadlock: the run hit `go test`'s 10-minute timeout. A
+  `time.AfterFunc` now releases the provider after 2 s, whatever happens,
+  so the old code fails the test instead of hanging it.
+* **A2, A7: credential state.**
+  * A resolved credential is shared for the source's life, as before.
+    Anonymity (`anonRun`) and the one 401 retry (`retriedRun`) are kept
+    only for the run that decided them.
+  * `run.execute`, `Checker.Check` and `CheckCached` each put a fresh
+    `runMark` in their context. A source used outside any run (nil mark)
+    keeps both for its lifetime, as before.
+  * The provider runs with no lock held. One resolution is in flight at a
+    time, behind an `inflight` channel. A waiter selects on that channel
+    and on its own context.
+* **A6.** The refresh runs only for a 401 whose `resp.Request.URL` is on the
+  API origin.
+* **A5.** `do` rewrites a `*url.Error`'s URL with `redactURL`: no user
+  information, query or fragment.
+* **A9.** `validateCredential` refuses every control byte but HTAB.
+* **A10.** A plain-http hop is allowed only when both it and the API base
+  are on loopback.
+* **A11.** `ByTag` refuses `.` and `..` before any request.
+* **C10.** `resolve` and `refresh` set `Interactive` from the run's Stream.
+  The field's comment no longer says "Phase 1 sources always set it false".
+* **A4.** `NotBefore` is capped at now + 1 h. A stored record whose
+  `NotBefore` is beyond the cap is a miss.
+
+**Deviation D1 (2026-10-03): A4's one-minute floor.**
+
+* **Found.** The step says to clamp to [now + 1 min, now + 1 h]. The
+  existing `TestCheckCachedRateLimitRetryAfter` (`checkcache_test.go:121`)
+  asserts that a server's explicit `Retry-After: 30s` defers by 30 s, the
+  documented "later of reset and Retry-After". The floor broke it.
+* **Decision.** The owner chose "Floor only when no future time". The
+  headers are honoured when they give a time in the future. The minute
+  applies only when they give none, or one already past: the clock-skew
+  case A4 found. The one-hour cap stays. The existing test is unchanged.
+  Step P2.8 is annotated.
+
+**Checks:**
+
+* `go test -race -count=5` over the credential, prompt, stream, redirect,
+  `ByTag`, `NotBefore` and `CheckCached` tests: rc 0, no data race.
+* `gate.sh`, every check rc 0. The first run failed lint on
+  `m, _ := ctx.Value(runKey{}).(*runMark)` (errcheck, blank assertion
+  result); it was rewritten with `ok`. After that:
+  * `make lint`: 0 issues;
+  * race and shuffle;
+  * `make apicheck`: `compatible with v1.5.0`;
+  * fuzz, vuln, tidy;
+  * every script test;
+  * cross vet.

@@ -72,13 +72,18 @@ func (c *Checker) CheckCached(ctx context.Context, cr CheckRequest, store CheckS
 	if !matched {
 		rec = CheckRecord{}
 	}
+	// A deferral beyond the cap is not one this package wrote; the record
+	// is a miss (0010-MADR A4).
+	if matched && rec.NotBefore.After(now.Add(maxCheckDeferral)) {
+		matched, rec = false, CheckRecord{}
+	}
 	if matched && now.Before(rec.NotBefore) {
 		return rec, ErrCheckDeferred
 	}
 	if matched && !rec.CheckedAt.IsZero() && !now.Before(rec.CheckedAt) && now.Sub(rec.CheckedAt) < maxAge {
 		return rec, nil
 	}
-	avail, cerr := c.checkPrepared(ctx, req)
+	avail, cerr := c.checkPrepared(withRunMark(ctx), req)
 	if cerr == nil {
 		fresh := CheckRecord{Request: key, Availability: avail, CheckedAt: now}
 		if serr := store.Save(ctx, fresh); serr != nil {
@@ -99,18 +104,32 @@ func (c *Checker) CheckCached(ctx context.Context, cr CheckRequest, store CheckS
 	return rec, cerr
 }
 
+// Bounds on a rate limit's deferral. GitHub's guidance for a secondary
+// limit without retry-after is to wait at least a minute; one bad header
+// must not defer every check for longer than an hour (0010-MADR A4).
+const (
+	minCheckDeferral = time.Minute
+	maxCheckDeferral = time.Hour
+)
+
 // notBefore is the later of the rate limit's reset and now plus its
-// Retry-After. With neither, it is one minute ahead: GitHub's guidance for a
-// secondary limit without retry-after is to wait at least a minute.
+// Retry-After, capped at maxCheckDeferral from now. When the headers give
+// no time in the future (none at all, or a reset already past, from a
+// clock ahead of the server's) it is minCheckDeferral from now. A time the
+// server gives that is sooner than the minimum is honoured
+// (0010-PLAN-v1-5-1, deviation D1).
 func notBefore(now time.Time, rl *RateLimitError) time.Time {
-	if rl.Reset.IsZero() && rl.RetryAfter <= 0 {
-		return now.Add(time.Minute)
-	}
 	nb := rl.Reset
 	if rl.RetryAfter > 0 {
 		if ra := now.Add(rl.RetryAfter); ra.After(nb) {
 			nb = ra
 		}
+	}
+	if !nb.After(now) {
+		nb = now.Add(minCheckDeferral)
+	}
+	if hi := now.Add(maxCheckDeferral); nb.After(hi) {
+		nb = hi
 	}
 	return nb
 }

@@ -46,16 +46,52 @@ type GitHubSource struct {
 	cred      credentialState
 }
 
-// credentialState is the source's one resolved credential, resolved on
-// the first API request and shared by every later one.
+// credentialState is the source's resolved credential. A credential, once
+// resolved, is shared by every later request. Anonymity, and the one retry
+// after a 401, are kept only for the run that decided them: a later run, or
+// a later check, resolves again (0010-MADR A2). A source used outside any
+// run keeps them for its lifetime, as before.
 type credentialState struct {
 	mu           sync.Mutex
 	resolved     bool
 	has          bool
 	cred         Credential
 	fromProvider bool
+	anonRun      *runMark // the run that resolved anonymity
 	retried      bool
+	retriedRun   *runMark // the run that used the one retry
 	accepted     bool
+	// inflight is closed when a resolution in progress ends. The provider
+	// runs with no lock held, so a request waiting for it can honour its
+	// own context (0010-MADR A7).
+	inflight chan struct{}
+}
+
+// runKey marks one run, or one check, in its context, so the source can
+// tell one run's negative credential outcome from the next's.
+type runKey struct{}
+
+// runMark identifies one run; only its address matters.
+type runMark struct{ _ byte }
+
+// withRunMark returns ctx marked as a new run.
+func withRunMark(ctx context.Context) context.Context {
+	return context.WithValue(ctx, runKey{}, &runMark{})
+}
+
+// runMarkOf is ctx's run, or nil outside any run.
+func runMarkOf(ctx context.Context) *runMark {
+	if m, ok := ctx.Value(runKey{}).(*runMark); ok {
+		return m
+	}
+	return nil
+}
+
+// inStream reports whether ctx belongs to a run started with Start, where a
+// provider may prompt (0010-MADR C10).
+func inStream(ctx context.Context) bool {
+	_, ok := ctx.Value(streamKey{}).(*Stream)
+	return ok
 }
 
 // NewGitHubSource validates options, clones the supplied client, and resolves
@@ -178,9 +214,11 @@ func (s *GitHubSource) checkRedirect(req *http.Request, via []*http.Request) err
 		return fmt.Errorf("selfupdate: too many redirects")
 	}
 	// Any non-loopback hop must stay on HTTPS (mcplib 0005-PLAN §4.2;
-	// 0003-MADR A3). The URL is not echoed: a redirect target can carry
-	// signed query parameters.
-	if !strings.EqualFold(req.URL.Scheme, "https") && !isLoopbackHost(req.URL.Hostname()) {
+	// 0003-MADR A3), and a plain-http loopback hop is allowed only from an
+	// API that is itself on loopback (0010-MADR A10). The URL is not
+	// echoed: a redirect target can carry signed query parameters.
+	if !strings.EqualFold(req.URL.Scheme, "https") &&
+		(!isLoopbackHost(req.URL.Hostname()) || !isLoopbackHost(s.apiBase.Hostname())) {
 		return fmt.Errorf("selfupdate: refusing redirect to a non-https location")
 	}
 	if !sameOrigin(req.URL, s.apiBase) {
@@ -218,7 +256,9 @@ func (s *GitHubSource) Latest(ctx context.Context) (Release, error) {
 
 // ByTag implements ReleaseSource.
 func (s *GitHubSource) ByTag(ctx context.Context, tag string) (Release, error) {
-	if tag == "" || strings.ContainsAny(tag, `/\:`) || strings.IndexFunc(tag, unicode.IsControl) >= 0 {
+	// "." and ".." are refused as owner and repository dot names are: a
+	// normalising proxy would resolve them to another path (0010-MADR A11).
+	if tag == "" || tag == "." || tag == ".." || strings.ContainsAny(tag, `/\:`) || strings.IndexFunc(tag, unicode.IsControl) >= 0 {
 		return Release{}, fmt.Errorf("selfupdate: invalid release tag %q", tag)
 	}
 	rel, err := s.getRelease(ctx, s.apiURL("repos", s.repo.Owner, s.repo.Name, "releases", "tags", tag))
@@ -535,11 +575,12 @@ func (s *GitHubSource) newRequest(ctx context.Context, method, rawURL, accept st
 }
 
 // send issues one GET with the source's credential attached when the URL
-// is on the API origin. A 401 to a provider's credential asks the
-// provider once more and retries once with a different credential; this
-// happens at most once per source, so a provider that prompts is never
-// asked in a loop. The first 2xx to a credentialed request tells the
-// Observer (0004-MADR G10).
+// is on the API origin. A 401 from the API origin to a provider's
+// credential asks the provider once more and retries once with a different
+// credential; this happens at most once per run, so a provider that prompts
+// is never asked in a loop. A 401 from another origin, which never saw the
+// credential, is returned as it is (0010-MADR A6). The first 2xx to a
+// credentialed request tells the Observer (0004-MADR G10).
 func (s *GitHubSource) send(ctx context.Context, rawURL, accept string) (*http.Response, error) {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
@@ -555,7 +596,8 @@ func (s *GitHubSource) send(ctx context.Context, rawURL, accept string) (*http.R
 	if err != nil {
 		return nil, err
 	}
-	if cred != nil && resp.StatusCode == http.StatusUnauthorized {
+	if cred != nil && resp.StatusCode == http.StatusUnauthorized &&
+		resp.Request != nil && sameOrigin(resp.Request.URL, s.apiBase) {
 		if next := s.refresh(ctx, cred); next != nil {
 			drainClose(resp)
 			cred = next
@@ -575,7 +617,27 @@ func (s *GitHubSource) do(ctx context.Context, rawURL, accept string, cred *Cred
 	if err != nil {
 		return nil, err
 	}
-	return s.client.Do(req)
+	resp, err := s.client.Do(req)
+	if err != nil {
+		// A refused redirect, or a failure on the redirected hop, names the
+		// redirect URL, whose query can be a signature (0010-MADR A5).
+		var ue *url.Error
+		if errors.As(err, &ue) {
+			ue.URL = redactURL(ue.URL)
+		}
+		return nil, err
+	}
+	return resp, nil
+}
+
+// redactURL is raw without its user information, query and fragment.
+func redactURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "<unparsable URL>"
+	}
+	u.User, u.RawQuery, u.ForceQuery, u.Fragment, u.RawFragment = nil, "", false, "", ""
+	return u.String()
 }
 
 // drainClose discards a refused response before its retry. Nothing depends
@@ -611,66 +673,103 @@ func (s *GitHubSource) WithCredentials(p CredentialProvider) ReleaseSource {
 	return c
 }
 
-// credential resolves the source's credential once: the explicit Token,
-// else the provider, else the environment token. Nil means anonymous.
+// credential returns the source's credential, resolving it when nothing
+// usable is known: the explicit Token, else the provider, else the
+// environment token. Nil means anonymous. One resolution runs at a time,
+// with no lock held; a request that waits for it honours its own context.
 func (s *GitHubSource) credential(ctx context.Context) (*Credential, error) {
-	s.cred.mu.Lock()
-	defer s.cred.mu.Unlock()
-	if !s.cred.resolved {
-		if err := s.resolveLocked(ctx); err != nil {
+	mark := runMarkOf(ctx)
+	for {
+		s.cred.mu.Lock()
+		if s.cred.resolved && (s.cred.has || s.cred.anonRun == mark) {
+			has, c := s.cred.has, s.cred.cred
+			s.cred.mu.Unlock()
+			if !has {
+				return nil, nil
+			}
+			return &c, nil
+		}
+		if wait := s.cred.inflight; wait != nil {
+			s.cred.mu.Unlock()
+			select {
+			case <-wait:
+				continue
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
+		done := make(chan struct{})
+		s.cred.inflight = done
+		s.cred.mu.Unlock()
+
+		c, has, fromProvider, err := s.resolve(ctx)
+
+		s.cred.mu.Lock()
+		s.cred.inflight = nil
+		close(done)
+		if err == nil {
+			s.cred.resolved, s.cred.has, s.cred.cred, s.cred.fromProvider = true, has, c, fromProvider
+			s.cred.anonRun = mark
+		}
+		s.cred.mu.Unlock()
+		if err != nil {
 			return nil, err
 		}
-		s.cred.resolved = true
+		if !has {
+			return nil, nil
+		}
+		return &c, nil
 	}
-	if !s.cred.has {
-		return nil, nil
-	}
-	c := s.cred.cred
-	return &c, nil
 }
 
-func (s *GitHubSource) resolveLocked(ctx context.Context) error {
+// resolve finds the credential. It holds no lock: a provider may block on
+// the host.
+func (s *GitHubSource) resolve(ctx context.Context) (c Credential, has, fromProvider bool, err error) {
 	if s.explicit {
-		s.cred.cred, s.cred.has = Credential{Value: []byte(s.token), Source: "token"}, true
-		return nil
+		return Credential{Value: []byte(s.token), Source: "token"}, true, false, nil
 	}
 	if s.provider != nil {
-		c, err := s.provider.Credential(ctx, CredentialRequest{Origin: s.origin()})
+		pc, perr := s.provider.Credential(ctx, CredentialRequest{Origin: s.origin(), Interactive: inStream(ctx)})
 		switch {
-		case err == nil:
-			if verr := validateCredential(c); verr != nil {
-				return verr
+		case perr == nil:
+			if verr := validateCredential(pc); verr != nil {
+				return Credential{}, false, false, verr
 			}
-			s.cred.cred, s.cred.has, s.cred.fromProvider = c, true, true
-			return nil
-		case !errors.Is(err, ErrNoCredential):
-			return err
+			return pc, true, true, nil
+		case !errors.Is(perr, ErrNoCredential):
+			return Credential{}, false, false, perr
 		}
 	}
 	if s.token != "" {
-		s.cred.cred, s.cred.has = Credential{Value: []byte(s.token), Source: "env:" + s.envName}, true
+		return Credential{Value: []byte(s.token), Source: "env:" + s.envName}, true, false, nil
 	}
-	return nil
+	return Credential{}, false, false, nil
 }
 
-// refresh asks the provider once more after a 401. It returns the new
-// credential when it differs from the refused one, and nil otherwise: the
-// caller then returns the 401.
+// refresh asks the provider once more after a 401, at most once per run. It
+// returns the new credential when it differs from the refused one, and nil
+// otherwise: the caller then returns the 401. The provider runs with no
+// lock held.
 func (s *GitHubSource) refresh(ctx context.Context, refused *Credential) *Credential {
+	mark := runMarkOf(ctx)
 	s.cred.mu.Lock()
-	defer s.cred.mu.Unlock()
-	if !s.cred.fromProvider || s.cred.retried {
+	if !s.cred.fromProvider || (s.cred.retried && s.cred.retriedRun == mark) {
+		s.cred.mu.Unlock()
 		return nil
 	}
-	s.cred.retried = true
+	s.cred.retried, s.cred.retriedRun = true, mark
+	s.cred.mu.Unlock()
 	c, err := s.provider.Credential(ctx, CredentialRequest{
-		Origin: s.origin(),
-		Cause:  fmt.Errorf("selfupdate: github http %d: credential from %s refused", http.StatusUnauthorized, sanitizeText(refused.Source)),
+		Origin:      s.origin(),
+		Cause:       fmt.Errorf("selfupdate: github http %d: credential from %s refused", http.StatusUnauthorized, sanitizeText(refused.Source)),
+		Interactive: inStream(ctx),
 	})
 	if err != nil || validateCredential(c) != nil || sameCredential(c, *refused) {
 		return nil
 	}
+	s.cred.mu.Lock()
 	s.cred.cred = c
+	s.cred.mu.Unlock()
 	return &c
 }
 
