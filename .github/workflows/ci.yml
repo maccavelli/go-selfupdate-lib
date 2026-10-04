@@ -131,6 +131,13 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: ./scripts/check-release-tag_test.sh
+      # The pre-add gate's own test: a deletion still checks its package, and
+      # an unreachable vulnerability database fails
+      # (docs/decisions/0010-MADR-remediate-second-debugging-pass-findings.md D3, D4).
+      - name: Verify the pre-add gate
+        if: runner.os == 'Linux'
+        shell: bash
+        run: ./scripts/go-precheck_test.sh
       # The workflow checker parses YAML with PyYAML, which the runner image
       # does not ship; it is installed hash-pinned into a venv. Like the
       # release fixtures above it runs on Linux: its verdict depends on the

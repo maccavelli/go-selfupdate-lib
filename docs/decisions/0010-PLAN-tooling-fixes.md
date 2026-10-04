@@ -255,3 +255,41 @@ starts. The records are committed alone.
   ```
 
 * **Checks:** shellcheck rc 0; every `scripts/*_test.sh` rc 0.
+
+### Phase T3: the pre-add check, D3 and D4 (2026-10-03)
+
+* **Test first.** The new `scripts/go-precheck_test.sh` has seven cases. It
+  stubs `go`, `gofmt`, `golangci-lint` and `govulncheck` on `PATH`, in a
+  throwaway repository. Against the unfixed script:
+
+  ```text
+    FAIL deleted file: rc=0 out=[go-precheck: no Go files to check.] calls=[]
+    FAIL deleted package: rc=0 out=[go-precheck: no Go files to check.] calls=[]
+    ok   an existing file is formatted, vetted and tested
+    ok   non-Go arguments alone: nothing to check
+    FAIL unreachable database: rc=0 out=[govulncheck: could not reach the vulnerability database; skipped. …]
+    FAIL skip summary: rc=0 out=[… clean (gofmt, golangci-lint, go vet, go test, govulncheck).]
+    ok   a run govulncheck is named in the summary
+  go-precheck_test: 3 passed, 4 failed
+  ```
+
+* **Fix D3.** Every Go argument names its package directory, whether or not
+  the file still exists. `gofmt` runs only over the files that exist. A
+  directory with no Go file left widens `go vet` and `go test` to `./...`.
+* **Fix D4.** An unreachable vulnerability database fails with exit 2, and
+  names `GO_PRECHECK_SKIP_VULN=1`. The summary lists only the checks that
+  ran.
+* **After the fix.** On the fixed script, `go-precheck_test: 7 passed, 0
+  failed`. On `HEAD`'s script, given as `SCRIPT`: `3 passed, 4 failed`.
+* **For real, with the real tools:**
+  * a full run reports `113 file(s) clean (gofmt, golangci-lint, go vet, go
+    test, govulncheck).`;
+  * D3's reproduction, a scratch clone with `selfupdate/version.go`
+    deleted, now exits 1 with `undefined: validateProduct`.
+* **CI.** ci.yml runs the new test on Linux, beside the other script tests.
+* **Checks:**
+  * shellcheck on both scripts, after rewriting three `A && B || C` lines in
+    the test as an `rc0` helper (SC2015);
+  * actionlint v1.7.12;
+  * `check-workflows.sh`;
+  * every `scripts/*_test.sh`.
