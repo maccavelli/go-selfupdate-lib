@@ -534,3 +534,43 @@ lands in a commit after `v1.6.0`. The docs step also corrects the
   * fuzz, vuln, tidy;
   * every script test;
   * cross vet.
+
+### Phase S5: the zero-value reply types, Q5 (C9) (2026-10-04)
+
+* **Tests first.** `reply_zero_test.go` uses only the `v1.5.1` API.
+  Against the unfixed code:
+
+  ```text
+  TestZeroValueRepliesReturn  ConfirmNeeded.Answer / ConfirmNeeded.Cancel / CredentialNeeded.Supply /
+                              CredentialNeeded.Cancel / a second reply: … on a zero value blocked
+                              goroutines: 7 now, 2 when the test began
+  ```
+
+  `TestRealRepliesDeliver` guards the real path: a request made as the
+  Stream makes it gets its first reply, and only that one. It passes on
+  both trees. A plant that dropped every reply made it fail.
+* **The bound.** Step 2 says the zero values return within 10 ms. The test
+  allows 1 s instead, because a 10 ms wall-clock bound under `-race` on a
+  CI host would flake. A send on a nil channel never returns, so 1 s
+  catches it just as well. The leak check confirms that no goroutine is
+  left.
+* **Mistake in my own test.** The first `TestRealRepliesDeliver` read the
+  reply with a bare `<-c.reply`. Under the plant it blocked until `go
+  test`'s 10-minute timeout, at `reply_zero_test.go:48`, instead of failing.
+  It now reads with `queued`, which fails at once when no reply was sent,
+  because each reply is sent before `Answer`, `Supply` or `Cancel` returns.
+  The plant then failed in 0 s: `no reply was sent`.
+* **The fix.** The four reply methods send through `trySend`, a `select`
+  with a `default`. A reply channel that a run made has one slot, and
+  `sync.Once` allows one send, so a real reply always lands. A zero
+  value's nil channel takes nothing. The godoc says so.
+* **Docs.** The reply methods' godoc, and the extending guide's Stream
+  section.
+* **Checks** (`gate.sh`, every one rc 0):
+  * `make lint`, 0 issues;
+  * race and shuffle;
+  * `make apicheck`: `compatible with v1.5.1`;
+  * fuzz, vuln, tidy;
+  * every script test;
+  * cross vet;
+  * markdownlint on the guide.

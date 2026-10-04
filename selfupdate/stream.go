@@ -53,18 +53,30 @@ type ConfirmNeeded struct {
 
 func (*ConfirmNeeded) interaction() {}
 
-// Answer approves (true) or declines (false) the operation.
+// Answer approves (true) or declines (false) the operation. On a zero
+// ConfirmNeeded, which no run is waiting on, it returns at once and does
+// nothing.
 func (c *ConfirmNeeded) Answer(ok bool) {
-	c.once.Do(func() { c.reply <- confirmReply{ok: ok} })
+	c.once.Do(func() { trySend(c.reply, confirmReply{ok: ok}) })
 }
 
 // Cancel fails the confirmation with err, or with context.Canceled when err
-// is nil.
+// is nil. On a zero ConfirmNeeded it returns at once and does nothing.
 func (c *ConfirmNeeded) Cancel(err error) {
 	if err == nil {
 		err = context.Canceled
 	}
-	c.once.Do(func() { c.reply <- confirmReply{err: err} })
+	c.once.Do(func() { trySend(c.reply, confirmReply{err: err}) })
+}
+
+// trySend sends v unless ch cannot take it. A reply channel a run made has
+// one free slot for the one reply sync.Once allows, so the send always
+// happens; a zero value's nil channel takes nothing (0010-MADR Q5).
+func trySend[T any](ch chan T, v T) {
+	select {
+	case ch <- v:
+	default:
+	}
 }
 
 type credentialReply struct {
@@ -88,19 +100,22 @@ type CredentialNeeded struct {
 func (*CredentialNeeded) interaction() {}
 
 // Supply answers with cred. Its Value is copied, so the host may clear its
-// own buffer afterwards. The source still validates the credential.
+// own buffer afterwards. The source still validates the credential. On a
+// zero CredentialNeeded, which no run is waiting on, it returns at once and
+// does nothing.
 func (c *CredentialNeeded) Supply(cred Credential) {
 	cred.Value = bytes.Clone(cred.Value)
-	c.once.Do(func() { c.reply <- credentialReply{cred: cred} })
+	c.once.Do(func() { trySend(c.reply, credentialReply{cred: cred}) })
 }
 
 // Cancel answers with err, or with ErrNoCredential when err is nil, so a
-// chain moves on to its next provider or the request goes anonymous.
+// chain moves on to its next provider or the request goes anonymous. On a
+// zero CredentialNeeded it returns at once and does nothing.
 func (c *CredentialNeeded) Cancel(err error) {
 	if err == nil {
 		err = ErrNoCredential
 	}
-	c.once.Do(func() { c.reply <- credentialReply{err: err} })
+	c.once.Do(func() { trySend(c.reply, credentialReply{err: err}) })
 }
 
 // Stream drives one run from an event loop. Start begins the run; the host

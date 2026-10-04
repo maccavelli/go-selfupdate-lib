@@ -160,7 +160,10 @@ event loop pulls from with `Next(ctx)` or `All(ctx)`.
 
 `Stream.Cancel` cancels the run and still delivers `Finished`, so ctrl+c
 can wait for the real outcome. The host must answer every request or call
-`Cancel`; an unanswered request keeps the run waiting.
+`Cancel`; an unanswered request keeps the run waiting. Since `v1.6.0` a
+zero `ConfirmNeeded` or `CredentialNeeded`, such as one a UI test builds,
+can be answered safely: no run waits on it, so the call returns at once
+and does nothing.
 
 In Bubble Tea, `Next` is the "wait for activity" command: a `tea.Cmd`
 that calls `s.Next(ctx)` and returns the interaction as a message, then is
