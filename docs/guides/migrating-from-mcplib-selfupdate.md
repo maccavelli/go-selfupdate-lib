@@ -75,7 +75,7 @@ In the job that publishes your release, change the `uses:` line and delete
 
 ```diff
 -    uses: maccavelli/mcplib/.github/workflows/publish-selfupdate-release.yml@<mcplib SHA> # mcplib v1.x.y
-+    uses: maccavelli/go-selfupdate-lib/.github/workflows/publish-selfupdate-release.yml@c7a8b4ca8045bdb26b0908206b775192358c8253 # v1.5.1
++    uses: maccavelli/go-selfupdate-lib/.github/workflows/publish-selfupdate-release.yml@b1f1caa01013d8ecbbc0a17639a55e21fcdf0763 # v1.6.0
      with:
        artifact-name: …
        products-json: …
@@ -87,10 +87,11 @@ In the job that publishes your release, change the `uses:` line and delete
 - **Pin the full commit SHA of a release tag, never the tag name.** The
   workflow is unchanged from `v1.3.0` to `v1.5.0`. `v1.5.1` refuses an
   empty binary, keeps a backport from becoming the latest release, and
-  accepts only ASCII digits in a tag; the example pins `v1.5.1`.
+  accepts only ASCII digits in a tag. `v1.6.0` changes nothing in it; the
+  example pins `v1.6.0`.
   Tags are annotated, so the tag ref names a tag object, not the commit
   `uses:` needs. Resolve the commit with the peeled ref:
-  `git ls-remote https://github.com/maccavelli/go-selfupdate-lib 'refs/tags/v1.5.1^{}'`.
+  `git ls-remote https://github.com/maccavelli/go-selfupdate-lib 'refs/tags/v1.6.0^{}'`.
 - **`bridge-release` must go,** even when it is `false`. The workflow no
   longer declares it, and GitHub rejects an input the called workflow does
   not define. It only ever permitted `magic-cli-remote` `v0.16.0`, which is

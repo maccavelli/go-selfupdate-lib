@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 date: 2026-10-03
 associated-madr: "0010-MADR-remediate-second-debugging-pass-findings.md"
 ---
@@ -783,3 +783,59 @@ consumer may notice, by finding:
 `Result`, `Finished`, `ResultDocument` and `RecordedRequest` stay
 comparable. The new list fields use string types whose JSON form is an
 array (amendments A4 and A5).
+
+### Phase S8: push, tag, pin and checks (2026-10-04)
+
+* **Push.** At the owner's ask, the agent pushed `main` to `b1f1caa`. CI was
+  green on ubuntu-24.04, macos-15 and windows-2025. The Linux "ownership as
+  root" step ran `TestStagingTakesOwnerAsRoot` under `sudo`, and it passed:
+  `--- PASS: TestStagingTakesOwnerAsRoot`. That is the root path's first
+  run, which S6 left to CI.
+* **Tag.** The owner tagged and pushed `v1.6.0`, annotated, with message
+  `v1.6.0`. `git ls-remote origin 'refs/tags/v1.6.0^{}'` gives `b1f1caa`,
+  and `scripts/check-release-tag.sh v1.6.0` exits 0.
+* **Step 3, after the tag** (as amended).
+  * `README.md` and the migration guide pin
+    `publish-selfupdate-release.yml@b1f1caa01013d8ecbbc0a17639a55e21fcdf0763 # v1.6.0`.
+  * Nothing under `.github/workflows/publish-selfupdate-release.yml` or
+    `scripts/` changed between `v1.5.1` and `v1.6.0`. The guide says so, and
+    its `ls-remote` example resolves `v1.6.0`.
+  * `architecture.md` gives the tag's commit.
+* **Step 5.**
+  * **CI on the tag:** green on all three runners.
+  * **The proxy:** `go list -m …@latest` against `proxy.golang.org` gives
+    `v1.6.0`.
+  * **A scratch consumer** builds on `v1.6.0`, lint-free under `go vet`, and
+    uses the new API:
+    * an `EnabledLifecycle`;
+    * `TargetPolicy.AllowSpecialModeBits`;
+    * `NewWarnings`, `Warnings.List`, `CheckLatestOlder` and `EventWarning`;
+    * `Result.ServiceStarted`;
+    * `Result` compared with `==`.
+
+    Its document prints `"schema_version":2`, `"service_started":true` and
+    `"warnings":["unlock failed"]`. Through `cli.Command`: `--check` exits
+    10, `--check --json` exits 10 with one result object, and `--yes`
+    applies with exit 0. The linux and windows cross builds pass.
+
+    My first draft called `Result.WithWarnings`, from the accessor design
+    that D2 replaced, which `v1.6.0` does not have. It was taken out
+    before the first build.
+  * **prepare-commit-msg**, on a scratch clone: `go get …@v1.6.0` changes
+    only `go.mod` and `go.sum`, and `make verify` passes, with total
+    coverage 84.1 % and no vulnerabilities. Its non-test code uses none of
+    the changed behaviour. Moving it is a prepare-commit-msg record.
+
+**Verification.**
+* V1: each phase's tests failed on the unfixed code, or, for S7's new
+  fixture API, plants showed they can fail. All of it is recorded per
+  phase.
+* V2: `make apicheck` reported `compatible with v1.5.1` at every phase.
+  Deviations D2 and D3 kept it so.
+* V3: the v1.5.1 PLAN's checks ran at every phase. The Windows test host
+  passed S2, S4 and S6, and S1 to S8 ran in CI's Windows job.
+* V4: CI is green on `main` and on `v1.6.0`.
+* V5: the release notes and "6. From v1.5 to v1.6" name every changed
+  behaviour.
+
+This PLAN is `complete`.
