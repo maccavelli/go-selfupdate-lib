@@ -53,6 +53,12 @@ tag 1 1 v1.2.3-rc.1.2
 tag 1 1 v1.2.3-rc.x
 tag 1 1 v1.2.3-pre-view.1
 tag 1 1 ""
+# Non-ASCII digits: Go's \d is ASCII, so the client refuses these
+# (0010-MADR D1): U+0661 and U+0663 ARABIC-INDIC DIGIT ONE and THREE, and
+# U+FF11 FULLWIDTH DIGIT ONE.
+tag 1 1 "v1.0.1١"
+tag 1 1 "v1.0.0-rc.1٣"
+tag 1 1 "v１.0.0"
 nl='
 '
 # A trailing newline is part of no tag (0004-MADR R6).

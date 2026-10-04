@@ -27,10 +27,11 @@ import json, re, sys
 tag, channels_raw = sys.argv[1:3]
 
 # fullmatch throughout: Python's "$" also matches before a final newline
-# (0004-MADR R6).
-core_re = re.compile(r"v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)")
+# (0004-MADR R6). [0-9], not \d: Python's \d matches any Unicode digit,
+# Go's only ASCII (0010-MADR D1).
+core_re = re.compile(r"v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)")
 name_re = re.compile(r"[a-z][a-z0-9]{0,15}")
-num_re = re.compile(r"0|[1-9]\d*")
+num_re = re.compile(r"0|[1-9][0-9]*")
 
 
 def usage(msg):

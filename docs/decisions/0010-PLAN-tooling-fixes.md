@@ -206,3 +206,26 @@ The owner approved the three PLANs ("plans are approved. proceed and you
 have explicit permissions to commit"). The MADR is `accepted`, this PLAN is
 `in-progress`, and the v1.5.1 and v1.6.0 PLANs stay `proposed` until each
 starts. The records are committed alone.
+
+### Phase T1: the tag gate, D1 (2026-10-03)
+
+* **Test first.** `check-release-tag_test.sh` gains three cases:
+  `v1.0.1` + U+0661, `v1.0.0-rc.1` + U+0663, and `v` + U+FF11 + `.0.0`. Each
+  must be refused on both channel lists. Against the old gate:
+
+  ```text
+    FAIL [v1.0.1١] on ["rc","beta","alpha"]: want exit 1, got 0
+    FAIL [v1.0.1١] stable only: want exit 1, got 0
+    FAIL [v1.0.0-rc.1٣] on ["rc","beta","alpha"]: want exit 1, got 0
+  check-release-tag_test: 54 passed, 3 failed
+  ```
+
+  The full-width case was already refused, because `[1-9]` leads the
+  number. It stays as a guard.
+* **Fix.** `core_re` and `num_re` use `[0-9]`, with a comment that cites D1.
+  After the fix: `check-release-tag_test: 57 passed, 0 failed`.
+* **The mirror.** On a scratch copy, a probe test ran all 21 tags of the
+  test file through `NewSemverPolicy` (`AllowPrerelease`, channels
+  `rc,beta,alpha`) and `NewStrictVersionPolicy`. It compared them with the
+  gate's answers: `21 tags agree`.
+* **Checks:** shellcheck rc 0; every `scripts/*_test.sh` rc 0.
