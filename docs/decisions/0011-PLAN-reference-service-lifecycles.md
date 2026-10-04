@@ -338,6 +338,9 @@ In addition:
    * `Inside`: the service's process ID is the caller's or an ancestor's,
      from a `CreateToolhelp32Snapshot` walk.
    * `Detach`: `DetachProcess`.
+   *(Deviation D5, 2026-10-04: `Detach` is two hops, through
+   `service.HandOffHop`, and the walk checks creation times; MADR
+   amendment A4.)*
 8. **Tests:**
    * Fake-handle tables on every OS:
      * each state;
@@ -721,6 +724,124 @@ In addition:
   `SELFUPDATE_REQUIRE_LAUNCHD=1`. `check-workflows.sh` passes; actionlint
   is not installed on the development Mac and runs in CI.
 * **Windows test host:** `go test -race -count=1 ./...` rc 0 for all seven
+  packages.
+* **Checks** (`gate.sh`, every one rc 0):
+  * `make lint`, 0 issues;
+  * race and shuffle;
+  * `make apicheck`: `compatible with v1.6.0`;
+  * fuzz, vuln, tidy (`go.mod` unchanged);
+  * every script test;
+  * cross vet.
+
+### Deviation D5 (2026-10-04): the SCM handoff detaches in two hops
+
+* **Found,** before any V4 code. Step 7 has `Inside` walk the caller's
+  ancestors and `Detach` call `DetachProcess`. `CreateProcess` records the
+  creator as the child's parent. A probe on the Windows test host, in a
+  scratch copy: `creator pid 61816; detached process 61020; child sees
+  parent: 61816 true`. In a handoff the creator is a process the service
+  started, and the service is still running when the detached run calls
+  `Stop`, so the run's own walk reaches the service and the backstop
+  refuses with `ErrInsideService`: the update would never apply.
+* **Decision.** The owner chose "Two-hop detach". MADR amendment A4
+  records it. `scm.Detach` starts a hop, a run of the same command marked
+  by `SELFUPDATE_HANDOFF_HOP`; `service.HandOffHop`, which `ReportFunc`
+  and `LoadHandOffEnv` call first, starts the real run detached and exits.
+  The real run's recorded parent has exited, so the walk stops there. The
+  walk also compares creation times, so a reused process ID is never taken
+  for an ancestor. `DetachProcess` is unchanged. V4 adds `EnvHandOffHop`
+  and `HandOffHop` to `selfupdate/service`.
+
+### Phase V4: `selfupdate/service/scm` (2026-10-04)
+
+* **Built,** as steps 1 to 7 specify, with deviation D5:
+  * `New`, `Options` (`Name`, `Probe`, `Poll`, `RewritePath`,
+    `StopDependents`, `TriggerStartEnabled`) and `PathBackup`, the
+    rewrite's receipt;
+  * an unexported interface over the SCM and the process table; the real
+    one connects with `SC_MANAGER_CONNECT` alone, opens each service with
+    its call's rights, and wraps the handles in `mgr.Mgr` and
+    `mgr.Service`;
+  * the probes, `Stop`, `Start`, `WaitHealthy`, `Reconcile`, `Restore`,
+    `Inside` and `Detach`;
+  * in `selfupdate/service`: `EnvHandOffHop` and `HandOffHop`, which
+    `LoadHandOffEnv`, and so `ReportFunc`, call first.
+* **Within the MADR's §7 and amendment A4:**
+  * Every open adds `SERVICE_QUERY_STATUS`, which the driver check reads,
+    so `Enabled` opens with `SERVICE_QUERY_CONFIG | SERVICE_QUERY_STATUS`.
+    The default service ACL grants both to authenticated users.
+  * The status is read with `QueryServiceStatusEx`: `mgr.Service.Query`
+    leaves out the checkpoint and wait hint the polling loop needs.
+  * The stall rule uses the wait hint, at least 10 s. A service built on
+    `x/sys/windows/svc` reports its pending states with a zero hint and
+    checkpoint unless it sets them, and Microsoft's loop would call it hung
+    after 1 s.
+  * A service that cannot take the stop yet,
+    `ERROR_SERVICE_CANNOT_ACCEPT_CTRL`, is waited out and asked once more;
+    one that still refuses is an error.
+  * `Reconcile` reads an unquoted command line that starts with the
+    executable as the SCM does, not split at the path's first space.
+  * `Inside` needs `Options.Name`, as the systemd backend's needs
+    `Options.Unit`.
+  * A hop that cannot write its failure exits 2, not 1.
+  * `PathBackup` has exported fields and no JSON tags, like `DropIn` and
+    `PlistBackup`.
+* **Live, on the Windows test host** (elevated), with
+  `SELFUPDATE_REQUIRE_SCM=1`: a throwaway service, `selfupdate-livetest`,
+  running a copy of the test binary from a directory whose name has a
+  space. It puts itself in a job object that kills its processes when it
+  exits and allows breakaway, as an agent's host may. All three pass, and
+  the service is deleted afterwards:
+  * `TestLiveManagedUpdate`: the probes, a no-op `Reconcile`, the update,
+    a new process ID;
+  * `TestLiveHealthFailureRollsBack`: the new binary is not a service
+    program; the SCM's start fails with `ERROR_SERVICE_REQUEST_TIMEOUT`
+    (1053) within seconds, and the old binary comes back;
+  * `TestLiveHandOff`: a process the service started runs the update.
+    `Stop` is refused with `ErrInsideService`; the update hands off
+    through the hop; the agent dies with the service's job; the service
+    restarts on the handed-off build; the result file reports exit 0,
+    applied and started; a value with `"`, `%`, `\`, a backquote and a
+    newline comes through unchanged.
+* **The hop,** on each OS: the real run's recorded parent is the exited
+  hop on Windows, and its adopter on Unix (`TestHandOffHopProcess`).
+* **Plants,** in scratch copies, each caught:
+  * on the development Mac: no creation-time check (`TestInside`);
+    `Detach` without the hop (`TestDetach`); the backstop removed; no
+    stall floor; no wait-hint clamp; `Running` as `RUNNING` only; trigger
+    starts always enabled; `Stop` opening with all access
+    (`TestOpenRights`); a rewrite left unquoted; an unquoted path split at
+    a space; running dependents ignored; the previous process ID not
+    kept; `ERROR_SERVICE_CANNOT_ACCEPT_CTRL` as an error; a driver
+    accepted; the hop keeping its marker; `LoadHandOffEnv` skipping the
+    hop (`TestHandOffHopProcess`);
+  * on the Windows test host: the real `ComposeCommandLine` dropped
+    (`TestReconcileRealCommandLine`); and, **live,** `Detach` without the
+    hop, where the run's own `Stop` was refused (deviation D5's finding),
+    and `Inside` without the walk, where the agent stopped its own
+    service: both fail `TestLiveHandOff`.
+* **Mistakes, mine, caught by the tests, the hosts and the linter:**
+  * The fake SCM first advanced its scripted states on every status read,
+    so the driver check and `Inside` consumed them. They now advance with
+    virtual time, as a service's do.
+  * `stopHandle` first retried a refused stop by recursion, with no bound.
+  * The first hop process test read the run's parent before Unix had
+    reparented it; the race detector's slowdown showed it. The run now
+    reads it once the test has reaped the hop.
+  * One `Reconcile` case relied on Windows path cleaning; it is in
+    `compose_windows_test.go`.
+  * A stray `var _ = errors.New` in `handoffhop.go`, removed before any
+    run.
+  * Lint: `errcheck` with `check-blank` on deferred closes, now joined into
+    named error returns as elsewhere in the module; audited `unsafe`; a
+    signed length comparison.
+* **Earlier backends,** after `LoadHandOffEnv` gained the hop check: the
+  systemd live tests pass in both scopes on the systemd 259 host, and the
+  launchd live tests on the development Mac.
+* **CI:** a Windows step runs the live tests with
+  `SELFUPDATE_REQUIRE_SCM=1`. The V3 push's CI run passed, its macOS
+  launchd live step running all five tests. `check-workflows.sh` passes.
+* **Windows test host:** `go test -race -count=1 ./...` rc 0 for all eight
   packages.
 * **Checks** (`gate.sh`, every one rc 0):
   * `make lint`, 0 issues;

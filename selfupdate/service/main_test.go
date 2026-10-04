@@ -20,6 +20,12 @@ import (
 const fakeEnv = "SELFUPDATE_SERVICE_FAKE"
 
 func TestMain(m *testing.M) {
+	// First, as a program does: in a hop it starts the real run and exits
+	// (LoadHandOffEnv calls HandOffHop).
+	if err := LoadHandOffEnv(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(5)
+	}
 	if mode := os.Getenv(fakeEnv); mode != "" {
 		os.Exit(fakeTool(mode))
 	}
@@ -49,6 +55,17 @@ func fakeTool(mode string) int {
 		return 0
 	case "env":
 		fmt.Print(strings.Join(os.Environ(), "\n"))
+		return 0
+	case "hoprun":
+		// The real run after a hop: once the test has reaped the hop
+		// (FAKE_GO), write "<ppid> <marker seen>" to FAKE_OUT.
+		out := os.Getenv("FAKE_OUT")
+		if !waitForFile(os.Getenv("FAKE_GO")) {
+			return 6
+		}
+		_, marked := os.LookupEnv(EnvHandOffHop)
+		_ = os.WriteFile(out+".tmp", []byte(strconv.Itoa(os.Getppid())+" "+strconv.FormatBool(marked)), 0o600)
+		_ = os.Rename(out+".tmp", out)
 		return 0
 	case "parent":
 		return fakeParent()

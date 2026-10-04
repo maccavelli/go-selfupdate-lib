@@ -70,6 +70,14 @@ jobs:
         env:
           SELFUPDATE_REQUIRE_LAUNCHD: "1"
         run: go test -count=1 -v -run '^TestLive' ./selfupdate/service/launchd
+      # The SCM live test: a throwaway service the test creates and deletes,
+      # which needs the runner's administrator session
+      # (docs/decisions/0011-PLAN-reference-service-lifecycles.md V4).
+      - name: SCM live test
+        if: runner.os == 'Windows'
+        env:
+          SELFUPDATE_REQUIRE_SCM: "1"
+        run: go test -count=1 -v -run '^TestLive' ./selfupdate/service/scm
       # The race detector needs cgo, which the Linux and macOS runners have
       # (0003-MADR D9; 0002-PLAN V3; 0004-MADR H7).
       # The manifest differential must run, not skip, where python3 is on

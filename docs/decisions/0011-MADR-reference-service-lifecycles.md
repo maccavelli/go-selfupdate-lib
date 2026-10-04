@@ -686,6 +686,42 @@ PLAN stop, deviation D2 of
     removes their plists. `Detach` calls it before starting a new one, and
     a program may call it at start-up.
 
+### A4 (2026-10-04): the SCM handoff detaches in two hops
+
+*Status: accepted (2026-10-04). The owner chose "Two-hop detach" at a
+PLAN stop, deviation D5 of
+[0011-PLAN-reference-service-lifecycles.md](0011-PLAN-reference-service-lifecycles.md).*
+
+* **Found.** §3 decides `Inside` for SCM by walking the caller's
+  ancestors; §9 detaches on Windows with `DetachProcess`. `CreateProcess`
+  records the creator as the child's parent, as a probe on the Windows
+  test host showed. The detached run descends from the process the service
+  started, the service is still running when the run calls `Stop`, and the
+  backstop refuses: the handoff could never apply an update.
+* **Decided.**
+  * `scm.Service.Detach` starts a hop: the same command, by
+    `DetachProcess`, with `SELFUPDATE_HANDOFF_HOP` set
+    (`service.EnvHandOffHop`).
+  * `service.HandOffHop()` does nothing without that variable. With it, it
+    starts the real run detached, the same executable, arguments and
+    environment without the variable, and exits 0; if the start fails, it
+    writes a `HandOffResult` with the error and exits 1, or 2 when that
+    write fails too. `ReportFunc` and
+    `LoadHandOffEnv` call it first, so a program that already calls either
+    at start-up needs no change.
+  * The real run's recorded parent is the hop, which has exited, so the
+    walk stops there. Like a Unix double fork, it also leaves the run out
+    of a tree kill that follows parent links.
+  * The walk compares creation times: a parent created after its child is
+    a reused process ID, and ends the walk. A parent whose creation time
+    cannot be read counts as genuine, so an unreadable link errs towards
+    a handoff.
+  * `DetachProcess`, and the systemd and launchd backends, are unchanged.
+* **Not chosen.** Skipping the walk in a detached run leaves the run a
+  descendant of the service, which a tree kill reaches. A one-shot
+  scheduled task depends on `schtasks.exe`, needs cleanup, and cannot be
+  created by a non-administrator for a LocalSystem service's account.
+
 ## More Information
 
 ### Probe evidence
@@ -707,6 +743,14 @@ PLAN stop, deviation D2 of
   a job launchd is still spawning shows state `xpcproxy` with its PID.
   `plutil -extract <key> json` refuses a boolean on its own, and `raw`
   prints a dictionary's keys.
+* **SCM, from the V4 live run** (2026-10-04), on the Windows test host:
+  `CreateProcess` records the creator as the child's parent, and the
+  link outlives the creator (amendment A4); a service whose binary is not
+  a service program fails its start with `ERROR_SERVICE_REQUEST_TIMEOUT`
+  (1053) within seconds. `TestLiveHandOff`,
+  `TestLiveHealthFailureRollsBack` and `TestHandOffHopProcess` pin these.
+  x/sys v0.47.0's source shows that `mgr.Service.Query` reports no
+  checkpoint or wait hint.
 * **GitHub-hosted runners:** Ubuntu runners are virtual machines with
   systemd as PID 1 and passwordless `sudo`; macOS runners have a usable
   `gui/501` domain, as public workflows show; Windows runners run as

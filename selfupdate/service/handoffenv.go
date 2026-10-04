@@ -61,7 +61,10 @@ func WriteHandOffEnv(dir, id string, vars []string) (string, error) {
 // nothing. The file must be a regular file of mode 0600 (not checked on
 // Windows), at an absolute, clean path. ReportFunc calls it; a program that
 // reads its environment before it calls ReportFunc calls it first.
+//
+// It calls HandOffHop first: in a hop it starts the real run and exits.
 func LoadHandOffEnv() error {
+	HandOffHop()
 	path := os.Getenv(EnvHandOffEnv)
 	if path == "" {
 		return nil
