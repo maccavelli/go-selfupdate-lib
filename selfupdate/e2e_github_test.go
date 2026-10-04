@@ -21,9 +21,12 @@ func releaseBody(tag string) func(selfupdate.Platform) []byte {
 }
 
 // tempTarget writes an old binary in a temporary directory the target
-// policy allows. It is a plain file, not the running binary.
+// policy allows. It is a plain file, not the running binary. The fixtures
+// are built for goldenPlatform, so it is made the running platform: an
+// apply for any other is refused (0010-MADR Q4).
 func tempTarget(t *testing.T) (string, selfupdate.TargetPolicy) {
 	t.Helper()
+	selfupdate.SetRunningPlatform(t, goldenPlatform)
 	dir, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

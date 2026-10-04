@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
@@ -333,7 +334,8 @@ func exampleUpdater() (*selfupdate.Updater, func()) {
 	if err := os.WriteFile(exe, []byte("old\n"), 0o755); err != nil {
 		panic(err)
 	}
-	plats := []selfupdate.Platform{{OS: "linux", Arch: "amd64"}}
+	// An apply must be for the running platform (Request.Platform).
+	plats := []selfupdate.Platform{{OS: runtime.GOOS, Arch: runtime.GOARCH}}
 	src := selfupdatetest.NewFakeSource("v1.1.0", selfupdatetest.NewRelease("demo", "v1.1.0", plats,
 		func(selfupdate.Platform) []byte { return []byte("demo v1.1.0\n") }))
 	selector, err := selfupdate.NewExactAssetSelector(plats)
@@ -358,32 +360,32 @@ func exampleUpdater() (*selfupdate.Updater, func()) {
 }
 
 func exampleRequest() selfupdate.Request {
-	return selfupdate.Request{
-		Product: "demo", CurrentVersion: "v1.0.0", CurrentBuild: selfupdate.ReleaseBuild,
-		Platform: selfupdate.Platform{OS: "linux", Arch: "amd64"},
-	}
+	return selfupdate.Request{Product: "demo", CurrentVersion: "v1.0.0", CurrentBuild: selfupdate.ReleaseBuild}
 }
 
-// One Updater, configured once, reports this run as text and approves it
-// without the configured confirmer.
+// One Updater, configured once, reports this run's events to a function
+// and approves it without the configured confirmer.
 func ExampleUpdater_RunWith() {
 	u, cleanup := exampleUpdater()
 	defer cleanup()
 	res, err := u.RunWith(context.Background(), exampleRequest(),
-		selfupdate.WithReporter(selfupdate.NewTextReporter(os.Stdout)),
+		selfupdate.WithReporter(selfupdate.ReporterFunc(func(_ context.Context, ev selfupdate.Event) error {
+			fmt.Println(ev.Kind)
+			return nil
+		})),
 		selfupdate.WithConfirmer(selfupdate.ConfirmerFunc(func(context.Context, selfupdate.Prompt) (bool, error) {
 			return true, nil
 		})))
 	fmt.Println(res.Applied, err)
 	// Output:
-	// selfupdate: resolving-target product=demo current=v1.0.0
-	// selfupdate: fetching-release product=demo current=v1.0.0
-	// selfupdate: selected product=demo current=v1.0.0 target=v1.1.0 asset=demo-linux-amd64
-	// selfupdate: downloading-manifest product=demo target=v1.1.0 asset=SHA256SUMS
-	// selfupdate: downloading-binary product=demo target=v1.1.0 asset=demo-linux-amd64 bytes=12
-	// selfupdate: verified product=demo target=v1.1.0 asset=demo-linux-amd64
-	// selfupdate: installing product=demo target=v1.1.0 asset=demo-linux-amd64
-	// selfupdate: complete product=demo current=v1.0.0 target=v1.1.0 asset=demo-linux-amd64 release asset integrity verified
+	// resolving-target
+	// fetching-release
+	// selected
+	// downloading-manifest
+	// downloading-binary
+	// verified
+	// installing
+	// complete
 	// true <nil>
 }
 

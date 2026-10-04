@@ -592,9 +592,15 @@ func isNil(v any) bool {
 	}
 }
 
+// runningPlatform is the platform this binary runs on. Tests replace it to
+// apply a fixture built for another platform (0010-PLAN-v1-6-0 S4).
+var runningPlatform = func() Platform {
+	return Platform{OS: runtime.GOOS, Arch: runtime.GOARCH}
+}
+
 func normalizePlatform(p Platform) Platform {
 	if p.OS == "" && p.Arch == "" {
-		return Platform{OS: runtime.GOOS, Arch: runtime.GOARCH}
+		return runningPlatform()
 	}
 	return p
 }

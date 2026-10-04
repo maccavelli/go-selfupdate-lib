@@ -484,3 +484,53 @@ lands in a commit after `v1.6.0`. The docs step also corrects the
   * markdownlint on the changed docs.
 
   The Windows host is not required for S3 (V3).
+
+### Phase S4: `Request.Platform`, Q4 (C7) (2026-10-04)
+
+* **Tests first.** `platform_apply_test.go` uses only the `v1.5.1` API.
+  It builds its own release for a real foreign platform: `linux/amd64`, or
+  `windows/amd64` on Linux. Against the unfixed code:
+
+  ```text
+  TestApplyForeignPlatformRefused  res = {… AssetName:demo-linux-amd64 Operation:upgrade … Applied:true …}
+  ```
+
+  The foreign platform's binary was installed. `TestCheckAndDryRunForeignPlatform`
+  and `TestApplyRunningPlatformNamed` guard what stays allowed, and pass on
+  both trees. A plant that removed the dry-run exemption made the first
+  fail.
+* **The rule.** `validateRequest` refuses an apply, neither `CheckOnly` nor
+  `DryRun`, whose `Platform` is set and is not the running platform. The
+  error wraps `ErrUnsupportedPlatform`. It comes before any network call:
+  the test checks that `Latest`, `ByTag`, `ResolveTarget`, `Begin` and
+  `Install` never ran. The `Request.Platform` godoc says so.
+* **The seam.** `runningPlatform` in `updater.go`, which `normalizePlatform`
+  also uses. `export_test.go` exports `SetRunningPlatform(t, p)` for the
+  external tests.
+* **Tests that applied a foreign platform.** The external tests apply
+  fixtures built for `goldenPlatform`, `linux/amd64`, on every host:
+  * `tempTarget`, which every such test calls, now makes `goldenPlatform`
+    the running platform for the test. That covers the reporter goldens,
+    the GitHub end-to-end tests, the Stream tests and the credential run
+    tests.
+  * The running-copy end-to-end tests already use the running platform,
+    and needed no change.
+  * Three examples applied a `linux/amd64` release with an explicit
+    `Platform`, which is what Q4 now refuses. An example has no
+    `*testing.T`, and it is what consumers copy. `exampleUpdater` now
+    publishes the running platform, and `exampleRequest` leaves `Platform`
+    zero, as a program does. `ExampleUpdater_RunWith` printed text
+    reporter lines that name the asset, which now depends on the host. It
+    prints each event's kind through a `ReporterFunc` instead.
+    `exampleChecker` only checks, and keeps `linux/amd64`.
+* **Docs.** Only the godoc describes `Request.Platform`. S8's "From v1.5
+  to v1.6" names the refusal.
+* **Windows test host:** `go test -race -count=1 ./...` rc 0 for all four
+  packages; `selfupdate` took 48.9 s.
+* **Checks** (`gate.sh`, every one rc 0):
+  * `make lint`, 0 issues;
+  * race and shuffle;
+  * `make apicheck`: `compatible with v1.5.1`;
+  * fuzz, vuln, tidy;
+  * every script test;
+  * cross vet.

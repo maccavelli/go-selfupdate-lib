@@ -65,6 +65,9 @@ type Request struct {
 	// Channel, the latest stable release.
 	TargetVersion string
 	// Platform selects the asset matrix entry. Zero means runtime GOOS/GOARCH.
+	// A check or a dry run may name another platform. An apply that names
+	// one other than the running platform is refused with
+	// ErrUnsupportedPlatform before any network call (0010-MADR Q4).
 	Platform Platform
 	// CheckOnly performs discovery and policy evaluation without download.
 	CheckOnly bool

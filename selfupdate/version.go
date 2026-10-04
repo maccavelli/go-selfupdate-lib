@@ -185,6 +185,15 @@ func validateRequest(req Request, versions VersionPolicy) error {
 	if req.CheckOnly && req.DryRun {
 		return fmt.Errorf("selfupdate: --check and --dry-run are contradictory")
 	}
+	// An apply replaces the running binary, so it must be built for the
+	// running platform. A check or a dry run may ask about another one
+	// (0010-MADR Q4).
+	if !req.CheckOnly && !req.DryRun && req.Platform != (Platform{}) {
+		if running := runningPlatform(); req.Platform != running {
+			return fmt.Errorf("selfupdate: cannot apply a %s/%s release on %s/%s: %w",
+				sanitizeText(req.Platform.OS), sanitizeText(req.Platform.Arch), running.OS, running.Arch, ErrUnsupportedPlatform)
+		}
+	}
 	if req.CurrentBuild == ReleaseBuild {
 		if err := versions.Validate(req.CurrentVersion); err != nil {
 			return err
