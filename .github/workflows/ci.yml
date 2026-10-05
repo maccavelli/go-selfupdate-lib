@@ -105,7 +105,9 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: fuzz-corpus
-          path: selfupdate/testdata/fuzz/
+          path: |
+            selfupdate/testdata/fuzz/
+            selfupdate/archive/testdata/fuzz/
           if-no-files-found: ignore
           retention-days: 14
       # Targets the matrix does not run: a build-tag gap fails here

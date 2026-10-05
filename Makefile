@@ -67,8 +67,11 @@ apicheck: ## Fails on an incompatible exported API change (apidiff against the n
 # -m is the number of targets, so a lost one fails the run
 # (docs/decisions/0004-PLAN-v1-4-0-command-surface.md Step 3).
 FUZZTIME ?= 20s
-fuzz: ## Fuzzes every selfupdate fuzz target for FUZZTIME each (default 20s)
+# selfupdate/archive's three targets run after selfupdate's
+# (docs/decisions/0012-PLAN-archive-assets-and-macos-codesign.md U3).
+fuzz: ## Fuzzes every selfupdate and archive fuzz target for FUZZTIME each (default 20s)
 	@./scripts/go-fuzz.sh -t $(FUZZTIME) -m 5 ./selfupdate
+	@./scripts/go-fuzz.sh -t $(FUZZTIME) -m 3 ./selfupdate/archive
 
 # The pre-add rule (AGENTS.md). scripts/go-precheck.sh is the one
 # implementation; the agent gate at `git commit` runs the same file.

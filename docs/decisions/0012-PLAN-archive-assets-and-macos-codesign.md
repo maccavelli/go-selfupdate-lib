@@ -676,3 +676,119 @@ In addition:
   * fuzz; vuln; the script tests; cross vet.
 
   `make pre-add-check` passes on the three Go files.
+
+### Phase U3: `selfupdate/archive`, extraction (2026-10-05)
+
+* **CI on U2** (run 37334879799) is green on all three runners.
+* **Built,** in `selfupdate/archive/unpack.go`:
+  * `UnpackOptions` and `NewUnpacker`;
+  * the format from the suffix, then the magic bytes;
+  * tar.gz, zip and gz extraction, each with the rules of MADR §4;
+  * the image check through `selfupdate.CheckImage`.
+* **The rules** are enforced as steps 3 to 7 say:
+  * entry names: empty, absolute, a backslash or a NUL, and anything
+    `path.Clean` leaves non-local by `filepath.IsLocal`;
+  * duplicates after cleaning, and ignoring case;
+  * link, device, FIFO and sparse entries anywhere;
+  * the entry count;
+  * the sum of declared sizes against `Limit`, and the decompressed tar
+    stream against `Limit` plus 8 MiB for headers;
+  * zip methods other than store and deflate, and data ranges outside the
+    file or overlapping;
+  * the program at depth 0 or 1, or `Member`;
+  * exactly one program, read through a cap of `Limit`+1;
+  * a gz member followed by anything.
+* **A sparse entry in PAX records** is caught by its `GNU.sparse.*` keys.
+  A probe showed that `archive/tar` returns such an entry as a regular
+  file named for the real file, and that its writer drops those keys, so
+  the fixture is hand-built. A GNU sparse header (`'S'`) is refused by the
+  reader itself ("invalid tar header"), which the unpacker reports.
+* **Deviations from the steps as written,** none of which changes a
+  decision:
+  * **Order.** `unpack.go` was written before its tests, against the
+    "tests first" rule. Each rule's test was then seen to fail on a plant
+    (below), which is the evidence that rule asks for.
+  * **The fuzz targets call the unexported `extract`,** which has no image
+    check. The test-only switch to turn the check off was not needed and
+    was removed.
+  * **`Member` does not apply to a `.gz` asset,** which has no members.
+    It is ignored there, and the doc says so.
+* **Tests:**
+  * `main_test.go` cross-builds three real executables once: this host's,
+    a linux one on another architecture, and windows/amd64. None is
+    darwin/amd64. It also holds the archive builders and the hand-built
+    sparse fixtures.
+  * `unpack_test.go`:
+    * `TestNewUnpackerRefuses`;
+    * `TestUnpackAccepts`, 7 cases: tar.gz beside other files with `./`
+      and directory entries, one directory down, `.tgz`, `Member` two
+      directories down, zip, a windows `.exe` in a zip, and gz;
+    * `TestUnpackRefuses`, 41 cases, one or more for each rule of MADR §4;
+    * `TestUnpackContextAndLimit`: a cancelled context, a zero limit, and a
+      platform with no image check.
+  * `e2e_test.go`:
+    * `TestUpdaterInstallsFromArchive`, 12 cases: tar.gz, zip and gz, in
+      fleet and GoReleaser naming, applied and dry-run, through `Updater`
+      with `selfupdatetest`'s fake source. Each checks the installed
+      bytes, `AssetName`, and both digests;
+    * `TestCommandShowsUnpacking`: through `cli.Command`, `unpacking` in
+      text and in `--json`.
+* **Fuzzing:**
+  * `FuzzUnpackTarGz`, `FuzzUnpackZip` and `FuzzUnpackGz`, seeded with
+    accepted and refused archives;
+  * `make fuzz` runs them after `selfupdate`'s (`-m 3`): "3 fuzz targets
+    ran clean in ./selfupdate/archive";
+  * CI's fuzz-corpus artifact keeps `selfupdate/archive/testdata/fuzz/`.
+* **Plants,** each in a scratch copy, all 15 caught on the final code:
+
+  | Plant | Caught by (`TestUnpackRefuses/…`) |
+  | --- | --- |
+  | the name check removed | backslash, NUL |
+  | the `IsLocal` check removed | dot-dot, dot-dot inside, zip dot-dot |
+  | the duplicate check removed | the four duplicate cases |
+  | case folding removed | differs only in case |
+  | links accepted | both links named as the program, a symlink elsewhere |
+  | PAX sparse accepted | PAX sparse |
+  | the declared size unchecked | declared over the limit, entries together over the limit |
+  | the program's size uncapped | gz bomb |
+  | the overlap check removed | overlapping entries |
+  | the zip method unchecked | unknown method |
+  | the entry count unchecked | too many entries |
+  | the depth rule widened | two directories down |
+  | the image check removed | wrong architecture, not an executable |
+  | the magic check removed | zip named tar.gz |
+  | gz trailing data accepted | data after the member, a second member |
+
+  **The first round missed one, which was dead code.** An explicit
+  check for `..` components changed nothing when removed, because
+  `path.Clean` folds every `..` it can and `IsLocal` refuses the rest. The
+  loop is gone, and the `IsLocal` plant shows the `..` cases depend on
+  `IsLocal`.
+* **Fixed on the way:**
+  * **The Windows test host failed eight cases.** My fixtures named the
+    program `relay`, where on windows it is `relay.exe`, so four refusal
+    cases failed for the wrong reason ("holds no program"). The tests now
+    name the program for the host. The end-to-end tests already did.
+  * **Lint:**
+    * `ReadAt`'s error is checked;
+    * a parameter named `max` is renamed;
+    * the test helper `newUnpacker` is `mustUnpacker`, beside
+      `NewUnpacker`;
+    * the end-to-end test's body is a helper, for gocognit;
+    * gosec G115 flagged four integer conversions in the zip checks. They
+      are gone: one bounds-checked `uint64` to `int64` conversion, and
+      every comparison in `int64`.
+
+    The plants above were rerun after these changes.
+* **Not tested:** a tar entry that holds fewer bytes than it declares.
+  `archive/tar` reports such an entry as an unexpected EOF, which reaches
+  the unpacker as a read error and a refusal. The check that the program
+  holds what it declares is defence beyond that.
+* **The Windows test host:** `go test ./selfupdate/archive/ ./selfupdate/`
+  passes.
+* **Checks** (`gate.sh`, every one rc 0):
+  * gofmt; `make lint`, 0 issues; vet; race and shuffle;
+  * tidy; `make apicheck`: `compatible with v1.7.0`;
+  * `make fuzz`, both packages; vuln; the script tests; cross vet.
+
+  `make pre-add-check` passes on the five Go files.
