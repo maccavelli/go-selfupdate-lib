@@ -904,3 +904,87 @@ In addition:
   * fuzz; vuln; the script tests; cross vet.
 
   `make pre-add-check` passes on the five Go files.
+
+### Phase U5: docs, examples and release notes (2026-10-05)
+
+* **`docs/guides/extending-selfupdate.md`:**
+  * a new "Ship an archive" section: both halves, the names (GoReleaser's
+    with `Format` set to tar.gz everywhere, and other schemes as a `Name`),
+    the program, what is checked, and why this repository's workflow
+    cannot publish one;
+  * a new "Sign on macOS" section: opt-in, `Identifier` required and why,
+    certificate signing's needs, `Runtime` and `Timestamp`, the checker and
+    a requirement started from `codesign -d -r-`, and the order;
+  * "Verify a signature later", "Probe the new binary" and "Rehearse
+    without installing" place the extract stage;
+  * the opening's list of what the guide covers.
+* **`docs/architecture.md`:** the tree; the `archive` and `codesign` rows
+  of the Go code table; and what each package holds.
+  * **The table was stale before this phase.** Since `v1.7.0` and the D7
+    fix of
+    [0011-PLAN-reference-service-lifecycles.md](0011-PLAN-reference-service-lifecycles.md),
+    `selfupdate` had 41 non-test and 75 test files and 14 golden files,
+    against the 39, 57 and 12 it listed. `service` had 16 and 13 against 12
+    and 10, and its three backends each one test file more.
+  * Every row now gives the count in the tree.
+* **Index rows:** `README.md` has rows for both packages, and
+  `docs/README.md` has "I want to…" rows for archives and for signing.
+* **The migration guide** has a new "8. From v1.7 to v1.8": what is new,
+  how to adopt it, and magic-cli-remote's `codesignTransformer` named as
+  the thing `NewSigner` replaces. The other version references move to
+  `v1.8.0` in U6's pin commit.
+* **Examples:**
+  * with output: `archive.ExampleNewSelector`, which selects a
+    GoReleaser-named release, and `selfupdate.ExampleChainTransformers`;
+  * compiled only, since they would run a tool or need a release:
+    `archive.ExampleNewUnpacker`, `codesign.ExampleNewSigner` and
+    `codesign.ExampleNewChecker`. The codesign examples build only when
+    `runtime.GOOS` is `"darwin"`.
+  * Plants, each caught by its example's output: GoReleaser's name changed,
+    and the chain run in reverse.
+* **Checks:**
+  * markdownlint on the five documents, and on this record;
+  * the link and anchor check, 115 links;
+  * the identifier scan;
+  * `gate.sh`, every one rc 0;
+  * `make pre-add-check` on the three example files.
+
+### Release notes for `v1.8.0` (2026-10-05)
+
+Additions only: `make apicheck` reports `compatible with v1.7.0`, and
+`go.mod` is unchanged. Nothing changes for a program that configures none
+of the new pieces: no default runs an unpacker, `codesign`, or a signature
+check.
+
+* **`selfupdate`,** for archives and composed transforms:
+  * `Config.Unpacker`, `Unpacker`, `UnpackerFunc` and `UnpackRequest`: an
+    extract stage, after the `Verifiers` and before the transform, for a
+    selection the selector marks `Selection.Packed`. `SHA256SUMS`, the
+    GitHub digest and the `Verifiers` keep checking the asset as
+    published. The program then gets the session's staging, limits and
+    crash cleanup;
+  * `EventUnpacking`, named `unpacking`, appended after `EventWarning`;
+  * `CheckImage`, the executable image check, on any `io.ReaderAt`;
+  * `ChainTransformers`.
+* **The stage refuses a misconfiguration early:** an archive with no
+  unpacker, or an unpacker with a raw binary, fails before any download, on
+  `--check` too. `New` refuses an `Unpacker` beside `NewExactAssetSelector`
+  or `NewImageVerifier`.
+* **`selfupdate/archive`:**
+  * `NewSelector`, with `Format` (`TarGz`, `Zip`, `Gz`) and the naming
+    helpers `FleetName`, `GoReleaserName` and `GoReleaserChecksums`;
+  * `NewUnpacker`. It refuses an archive two tools could read differently
+    or that exceeds the limits, and checks that the program is an
+    executable for the platform. Its refusals are `ErrIntegrity`.
+* **`selfupdate/codesign`,** opt-in, for a publisher who signs macOS
+  binaries:
+  * `NewSigner` re-signs the staged binary with a configured identity and
+    identifier, then verifies it;
+  * `NewChecker` requires a valid signature, and a code requirement when
+    given.
+
+  Both run `/usr/bin/codesign` through `service.Runner`, and return
+  `service.ErrUnsupported` off macOS. Ad-hoc signing and the checks are
+  live-tested in CI on macOS 15. Signing with a certificate identity has a
+  live test for a Mac that has one, and is not yet verified.
+* **CI and `make fuzz`** run the archive package's three fuzz targets.

@@ -32,6 +32,8 @@ go get github.com/maccavelli/go-selfupdate-lib@v1.7.0
 | [`selfupdate/cli`](selfupdate/cli/) | the canonical `update` command: flags, stdout for protocol output only, exit codes 0, 10 and 1 |
 | [`buildinfo`](buildinfo/) | the build stamps that say whether a binary is a release |
 | [`selfupdate/selfupdatetest`](selfupdate/selfupdatetest/) | test doubles: release fixtures, a fake source, a fake GitHub API |
+| [`selfupdate/archive`](selfupdate/archive/) | updating from a release asset that is a tar.gz, zip or gz holding the program |
+| [`selfupdate/codesign`](selfupdate/codesign/) | opt-in macOS re-signing of the staged binary, and signature checks, with `/usr/bin/codesign` |
 | [`selfupdate/service`](selfupdate/service/) | what the service lifecycles share: health polling, typed errors, and the handoff of an update started inside the service |
 | [`selfupdate/service/systemd`](selfupdate/service/systemd/), [`launchd`](selfupdate/service/launchd/), [`scm`](selfupdate/service/scm/) | the managed-update lifecycle for a systemd unit, a launchd job and a Windows service |
 

@@ -54,6 +54,9 @@ buildinfo/                  the library-owned build stamps
 selfupdate/                 the self-update package
   cli/                      the canonical update command
   selfupdatetest/           its exported test doubles
+  archive/                  tar.gz, zip and gz release assets: selection
+                            and extraction
+  codesign/                 opt-in macOS re-signing and signature checks
   service/                  what the reference service lifecycles share,
                             and the handoff
     systemd/                the systemd lifecycle, and sd_notify
@@ -72,13 +75,15 @@ docs/
 | Directory | Package | Non-test files | Test files | Non-standard imports |
 | :--- | :--- | :--- | :--- | :--- |
 | `buildinfo/` | `buildinfo` | 1 | 2 | none |
-| `selfupdate/` | `selfupdate` | 39 | 57, including five fuzz targets, plus `testdata/SHA256SUMS.{valid,invalid}`, 23 `testdata/manifest-parity/` cases and 12 `testdata/golden/` files | `x/mod/semver`, `x/sys/unix`, `x/sys/windows`, `x/term` |
+| `selfupdate/` | `selfupdate` | 41 | 76, including five fuzz targets, plus `testdata/SHA256SUMS.{valid,invalid}`, 23 `testdata/manifest-parity/` cases and 14 `testdata/golden/` files | `x/mod/semver`, `x/sys/unix`, `x/sys/windows`, `x/term` |
 | `selfupdate/cli/` | `cli` | 4 | 9, plus 53 `testdata/golden/` and 9 `testdata/migration/` files | `x/term` (and `selfupdate`, `buildinfo`) |
 | `selfupdate/selfupdatetest/` | `selfupdatetest` | 2 | 1 | none (`selfupdate` itself) |
-| `selfupdate/service/` | `service` | 12 | 10 | `x/sys/windows` (and `selfupdate`) |
-| `selfupdate/service/systemd/` | `systemd` | 8 | 11, plus 3 `testdata/` captures of `systemctl show` | none (`selfupdate`, `service`) |
-| `selfupdate/service/launchd/` | `launchd` | 6 | 10, plus 7 `testdata/` captures of `launchctl print` and `list` | none (`selfupdate`, `service`) |
-| `selfupdate/service/scm/` | `scm` | 7 | 8 | `x/sys/windows`, `x/sys/windows/svc`, `x/sys/windows/svc/mgr` (and `selfupdate`, `service`) |
+| `selfupdate/archive/` | `archive` | 3 | 6, including three fuzz targets, plus a real GoReleaser `testdata/` checksum file | none (`selfupdate`) |
+| `selfupdate/codesign/` | `codesign` | 2 | 4 | none (`selfupdate`, `service`) |
+| `selfupdate/service/` | `service` | 16 | 13 | `x/sys/windows` (and `selfupdate`) |
+| `selfupdate/service/systemd/` | `systemd` | 8 | 12, plus 3 `testdata/` captures of `systemctl show` | none (`selfupdate`, `service`) |
+| `selfupdate/service/launchd/` | `launchd` | 6 | 11, plus 7 `testdata/` captures of `launchctl print` and `list` | none (`selfupdate`, `service`) |
+| `selfupdate/service/scm/` | `scm` | 7 | 9 | `x/sys/windows`, `x/sys/windows/svc`, `x/sys/windows/svc/mgr` (and `selfupdate`, `service`) |
 
 - `selfupdate` began as `mcplib` `v1.6.0`'s `selfupdate` (commit
   `4e1f9a53e265`), and its `v1.0.x` API is that package's. It differs from
@@ -184,6 +189,19 @@ docs/
   CI runs on its OS.
 - `cli.Options.HandOff` (`run.go`) runs `Detach` before an apply and
   `Report` after an update that ran.
+- Archive assets and macOS signing
+  ([0012-MADR](decisions/0012-MADR-archive-assets-and-macos-codesign.md)):
+  - **in `selfupdate`:** the extract stage, which runs after the
+    `Verifiers` and before the transform (`Unpacker`, `UnpackRequest`,
+    `Config.Unpacker`, `Selection.Packed` and `EventUnpacking` in
+    `types.go`, the stage in `updater.go`); `CheckImage`
+    (`imageverify.go`); `ChainTransformers` (`transform.go`);
+  - **`archive`:** `NewSelector` and its naming helpers (`select.go`), and
+    `NewUnpacker` (`unpack.go`), which refuses what two readers could
+    read differently and checks the program's image;
+  - **`codesign`:** `NewSigner`, a `Transformer`, and `NewChecker`, a
+    `Prober`, over `/usr/bin/codesign` through `service.Runner`
+    (`codesign.go`). It is opt-in: nothing in the module imports it.
 - The coordinator (`updater.go`) owns the order of every step. It validates
   the selected binary and manifest itself, and parses `SHA256SUMS` before any
   staging. It pins an exact `--version`, and closes the session before

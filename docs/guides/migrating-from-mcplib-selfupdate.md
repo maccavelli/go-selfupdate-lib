@@ -481,3 +481,53 @@ is in
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
 - `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.7.0`.
+
+## 8. From v1.7 to v1.8
+
+```bash
+go get github.com/maccavelli/go-selfupdate-lib@v1.8.0
+```
+
+`v1.8.0` only adds. `make apicheck` reports it compatible with `v1.7.0`, it
+requires the same three modules, and the release workflow is unchanged. A
+program that does not use the new pieces behaves as it did: nothing new
+runs unless you configure it. Why, and how, is in
+[0012-MADR](../decisions/0012-MADR-archive-assets-and-macos-codesign.md).
+
+### What is new
+
+- **In `selfupdate`:**
+  - an extract stage, `Config.Unpacker`, for a selection the selector marks
+    `Packed`. It runs after the `Verifiers` and before the transform, and
+    reports the new event `unpacking`;
+  - `CheckImage`, the image check `NewImageVerifier` makes, on any reader;
+  - `ChainTransformers`, to run several transforms in order.
+- **`selfupdate/archive`:** `NewSelector` and `NewUnpacker`, to update
+  from a release whose asset is a `.tar.gz`, `.zip` or `.gz` holding the
+  program, in this module's naming or GoReleaser's.
+- **`selfupdate/codesign`,** for a publisher who signs macOS binaries:
+  - `NewSigner` re-signs the staged binary with your identity under a fixed
+    identifier;
+  - `NewChecker` refuses a binary whose signature is missing, invalid, or
+    does not meet your requirement.
+
+  It is opt-in, and nothing runs it by default.
+
+### Adopting it
+
+- **To ship archives,** set `Config.Assets` to `archive.NewSelector` and
+  `Config.Unpacker` to `archive.NewUnpacker`. See
+  [Ship an archive](extending-selfupdate.md#ship-an-archive). This
+  repository's release workflow still publishes bare binaries only.
+- **If you re-sign on update** with your own `Transformer`, as
+  magic-cli-remote's `codesignTransformer` does, replace it with
+  `codesign.NewSigner`, with an `Identifier`. That fixes two defects: the
+  identifier taken from the staging file's name, and a `codesign` found on
+  `PATH`. See [Sign on macOS](extending-selfupdate.md#sign-on-macos).
+- **A JSON or event consumer** that switches on event kinds sees
+  `unpacking` only from a run with an `Unpacker`.
+
+### Check
+
+- `go build ./...`, `go vet ./...` and `go test ./...` pass.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.8.0`.

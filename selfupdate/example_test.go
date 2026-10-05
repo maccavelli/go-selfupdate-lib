@@ -457,3 +457,24 @@ func ExamplePromptCredential() {
 	fmt.Println(errors.Is(err, selfupdate.ErrNoCredential))
 	// Output: true
 }
+
+// ChainTransformers runs transforms in order on the same staging file, such
+// as a program's own step before a re-signing one; the coordinator rehashes
+// once, after the last.
+func ExampleChainTransformers() {
+	step := func(name string) selfupdate.Transformer {
+		return selfupdate.TransformerFunc(func(context.Context, selfupdate.TransformRequest) error {
+			fmt.Println(name)
+			return nil
+		})
+	}
+	chain, err := selfupdate.ChainTransformers(step("stamp"), step("sign"))
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	_ = chain.Transform(context.Background(), selfupdate.TransformRequest{})
+	// Output:
+	// stamp
+	// sign
+}

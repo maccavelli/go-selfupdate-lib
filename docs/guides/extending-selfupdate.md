@@ -3,9 +3,10 @@
 For a program built on `github.com/maccavelli/go-selfupdate-lib/selfupdate` that
 needs more than the standalone default: a banner instead of an update, a
 front end that reads JSON, its own credential store, an extra check before
-install, its own installer, or a service to update from inside. Every section names one seam, what the package
-does around it, and a runnable pointer: an `Example` you can read with
-`go doc`, or a test in `selfupdate/`.
+install, releases shipped as archives, a macOS signature, its own installer,
+or a service to update from inside. Every section names one seam, what the
+package does around it, and a runnable pointer: an `Example` you can read
+with `go doc`, or a test in `selfupdate/`.
 
 Why each seam exists is in
 [0004-MADR](../decisions/0004-MADR-evolve-selfupdate-api-and-tui-support.md);
@@ -181,6 +182,53 @@ prompt (0004-MADR §4).
 - `selfupdate/stream_run_test.go`: cancellation mid-download, prompts,
   and the delivery order
 
+## Ship an archive
+
+Since `v1.8.0`, `selfupdate/archive` updates from a release whose asset is
+a `.tar.gz`, `.zip` or `.gz` holding the program, instead of the bare
+binary. Why it works as it does is in
+[0012-MADR](../decisions/0012-MADR-archive-assets-and-macos-codesign.md).
+
+- **Configure both halves:** `archive.NewSelector` as `Config.Assets`, and
+  `archive.NewUnpacker` as `Config.Unpacker`.
+  - The run refuses one without the other before it downloads anything,
+    on `--check` too.
+  - `New` refuses an `Unpacker` beside `NewExactAssetSelector`, or beside a
+    `NewImageVerifier`, which would check the archive instead of the
+    program.
+- **Names:** by default `<product>-<os>-<arch>.tar.gz`, with `.zip` on
+  Windows, beside `SHA256SUMS`.
+  - **GoReleaser's defaults:** set `Name: archive.GoReleaserName` and
+    `Manifest: archive.GoReleaserChecksums`, and a `Format` that returns
+    `archive.TarGz` on every platform, since GoReleaser's default is
+    tar.gz on Windows too.
+  - **Any other scheme,** such as the uname style
+    (`relay_Darwin_arm64.tar.gz`), is a `Name` function you write.
+- **The program** is the one regular file named for the product (`.exe`
+  on Windows), at the top level or one directory down.
+  `UnpackOptions.Member` names another path.
+- **What is checked:**
+  - `SHA256SUMS`, the GitHub digest and the `Verifiers` check the archive
+    as published.
+  - The unpacker refuses an archive that two tools could read
+    differently, or that exceeds the limits: unsafe or duplicate names
+    (case-insensitively), links, devices and sparse files, too many
+    entries, more than `Limits.Executable` bytes, overlapping zip entries,
+    and more than one program.
+  - It then checks that the program is an executable for the platform.
+  - Every refusal is an `ErrIntegrity`.
+- **Publishing:** this repository's release workflow publishes bare
+  binaries only, and its `SHA256SUMS` must list exactly those. Publish
+  archives with other tooling, such as GoReleaser, as immutable GitHub
+  releases: the updater refuses a mutable one.
+
+Pointers:
+
+- `archive.ExampleNewSelector`, `archive.ExampleNewUnpacker`
+- `selfupdate/archive/e2e_test.go`: each format, in both namings, through
+  `Updater` and `cli.Command`
+- `selfupdate/archive/unpack_test.go`: every refusal
+
 ## Verify a signature later
 
 No publisher signature is verified by default. Two hooks run inside the
@@ -190,9 +238,11 @@ update, and both make the run fail with `ErrIntegrity`:
   any binary byte is fetched. A signature over the manifest belongs here. The
   verifier can read a sibling asset, such as `SHA256SUMS.sig`, through
   `ManifestVerification.OpenAsset`.
-- **`Config.Verifiers`** run on the staged binary after the built-in checks.
-  `NewImageVerifier` is one: the binary must be an executable for the selected
-  platform (ELF, Mach-O thin or fat, or PE).
+- **`Config.Verifiers`** run on the staged release asset after the built-in
+  checks: the archive itself, when the selector picks one. `NewImageVerifier`
+  is one: the binary must be an executable for the selected platform (ELF,
+  Mach-O thin or fat, or PE). With an archive, the unpacker makes that check
+  on the program instead.
 
 How signing would be added, and why it is not yet, is in
 [0004-REPORT](../reports/0004-REPORT-release-signing-research.md).
@@ -208,15 +258,59 @@ replacement is committed, and rolls it back on failure.
 `NewVersionProber(args, want, timeout)` runs the binary with `args` and
 requires its stdout to contain the release's version.
 
-A `Transformer`, such as a re-signing step, runs before the probes, so the
-probes see the bytes that will be installed.
+An `Unpacker`, then a `Transformer` such as a re-signing step, run before
+the probes, so the probes see the bytes that will be installed.
 
 - `selfupdate/probe_test.go`
+
+## Sign on macOS
+
+`selfupdate/codesign` is for a publisher who signs its macOS binaries. It
+is opt-in: nothing runs it unless you configure it, and a binary that the
+Go linker signed ad hoc, or that you do not sign, updates without it. Both
+constructors return `service.ErrUnsupported` off macOS, so build them only
+when `runtime.GOOS` is `"darwin"`.
+
+- **Re-sign the staged binary** with your identity, before it is
+  installed:
+
+  ```go
+  signer, err := codesign.NewSigner(codesign.SignOptions{
+      Identity:   "Developer ID Application: Example (TEAMID)",
+      Identifier: "com.example.relay",
+  })
+  cfg.Transformer = signer
+  ```
+
+  - **`Identifier` is required.** Without it, `codesign` names the
+    signature after the staging file, `.relay`, not after your program.
+  - After signing, the signer verifies the signature and requires that
+    identifier, and `Requirement` too when you set it.
+  - Signing with a certificate needs the identity in your keychains, and
+    is expected to need Xcode or the Command Line Tools.
+  - `Runtime` adds the hardened runtime. `Timestamp` asks Apple's timestamp
+    server, which notarization needs; without it, an update never contacts
+    that server.
+- **Require a signature:** add `codesign.NewChecker` to `Config.Probes`,
+  with a `Requirement` such as
+  `anchor apple generic and certificate leaf[subject.OU] = "TEAMID"`.
+  - Start the requirement from your release's own, which `codesign -d -r-`
+    prints, as Apple's TN3127 advises.
+  - A binary with no signature, an invalid one, and one that does not meet
+    the requirement each fail the update with `ErrIntegrity`.
+- **Order:** unpack, then sign, then the checker, which therefore checks
+  the bytes that will be installed.
+
+Pointers:
+
+- `codesign.ExampleNewSigner`, `codesign.ExampleNewChecker`
+- `selfupdate/codesign/live_darwin_test.go`: the real `codesign`, ad hoc,
+  and with your own identity when `SELFUPDATE_CODESIGN_IDENTITY` names it
 
 ## Rehearse without installing
 
 `Request.DryRun` does everything short of the install: download, verify,
-transform and probe. It asks nobody, then discards the staging file. The
+unpack, transform and probe. It asks nobody, then discards the staging file. The
 `Result` has `DryRun` set and both digests.
 
 - `selfupdate/lifecycle_test.go`, `selfupdate/testdata/golden/text-dry-run.golden`
