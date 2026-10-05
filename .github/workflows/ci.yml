@@ -70,6 +70,15 @@ jobs:
         env:
           SELFUPDATE_REQUIRE_LAUNCHD: "1"
         run: go test -count=1 -v -run '^TestLive' ./selfupdate/service/launchd
+      # The codesign live test: ad-hoc signing and signature checks with the
+      # runner's /usr/bin/codesign. No certificate identity is set here, so
+      # TestLiveSignIdentity skips
+      # (docs/decisions/0012-PLAN-archive-assets-and-macos-codesign.md U4).
+      - name: codesign live test
+        if: runner.os == 'macOS'
+        env:
+          SELFUPDATE_REQUIRE_CODESIGN: "1"
+        run: go test -count=1 -v -run '^TestLive' ./selfupdate/codesign
       # The SCM live test: a throwaway service the test creates and deletes,
       # which needs the runner's administrator session
       # (docs/decisions/0011-PLAN-reference-service-lifecycles.md V4).

@@ -10,7 +10,7 @@ this file. A repository-local `CLAUDE.md` / `.claude/rules/` / `.grok/rules/` /
 self-update only: `selfupdate`; its `cli` and `selfupdatetest`
 subpackages; `selfupdate/service` and its `systemd`, `launchd` and `scm`
 backends (`docs/decisions/0011-MADR-reference-service-lifecycles.md`);
-`selfupdate/archive`
+`selfupdate/archive` and `selfupdate/codesign`
 (`docs/decisions/0012-MADR-archive-assets-and-macos-codesign.md`); and
 `buildinfo`, which stamps the identity `selfupdate` decides on. A package
 that does not serve self-update belongs in another module. It is a library
@@ -37,9 +37,9 @@ pre-add check and CI fail on a breach
 - `module` allows only the standard library, this module and the
   required modules, in every file;
 - `buildinfo`, `selfupdate`, `selfupdate-cli`, `selfupdatetest`,
-  `service`, `service-launchd`, `service-scm`, `service-systemd` and
-  `selfupdate-archive` allow each package, outside its tests, only the
-  imports its record names;
+  `service`, `service-launchd`, `service-scm`, `service-systemd`,
+  `selfupdate-archive` and `selfupdate-codesign` allow each package,
+  outside its tests, only the imports its record names;
 - `other-packages` allows any other package, an `internal/` helper
   included, only the standard library and this module
   (`docs/decisions/0010-MADR-remediate-second-debugging-pass-findings.md`
