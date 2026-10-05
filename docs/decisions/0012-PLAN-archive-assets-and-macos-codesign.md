@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 date: 2026-10-05
 associated-madr: "0012-MADR-archive-assets-and-macos-codesign.md"
 ---
@@ -988,3 +988,94 @@ check.
   live-tested in CI on macOS 15. Signing with a certificate identity has a
   live test for a Mac that has one, and is not yet verified.
 * **CI and `make fuzz`** run the archive package's three fuzz targets.
+
+### Phase U6: the release (2026-10-05)
+
+* **Push.** The owner pushed `ab78002`, `d594d92` and `a99aa66`. CI on
+  `a99aa66` (run 37342282205) was green on all three runners, and no live
+  test failed:
+  * systemd in system and user scope, launchd and the SCM, as for
+    `v1.7.0`;
+  * the new "codesign live test" on macos-15: `TestLiveSignAdHoc` and
+    `TestLiveCheckerExitCodes` passed, and `TestLiveSignIdentity` skipped;
+  * `make fuzz`: "5 fuzz targets ran clean in ./selfupdate" and "3 fuzz
+    targets ran clean in ./selfupdate/archive".
+* **Tag.** The owner tagged and pushed `v1.8.0`, annotated, with message
+  `v1.8.0`. `git ls-remote origin 'refs/tags/v1.8.0^{}'` gives `a99aa66`,
+  and `scripts/check-release-tag.sh v1.8.0` exits 0.
+* **Step 2, after the tag:**
+  * `README.md` and the migration guide pin
+    `publish-selfupdate-release.yml@a99aa66b1a6d48e70ff592f010f6d6d734c52049 # v1.8.0`.
+  * Nothing under `.github/workflows/publish-selfupdate-release.yml`,
+    `scripts/`, `go.mod` or `go.sum` changed between `v1.7.0` and
+    `v1.8.0`. The guide says so, and its `ls-remote` example resolves
+    `v1.8.0`.
+  * The migration guide follows the current release: the `go get`
+    commands of §2, §6 and §7, §5's `go.mod` step and §7's check name
+    `v1.8.0`, and §2 and §6 point to §8.
+  * `README.md`'s status and `go get` name `v1.8.0`.
+  * `architecture.md` gives the tag's commit.
+  * This PLAN is `complete`.
+* **Step 3, the agent's checks:**
+  * **CI on the tag** (run 37343941078): green on all three runners.
+  * **The proxy:** `go list -m …@latest` against `proxy.golang.org` gave
+    `v1.7.0` a minute after the tag. After a request for `@v1.8.0`, it
+    gives `v1.8.0`.
+  * **A scratch consumer** requires `v1.8.0` from the proxy, with the same
+    three modules in `go.mod`. It passes `go vet` and builds for linux,
+    windows and darwin/arm64. It uses its own executable as the program,
+    so the image check sees a real native binary.
+    * **On each of the development Mac, a Linux test host and the Windows
+      test host:**
+      * it installed from tar.gz, zip and gz releases, in fleet and
+        GoReleaser naming: six updates, each installing the exact bytes;
+      * through `cli.Command`, `--check` with an archive selector and no
+        unpacker exited 1 with "is an archive and no Unpacker is
+        configured".
+    * **Off macOS,** `codesign.NewSigner` returned "not supported here:
+      codesign runs on macOS, not linux" (and windows).
+    * **On the development Mac,** the owner's condition (MADR §10), on the
+      release itself:
+      * a default `Config` updated a linker-signed darwin/arm64 build
+        (`Signature=adhoc`), and updated the same build with its signature
+        removed;
+      * `NewSigner` (ad hoc) installed the unpacked program with
+        `Identifier=com.example.consumer180`, and a `NewChecker` requiring
+        that identifier accepted it;
+      * a plain `NewChecker` refused the signature-stripped build: "the
+        binary's signature is missing or invalid (exit 1) … code object is
+        not signed at all", wrapping `ErrIntegrity`, with the target left
+        unchanged.
+
+**Verification.**
+
+* V1: every new test and gate was seen to fail on a deliberately broken
+  input, per phase: 7 plants in U1, 7 in U2, 15 in U3, 11 in U4 and 2 in
+  U5. In U3 and U4 the code came before its tests, and the plants are the
+  evidence.
+* V2: `make apicheck` reports `compatible with v1.7.0` at every phase and
+  in CI; `go.mod` is unchanged.
+* V3: a default run is unchanged:
+  * the `v1.7.0` suite passed unmodified, apart from added cases;
+  * `go list` shows nothing outside `selfupdate/codesign` importing it;
+  * the consumer updated a linker-signed and a signature-stripped
+    darwin/arm64 build with a default `Config`.
+* V4: every refusal of MADR §4 has a passing test on all three runners
+  (41 cases), and the three archive fuzz targets ran clean in CI.
+* V5: the codesign live tests passed in CI on macos-15, and
+  `TestLiveSignIdentity` skipped with its reason.
+* V6: the MADR's "Not verified" entries, as they stand:
+  * **GoReleaser's checksum file:** settled. A real one parses as
+    `SHA256SUMS` (U2).
+  * **The uname-style name:** GoReleaser's own release v2.18.2 uses it
+    (`goreleaser_Darwin_arm64.tar.gz`), and a consumer-written `Name`
+    selects it (U2). `goreleaser init`'s template text is still not read.
+  * **Signing with a certificate identity,** whether TCC grants survive
+    it, and whether it needs `HOME` in the tool's environment (U4): open.
+    No identity was available. `TestLiveSignIdentity` is the check.
+  * **Re-signing without Xcode or the Command Line Tools:** open.
+  * **The hardened runtime for a program that re-execs itself:** open.
+  * **`com.apple.provenance`:** nothing depends on it.
+* V7: CI is green on `main` and on `v1.8.0`.
+
+This PLAN is `complete`.

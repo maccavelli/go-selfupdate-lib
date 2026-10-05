@@ -40,7 +40,7 @@ name, and the files they cite moved with the rename
 | 0011 | MADR | [Build `selfupdate/service`: reference systemd, launchd and Windows SCM lifecycles on the platform tools and `x/sys`, with `PollHealthy`, `ExecReconciler`, `sd_notify`, and a handoff that keeps an updater from stopping its own service](decisions/0011-MADR-reference-service-lifecycles.md) | accepted |
 | 0011 | PLAN | [Implement `selfupdate/service`: reference systemd, launchd and Windows SCM lifecycles, the handoff and `sd_notify` (`v1.7.0`)](decisions/0011-PLAN-reference-service-lifecycles.md) | complete |
 | 0012 | MADR | [Build `selfupdate/archive` and `selfupdate/codesign`: extract the program from a verified tar.gz or zip asset in a new stage before the transform, and re-sign or check it on macOS with `/usr/bin/codesign`](decisions/0012-MADR-archive-assets-and-macos-codesign.md) | accepted |
-| 0012 | PLAN | [Implement `selfupdate/archive` and `selfupdate/codesign`: the extract stage, tar.gz, zip and gz assets, and opt-in macOS re-signing and signature checks (`v1.8.0`)](decisions/0012-PLAN-archive-assets-and-macos-codesign.md) | in-progress |
+| 0012 | PLAN | [Implement `selfupdate/archive` and `selfupdate/codesign`: the extract stage, tar.gz, zip and gz assets, and opt-in macOS re-signing and signature checks (`v1.8.0`)](decisions/0012-PLAN-archive-assets-and-macos-codesign.md) | complete |
 
 ## I want to…
 
