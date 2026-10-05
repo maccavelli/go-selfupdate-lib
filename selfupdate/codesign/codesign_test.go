@@ -54,7 +54,7 @@ func mustSigner(t *testing.T, o SignOptions) (selfupdate.Transformer, *fakeTool)
 	if o.Runner == nil {
 		o.Runner = f
 	}
-	s, err := newSigner(o, "darwin")
+	s, err := signerFor(o, "darwin")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,16 +177,16 @@ func TestNewSignerRefuses(t *testing.T) {
 	} {
 		o := ok
 		edit(&o)
-		if _, err := newSigner(o, "darwin"); err == nil {
+		if _, err := signerFor(o, "darwin"); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
 	}
 	for _, goos := range []string{"linux", "windows"} {
-		if _, err := newSigner(ok, goos); !errors.Is(err, service.ErrUnsupported) {
+		if _, err := signerFor(ok, goos); !errors.Is(err, service.ErrUnsupported) {
 			t.Errorf("%s: %v, want ErrUnsupported", goos, err)
 		}
 	}
-	if _, err := newSigner(ok, "darwin"); err != nil {
+	if _, err := signerFor(ok, "darwin"); err != nil {
 		t.Fatalf("a valid signer: %v", err)
 	}
 }
@@ -195,7 +195,7 @@ func mustChecker(t *testing.T, o CheckOptions) (selfupdate.Prober, *fakeTool) {
 	t.Helper()
 	f := &fakeTool{}
 	o.Runner = f
-	c, err := newChecker(o, "darwin")
+	c, err := checkerFor(o, "darwin")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,19 +262,19 @@ func TestNewCheckerRefuses(t *testing.T) {
 		"requirement with =": {Requirement: "=anchor apple"},
 		"requirement NUL":    {Requirement: "anchor\x00apple"},
 	} {
-		if _, err := newChecker(o, "darwin"); err == nil {
+		if _, err := checkerFor(o, "darwin"); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
 	}
 	for _, goos := range []string{"linux", "windows"} {
-		if _, err := newChecker(CheckOptions{}, goos); !errors.Is(err, service.ErrUnsupported) {
+		if _, err := checkerFor(CheckOptions{}, goos); !errors.Is(err, service.ErrUnsupported) {
 			t.Errorf("%s: %v, want ErrUnsupported", goos, err)
 		}
 	}
 }
 
 // TestPublicConstructorsFollowTheOS: on this OS, the exported constructors
-// give what newSigner and newChecker give for it.
+// give what signerFor and checkerFor give for it.
 func TestPublicConstructorsFollowTheOS(t *testing.T) {
 	_, sErr := NewSigner(SignOptions{Identity: "-", Identifier: "com.example.relay"})
 	_, cErr := NewChecker(CheckOptions{})

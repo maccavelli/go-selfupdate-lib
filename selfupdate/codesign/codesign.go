@@ -128,13 +128,13 @@ func checkRequirement(req string) error {
 	return nil
 }
 
-// verifyArgs are codesign's arguments to verify path against requirement.
-func verifyArgs(requirement, path string) []string {
+// verifyArgs are codesign's arguments to verify file against requirement.
+func verifyArgs(requirement, file string) []string {
 	args := []string{"--verify", "--strict"}
 	if requirement != "" {
 		args = append(args, "-R="+requirement)
 	}
-	return append(args, path)
+	return append(args, file)
 }
 
 type signer struct {
@@ -147,10 +147,10 @@ type signer struct {
 // and names that identifier, and meets o.Requirement when it is set
 // (0012-MADR §5). Off macOS it returns service.ErrUnsupported.
 func NewSigner(o SignOptions) (selfupdate.Transformer, error) {
-	return newSigner(o, runtime.GOOS)
+	return signerFor(o, runtime.GOOS)
 }
 
-func newSigner(o SignOptions, goos string) (selfupdate.Transformer, error) {
+func signerFor(o SignOptions, goos string) (selfupdate.Transformer, error) {
 	t, err := newTool(goos, o.Codesign, o.Runner)
 	if err != nil {
 		return nil, err
@@ -230,10 +230,10 @@ type checker struct {
 // selfupdate.ErrIntegrity. It does nothing on the installed file, which is
 // the same file. Off macOS it returns service.ErrUnsupported.
 func NewChecker(o CheckOptions) (selfupdate.Prober, error) {
-	return newChecker(o, runtime.GOOS)
+	return checkerFor(o, runtime.GOOS)
 }
 
-func newChecker(o CheckOptions, goos string) (selfupdate.Prober, error) {
+func checkerFor(o CheckOptions, goos string) (selfupdate.Prober, error) {
 	t, err := newTool(goos, o.Codesign, o.Runner)
 	if err != nil {
 		return nil, err

@@ -792,3 +792,115 @@ In addition:
   * `make fuzz`, both packages; vuln; the script tests; cross vet.
 
   `make pre-add-check` passes on the five Go files.
+
+### Phase U4: `selfupdate/codesign` (2026-10-05)
+
+* **CI on U3** (run 37338130184) is green on all three runners.
+* **Built,** in `selfupdate/codesign/doc.go` and `codesign.go`, as MADR §5
+  and §6 declare:
+  * `SignOptions` and `NewSigner`, a `Transformer`;
+  * `CheckOptions` and `NewChecker`, a `Prober`.
+* **Shared:** a tool resolved to `/usr/bin/codesign` or an absolute
+  `Codesign`, run through `service.Runner`. Both constructors take the OS
+  through `signerFor` and `checkerFor`, and return `service.ErrUnsupported`
+  off darwin.
+* **The signer** runs MADR §5's two commands:
+  * the requirement is `identifier "<Identifier>"`, followed by
+    `and (<Requirement>)` after a space when a requirement is set;
+  * exit 1, 2 and 3 of the verify step each fail the transform, without
+    `ErrIntegrity`, because it is the signer's own signature.
+* **The checker** runs only at `ProbeStaged`. Its exits 1 and 3 wrap
+  `ErrIntegrity`.
+* **Errors** carry the tool's output: stderr then stdout, on one line,
+  control characters removed, capped at 1 KiB.
+* **The environment** is exactly MADR §5's, `PATH` and `LC_ALL`.
+  * A probe showed ad-hoc signing and verifying work in it.
+  * Whether signing with a certificate identity also needs `HOME`, to
+    find the user's keychains, is not verified. The development Mac has
+    no signing identity (`security find-identity -p codesigning` lists
+    none). `TestLiveSignIdentity` is the test that will show it.
+* **Deviations from the steps as written,** none of which changes a
+  decision:
+  * **Order.** As in U3, the package was written before its tests; the
+    plants below are the evidence that each test can fail.
+  * **No `live_other_test.go` stub.** The live tests share nothing with
+    other files, so a `//go:build darwin` file alone is enough.
+  * **The tool and keychain paths are checked with `path.IsAbs`,** as
+    macOS paths, not with `filepath.IsAbs`. The Windows test host failed
+    every fake-runner test with `filepath`, which judges
+    `/usr/bin/codesign` by the host's rules. The tool only ever runs on
+    macOS.
+* **depguard:** the rule `selfupdate-codesign` (`$gostd`, `…/selfupdate$`,
+  `…/selfupdate/service$`), excluded from `other-packages`. AGENTS.md
+  names the package and the rule.
+* **No default reaches it.** `go list -f '{{.ImportPath}}: {{join .Imports
+  " "}}' ./...` names `selfupdate/codesign` on one line only, its own
+  (MADR §10).
+* **CI:** a macos-15 step, "codesign live test", with
+  `SELFUPDATE_REQUIRE_CODESIGN=1`. `scripts/check-workflows.sh` passes,
+  and so does actionlint v1.7.12, run as CI runs it.
+* **Tests:**
+  * `codesign_test.go`, against a fake runner:
+    * `TestSignerArguments`: the exact argv for ad-hoc and for every
+      option, and the built environment;
+    * `TestSignerErrors`, `TestSignerOutputDetail`,
+      `TestSignerRefusesForeignPlatform` and `TestNewSignerRefuses`;
+    * `TestCheckerArguments`, `TestCheckerErrors`,
+      `TestCheckerSkipsInstalled` and `TestNewCheckerRefuses`;
+    * `TestPublicConstructorsFollowTheOS`.
+  * `live_darwin_test.go`, every fixture a cross-built darwin/arm64
+    program named as staging is named:
+    * `TestLiveSignAdHoc`: the linker's `Identifier=a.out` becomes the
+      configured identifier, and the checker accepts it with and without a
+      requirement;
+    * `TestLiveCheckerExitCodes`: the linker's signature is accepted. A
+      copy with its signature removed (exit 1), one with a byte changed
+      (exit 1), and an unmet `anchor apple generic` (exit 3) are refused
+      with `ErrIntegrity`;
+    * `TestLiveSignIdentity`: skipped unless `SELFUPDATE_CODESIGN_IDENTITY`
+      is set; never set in CI.
+  * On the development Mac, both ad-hoc live tests pass and the identity
+    test skips with its reason. On the Windows test host the package's
+    tests pass, and the public constructors return `ErrUnsupported`.
+* **Plants,** each in a scratch copy, all 11 caught on the final code:
+
+  | Plant | Caught by |
+  | --- | --- |
+  | `--identifier` dropped | `TestSignerArguments` |
+  | `--identifier` dropped, live | `TestLiveSignAdHoc`: the signer's own verify refused it, "does not meet identifier … (exit 3)" |
+  | the identifier left out of `-R` | `TestSignerArguments` |
+  | the darwin platform check removed | `TestSignerRefusesForeignPlatform`: "signed a \"linux\" binary" |
+  | the checker accepting exit 3 | `TestCheckerErrors` |
+  | a relative tool path accepted | `TestNewSignerRefuses` |
+  | the off-macOS check removed | `TestNewSignerRefuses`: "linux: <nil>, want ErrUnsupported" |
+  | the environment inherited | `TestSignerArguments`: "environment []" |
+  | the checker running on the installed file | `TestCheckerSkipsInstalled` |
+  | the checker accepting exit 1, live | `TestLiveCheckerExitCodes`: "no signature: <nil>" |
+  | a `golang.org/x/term` import | depguard: "not allowed from list 'selfupdate-codesign'" |
+
+  The live `--identifier` plant reproduces magic-cli-remote's defect
+  against the real tool: without the flag, the staging file signed as
+  `.relay`. The pinned requirement now refuses that before install.
+* **A commit in the middle of the phase.** The owner committed and pushed
+  the working tree as `ab78002` after the path fix and before three lint
+  fixes. Its CI run, 37339507433:
+  * the windows-2025 and macos-15 jobs passed, including "codesign live
+    test": `TestLiveSignAdHoc` and `TestLiveCheckerExitCodes` passed and
+    `TestLiveSignIdentity` skipped;
+  * the ubuntu-24.04 job failed "vet, gofmt, tidy, lint" on those three
+    findings.
+
+  The phase's second commit carries the fixes:
+  * `verifyArgs`'s parameter `path`, which shadowed the `path` import
+    (gocritic), is now `file`;
+  * `newSigner` and `newChecker`, beside `NewSigner` and `NewChecker`
+    (revive), are now `signerFor` and `checkerFor`;
+  * this record.
+
+  History is not rewritten.
+* **Checks** on the final code (`gate.sh`, every one rc 0):
+  * gofmt; `make lint`, 0 issues; vet; race and shuffle;
+  * tidy; `make apicheck`: `compatible with v1.7.0`;
+  * fuzz; vuln; the script tests; cross vet.
+
+  `make pre-add-check` passes on the five Go files.
