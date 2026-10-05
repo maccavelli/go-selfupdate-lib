@@ -528,3 +528,83 @@ In addition:
   (`in-progress`).
 * **No code.** Checks: markdownlint on the records, `AGENTS.md` and
   the index; the link and anchor check; the identifier scan.
+
+### Phase U1: the extract stage in `selfupdate` (2026-10-05)
+
+* **Built,** as steps 1 to 8 say:
+  * `UnpackRequest`, `Unpacker`, `UnpackerFunc` and `Config.Unpacker`;
+  * `Selection.Packed`;
+  * `EventUnpacking`, in a block of kinds added in v1.8.0, numbered
+    `EventWarning`+1;
+  * `CheckImage`;
+  * `ChainTransformers`.
+* **`New`'s refusals.** `validUnpacker` refuses a typed nil, the selector
+  that `NewExactAssetSelector` returns, and an image verifier among the
+  `Verifiers`.
+* **The match check.** `matchUnpacker` runs in `execute` right after
+  discovery, so `--check` fails too.
+* **The stage.** `unpack` creates the second staging file, closes it, calls
+  the unpacker with `Limit` set to `Limits.Executable`, and checks the
+  result with `hashAndValidateStaging`. That function now takes a noun for
+  its errors: "transformed staging", as before, or "unpacked program".
+  An unpacker's error is passed through unwrapped; `archive` wraps its own
+  refusals in `ErrIntegrity` (MADR §4).
+* **Doc comments** follow step 8: `Selection`, `AssetSelector`,
+  `Verification`, `TransformRequest.ReleaseDigest`, `StagedArtifact`,
+  `Result.AssetName` and both `Result` digests, `Config.Assets`,
+  `Config.Verifiers`, `New`, and the package doc's pipeline.
+* **Tests:**
+  * New, in `selfupdate/unpack_test.go`. They use a stand-in archive
+    format, a fixed prefix before the program, with a test selector and
+    unpacker:
+    * `TestRunEventOrderWithUnpacker`, with and without a transform;
+    * `TestUnpackRequest`: the request's fields, the archive on disk, and
+      both staging names matched by `isLeftover`, so a crash leaves
+      nothing the sweep misses;
+    * `TestDryRunUnpacks`;
+    * `TestUnpackFailures`: an unpacker error, a symlink, over the limit;
+    * `TestUnpackRequiresStagingOwner`;
+    * `TestPackedSelectionNeedsUnpacker`, for both mismatches, in an
+      apply and a check, with no asset opened;
+    * `TestNewRefusesUnpackerCombinations`;
+    * `TestEventUnpacking`, `TestUnpackerFunc`, `TestChainTransformers`
+      and `TestRunWithChainedTransformers`;
+    * a compile-time `==` on `Selection`.
+  * `TestImageVerifier` gained a `CheckImage` assertion for every row
+    except those of darwin/amd64, which this work does not target (MADR
+    §10). `TestCheckImageUnsupportedPlatform` is new.
+  * No other test changed.
+* **Plants,** each in a scratch copy, each caught:
+
+  | Plant | Caught by |
+  | --- | --- |
+  | the stage skipped | `TestRunEventOrderWithUnpacker`: no `unpacking` event |
+  | the program not validated | `TestUnpackFailures` |
+  | the match check removed | `TestPackedSelectionNeedsUnpacker`: a nil `Unpacker` panicked, the failure the check exists to prevent |
+  | `EventUnpacking` not emitted | `TestRunEventOrderWithUnpacker` |
+  | the chain run in reverse | `TestChainTransformers`: `order [b:/p a:/p]` |
+  | `New`'s refusals removed | `TestNewRefusesUnpackerCombinations` |
+  | `CheckImage` accepting anything | `TestImageVerifier`: "CheckImage linux-amd64 as linux/arm64: <nil>" |
+
+* **Fixed on the way, all in my own new code:**
+  * `TestUnpackRequest` compared a staging directory with the target's
+    unresolved path; it now resolves symlinks first.
+  * `TestPackedSelectionNeedsUnpacker` sent `--check` with `--yes`, which
+    the run rightly refuses as contradictory.
+  * The ownership test first used `sameBaseSession`. That session creates
+    one fixed path, so a second staging file fails with "file exists"
+    before ownership is ever checked. It now uses a session that hides
+    `Owns` and nothing else.
+  * The shared helper `newImageVerifier` tripped revive's
+    `confusing-naming`, beside `NewImageVerifier`, and is now
+    `imageCheckFor`.
+* **The Windows test host:** `go test ./selfupdate/ ./selfupdate/cli/`
+  passes.
+* **Checks** (`gate.sh`, every one rc 0):
+  * gofmt; `make lint`, 0 issues on linux, darwin and windows; vet;
+  * race and shuffle;
+  * `go mod tidy -diff`; `make apicheck`: `compatible with v1.7.0`;
+  * `make fuzz`: 5 targets clean; `make vuln`: no vulnerabilities;
+  * every script test; cross vet.
+
+  `make pre-add-check` passes on the eight Go files.

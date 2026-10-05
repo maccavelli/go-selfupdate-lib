@@ -41,6 +41,14 @@ func (f TransformerFunc) Transform(ctx context.Context, r TransformRequest) erro
 	return f(ctx, r)
 }
 
+// UnpackerFunc adapts a function to Unpacker.
+type UnpackerFunc func(context.Context, UnpackRequest) error
+
+// Unpack implements Unpacker.
+func (f UnpackerFunc) Unpack(ctx context.Context, r UnpackRequest) error {
+	return f(ctx, r)
+}
+
 type discardReporter struct{}
 
 func (discardReporter) Report(context.Context, Event) error { return nil }

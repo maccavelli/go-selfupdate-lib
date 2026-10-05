@@ -35,6 +35,31 @@ type imageVerifier struct {
 // platform. ELF OSABI is not checked: Go's linker writes ELFOSABI_NONE for
 // linux, so it cannot tell operating systems apart (0004-MADR G9).
 func NewImageVerifier(p Platform) (Verifier, error) {
+	v, err := imageCheckFor(p)
+	if err != nil {
+		return nil, err
+	}
+	return v, nil
+}
+
+// CheckImage is NewImageVerifier's check on r directly: it requires r to
+// hold an executable image for p, and fails wrapping ErrIntegrity when it
+// does not. A zero p means the runtime platform, and a platform the check
+// does not cover fails with ErrUnsupportedPlatform. An Unpacker uses it on
+// the program it extracted (0012-MADR §2, §4).
+func CheckImage(r io.ReaderAt, p Platform) error {
+	v, err := imageCheckFor(p)
+	if err != nil {
+		return err
+	}
+	if !v.matches(r) {
+		return fmt.Errorf("selfupdate: the program is not a %s/%s executable: %w",
+			sanitizeText(v.platform.OS), sanitizeText(v.platform.Arch), ErrIntegrity)
+	}
+	return nil
+}
+
+func imageCheckFor(p Platform) (imageVerifier, error) {
 	if p == (Platform{}) {
 		p = Platform{OS: runtime.GOOS, Arch: runtime.GOARCH}
 	}
@@ -60,7 +85,7 @@ func NewImageVerifier(p Platform) (Verifier, error) {
 		v.format = 0
 	}
 	if v.format == 0 {
-		return nil, fmt.Errorf("selfupdate: no executable image check for %s/%s: %w",
+		return imageVerifier{}, fmt.Errorf("selfupdate: no executable image check for %s/%s: %w",
 			sanitizeText(p.OS), sanitizeText(p.Arch), ErrUnsupportedPlatform)
 	}
 	return v, nil

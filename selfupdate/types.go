@@ -129,7 +129,8 @@ type Result struct {
 	TargetVersion string
 	// ReleaseURL is the selected GitHub release HTML URL when known.
 	ReleaseURL string
-	// AssetName is the exact selected executable asset name.
+	// AssetName is the exact selected asset name: the executable, or the
+	// archive holding it when the selection is Packed.
 	AssetName string
 	// Operation is the classified action.
 	Operation Operation
@@ -139,9 +140,11 @@ type Result struct {
 	Applied bool
 	// Declined is true when the user declined an interactive apply.
 	Declined bool
-	// ReleaseDigest is the verified SHA-256 hex of the release bytes.
+	// ReleaseDigest is the verified SHA-256 hex of the release bytes: the
+	// selected asset, which is the archive when the selection is Packed.
 	ReleaseDigest string
-	// InstalledDigest is the SHA-256 hex of the bytes after any transform.
+	// InstalledDigest is the SHA-256 hex of the bytes installed: the
+	// program after any unpack and any transform (0012-MADR §2).
 	InstalledDigest string
 	// ServiceInstalled reports whether a managed definition existed.
 	ServiceInstalled bool
@@ -237,12 +240,17 @@ type Asset struct {
 
 // Selection is the exact executable and checksum manifest chosen from a release.
 type Selection struct {
-	// Binary is the exact platform executable asset.
+	// Binary is the exact platform executable asset, or, when Packed, the
+	// archive that holds it.
 	Binary Asset
 	// Manifest is the exact SHA256SUMS asset.
 	Manifest Asset
 	// ManifestName is the binary basename looked up in SHA256SUMS.
 	ManifestName string
+	// Packed reports that Binary is an archive, and that Config.Unpacker
+	// extracts the program from it. A run whose Packed and Unpacker
+	// disagree fails before any asset is downloaded (0012-MADR §2).
+	Packed bool
 }
 
 // ReleaseSource discovers releases and opens asset bodies.
@@ -252,7 +260,8 @@ type ReleaseSource interface {
 	OpenAsset(context.Context, Release, Asset) (io.ReadCloser, error)
 }
 
-// AssetSelector chooses exactly one platform binary and the SHA256SUMS asset.
+// AssetSelector chooses exactly one platform binary, or the archive holding
+// it, and the SHA256SUMS asset.
 type AssetSelector interface {
 	Select(Release, string, Platform) (Selection, error)
 }
@@ -296,7 +305,9 @@ type ChannelPolicy interface {
 }
 
 // Verification is the input to a Verifier. Open returns a fresh read-only
-// descriptor of the staged bytes; it is not a writable staging path.
+// descriptor of the staged bytes; it is not a writable staging path. The
+// staged bytes are the release asset as published: when the selection is
+// Packed, the archive, before any unpack (0012-MADR §2).
 type Verification struct {
 	// Product is the requested product name.
 	Product string
@@ -335,7 +346,8 @@ type TransformRequest struct {
 	Platform Platform
 	// Path is the locked staging path.
 	Path string
-	// ReleaseDigest is the verified pre-transform digest.
+	// ReleaseDigest is the verified digest of the release asset, which is
+	// the archive when the selection is Packed.
 	ReleaseDigest string
 }
 
@@ -345,15 +357,45 @@ type Transformer interface {
 	Transform(context.Context, TransformRequest) error
 }
 
+// UnpackRequest is the input to an Unpacker (0012-MADR §2).
+type UnpackRequest struct {
+	// Product is the requested product name.
+	Product string
+	// Platform is the selected platform.
+	Platform Platform
+	// AssetName is the verified asset's name, such as
+	// "relay-linux-amd64.tar.gz".
+	AssetName string
+	// Archive is the verified asset's staging path. Read it; never write
+	// it.
+	Archive string
+	// Program is a second, empty staging path, owned by the session. Write
+	// the program here.
+	Program string
+	// Limit is the most bytes the program, and the whole extraction, may
+	// take: Limits.Executable.
+	Limit int64
+}
+
+// Unpacker writes the program inside a verified release asset to
+// UnpackRequest.Program. It runs after the Verifiers and before the
+// Transformer, only when the selection is Packed. The coordinator then
+// checks Program as it checks a transformed file: a regular file, within
+// Limits.Executable, owned by the session.
+type Unpacker interface {
+	Unpack(context.Context, UnpackRequest) error
+}
+
 // StagedArtifact is a verified staging file owned by one InstallSession.
 type StagedArtifact struct {
 	// Path is the absolute staging path.
 	Path string
-	// Size is the staged byte length after any transform.
+	// Size is the staged byte length after any unpack and transform.
 	Size int64
-	// ReleaseDigest is the verified pre-transform digest.
+	// ReleaseDigest is the verified digest of the release asset.
 	ReleaseDigest string
-	// InstalledDigest is the post-transform digest.
+	// InstalledDigest is the digest of the staged bytes, after any unpack
+	// and transform.
 	InstalledDigest string
 }
 
@@ -590,6 +632,14 @@ const (
 	EventWarning EventKind = iota + EventRolledBack + 1
 )
 
+// Event kinds added in v1.8.0, appended so every earlier value keeps its
+// number (0012-MADR §2).
+const (
+	// EventUnpacking is emitted before an Unpacker extracts the program
+	// from a Packed selection's archive. Asset is the archive's name.
+	EventUnpacking EventKind = iota + EventWarning + 1
+)
+
 // String implements fmt.Stringer.
 func (k EventKind) String() string {
 	switch k {
@@ -623,6 +673,8 @@ func (k EventKind) String() string {
 		return "rolled-back"
 	case EventWarning:
 		return "warning"
+	case EventUnpacking:
+		return "unpacking"
 	default:
 		return "eventkind(" + itoa(uint64(k)) + ")"
 	}
@@ -708,12 +760,21 @@ type Config struct {
 	Source ReleaseSource
 	// Versions validates and compares tags.
 	Versions VersionPolicy
-	// Assets selects exact raw-binary names.
+	// Assets selects the exact asset: a raw binary, or an archive it marks
+	// Packed.
 	Assets AssetSelector
-	// Verifiers run after built-in integrity checks. An empty slice is valid.
+	// Verifiers run after built-in integrity checks, on the release asset
+	// as published. An empty slice is valid.
 	Verifiers []Verifier
 	// Transformer is an optional post-verification change. Nil is a no-op.
 	Transformer Transformer
+	// Unpacker extracts the program from an asset the selector marks
+	// Packed, after the Verifiers and before the Transformer. Nil means
+	// none; a typed nil is rejected. New refuses it beside
+	// NewExactAssetSelector, which never selects an archive, and beside a
+	// NewImageVerifier, which would check the archive rather than the
+	// program (0012-MADR §2).
+	Unpacker Unpacker
 	// Installer owns target resolution and replacement.
 	Installer Installer
 	// Reporter receives structured progress.
@@ -747,6 +808,7 @@ type Updater struct {
 	assets      AssetSelector
 	verifiers   []Verifier
 	transformer Transformer
+	unpacker    Unpacker
 	installer   Installer
 	reporter    Reporter
 	confirmer   Confirmer

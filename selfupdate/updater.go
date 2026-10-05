@@ -22,7 +22,9 @@ var errNotCommitted = errors.New("selfupdate: installer reported no committed re
 // New constructs an Updater. Source, Versions, Assets, Installer, Reporter,
 // and Confirmer are required, and none may be a typed nil. An empty
 // Verifiers slice is valid, but no element may be nil. A nil Transformer is
-// a no-op; a typed-nil Transformer is rejected.
+// a no-op; a typed-nil Transformer is rejected. A nil Unpacker means none; a
+// typed-nil Unpacker is rejected, as is an Unpacker beside
+// NewExactAssetSelector or a NewImageVerifier (0012-MADR §2).
 func New(cfg Config) (*Updater, error) {
 	if isNil(cfg.Source) {
 		return nil, fmt.Errorf("selfupdate: source is required")
@@ -60,6 +62,9 @@ func New(cfg Config) (*Updater, error) {
 	if cfg.Transformer != nil && isNil(cfg.Transformer) {
 		return nil, fmt.Errorf("selfupdate: transformer is a typed nil")
 	}
+	if err := validUnpacker(cfg); err != nil {
+		return nil, err
+	}
 	if err := cfg.Limits.valid(); err != nil {
 		return nil, err
 	}
@@ -77,6 +82,7 @@ func New(cfg Config) (*Updater, error) {
 		assets:      cfg.Assets,
 		verifiers:   verifiers,
 		transformer: transformer,
+		unpacker:    cfg.Unpacker,
 		installer:   cfg.Installer,
 		reporter:    cfg.Reporter,
 		confirmer:   cfg.Confirmer,
@@ -85,6 +91,29 @@ func New(cfg Config) (*Updater, error) {
 		manifestVfy: append([]ManifestVerifier(nil), cfg.ManifestVerifiers...),
 		probes:      append([]Prober(nil), cfg.Probes...),
 	}, nil
+}
+
+// validUnpacker refuses a typed-nil Unpacker, and an Unpacker beside the
+// module's own pieces that cannot work with one: the exact selector never
+// marks an archive, and the image verifier would check the archive instead
+// of the program (0012-MADR §2). A consumer's own selector or verifier is
+// the consumer's to match.
+func validUnpacker(cfg Config) error {
+	if cfg.Unpacker == nil {
+		return nil
+	}
+	if isNil(cfg.Unpacker) {
+		return fmt.Errorf("selfupdate: unpacker is a typed nil")
+	}
+	if _, ok := cfg.Assets.(*exactAssetSelector); ok {
+		return fmt.Errorf("selfupdate: an Unpacker needs a selector that selects archives; NewExactAssetSelector selects raw binaries")
+	}
+	for _, v := range cfg.Verifiers {
+		if _, ok := v.(imageVerifier); ok {
+			return fmt.Errorf("selfupdate: NewImageVerifier would check the archive, not the program; with an Unpacker, the unpacker checks the program's image")
+		}
+	}
+	return nil
 }
 
 // Run executes one self-update request. The library never calls os.Exit.
@@ -129,6 +158,11 @@ func (u *run) execute(ctx context.Context, req Request) (res Result, err error) 
 	// disagree (0004-MADR G3).
 	rel, sel, op, err := u.checker().discover(ctx, req)
 	if err != nil {
+		return Result{}, wrapRun(req, err)
+	}
+	// A selector and an unpacker that disagree fail here, before any asset
+	// is downloaded, and on a check too (0012-MADR §2).
+	if err := u.matchUnpacker(sel); err != nil {
 		return Result{}, wrapRun(req, err)
 	}
 	result := Result{
@@ -269,8 +303,20 @@ func (u *run) apply(ctx context.Context, req Request, result Result, target Targ
 	}
 	installedDigest := releaseDigest
 	// The staged size is the advertised one, which downloadAsset enforced,
-	// until a transform changes it (0004-MADR G8).
+	// until an unpack or a transform changes it (0004-MADR G8).
 	installedSize := sel.Binary.Size
+	if sel.Packed {
+		// From here the staging path is the program, not the archive; both
+		// files are the session's, and Close removes the archive
+		// (0012-MADR §2).
+		if rerr := u.report(ctx, Event{Kind: EventUnpacking, Product: req.Product, Target: rel.Tag, Asset: sel.Binary.Name}); rerr != nil {
+			return resultOut, wrapRun(req, rerr)
+		}
+		stagedPath, installedDigest, installedSize, err = u.unpack(ctx, sess, req, sel, stagedPath)
+		if err != nil {
+			return resultOut, wrapRun(req, err)
+		}
+	}
 	if _, isNoop := u.transformer.(noopTransformer); !isNoop {
 		if rerr := u.report(ctx, Event{Kind: EventTransforming, Product: req.Product, Asset: sel.Binary.Name}); rerr != nil {
 			return resultOut, wrapRun(req, rerr)
@@ -280,7 +326,7 @@ func (u *run) apply(ctx context.Context, req Request, result Result, target Targ
 		}); err != nil {
 			return resultOut, wrapRun(req, err)
 		}
-		installedDigest, installedSize, err = hashAndValidateStaging(sess, stagedPath, u.limits.Executable)
+		installedDigest, installedSize, err = hashAndValidateStaging(sess, stagedPath, u.limits.Executable, "transformed staging")
 		if err != nil {
 			return resultOut, wrapRun(req, err)
 		}
@@ -358,6 +404,43 @@ func (u *run) apply(ctx context.Context, req Request, result Result, target Targ
 		Target: rel.Tag, Asset: sel.Binary.Name, Detail: detail,
 	})
 	return u.warn(ctx, req, resultOut, rel, sel, instErr, closeErr, repErr), nil
+}
+
+// matchUnpacker fails a selection the configured Unpacker cannot handle: an
+// archive with no unpacker, or an unpacker with a selection that is not an
+// archive.
+func (u *run) matchUnpacker(sel Selection) error {
+	switch {
+	case sel.Packed && u.unpacker == nil:
+		return fmt.Errorf("selfupdate: asset %q is an archive and no Unpacker is configured", sanitizeText(sel.Binary.Name))
+	case !sel.Packed && u.unpacker != nil:
+		return fmt.Errorf("selfupdate: an Unpacker is configured, but asset %q is not marked as an archive", sanitizeText(sel.Binary.Name))
+	}
+	return nil
+}
+
+// unpack has the Unpacker write the program from the archive at archive
+// into a second staging file, and checks that file as a transformed one is
+// checked. It returns the program's path, digest and size.
+func (u *run) unpack(ctx context.Context, sess InstallSession, req Request, sel Selection, archive string) (string, string, int64, error) {
+	f, program, err := sess.CreateStaging(ctx)
+	if err != nil {
+		return "", "", 0, err
+	}
+	if err := f.Close(); err != nil {
+		return "", "", 0, err
+	}
+	if err := u.unpacker.Unpack(ctx, UnpackRequest{
+		Product: req.Product, Platform: req.Platform, AssetName: sel.Binary.Name,
+		Archive: archive, Program: program, Limit: u.limits.Executable,
+	}); err != nil {
+		return "", "", 0, err
+	}
+	digest, size, err := hashAndValidateStaging(sess, program, u.limits.Executable, "unpacked program")
+	if err != nil {
+		return "", "", 0, err
+	}
+	return program, digest, size, nil
 }
 
 // warn turns the errors that arrived after the run did its work into
@@ -532,21 +615,21 @@ func (p *progressWriter) Write(b []byte) (int, error) {
 	return n, err
 }
 
-// hashAndValidateStaging returns the transformed staging file's digest and
-// size.
-func hashAndValidateStaging(sess InstallSession, path string, limit int64) (string, int64, error) {
+// hashAndValidateStaging returns the digest and size of a staging file a
+// Transformer or an Unpacker wrote; what names it in errors.
+func hashAndValidateStaging(sess InstallSession, path string, limit int64, what string) (string, int64, error) {
 	info, err := os.Lstat(path)
 	if err != nil {
 		return "", 0, err
 	}
 	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-		return "", 0, fmt.Errorf("selfupdate: transformed staging is not a regular file")
+		return "", 0, fmt.Errorf("selfupdate: %s is not a regular file", what)
 	}
 	if info.Size() > limit {
-		return "", 0, fmt.Errorf("selfupdate: transformed staging exceeds executable limit")
+		return "", 0, fmt.Errorf("selfupdate: %s exceeds executable limit", what)
 	}
 	if !sessOwns(sess, path) {
-		return "", 0, fmt.Errorf("selfupdate: transformed staging is not owned by the session")
+		return "", 0, fmt.Errorf("selfupdate: %s is not owned by the session", what)
 	}
 	sum, err := hashFile(path)
 	if err != nil {

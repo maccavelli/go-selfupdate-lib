@@ -138,6 +138,47 @@ func TestImageVerifier(t *testing.T) {
 		if !r.ok && !errors.Is(err, ErrIntegrity) {
 			t.Errorf("%s as %s: %v, want ErrIntegrity", filepath.Base(r.file), r.platform, err)
 		}
+		// CheckImage gives the same answer (0012-PLAN U1). darwin/amd64
+		// is not a target of that work (0012-MADR §10), so its rows stay
+		// with the verifier alone.
+		if r.platform == "darwin/amd64" || r.file == bin["darwin/amd64"] || r.file == fat {
+			continue
+		}
+		err = checkImageFile(t, plat(r.platform), r.file)
+		if r.ok && err != nil {
+			t.Errorf("CheckImage %s as %s: %v", filepath.Base(r.file), r.platform, err)
+		}
+		if !r.ok && !errors.Is(err, ErrIntegrity) {
+			t.Errorf("CheckImage %s as %s: %v, want ErrIntegrity", filepath.Base(r.file), r.platform, err)
+		}
+	}
+}
+
+func checkImageFile(t *testing.T, p Platform, path string) (err error) {
+	t.Helper()
+	f, err := os.Open(path) //nolint:gosec // a fixture this test built
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { err = joinClose(err, f) }()
+	return CheckImage(f, p)
+}
+
+// TestCheckImageUnsupportedPlatform: as NewImageVerifier, a platform with
+// no image check is ErrUnsupportedPlatform, and a zero platform is the
+// running one.
+func TestCheckImageUnsupportedPlatform(t *testing.T) {
+	for _, p := range []Platform{{OS: "plan9", Arch: "amd64"}, {OS: "linux", Arch: "riscv64"}} {
+		if err := CheckImage(strings.NewReader("x"), p); !errors.Is(err, ErrUnsupportedPlatform) {
+			t.Errorf("%v: %v", p, err)
+		}
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := checkImageFile(t, Platform{}, exe); err != nil {
+		t.Fatalf("the test binary as the running platform: %v", err)
 	}
 }
 

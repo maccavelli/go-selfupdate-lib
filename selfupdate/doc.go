@@ -1,17 +1,18 @@
 // Package selfupdate is the canonical CLI self-update implementation for
 // fleet programs.
 //
-// It discovers GitHub Releases, selects exact raw-binary assets, verifies
-// SHA-256 integrity, and replaces a running executable through an injected
-// installer. The package does not import a CLI framework, UI toolkit, or
+// It discovers GitHub Releases, selects exact assets, verifies SHA-256
+// integrity, and replaces a running executable through an injected
+// installer. An asset is a raw binary, or an archive that a Config.Unpacker
+// extracts the program from (0012-MADR §2). The package does not import a CLI framework, UI toolkit, or
 // service manager. Consumers bind flags, streams, and lifecycle adapters.
 //
 // # Updating
 //
 // New composes an Updater from explicit parts, and Updater.Run does one
 // request: resolve the target, discover and select the release, confirm,
-// download to session-owned staging, verify, optionally transform and probe,
-// and install. Request.CheckOnly stops after selection and reports
+// download to session-owned staging, verify, unpack an archive, optionally
+// transform and probe, and install. Request.CheckOnly stops after selection and reports
 // ErrUpdateAvailable; Request.DryRun runs everything short of the install,
 // without prompting, and leaves the target untouched.
 //
