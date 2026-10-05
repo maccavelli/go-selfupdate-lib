@@ -608,3 +608,71 @@ In addition:
   * every script test; cross vet.
 
   `make pre-add-check` passes on the eight Go files.
+
+### Phase U2: `selfupdate/archive`, selection (2026-10-05)
+
+* **CI on U1** (`6d1c80a`, run 37333388476) is green on all three
+  runners.
+* **Built,** in `selfupdate/archive/doc.go` and `select.go`:
+  * `Format`, with `TarGz`, `Zip` and `Gz`, and `Format.Extension`;
+  * `SelectorOptions` and `NewSelector`;
+  * `FleetName`, `GoReleaserName` and `GoReleaserChecksums`.
+* **Select:**
+  * The product, the platform's fields and the platform list are checked
+    by asking the exact selector, built from the same list, about a
+    release holding only the names it wants. Both selectors therefore
+    refuse alike, with no new API. The exact selector's checks are
+    unexported.
+  * Asset state and digest syntax need no check here: discovery's
+    `validateAssetMetadata` checks every selected asset.
+* **`Format.Extension`** is exported beyond MADR §3's sketch, so a
+  consumer's own `Name` can build names. It is additive.
+* **depguard:** the rule `selfupdate-archive` (`$gostd` and
+  `…/selfupdate$`), excluded from `other-packages`. AGENTS.md names the
+  package and the rule.
+* **Tests,** in `selfupdate/archive/select_test.go`:
+  * `TestFormatExtension`, `TestFleetName` and `TestGoReleaserNames`,
+    with the refusal of arm and the mips architectures;
+  * `TestNewSelectorRefusesPlatforms`: each refusal contains the exact
+    selector's own error;
+  * `TestSelectDefaults` and `TestSelectGoReleaser`;
+  * `TestSelectRefusals`, 14 cases: a platform outside the list
+    (`ErrUnsupportedPlatform`), an invalid product, a missing or
+    duplicate archive or manifest, names with a slash, `..`, empty,
+    129 characters, or naming the manifest, a bad manifest name, a
+    `Name` error, and an unknown format;
+  * `TestNameCheckMatchesReleaseWorkflow`, which reads `product_re` out of
+    `scripts/verify-selfupdate-release.sh`;
+  * `TestSelectorWithUnpacker`: `selfupdate.New` accepts this selector
+    beside an `Unpacker`.
+* **Step 9, a real GoReleaser checksum file.**
+  `testdata/goreleaser-v2.18.2-checksums.txt` is `checksums.txt` from the
+  immutable release v2.18.2 of goreleaser/goreleaser, fetched unchanged
+  (SHA-256 `0818c962…0a47`). `TestGoReleaserChecksumsFile` checks that:
+  * it parses with `ParseSHA256SUMS`: 53 entries, two fields per line;
+  * a consumer-written `Name` selects GoReleaser's own archives from it.
+
+  This settles the MADR's "Not verified" entry about GoReleaser's
+  checksum format. The release also shows the uname style in use:
+  `goreleaser_Darwin_arm64.tar.gz`, `goreleaser_Linux_x86_64.tar.gz`,
+  `goreleaser_Windows_x86_64.zip`. GoReleaser's own configuration is not
+  its default template, so the MADR's choice to leave that style to a
+  consumer's `Name` stands.
+* **Plants,** each in a scratch copy, each caught:
+
+  | Plant | Caught by |
+  | --- | --- |
+  | the platform check skipped | `TestSelectRefusals`: "no asset … riscv64", want "not in the product platform matrix" |
+  | the name check removed | `TestSelectRefusals`: "no asset \"dir/relay.tar.gz\"" |
+  | duplicates accepted | `TestSelectRefusals`: `<nil>`, want "duplicate asset" |
+  | not marked `Packed` | `TestSelectDefaults` |
+  | GoReleaser variants accepted | `TestGoReleaserNames`: arm accepted |
+  | the name check drifting from the workflow's | `TestNameCheckMatchesReleaseWorkflow` |
+  | a `golang.org/x/term` import | depguard: "not allowed from list 'selfupdate-archive'" |
+
+* **Checks** (`gate.sh`, every one rc 0):
+  * gofmt; `make lint`, 0 issues; vet; race and shuffle;
+  * tidy; `make apicheck`: `compatible with v1.7.0`;
+  * fuzz; vuln; the script tests; cross vet.
+
+  `make pre-add-check` passes on the three Go files.

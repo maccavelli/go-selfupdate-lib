@@ -138,6 +138,18 @@ linters:
             - $gostd
             - github.com/maccavelli/go-selfupdate-lib/selfupdate$
             - github.com/maccavelli/go-selfupdate-lib/selfupdate/service$
+        # selfupdate/archive: the standard library and selfupdate
+        # (docs/decisions/0012-MADR-archive-assets-and-macos-codesign.md §1).
+        # Named after the package's path, since "archive" would sort before
+        # "banned" (0008-MADR D1).
+        selfupdate-archive:
+          list-mode: strict
+          files:
+            - "**/selfupdate/archive/*.go"
+            - "!$test"
+          allow:
+            - $gostd
+            - github.com/maccavelli/go-selfupdate-lib/selfupdate$
         # Every other package, such as a new internal/ helper, gets only the
         # standard library and this module until a record gives it its own
         # rule (docs/decisions/0010-MADR-remediate-second-debugging-pass-findings.md
@@ -156,6 +168,7 @@ linters:
             - "!**/selfupdate/service/launchd/*.go"
             - "!**/selfupdate/service/scm/*.go"
             - "!**/selfupdate/service/systemd/*.go"
+            - "!**/selfupdate/archive/*.go"
           allow:
             - $gostd
             - github.com/maccavelli/go-selfupdate-lib
