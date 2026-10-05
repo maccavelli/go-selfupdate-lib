@@ -20,11 +20,12 @@ at least that. Move it deliberately first, and run your full test suite at
 ## 2. The Go import
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.6.0
+go get github.com/maccavelli/go-selfupdate-lib@v1.7.0
 ```
 
-`v1.6.0` changes a few behaviours that `v1.5.x` had; they are listed in
-[6. From v1.5 to v1.6](#6-from-v15-to-v16).
+`v1.7.0` is the current release. `v1.6.0` changed a few behaviours that
+`v1.5.x` had; they are listed in [6. From v1.5 to v1.6](#6-from-v15-to-v16).
+`v1.7.0` only adds to the API: see [7. From v1.6 to v1.7](#7-from-v16-to-v17).
 
 Replace every `github.com/maccavelli/mcplib/selfupdate` import with
 `github.com/maccavelli/go-selfupdate-lib/selfupdate`. No identifier or signature
@@ -75,7 +76,7 @@ In the job that publishes your release, change the `uses:` line and delete
 
 ```diff
 -    uses: maccavelli/mcplib/.github/workflows/publish-selfupdate-release.yml@<mcplib SHA> # mcplib v1.x.y
-+    uses: maccavelli/go-selfupdate-lib/.github/workflows/publish-selfupdate-release.yml@b1f1caa01013d8ecbbc0a17639a55e21fcdf0763 # v1.6.0
++    uses: maccavelli/go-selfupdate-lib/.github/workflows/publish-selfupdate-release.yml@e825cdafd332df7e532f0c54da9d69a53e27d70b # v1.7.0
      with:
        artifact-name: …
        products-json: …
@@ -87,11 +88,11 @@ In the job that publishes your release, change the `uses:` line and delete
 - **Pin the full commit SHA of a release tag, never the tag name.** The
   workflow is unchanged from `v1.3.0` to `v1.5.0`. `v1.5.1` refuses an
   empty binary, keeps a backport from becoming the latest release, and
-  accepts only ASCII digits in a tag. `v1.6.0` changes nothing in it; the
-  example pins `v1.6.0`.
+  accepts only ASCII digits in a tag. `v1.6.0` and `v1.7.0` change nothing
+  in it; the example pins `v1.7.0`.
   Tags are annotated, so the tag ref names a tag object, not the commit
   `uses:` needs. Resolve the commit with the peeled ref:
-  `git ls-remote https://github.com/maccavelli/go-selfupdate-lib 'refs/tags/v1.6.0^{}'`.
+  `git ls-remote https://github.com/maccavelli/go-selfupdate-lib 'refs/tags/v1.7.0^{}'`.
 - **`bridge-release` must go,** even when it is `false`. The workflow no
   longer declares it, and GitHub rejects an input the called workflow does
   not define. It only ever permitted `magic-cli-remote` `v0.16.0`, which is
@@ -137,7 +138,9 @@ The steps below are prepare-commit-msg's, proven on a scratch copy of it at
 `selfupdate/cli/testdata/migration` files byte for byte, with exit codes 0,
 10 and 1.
 
-**`go.mod`.** Require go-selfupdate-lib `v1.5.0`, with `go 1.27.1`. `mcplib` stays
+**`go.mod`.** Require go-selfupdate-lib `v1.7.0`, with `go 1.27.1`. The steps
+were proven at `v1.5.0`; every later release only adds to the API, so
+they still build, and §6 lists the behaviour `v1.6.0` changed. `mcplib` stays
 only if something else still imports it; in prepare-commit-msg,
 `llmprovider` and `wizard` do.
 
@@ -354,12 +357,13 @@ the real stdout in `o.Stdout` when `--json` is given.
 ## 6. From v1.5 to v1.6
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.6.0
+go get github.com/maccavelli/go-selfupdate-lib@v1.7.0
 ```
 
-Every exported change is an addition, so a program that built on `v1.5.x`
-builds unchanged. These are the behaviours that change, and what to do about
-each. Why, and how, is in
+This takes the current release; what `v1.7.0` adds is in
+[7. From v1.6 to v1.7](#7-from-v16-to-v17). Every exported change is an
+addition, so a program that built on `v1.5.x` builds unchanged. These are
+the behaviours that change, and what to do about each. Why, and how, is in
 [0010-MADR](../decisions/0010-MADR-remediate-second-debugging-pass-findings.md)
 §3 and its amendments A2 to A5.
 
@@ -433,3 +437,47 @@ and group, when the updater may give them.
   `schema_version` 2.
 - A managed service that is stopped but enabled is started after an update
   only if your `Lifecycle` implements `Enabled`.
+
+## 7. From v1.6 to v1.7
+
+```bash
+go get github.com/maccavelli/go-selfupdate-lib@v1.7.0
+```
+
+`v1.7.0` only adds: `make apicheck` reports it compatible with `v1.6.0`, it
+requires the same three modules, and the release workflow is unchanged. A
+program that does not use the new packages behaves as it did. Why, and how,
+is in
+[0011-MADR](../decisions/0011-MADR-reference-service-lifecycles.md).
+
+### What is new
+
+- **`selfupdate/service`:** what the backends share: `PollHealthy`,
+  `NewExecReconciler` for a program that owns its service definition, the
+  typed errors, and the handoff (`HandOffFunc`, `ReportFunc`,
+  `ReadHandOffResult`, `LoadHandOffEnv`).
+- **`selfupdate/service/systemd`, `launchd` and `scm`:** a
+  `selfupdate.Lifecycle`, `EnabledLifecycle`, `Reconciler` and
+  `service.Detacher` each, for a systemd unit, a launchd job and a Windows
+  service, and `systemd.Notify` with its helpers. Each recognises its binary
+  by file identity too, so a definition that names it through a symlinked
+  directory or by a Windows 8.3 short name is not a mismatch.
+- **`cli.Options.HandOff`:** an update started from inside the service, such
+  as by an agent the service spawned, runs detached from it. The command
+  prints `update handed off: …` and exits 0; under `--json` the result
+  object gains `handed_off`.
+
+### Adopting it
+
+- If your program hand-wrote a `Lifecycle` for one of these managers,
+  replace it with the backend's `New`, and pass the result to
+  `NewManagedInstaller` as both the `Lifecycle` and the `Reconciler`.
+- To update from inside the service, call `service.ReportFunc()` first in
+  `main`, and set `Options.HandOff` from `service.HandOffFunc` and that
+  function. See
+  [Run as a service](extending-selfupdate.md#run-as-a-service).
+
+### Check
+
+- `go build ./...`, `go vet ./...` and `go test ./...` pass.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.7.0`.

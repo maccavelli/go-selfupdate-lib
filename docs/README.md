@@ -38,7 +38,7 @@ name, and the files they cite moved with the rename
 | 0010 | PLAN | [Implement v1.5.1: the fixes that keep every documented contract](decisions/0010-PLAN-v1-5-1-contract-preserving-fixes.md) | complete |
 | 0010 | PLAN | [Implement v1.6.0: the contracts the owner decided (Q1–Q6, A14)](decisions/0010-PLAN-v1-6-0-owner-contracts.md) | complete |
 | 0011 | MADR | [Build `selfupdate/service`: reference systemd, launchd and Windows SCM lifecycles on the platform tools and `x/sys`, with `PollHealthy`, `ExecReconciler`, `sd_notify`, and a handoff that keeps an updater from stopping its own service](decisions/0011-MADR-reference-service-lifecycles.md) | accepted |
-| 0011 | PLAN | [Implement `selfupdate/service`: reference systemd, launchd and Windows SCM lifecycles, the handoff and `sd_notify` (`v1.7.0`)](decisions/0011-PLAN-reference-service-lifecycles.md) | in-progress |
+| 0011 | PLAN | [Implement `selfupdate/service`: reference systemd, launchd and Windows SCM lifecycles, the handoff and `sd_notify` (`v1.7.0`)](decisions/0011-PLAN-reference-service-lifecycles.md) | complete |
 
 ## I want to…
 
@@ -46,6 +46,7 @@ name, and the files they cite moved with the rename
 | :--- | :--- |
 | see what is in this repository today | [architecture.md](architecture.md) |
 | move a program from `mcplib/selfupdate` to this module | [guides/migrating-from-mcplib-selfupdate.md](guides/migrating-from-mcplib-selfupdate.md) |
+| move to the current release from an earlier one of this module | [guides/migrating-from-mcplib-selfupdate.md, §6 and §7](guides/migrating-from-mcplib-selfupdate.md#6-from-v15-to-v16) |
 | add the update command to my program | [guides/migrating-from-mcplib-selfupdate.md, §5](guides/migrating-from-mcplib-selfupdate.md#5-adopt-the-canonical-update-command) |
 | stamp a release build so `update` knows it is one | `buildinfo.LDFlags`; [0004-PLAN-v1-4-0, Step 2](decisions/0004-PLAN-v1-4-0-command-surface.md#step-2-buildinfo-buildinfobuildinfogo-new) |
 | show an update banner | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#show-an-update-banner) |

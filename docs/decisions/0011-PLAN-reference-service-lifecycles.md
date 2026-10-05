@@ -1,6 +1,6 @@
 ---
-status: in-progress
-date: 2026-10-04
+status: complete
+date: 2026-10-05
 associated-madr: "0011-MADR-reference-service-lifecycles.md"
 ---
 # Implement `selfupdate/service`: reference systemd, launchd and Windows SCM lifecycles, the handoff and `sd_notify` (`v1.7.0`)
@@ -1031,3 +1031,88 @@ new packages.
 * **Checks** (`gate.sh`, every one rc 0): `make lint`, 0 issues; race and
   shuffle; `make apicheck`: `compatible with v1.6.0`; fuzz, vuln, tidy
   (`go.mod` unchanged); every script test; cross vet.
+
+### Phase V5, steps 4 to 6: tag, pin and checks (2026-10-05)
+
+* **Push.** The owner pushed `main` to `e825cda`, deviation D7's fix. CI
+  was green on ubuntu-24.04, macos-15 and windows-2025, and no live test
+  skipped:
+  * systemd: `TestLiveManagedUpdate`, `TestLiveHealthFailureRollsBack`
+    and `TestLiveHandOff` passed in system and in user scope;
+  * launchd: those three, `TestLiveExitCodes` and
+    `TestLiveStopWaitsForSlowExit` passed;
+  * SCM: the three passed, with the service registered by its 8.3 short
+    path (`the service is registered as …\SCMLIV~1\demo.exe`), the case
+    that failed in run 37248939146.
+
+  The race tests ran on Linux and macOS; CI does not run them on Windows.
+  The Windows race run and the Linux test hosts' systemd live tests, which
+  D7's record left to CI, were not run outside it.
+* **Tag.** The owner tagged and pushed `v1.7.0`, annotated, with message
+  `v1.7.0`. `git ls-remote origin 'refs/tags/v1.7.0^{}'` gives `e825cda`,
+  and `scripts/check-release-tag.sh v1.7.0` exits 0.
+* **Step 5, after the tag.**
+  * `README.md` and the migration guide pin
+    `publish-selfupdate-release.yml@e825cdafd332df7e532f0c54da9d69a53e27d70b # v1.7.0`.
+  * Nothing under `.github/workflows/publish-selfupdate-release.yml`,
+    `scripts/`, `go.mod` or `go.sum` changed between `v1.6.0` and
+    `v1.7.0`. The guide says so, and its `ls-remote` example resolves
+    `v1.7.0`.
+  * `architecture.md` gives the tag's commit.
+  * *Deviation D8 (2026-10-05), at the owner's direction:* the migration
+    guide follows the current release. Its `go get` commands and the
+    `go.mod` step of §5 name `v1.7.0`, and a new §7, "From v1.6 to
+    v1.7", lists the additions and how to adopt them. `docs/README.md`
+    links §6 and §7. Each later release updates the guide the same way.
+* **Step 6.**
+  * **CI on the tag** (run 37316498065): green on all three runners.
+  * **The proxy:** `go list -m …@latest` against `proxy.golang.org` gives
+    `v1.7.0`, at `e825cda`.
+  * **A scratch consumer** requires `v1.7.0` from the proxy, with
+    `go.mod` naming the same three modules. It passes `go vet` and builds
+    for linux, darwin and windows. It asserts at compile time that each
+    backend is a `selfupdate.Lifecycle`, an `EnabledLifecycle` and a
+    `service.Detacher`, and it runs on each OS:
+    * **systemd,** on a Linux test host, against a fake `Runner`:
+      `Installed`, `Enabled`, `Running`, `Stop`, `Start` and
+      `WaitHealthy`; `Reconcile` of a unit naming the binary through a
+      symlinked directory is a no-op (`SameExecutable`); `Inside` is
+      false; `DropIn` marshals as `{"path":"","existed":false}`.
+    * **launchd,** on the development Mac, against a fake `Runner`: the
+      same calls and the same no-op `Reconcile`; `PlistBackup` marshals
+      with snake_case keys.
+    * **scm,** on the Windows test host, against the real SCM, read-only,
+      since `scm` has no runner seam: a missing service is not installed,
+      `Inside` is false, and `PathBackup` marshals as
+      `{"name":"","previous":""}`.
+    * Off its own OS each backend's `New` returns `ErrUnsupported`.
+    * **`cli.Options.HandOff`,** on all three: with a fake `Detacher`
+      that is always inside, `--yes` exits 0 with `update handed off: …`,
+      and under `--json` the result object carries `handed_off`. With
+      `ProcessDetacher` and `ReportFunc`, the command hands off, the
+      detached copy applies the update, and its `HandOffResult` reads back
+      with exit code 0 and the binary replaced.
+
+    My first draft treated `EnabledLifecycle` as including `Lifecycle`'s
+    methods, which it never has, and did not compile. My first launchd
+    fake answered `print` but not `list`, which `Running` reads in the
+    caller's own GUI domain, and `Running` was false. Both were my
+    consumer's faults, fixed before the runs above.
+
+**Verification.**
+
+* V1: each phase's tests failed on a deliberately broken input, recorded
+  per phase and in deviation D7's record.
+* V2: `make apicheck` reports `compatible with v1.6.0`, in CI on `main`
+  and on the tag; `go.mod` is unchanged.
+* V3: the live tests passed in CI on Linux in system and user scope, on
+  macOS and on Windows, and none skipped.
+* V4: `TestLiveHandOff` passed in CI on each platform.
+* V5: the tests the MADR's "Probe evidence" names passed in CI:
+  `TestLiveExitCodes` and `TestLiveStopWaitsForSlowExit` for launchd;
+  `TestLiveHandOff`, `TestLiveHealthFailureRollsBack` and
+  `TestHandOffHopProcess` for the SCM; the systemd live tests read the
+  `systemctl show` values they rely on.
+* V6: CI is green on `main` and on `v1.7.0`.
+
+This PLAN is `complete`.
