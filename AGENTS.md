@@ -7,12 +7,15 @@ this file. A repository-local `CLAUDE.md` / `.claude/rules/` / `.grok/rules/` /
 `go-selfupdate-lib` is the fleet's self-update library
 (`github.com/maccavelli/go-selfupdate-lib`). It was `go-core-lib` up to `v1.4.1`
 (`docs/decisions/0009-MADR-rename-to-go-selfupdate-lib.md`). Its scope is
-self-update only: `selfupdate`, its `cli` and `selfupdatetest` subpackages,
-and `buildinfo`, which stamps the identity `selfupdate` decides on. A package
+self-update only: `selfupdate`; its `cli` and `selfupdatetest`
+subpackages; `selfupdate/service` and its `systemd`, `launchd` and `scm`
+backends (`docs/decisions/0011-MADR-reference-service-lifecycles.md`); and
+`buildinfo`, which stamps the identity `selfupdate` decides on. A package
 that does not serve self-update belongs in another module. It is a library
-only: no packaged binary. Each package lives in its own top-level directory,
-named after it; there is no root package. Unexported helpers shared between
-packages live under `internal/`. Requires Go 1.27.1.
+only: no packaged binary. `buildinfo` and `selfupdate` are top-level
+directories, and each `selfupdate` subpackage lives in a directory under
+`selfupdate/`, named after it; there is no root package. Unexported helpers
+shared between packages live under `internal/`. Requires Go 1.27.1.
 
 ## Dependencies
 
@@ -31,7 +34,8 @@ pre-add check and CI fail on a breach
 - `banned` refuses the modules above, in every file, with the reason;
 - `module` allows only the standard library, this module and the
   required modules, in every file;
-- `buildinfo`, `selfupdate`, `selfupdate-cli` and `selfupdatetest` allow
+- `buildinfo`, `selfupdate`, `selfupdate-cli`, `selfupdatetest`,
+  `service`, `service-launchd`, `service-scm` and `service-systemd` allow
   each package, outside its tests, only the imports its record names;
 - `other-packages` allows any other package, an `internal/` helper
   included, only the standard library and this module
