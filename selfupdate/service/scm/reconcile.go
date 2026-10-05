@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
+	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
 )
 
 // PathBackup is the ReconcileResult.State of a rewrite: the service's
@@ -107,9 +108,11 @@ func (s *Service) programAndArgs(line, executable string) ([]string, error) {
 	return args, err
 }
 
-// samePath compares two Windows paths, cleaned and case-insensitively.
+// samePath compares two Windows paths, cleaned and case-insensitively, then
+// by file identity, which matches an 8.3 short name (service.SameExecutable,
+// 0011-MADR amendment A5).
 func samePath(a, b string) bool {
-	return strings.EqualFold(filepath.Clean(a), filepath.Clean(b))
+	return strings.EqualFold(filepath.Clean(a), filepath.Clean(b)) || service.SameExecutable(a, b)
 }
 
 func mapErrorOrNil(step, name string, err error) error {

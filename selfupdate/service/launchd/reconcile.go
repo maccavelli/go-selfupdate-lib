@@ -37,7 +37,7 @@ func (j *Job) Reconcile(ctx context.Context, _ string, executable string) (selfu
 	if err != nil {
 		return selfupdate.ReconcileResult{}, err
 	}
-	if filepath.Clean(current) == filepath.Clean(executable) {
+	if service.SameExecutable(current, executable) {
 		return selfupdate.ReconcileResult{Detail: j.o.Plist + " runs " + current}, nil
 	}
 	if !j.o.RewritePath {

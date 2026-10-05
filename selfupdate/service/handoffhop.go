@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,32 +17,53 @@ import (
 // fork. scm.Service.Detach sets it (0011-MADR amendment A4).
 const EnvHandOffHop = "SELFUPDATE_HANDOFF_HOP"
 
-// HandOffHop does nothing unless EnvHandOffHop is set. In a hop it starts
+// EnvHandOffHopParent carries the hop's process ID to the real run, which
+// waits for the hop to exit before anything else: until it has, a walk up
+// the run's ancestors still reaches the service.
+const EnvHandOffHopParent = "SELFUPDATE_HANDOFF_HOP_PARENT"
+
+// hopWait bounds the real run's wait for the hop to exit.
+const hopWait = 10 * time.Second
+
+// HandOffHop finishes the hop. In a hop, with EnvHandOffHop set, it starts
 // the real run, this executable with this process's arguments and its
-// environment less EnvHandOffHop, detached as DetachProcess does, and exits
-// 0. If the start fails it writes a HandOffResult with the error to
-// EnvHandOffResult's path, when set, and exits 1; 2 when that write fails
-// too.
+// environment less EnvHandOffHop, plus EnvHandOffHopParent, detached as
+// DetachProcess does, and exits 0. If the start fails it writes a
+// HandOffResult with the error to EnvHandOffResult's path, when set, and
+// exits 1; 2 when that write fails too.
+//
+// In the real run, with EnvHandOffHopParent set, it waits up to 10 s for
+// the hop to exit, then unsets the variable. In any other run it does
+// nothing.
 //
 // LoadHandOffEnv and ReportFunc call it first, so a program that calls
 // either at start-up needs nothing more.
-func HandOffHop() {
-	if os.Getenv(EnvHandOffHop) == "" {
-		return
+func HandOffHop() error {
+	if os.Getenv(EnvHandOffHop) != "" {
+		os.Exit(hop(os.Executable, os.Args[1:], os.Environ(), os.Getpid(), startDetached))
 	}
-	os.Exit(hop(os.Executable, os.Args[1:], os.Environ(), startDetached))
+	v, ok := os.LookupEnv(EnvHandOffHopParent)
+	if !ok {
+		return nil
+	}
+	if pid, err := strconv.Atoi(v); err == nil && pid > 0 {
+		waitHopExit(pid, hopWait)
+	}
+	return os.Unsetenv(EnvHandOffHopParent)
 }
 
-// hop is HandOffHop's work, with its process inputs passed in; it returns
-// the hop's exit code.
-func hop(executable func() (string, error), args, environ []string, start func(path string, args, env []string) (int, error)) int {
+// hop is HandOffHop's work in a hop, with its process inputs passed in;
+// it returns the hop's exit code.
+func hop(executable func() (string, error), args, environ []string, self int,
+	start func(path string, args, env []string) (int, error)) int {
 	started := time.Now().UTC()
-	env := make([]string, 0, len(environ))
+	env := make([]string, 0, len(environ)+1)
 	for _, kv := range environ {
-		if !strings.HasPrefix(kv, EnvHandOffHop+"=") {
+		if !strings.HasPrefix(kv, EnvHandOffHop+"=") && !strings.HasPrefix(kv, EnvHandOffHopParent+"=") {
 			env = append(env, kv)
 		}
 	}
+	env = append(env, EnvHandOffHopParent+"="+strconv.Itoa(self))
 	exe, err := executable()
 	if err == nil {
 		_, err = start(exe, args, env)

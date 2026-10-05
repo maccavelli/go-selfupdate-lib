@@ -947,3 +947,87 @@ new packages.
   launchd on macOS 26, and the Windows SCM on the test hosts. CI runs each
   backend's live tests on its OS: Ubuntu 24.04, macOS 15 and Windows
   Server 2025.
+* **`service.SameExecutable`** (deviation D7): each backend's `Reconcile`
+  recognises its binary by file identity too, so a definition that names
+  it by a Windows 8.3 short name or through a symlinked directory is not a
+  mismatch.
+
+### Deviation D7 (2026-10-05): `Reconcile` compares by file identity
+
+* **Found** by CI, run 37248939146, the first run of the Windows SCM live
+  step, after V4 and step 0 were pushed. The runner's `%TEMP%` is an 8.3
+  short path, `C:\Users\<USER~1>\…`; the service was registered with it,
+  and the installer resolves the target to the long form. `Reconcile`
+  compared the two as strings, as the MADR's §5 says, and failed: `runs
+  C:\Users\<USER~1>\…\demo.exe, not C:\Users\<user>\…\demo.exe`.
+  `TestLiveManagedUpdate` and `TestLiveHandOff` failed. The Windows test
+  host's account name has no 8.3 alias, so the local runs passed.
+* **A weak test.** `TestLiveHealthFailureRollsBack` passed on that run for
+  the wrong reason: `Reconcile` failed before the bad binary was started,
+  and the test asserted only a rollback.
+* **The same defect elsewhere.** The systemd and launchd backends compare
+  strings too: a unit or plist that names the binary through a symlinked
+  directory fails the same way.
+* **Decision.** The owner chose "File identity, all three". MADR
+  amendment A5 records it. `service.SameExecutable(a, b)` is the cleaned
+  string comparison, case-insensitive on Windows, and, when that differs,
+  `os.SameFile` of the two; a path that cannot be read matches only by its
+  text. The three backends use it. `TestLiveHealthFailureRollsBack` asserts
+  that the start failed. `v1.7.0` waits for this.
+
+### Deviation D7, executed (2026-10-05)
+
+* **Built:** `service.SameExecutable`, used by `systemd`, `launchd` and
+  `scm` `Reconcile` (scm keeps its Windows-only case rule first, then
+  calls it). Tests: `TestSameExecutableByText`, `…ByIdentity` (a hard
+  link), `…ThroughSymlink` (Unix), `…ShortName` (Windows); and
+  `TestReconcileThroughSymlink` (systemd, launchd) and
+  `TestReconcileShortName` (scm, Windows), each first seen to fail with the
+  error CI showed.
+* **The live test registers the service by its 8.3 short path** when the
+  volume gives one, so the Windows test host now runs CI's case:
+  `the service is registered as …\SCMLIV~1\demo.exe`.
+  `TestLiveHealthFailureRollsBack` requires the error to come from the
+  start.
+* **A race it uncovered, in V4's hop.** With the slower 8.3 path, the
+  detached run sometimes checked `Stop`'s backstop before the hop had
+  exited: the walk went through the live hop to the agent and the service,
+  and the run refused itself (`this process runs inside the service it
+  would stop`); one run failed instead with `concurrent update`. Amendment
+  A4 assumes the hop has exited; nothing made sure of it. My first hop
+  process test hid the same race behind a go-ahead file. Fixed within A4,
+  no decision changed: the hop passes its process ID in
+  `SELFUPDATE_HANDOFF_HOP_PARENT` (`EnvHandOffHopParent`), and
+  `HandOffHop`, which `LoadHandOffEnv` calls first in the real run, waits
+  up to 10 s for it to exit: on Windows by its handle, skipping a process
+  created after the run, a reused ID; on Unix until the run's parent
+  changes. `HandOffHop` now returns an error, from unsetting the variable;
+  it is unreleased.
+  * `TestWaitHopExit` is deterministic: a helper parent lives 300 ms after
+    starting its child, and the child must wait that long.
+  * `TestHandOffHopProcess` lost its go-ahead file; the run reports at
+    once, and on Windows that the hop had exited.
+* **Live, on the Windows test host:** the three SCM live tests passed
+  twice in a row, registered by the 8.3 path. The launchd live tests pass
+  on the development Mac.
+* **Plants,** each caught:
+  * on the Mac: `SameExecutable` by text only (`TestSameExecutableByIdentity`);
+    systemd's and launchd's comparison by text (`TestReconcileThroughSymlink`);
+    no wait for the hop (`TestWaitHopExit`: `the child waited 0 ms`); the
+    hop passing no PID (`TestHandOffHopStartsRun`). The first systemd
+    plant failed to compile, on an unused import, and was planted again.
+    The first wait plant ran against `TestHandOffHopProcess` and was
+    missed: on this Mac the hop exits long before the run reads its
+    parent, which is why `TestWaitHopExit` exists;
+  * on the Windows test host: no wait (`TestWaitHopExit`); scm by text
+    (`TestReconcileShortName`); and, **live,** scm by text, where
+    `TestLiveManagedUpdate` failed in `Reconcile` and
+    `TestLiveHealthFailureRollsBack` failed with `the install failed
+    before the start`, which it would have passed before this deviation.
+* **Not run after this fix:** the Windows race run of all eight packages,
+  and the systemd live tests on the two Linux hosts. The tool's safety
+  check refused my runner scripts, which remove their remote scratch
+  directories. CI runs both on the next push.
+* **Checks** (`gate.sh`, every one rc 0): `make lint`, 0 issues; race and
+  shuffle; `make apicheck`: `compatible with v1.6.0`; fuzz, vuln, tidy
+  (`go.mod` unchanged); every script test; cross vet.

@@ -717,10 +717,37 @@ PLAN stop, deviation D5 of
     cannot be read counts as genuine, so an unreadable link errs towards
     a handoff.
   * `DetachProcess`, and the systemd and launchd backends, are unchanged.
+  * *(Note, 2026-10-05, deviation D7 of the PLAN.)* The run waits for the
+    hop to exit before anything else: the hop passes its process ID in
+    `SELFUPDATE_HANDOFF_HOP_PARENT`, and `HandOffHop` waits up to 10 s. A
+    live run showed the run checking its ancestors while the hop was still
+    alive.
 * **Not chosen.** Skipping the walk in a detached run leaves the run a
   descendant of the service, which a tree kill reaches. A one-shot
   scheduled task depends on `schtasks.exe`, needs cleanup, and cannot be
   created by a non-administrator for a LocalSystem service's account.
+
+### A5 (2026-10-05): `Reconcile` recognises the binary by file identity
+
+*Status: accepted (2026-10-05). The owner chose "File identity, all three"
+at a PLAN stop, deviation D7 of
+[0011-PLAN-reference-service-lifecycles.md](0011-PLAN-reference-service-lifecycles.md).*
+
+* **Found.** §5 compares the definition's program with the target "after
+  cleaning both (case-insensitively on Windows)". On a CI runner the
+  service was registered with an 8.3 short path and the target resolved
+  to the long one; the comparison called them different, and every
+  managed update failed and rolled back. A path through a symlinked
+  directory fails the same way on Unix.
+* **Decided.**
+  * `service.SameExecutable(a, b)` reports a match when the cleaned paths
+    are equal, case-insensitively on Windows, or, failing that, when
+    `os.SameFile` finds them the same file: the volume and file index on
+    Windows, the device and inode on Unix. A path that cannot be read
+    matches only by its text, so the mismatch error stands.
+  * The systemd, launchd and SCM `Reconcile` use it. The no-op stays
+    verified: a definition naming another file is still an error, unless
+    `Options.RewritePath`.
 
 ## More Information
 

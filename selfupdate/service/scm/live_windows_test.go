@@ -322,6 +322,24 @@ func removeService(t *testing.T, name string) {
 	t.Fatalf("service %s was never deleted", name)
 }
 
+// registeredPath is path's 8.3 short form, or path itself when the volume
+// gives it none.
+func registeredPath(t *testing.T, path string) string {
+	t.Helper()
+	p, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	buf := make([]uint16, windows.MAX_LONG_PATH)
+	n, err := windows.GetShortPathName(p, &buf[0], uint32(len(buf)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	short := windows.UTF16ToString(buf[:n])
+	t.Logf("the service is registered as %s", short)
+	return short
+}
+
 // newLiveService creates and starts the throwaway service, and deletes it
 // when the test ends.
 func newLiveService(t *testing.T) liveConfig {
@@ -347,7 +365,10 @@ func newLiveService(t *testing.T) liveConfig {
 		t.Fatalf("connect to the SCM (the live test needs an elevated session): %v", err)
 	}
 	defer func() { _ = m.Disconnect() }()
-	s, err := m.CreateService(liveName, cfg.Target, mgr.Config{
+	// Registered by its 8.3 short path when the volume gives one, as CI's
+	// %TEMP% does: Reconcile must still recognise the binary (0011-MADR
+	// amendment A5).
+	s, err := m.CreateService(liveName, registeredPath(t, cfg.Target), mgr.Config{
 		StartType: mgr.StartAutomatic, DisplayName: "go-selfupdate-lib live test",
 	}, liveArg, "service", cfg.Path)
 	if err != nil {
@@ -436,7 +457,11 @@ func TestLiveHealthFailureRollsBack(t *testing.T) {
 	if !errors.Is(err, selfupdate.ErrManagedInstall) || res.Applied || !res.RolledBack {
 		t.Fatalf("Install = %+v, %v; want a rollback", res, err)
 	}
-	t.Logf("the failed start: %v", err)
+	// The rollback must be the start's: a failure earlier, such as
+	// Reconcile's, rolls back too (0011-PLAN deviation D7).
+	if !strings.Contains(err.Error(), "scm: start "+liveName) {
+		t.Fatalf("the install failed before the start: %v", err)
+	}
 	waitReady(t, cfg, before)
 }
 

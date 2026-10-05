@@ -64,7 +64,9 @@ func WriteHandOffEnv(dir, id string, vars []string) (string, error) {
 //
 // It calls HandOffHop first: in a hop it starts the real run and exits.
 func LoadHandOffEnv() error {
-	HandOffHop()
+	if err := HandOffHop(); err != nil {
+		return err
+	}
 	path := os.Getenv(EnvHandOffEnv)
 	if path == "" {
 		return nil

@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
+	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
 )
 
 // dropInName is the drop-in this package owns (0011-MADR §5).
@@ -45,7 +46,7 @@ func (u *Unit) Reconcile(ctx context.Context, product, executable string) (selfu
 	if current == "" {
 		return selfupdate.ReconcileResult{}, fmt.Errorf("selfupdate: systemd: %s has no ExecStart", unit)
 	}
-	if filepath.Clean(current) == filepath.Clean(executable) {
+	if service.SameExecutable(current, executable) {
 		return selfupdate.ReconcileResult{Detail: unit + " runs " + current}, nil
 	}
 	if !u.o.RewritePath {

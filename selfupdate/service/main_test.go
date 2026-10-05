@@ -56,15 +56,39 @@ func fakeTool(mode string) int {
 	case "env":
 		fmt.Print(strings.Join(os.Environ(), "\n"))
 		return 0
-	case "hoprun":
-		// The real run after a hop: once the test has reaped the hop
-		// (FAKE_GO), write "<ppid> <marker seen>" to FAKE_OUT.
-		out := os.Getenv("FAKE_OUT")
-		if !waitForFile(os.Getenv("FAKE_GO")) {
-			return 6
+	case "hopparent":
+		// A stand-in hop that lives on: start a "hopchild" with FAKE_OUT,
+		// then exit 300 ms later.
+		exe, err := os.Executable()
+		if err != nil {
+			return 3
 		}
+		cmd := exec.Command(exe) //nolint:gosec // the test binary
+		cmd.Env = append(os.Environ(), fakeEnv+"=hopchild")
+		if err := cmd.Start(); err != nil {
+			return 4
+		}
+		time.Sleep(300 * time.Millisecond)
+		return 0
+	case "hopchild":
+		// Wait for the parent as the real run waits for the hop, and
+		// write "<ms waited> <parent still running>" to FAKE_OUT.
+		out, parent, start := os.Getenv("FAKE_OUT"), os.Getppid(), time.Now()
+		waitHopExit(parent, 5*time.Second)
+		body := strconv.FormatInt(time.Since(start).Milliseconds(), 10) + " " + strconv.FormatBool(processRunning(parent) && os.Getppid() == parent)
+		_ = os.WriteFile(out+".tmp", []byte(body), 0o600)
+		_ = os.Rename(out+".tmp", out)
+		return 0
+	case "hoprun":
+		// The real run after a hop. TestMain's LoadHandOffEnv has waited
+		// for the hop to exit; write "<ppid> <hop marker seen> <parent
+		// still running>" to FAKE_OUT at once.
+		out := os.Getenv("FAKE_OUT")
 		_, marked := os.LookupEnv(EnvHandOffHop)
-		_ = os.WriteFile(out+".tmp", []byte(strconv.Itoa(os.Getppid())+" "+strconv.FormatBool(marked)), 0o600)
+		_, parentVar := os.LookupEnv(EnvHandOffHopParent)
+		ppid := os.Getppid()
+		body := strconv.Itoa(ppid) + " " + strconv.FormatBool(marked || parentVar) + " " + strconv.FormatBool(processRunning(ppid))
+		_ = os.WriteFile(out+".tmp", []byte(body), 0o600)
 		_ = os.Rename(out+".tmp", out)
 		return 0
 	case "parent":
