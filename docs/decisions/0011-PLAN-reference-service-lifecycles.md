@@ -362,6 +362,13 @@ In addition:
 
 ### Phase V5: the CLI hook, docs and release
 
+0. *(Added by deviation D6, 2026-10-04.)* **JSON tags,** snake_case as
+   `Receipt` and `HandOffResult` have them, on the records of state and
+   outcome: `systemd.DropIn`, `launchd.PlistBackup`, `scm.PathBackup`,
+   `service.ExecState`, `service.Detached` and `service.Health`. Not on
+   `HandOff`, `Command` or `Output`, whose environment or input can hold
+   credentials, nor on the option and handle types, which hold functions
+   and interfaces. A test round-trips each tagged type through JSON.
 1. **`cli.Options.HandOff`** (MADR §9):
    * `Detach` runs after flag parsing, for an apply only.
    * When it hands off, the command prints `update handed off: <detail>`
@@ -850,3 +857,14 @@ In addition:
   * fuzz, vuln, tidy (`go.mod` unchanged);
   * every script test;
   * cross vet.
+
+### Deviation D6 (2026-10-04): JSON tags on the service packages' records
+
+* **Found** at the V4 handoff. `scm.PathBackup` followed `systemd.DropIn`
+  and `launchd.PlistBackup`: exported fields, no JSON tags. The owner's
+  standing preference for this module's API is exported fields with JSON
+  tags, a documented schema, where possible.
+* **Decision.** The owner directed "follow my preference for json tags".
+  V5 gains step 0, which tags the six records of state and outcome. No
+  MADR decision changes; the types are new since `v1.6.0`, so
+  `make apicheck` is unaffected.

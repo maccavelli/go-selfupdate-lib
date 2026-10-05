@@ -56,12 +56,12 @@ type HandOff struct {
 // Detached describes a started handoff.
 type Detached struct {
 	// ID is the handoff's ID.
-	ID string
+	ID string `json:"id"`
 	// Where names what runs it: a transient unit, a job label, a process
 	// ID.
-	Where string
+	Where string `json:"where"`
 	// ResultPath is where its HandOffResult will be.
-	ResultPath string
+	ResultPath string `json:"result_path"`
 }
 
 // HandOffResultSchema is the HandOffResult version this package writes.

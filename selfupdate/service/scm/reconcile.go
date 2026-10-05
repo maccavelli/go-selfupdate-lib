@@ -14,9 +14,9 @@ import (
 // command line as it was, which Restore puts back.
 type PathBackup struct {
 	// Name is the service.
-	Name string
+	Name string `json:"name"`
 	// Previous is its BinaryPathName before the rewrite.
-	Previous string
+	Previous string `json:"previous"`
 }
 
 // Reconcile implements selfupdate.Reconciler. The binary is replaced by

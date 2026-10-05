@@ -10,15 +10,15 @@ import (
 // Health is one observation of a service.
 type Health struct {
 	// Ready reports that the instance counts as up.
-	Ready bool
+	Ready bool `json:"ready"`
 	// Instance identifies the running instance, and changes with each
 	// start: a systemd InvocationID, a launchd or SCM process ID. Empty
 	// means the probe cannot tell instances apart.
-	Instance string
+	Instance string `json:"instance,omitempty"`
 	// Failed reports that the instance failed: the wait ends at once.
-	Failed bool
+	Failed bool `json:"failed"`
 	// Detail describes the observation, for an error message.
-	Detail string
+	Detail string `json:"detail,omitempty"`
 }
 
 // A HealthProbe observes a service once. An error is not fatal to

@@ -17,12 +17,13 @@ import (
 // was, which Restore puts back.
 type PlistBackup struct {
 	// Path is the plist.
-	Path string
+	Path string `json:"path"`
 	// Previous is its content before the rewrite.
-	Previous []byte
+	Previous []byte `json:"previous"`
 	// Mode, UID and GID are its mode and owner, which launchd checks.
-	Mode     fs.FileMode
-	UID, GID int
+	Mode fs.FileMode `json:"mode"`
+	UID  int         `json:"uid"`
+	GID  int         `json:"gid"`
 }
 
 // Reconcile implements selfupdate.Reconciler. The binary is replaced by

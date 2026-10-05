@@ -20,11 +20,11 @@ const dropInName = "90-selfupdate.conf"
 // and what was there before, which Restore puts back.
 type DropIn struct {
 	// Path is the drop-in file.
-	Path string
+	Path string `json:"path"`
 	// Existed reports whether a file was there before.
-	Existed bool
+	Existed bool `json:"existed"`
 	// Previous is its content, when it existed.
-	Previous []byte
+	Previous []byte `json:"previous,omitempty"`
 }
 
 // Reconcile implements selfupdate.Reconciler. The binary is replaced by

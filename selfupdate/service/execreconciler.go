@@ -50,8 +50,8 @@ type Receipt struct {
 // ExecState is the ReconcileResult.State of an ExecReconciler: the receipt
 // and the binary that wrote it, which Restore runs.
 type ExecState struct {
-	Receipt    Receipt
-	Executable string
+	Receipt    Receipt `json:"receipt"`
+	Executable string  `json:"executable"`
 }
 
 // ExecOptions configure an ExecReconciler.
