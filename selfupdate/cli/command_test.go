@@ -43,7 +43,7 @@ func (sc scenario) command(t *testing.T, product string, asJSON bool) outcome {
 	code := Command(context.Background(), args, product, sc.id,
 		func() (*selfupdate.Updater, error) { return buildUpdaterClosing(src, tg, sc.closeErr) },
 		Options{Stdout: &stdout, Stderr: &stderr, Stdin: strings.NewReader(sc.stdin),
-			Interactive: sc.interactive, Signals: []os.Signal{}})
+			Interactive: sc.interactive, Signals: []os.Signal{}, HandOff: sc.handOff})
 	return outcome{stdout: normalize(stdout.String(), product), stderr: normalize(stderr.String(), product), code: code, tg: tg}
 }
 

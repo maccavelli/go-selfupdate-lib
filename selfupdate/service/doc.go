@@ -19,4 +19,11 @@
 // detached run performs the whole managed update and writes a
 // HandOffResult, which ReadHandOffResult reads after the caller reconnects.
 // cli.Options.HandOff takes HandOffFunc and ReportFunc.
+//
+// A program calls ReportFunc, or LoadHandOffEnv, first in main. In a
+// detached run it applies a private environment file, which the launchd
+// handoff writes so a job's plist does not publish the caller's
+// environment; and in a hop, through which the Windows handoff starts the
+// run so that it does not descend from the service, it starts the real run
+// and exits (amendments A3 and A4).
 package service

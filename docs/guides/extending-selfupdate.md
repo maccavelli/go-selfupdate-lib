@@ -3,7 +3,7 @@
 For a program built on `github.com/maccavelli/go-selfupdate-lib/selfupdate` that
 needs more than the standalone default: a banner instead of an update, a
 front end that reads JSON, its own credential store, an extra check before
-install, or its own installer. Every section names one seam, what the package
+install, its own installer, or a service to update from inside. Every section names one seam, what the package
 does around it, and a runnable pointer: an `Example` you can read with
 `go doc`, or a test in `selfupdate/`.
 
@@ -275,6 +275,112 @@ Pointers:
   installer, in order
 - `selfupdate/managed_stopped_test.go`, `selfupdate/managed_started_test.go`:
   the start rule, and recovery
+
+## Run as a service
+
+Since `v1.7.0`, `selfupdate/service` and its three backends are the
+`Lifecycle` a managed install needs, written once for each service manager.
+Why each behaves as it does is in
+[0011-MADR](../decisions/0011-MADR-reference-service-lifecycles.md).
+
+- **Pick the backend:**
+  - `systemd.New(systemd.Options{Unit: "relay.service"})`, with
+    `Scope: systemd.User` for a user unit;
+  - `launchd.New(launchd.Options{Label: …, Domain: launchd.System(),
+    Plist: …})`, or `launchd.GUI(uid)` or `launchd.User(uid)` for an agent;
+  - `scm.New(scm.Options{Name: "relay"})`.
+- **Use it twice.** Each is a `selfupdate.Lifecycle`, an
+  `EnabledLifecycle` and a `Reconciler`:
+  `selfupdate.NewManagedInstaller(inner, b, b)`.
+- **What it does around the replace:**
+  - `Stop` returns once the service has stopped, not when the stop was
+    asked for: systemd `inactive` or `failed`; launchd out of the domain
+    with its process gone; the SCM's `STOPPED`, by Microsoft's wait-hint
+    loop.
+  - `WaitHealthy` requires a new instance (a new systemd `InvocationID`,
+    a new process ID) that stays up for `Options.Poll.Settle`, 10 s by
+    default, then runs `Options.Probe` if you set one.
+  - `Reconcile` checks that the definition still runs the binary, and
+    changes nothing. `Options.RewritePath` lets it point the definition at
+    a binary that moved. A program that owns its definition through its own
+    install command uses `service.NewExecReconciler` instead.
+- **systemd units: `Type=notify` or `Type=exec`.** With either, a failed
+  start fails `systemctl start`. With `Type=simple`, it succeeds before the
+  program has run. Under `Type=notify`, call `systemd.Ready()` once the
+  program serves; `systemd.WatchdogInterval` and `systemd.Watchdog` serve
+  `WatchdogSec=`.
+
+### Updating from inside the service
+
+A process the service started, such as an agent running a remote session,
+is inside the service. When it runs `<prog> update --yes`, stopping the
+service kills the update halfway, and the service stays stopped. The
+handoff runs that update outside the service instead, as a detached copy
+of the same command:
+
+```go
+func main() {
+    report := service.ReportFunc() // first: see below
+    unit, err := systemd.New(systemd.Options{Unit: "relay.service"})
+    // …
+    o := cli.StdioOptions()
+    o.HandOff = cli.HandOff{
+        Detach: service.HandOffFunc(unit, service.HandOff{Args: os.Args[1:]}),
+        Report: report,
+    }
+    os.Exit(cli.Command(ctx, os.Args[1:], "relay", buildinfo.Identity(), newUpdater, o))
+}
+```
+
+- **The handoff needs the name** in `Options.Unit`, `Options.Label` or
+  `Options.Name`.
+- **The agent's session sees** one line on stderr, and exit 0:
+
+  ```text
+  update handed off: 3f2a… (transient unit relay-selfupdate-3f2a….service); result in /opt/relay/.relay.selfupdate.handoff
+  ```
+
+  Under `--json`, the result object has `"handed_off"` with the same
+  detail. The session then usually ends, because the service is
+  restarting.
+- **After reconnecting,** read the result file, `.<base>.selfupdate.handoff`
+  beside the binary, with `service.ReadHandOffResult`, or as JSON:
+
+  ```json
+  {"schema_version":1,"id":"3f2a…","started_at":"…","finished_at":"…","exit_code":0,"result":{"schema_version":2,"applied":true,"service_started":true}}
+  ```
+
+  `exit_code` is the update's, `error` its message when it failed, and
+  `result` the `--json` result document. The service never hands off the
+  check: `--check` and `--dry-run` run in place.
+- **Call `service.ReportFunc` first in `main`,** or `LoadHandOffEnv` if the
+  program reads its environment before that. In a detached run it applies
+  the private environment file the launchd handoff writes, and on Windows
+  it completes the start, which goes through a short-lived hop.
+- **The detached run cannot prompt,** so the update must have `--yes`, as
+  an agent's does.
+- **Per platform:**
+  - **systemd:** a transient unit, `<unit>-selfupdate-<id>.service`,
+    started by `systemd-run`, needs systemd 236 or later. System scope
+    needs root.
+  - **launchd:** a one-shot job, `<label>.selfupdate.<id>`. Call
+    `Job.CleanupHandOffs` at start-up to remove finished ones; the next
+    handoff does it too.
+  - **Windows:** a detached process, out of the service's job where the job
+    allows it.
+  - **A service manager with no backend here,** such as a Task Scheduler
+    task: `service.ProcessDetacher(inside)`, with your own check of
+    whether this process is inside. On Unix it is no defence against a
+    cgroup kill or a launchd job's reap.
+
+Pointers:
+
+- `ExampleHandOff` in `selfupdate/cli`
+- `selfupdate/service/systemd/live_linux_test.go`,
+  `selfupdate/service/launchd/live_darwin_test.go`,
+  `selfupdate/service/scm/live_windows_test.go`: each runs an update from a
+  process the service started, end to end, against the real service
+  manager
 
 ## Test a program that self-updates
 

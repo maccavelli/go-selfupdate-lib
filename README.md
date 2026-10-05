@@ -19,11 +19,11 @@ Module: `github.com/maccavelli/go-selfupdate-lib`
 
 ## Status
 
-The module requires Go 1.27.1. The current release is `v1.6.0`. `v1.5.0` was
+The module requires Go 1.27.1. The current release is `v1.7.0`. `v1.5.0` was
 the first under this path:
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.6.0
+go get github.com/maccavelli/go-selfupdate-lib@v1.7.0
 ```
 
 | Package | What it does |
@@ -32,6 +32,8 @@ go get github.com/maccavelli/go-selfupdate-lib@v1.6.0
 | [`selfupdate/cli`](selfupdate/cli/) | the canonical `update` command: flags, stdout for protocol output only, exit codes 0, 10 and 1 |
 | [`buildinfo`](buildinfo/) | the build stamps that say whether a binary is a release |
 | [`selfupdate/selfupdatetest`](selfupdate/selfupdatetest/) | test doubles: release fixtures, a fake source, a fake GitHub API |
+| [`selfupdate/service`](selfupdate/service/) | what the service lifecycles share: health polling, typed errors, and the handoff of an update started inside the service |
+| [`selfupdate/service/systemd`](selfupdate/service/systemd/), [`launchd`](selfupdate/service/launchd/), [`scm`](selfupdate/service/scm/) | the managed-update lifecycle for a systemd unit, a launchd job and a Windows service |
 
 `selfupdate` and its release workflow come from `mcplib` `v1.6.0`, with the
 same API

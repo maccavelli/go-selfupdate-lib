@@ -27,4 +27,10 @@
 // binds Flags on its flag set and calls Flags.Request, Run and Exit itself.
 // The version comes from package buildinfo, stamped at link time with
 // buildinfo.LDFlags.
+//
+// A program that runs as a service sets Options.HandOff, so an update
+// started inside the service, such as by an agent the service spawned,
+// runs detached from it instead of stopping the service under itself:
+// the command prints "update handed off: <detail>" and exits 0, and the
+// detached run reports to a file (package selfupdate/service).
 package cli

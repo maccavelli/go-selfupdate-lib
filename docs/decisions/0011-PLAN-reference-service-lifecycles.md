@@ -868,3 +868,82 @@ In addition:
   V5 gains step 0, which tags the six records of state and outcome. No
   MADR decision changes; the types are new since `v1.6.0`, so
   `make apicheck` is unaffected.
+
+### Phase V5: the CLI hook, docs and release notes (2026-10-04)
+
+* **Step 0, JSON tags** (deviation D6). `systemd.DropIn`,
+  `launchd.PlistBackup`, `scm.PathBackup`, `service.ExecState`,
+  `service.Detached` and `service.Health` carry snake_case tags. Optional
+  members are `omitempty`: `DropIn.previous`, `Health.instance` and
+  `Health.detail`. Each package's `json_test.go` pins the exact JSON and
+  round-trips it; all four failed against the untagged types first, on the
+  Go field names.
+* **Step 1, `cli.Options.HandOff`**, of type `cli.HandOff{Detach,
+  Report}`:
+  * `Detach` runs before an apply, never a check or a dry run. A handoff
+    writes `update handed off: <detail>`, one line, on stderr, or under
+    `--json` one result object with `handed_off`, and exits 0. Its error
+    fails the run as any other does: exit 1, `update failed: …`, and the
+    result object under `--json`.
+  * `Report` runs after an update that ran here, never after a handoff,
+    with the outcome including any output error; its error fails the run.
+  * The goldens `handed-off` and `handoff-failed` run through both `Run`
+    and `Command`. `TestHandOffOnlyForApply`, `TestHandOffReport` and
+    `TestHandOffWriteFails` cover the rest. `ExampleHandOff` wires
+    `service.HandOffFunc` and `service.ReportFunc` into it, so the
+    compiler checks that their types fit.
+  * **Plants,** in scratch copies, each caught: `Detach` on a check, and
+    on a dry run (`TestHandOffOnlyForApply`); its error ignored
+    (`handoff-failed` golden); the notice's write error dropped
+    (`TestHandOffWriteFails`); the run not ending at a handoff
+    (`handed-off` golden); `Report` never called, and its error dropped
+    (`TestHandOffReport`); the `handed_off` key dropped (`handed-off`
+    JSON golden). The first "error ignored" plant did not compile, which
+    proves nothing; it was planted again so that it did.
+* **Step 2, docs:**
+  * `docs/guides/extending-selfupdate.md`, "Run as a service": choosing
+    the backend; what it does around the replace; `Type=notify` or
+    `Type=exec`; "Updating from inside the service", with what the
+    agent's session sees, the result file read after reconnecting, the
+    call to `ReportFunc` first, `--yes`, and each platform's mechanism.
+    `docs/README.md` links it.
+  * `docs/architecture.md`: the tree, the four packages' rows in the Go
+    code table, and what each holds. The `cli` row's counts, stale
+    before this phase, are corrected.
+  * The package docs of `service` (the call first in `main`) and `cli`
+    (`Options.HandOff`).
+* **Step 3,** the release notes below; `README.md` and `architecture.md`
+  name `v1.7.0` as the current release, as `v1.6.0`'s did before its tag.
+
+### Release notes for `v1.7.0` (2026-10-04)
+
+Additions only: `make apicheck` reports `compatible with v1.6.0`, and
+`go.mod` is unchanged. Nothing changes for a program that does not use the
+new packages.
+
+* **`selfupdate/service`,** what the backends share:
+  * `Runner`, `RunnerFunc` and `ExecRunner`;
+  * the typed errors `ErrUnsupported`, `ErrNotInstalled`, `ErrPermission`,
+    `ErrInsideService`, `ErrTimeout` and `ErrUnhealthy`;
+  * `PollHealthy`, `Health` and `PollOptions`;
+  * `NewExecReconciler`, for a program that owns its service definition,
+    with the version 1 `Receipt`;
+  * the handoff: `Detacher`, `HandOff`, `Detached`, `HandOffIfInside`,
+    `HandOffFunc`, `ReportFunc`, `HandOffResult`, `ReadHandOffResult`,
+    `WriteHandOffResult`, `DefaultResultPath`, `DetachProcess`,
+    `ProcessDetacher`, `LoadHandOffEnv`, `WriteHandOffEnv` and
+    `HandOffHop`.
+* **`selfupdate/service/systemd`,** `launchd` and `scm`: one
+  `selfupdate.Lifecycle`, `EnabledLifecycle`, `Reconciler` and
+  `service.Detacher` each, for a systemd unit, a launchd job and a Windows
+  service; and `systemd.Notify` with its helpers.
+* **`cli.Options.HandOff`:** an update started inside a service, such as
+  by an agent the service spawned, runs detached from it, and the command
+  prints `update handed off: …` and exits 0. Under `--json` the result
+  object gains `handed_off`.
+* **A detached run** writes `.<base>.selfupdate.handoff` beside the
+  binary, which `ReadHandOffResult` reads.
+* **Live-tested** against systemd 255 and 259 in system and user scope,
+  launchd on macOS 26, and the Windows SCM on the test hosts. CI runs each
+  backend's live tests on its OS: Ubuntu 24.04, macOS 15 and Windows
+  Server 2025.

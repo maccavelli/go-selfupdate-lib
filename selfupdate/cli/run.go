@@ -43,6 +43,25 @@ type Options struct {
 	// Signals cancel the run. Nil means os.Interrupt and syscall.SIGTERM;
 	// an empty, non-nil slice means none.
 	Signals []os.Signal
+	// HandOff runs an update started from inside a service detached from
+	// it (0011-MADR §9). The zero value never hands off.
+	HandOff HandOff
+}
+
+// HandOff hooks a run into a service's handoff: an update started inside
+// the service, such as by an agent the service spawned, runs as a detached
+// copy of the same command, outside the service's kill scope
+// (0011-MADR §9). service.HandOffFunc builds Detach for a backend, and
+// service.ReportFunc builds Report.
+type HandOff struct {
+	// Detach runs before an apply, never a check or a dry run. When it
+	// hands off, the run ends at once: "update handed off: <detail>" on
+	// Stderr, or under JSON a result object with "handed_off", and exit
+	// 0. Its error fails the run.
+	Detach func(ctx context.Context, req selfupdate.Request) (handedOff bool, detail string, err error)
+	// Report runs after every update that ran here, with its outcome. Its
+	// error fails the run.
+	Report func(res selfupdate.Result, err error) error
 }
 
 // notifyContext is signal.NotifyContext, replaced in tests.
@@ -101,6 +120,17 @@ func Run(ctx context.Context, u *selfupdate.Updater, req selfupdate.Request, o O
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
+	if d := o.HandOff.Detach; d != nil && !req.CheckOnly && !req.DryRun {
+		res := selfupdate.Result{Product: req.Product, CurrentVersion: req.CurrentVersion}
+		handed, detail, err := d(ctx, req)
+		if err != nil {
+			return res, errors.Join(err, o.finish(res, err))
+		}
+		if handed {
+			return res, o.handedOff(res, detail)
+		}
+	}
+
 	rep := selfupdate.NewTextReporter(o.Stderr)
 	if o.JSON {
 		rep = selfupdate.NewJSONReporter(o.Stdout)
@@ -110,7 +140,11 @@ func Run(ctx context.Context, u *selfupdate.Updater, req selfupdate.Request, o O
 		conf = selfupdate.NewPromptConfirmer(o.Stdin, o.Stderr, o.Interactive)
 	}
 	res, err := u.RunWith(ctx, req, selfupdate.WithReporter(rep), selfupdate.WithConfirmer(conf))
-	if werr := errors.Join(o.warn(res), o.finish(res, err)); werr != nil {
+	werr := errors.Join(o.warn(res), o.finish(res, err))
+	if o.HandOff.Report != nil {
+		werr = errors.Join(werr, o.HandOff.Report(res, errors.Join(err, werr)))
+	}
+	if werr != nil {
 		// An update nobody was told about is not "update available": the
 		// write error alone decides, so the exit code is 1 and Exit
 		// reports it (0010-MADR C3).
@@ -147,12 +181,24 @@ func (o Options) finish(res selfupdate.Result, err error) error {
 	return nil
 }
 
-// resultLine is the final JSON Lines object (amendment F8).
+// handedOff ends a run that was handed off: the notice on Stderr, or the
+// result object under JSON.
+func (o Options) handedOff(res selfupdate.Result, detail string) error {
+	if o.JSON {
+		return writeLine(o.Stdout, resultLine{Kind: "result", Result: res.Document(), HandedOff: oneLine(detail)})
+	}
+	_, err := io.WriteString(o.Stderr, "update handed off: "+oneLine(detail)+"\n")
+	return err
+}
+
+// resultLine is the final JSON Lines object (amendment F8). HandedOff is
+// the handoff's detail when the update was handed off (0011-MADR §9).
 type resultLine struct {
-	Kind     string                    `json:"kind"`
-	ExitCode int                       `json:"exit_code"`
-	Error    string                    `json:"error,omitempty"`
-	Result   selfupdate.ResultDocument `json:"result"`
+	Kind      string                    `json:"kind"`
+	ExitCode  int                       `json:"exit_code"`
+	Error     string                    `json:"error,omitempty"`
+	HandedOff string                    `json:"handed_off,omitempty"`
+	Result    selfupdate.ResultDocument `json:"result"`
 }
 
 // writeResult writes the result object as one line, in one Write.
@@ -161,6 +207,11 @@ func writeResult(w io.Writer, res selfupdate.Result, err error) error {
 	if err != nil {
 		line.Error = oneLine(err.Error())
 	}
+	return writeLine(w, line)
+}
+
+// writeLine writes line as one JSON line, in one Write.
+func writeLine(w io.Writer, line resultLine) error {
 	b, merr := json.Marshal(line)
 	if merr != nil {
 		return merr

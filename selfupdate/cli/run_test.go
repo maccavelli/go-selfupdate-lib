@@ -73,6 +73,7 @@ type scenario struct {
 	stdin       string
 	interactive bool
 	closeErr    error // when set, the session's Close fails after the install
+	handOff     HandOff
 }
 
 var scenarios = []scenario{
@@ -89,6 +90,17 @@ var scenarios = []scenario{
 	{name: "warning", latest: "v1.1.0", id: releaseID, flags: Flags{Yes: true}, closeErr: errors.New("unlock failed")},
 	{name: "contradiction", latest: "v1.1.0", id: releaseID,
 		req: &selfupdate.Request{Product: "demo", CurrentVersion: "v1.0.0", CurrentBuild: selfupdate.ReleaseBuild, CheckOnly: true, Yes: true}},
+	// The update runs detached, outside the service (0011-MADR §9).
+	{name: "handed-off", latest: "v1.1.0", id: releaseID, flags: Flags{Yes: true}, handOff: HandOff{
+		Detach: func(context.Context, selfupdate.Request) (bool, string, error) {
+			return true, "abc (systemd unit demo-selfupdate-abc)\nresult in /opt/demo/.demo.selfupdate.handoff", nil
+		},
+	}},
+	{name: "handoff-failed", latest: "v1.1.0", id: releaseID, flags: Flags{Yes: true}, handOff: HandOff{
+		Detach: func(context.Context, selfupdate.Request) (bool, string, error) {
+			return false, "", errors.New("systemd-run: unit already exists")
+		},
+	}},
 }
 
 // outcome is what one invocation wrote, with the asset name normalized
@@ -130,7 +142,7 @@ func (sc scenario) run(t *testing.T, asJSON bool) outcome {
 	}
 	res, err := Run(context.Background(), u, req, Options{
 		Stdout: &stdout, Stderr: &stderr, Stdin: strings.NewReader(sc.stdin),
-		Interactive: sc.interactive, JSON: asJSON, Signals: []os.Signal{},
+		Interactive: sc.interactive, JSON: asJSON, Signals: []os.Signal{}, HandOff: sc.handOff,
 	})
 	code := Exit(&stderr, res, err)
 	return outcome{stdout: normalize(stdout.String(), "demo"), stderr: normalize(stderr.String(), "demo"),

@@ -14,8 +14,7 @@ publish their releases through.
 
 The module requires Go 1.27.1 and three modules: `golang.org/x/mod v0.40.0`,
 `golang.org/x/sys v0.47.0` and `golang.org/x/term v0.43.0`. Its current
-release is `v1.6.0`, an annotated tag on commit
-`b1f1caa01013d8ecbbc0a17639a55e21fcdf0763`. `v1.5.0`, the first under this
+release is `v1.7.0`, an annotated tag. `v1.5.0`, the first under this
 path, is the annotated tag on commit
 `6deaa524cfb28aad90bea97a6d9162e5b4257204`.
 
@@ -54,6 +53,11 @@ buildinfo/                  the library-owned build stamps
 selfupdate/                 the self-update package
   cli/                      the canonical update command
   selfupdatetest/           its exported test doubles
+  service/                  what the reference service lifecycles share,
+                            and the handoff
+    systemd/                the systemd lifecycle, and sd_notify
+    launchd/                the launchd lifecycle
+    scm/                    the Windows SCM lifecycle
 docs/
   README.md                 record index and the "I want to…" table
   architecture.md           this file
@@ -68,8 +72,12 @@ docs/
 | :--- | :--- | :--- | :--- | :--- |
 | `buildinfo/` | `buildinfo` | 1 | 2 | none |
 | `selfupdate/` | `selfupdate` | 39 | 57, including five fuzz targets, plus `testdata/SHA256SUMS.{valid,invalid}`, 23 `testdata/manifest-parity/` cases and 12 `testdata/golden/` files | `x/mod/semver`, `x/sys/unix`, `x/sys/windows`, `x/term` |
-| `selfupdate/cli/` | `cli` | 4 | 7, plus 41 `testdata/golden/` and 9 `testdata/migration/` files | `x/term` (and `selfupdate`, `buildinfo`) |
+| `selfupdate/cli/` | `cli` | 4 | 9, plus 53 `testdata/golden/` and 9 `testdata/migration/` files | `x/term` (and `selfupdate`, `buildinfo`) |
 | `selfupdate/selfupdatetest/` | `selfupdatetest` | 2 | 1 | none (`selfupdate` itself) |
+| `selfupdate/service/` | `service` | 12 | 10 | `x/sys/windows` (and `selfupdate`) |
+| `selfupdate/service/systemd/` | `systemd` | 8 | 11, plus 3 `testdata/` captures of `systemctl show` | none (`selfupdate`, `service`) |
+| `selfupdate/service/launchd/` | `launchd` | 6 | 10, plus 7 `testdata/` captures of `launchctl print` and `list` | none (`selfupdate`, `service`) |
+| `selfupdate/service/scm/` | `scm` | 7 | 8 | `x/sys/windows`, `x/sys/windows/svc`, `x/sys/windows/svc/mgr` (and `selfupdate`, `service`) |
 
 - `selfupdate` began as `mcplib` `v1.6.0`'s `selfupdate` (commit
   `4e1f9a53e265`), and its `v1.0.x` API is that package's. It differs from
@@ -147,6 +155,34 @@ docs/
   GitHub API on one TLS origin whose asset requests redirect to a second,
   which can require a bearer token or a custom-header credential, and
   records the credential headers' names on each request.
+- The reference service lifecycles
+  ([0011-MADR](decisions/0011-MADR-reference-service-lifecycles.md)):
+  - **`service`:** the command runner (`runner.go`), the six typed errors
+    (`errors.go`), `PollHealthy` (`poll.go`), `ExecReconciler` and its
+    version 1 receipt (`execreconciler.go`), and the handoff: `Detacher`,
+    `HandOffIfInside`, `HandOffFunc`, `ReportFunc` and the result file
+    (`handoff.go`), `DetachProcess` (`detach*.go`), the private
+    environment file (`handoffenv.go`) and the Windows hop
+    (`handoffhop.go`);
+  - **`systemd`:** probes over one `systemctl show` per call, read by key;
+    `Stop`, `Start` and `WaitHealthy` on the unit's state and
+    `InvocationID`; a drop-in for a moved binary; `Inside` by cgroup; the
+    handoff by `systemd-run`; and `Notify` (`notify.go`);
+  - **`launchd`:** `launchctl` exit codes, `list`, and `print`'s top-level
+    `pid` and `state` lines only; `Stop` waits until the job has left the
+    domain and its process has exited; `plutil` for the plist; `Inside`
+    by process group or ancestry; the handoff by a one-shot job;
+  - **`scm`:** an unexported interface over the SCM and the process table,
+    which the tests fake; handles opened with only each call's rights;
+    Microsoft's wait-hint and checkpoint loop; `Inside` by an ancestor
+    walk that checks creation times; the handoff by `DetachProcess`
+    through a hop.
+
+  Each backend compiles on every OS and returns `ErrUnsupported` on the
+  wrong one. Each has live tests against its real service manager, which
+  CI runs on its OS.
+- `cli.Options.HandOff` (`run.go`) runs `Detach` before an apply and
+  `Report` after an update that ran.
 - The coordinator (`updater.go`) owns the order of every step. It validates
   the selected binary and manifest itself, and parses `SHA256SUMS` before any
   staging. It pins an exact `--version`, and closes the session before
