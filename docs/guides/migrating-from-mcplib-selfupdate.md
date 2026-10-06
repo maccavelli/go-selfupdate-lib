@@ -20,10 +20,10 @@ at least that. Move it deliberately first, and run your full test suite at
 ## 2. The Go import
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.8.0
+go get github.com/maccavelli/go-selfupdate-lib@v1.9.0
 ```
 
-`v1.8.0` is the current release. `v1.6.0` changed a few behaviours that
+`v1.9.0` is the current release. `v1.6.0` changed a few behaviours that
 `v1.5.x` had; they are listed in [6. From v1.5 to v1.6](#6-from-v15-to-v16).
 `v1.7.0`, `v1.8.0` and `v1.9.0` only add to the API: see
 [7. From v1.6 to v1.7](#7-from-v16-to-v17),
@@ -79,7 +79,7 @@ In the job that publishes your release, change the `uses:` line and delete
 
 ```diff
 -    uses: maccavelli/mcplib/.github/workflows/publish-selfupdate-release.yml@<mcplib SHA> # mcplib v1.x.y
-+    uses: maccavelli/go-selfupdate-lib/.github/workflows/publish-selfupdate-release.yml@a99aa66b1a6d48e70ff592f010f6d6d734c52049 # v1.8.0
++    uses: maccavelli/go-selfupdate-lib/.github/workflows/publish-selfupdate-release.yml@39b12945fad311174252038745f5a88f71c4c66c # v1.9.0
      with:
        artifact-name: …
        products-json: …
@@ -92,10 +92,12 @@ In the job that publishes your release, change the `uses:` line and delete
   workflow is unchanged from `v1.3.0` to `v1.5.0`. `v1.5.1` refuses an
   empty binary, keeps a backport from becoming the latest release, and
   accepts only ASCII digits in a tag. `v1.6.0`, `v1.7.0` and `v1.8.0`
-  change nothing in it; the example pins `v1.8.0`.
+  change nothing in it. `v1.9.0` adds an optional `format` on the
+  platform objects, for releases of archives, and changes nothing a
+  current call passes; the example pins `v1.9.0`.
   Tags are annotated, so the tag ref names a tag object, not the commit
   `uses:` needs. Resolve the commit with the peeled ref:
-  `git ls-remote https://github.com/maccavelli/go-selfupdate-lib 'refs/tags/v1.8.0^{}'`.
+  `git ls-remote https://github.com/maccavelli/go-selfupdate-lib 'refs/tags/v1.9.0^{}'`.
 - **`bridge-release` must go,** even when it is `false`. The workflow no
   longer declares it, and GitHub rejects an input the called workflow does
   not define. It only ever permitted `magic-cli-remote` `v0.16.0`, which is
@@ -141,7 +143,7 @@ The steps below are prepare-commit-msg's, proven on a scratch copy of it at
 `selfupdate/cli/testdata/migration` files byte for byte, with exit codes 0,
 10 and 1.
 
-**`go.mod`.** Require go-selfupdate-lib `v1.8.0`, with `go 1.27.1`. The steps
+**`go.mod`.** Require go-selfupdate-lib `v1.9.0`, with `go 1.27.1`. The steps
 were proven at `v1.5.0`; every later release only adds to the API, so
 they still build, and §6 lists the behaviour `v1.6.0` changed. `mcplib` stays
 only if something else still imports it; in prepare-commit-msg,
@@ -360,12 +362,13 @@ the real stdout in `o.Stdout` when `--json` is given.
 ## 6. From v1.5 to v1.6
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.8.0
+go get github.com/maccavelli/go-selfupdate-lib@v1.9.0
 ```
 
-This takes the current release; what `v1.7.0` and `v1.8.0` add is in
-[7. From v1.6 to v1.7](#7-from-v16-to-v17) and
-[8. From v1.7 to v1.8](#8-from-v17-to-v18). Every exported change is an
+This takes the current release; what `v1.7.0`, `v1.8.0` and `v1.9.0`
+add is in [7. From v1.6 to v1.7](#7-from-v16-to-v17),
+[8. From v1.7 to v1.8](#8-from-v17-to-v18) and
+[9. From v1.8 to v1.9](#9-from-v18-to-v19). Every exported change is an
 addition, so a program that built on `v1.5.x` builds unchanged. These are
 the behaviours that change, and what to do about each. Why, and how, is in
 [0010-MADR](../decisions/0010-MADR-remediate-second-debugging-pass-findings.md)
@@ -445,7 +448,7 @@ and group, when the updater may give them.
 ## 7. From v1.6 to v1.7
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.8.0
+go get github.com/maccavelli/go-selfupdate-lib@v1.9.0
 ```
 
 `v1.7.0` only adds: `make apicheck` reports it compatible with `v1.6.0`, it
@@ -484,12 +487,12 @@ is in
 ### Check
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
-- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.8.0`.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.9.0`.
 
 ## 8. From v1.7 to v1.8
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.8.0
+go get github.com/maccavelli/go-selfupdate-lib@v1.9.0
 ```
 
 `v1.8.0` only adds. `make apicheck` reports it compatible with `v1.7.0`, it
@@ -534,7 +537,7 @@ runs unless you configure it. Why, and how, is in
 ### Check
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
-- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.8.0`.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.9.0`.
 
 ## 9. From v1.8 to v1.9
 

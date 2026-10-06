@@ -17,8 +17,8 @@ The pieces:
 - **`publish-selfupdate-release.yml`,** unchanged in what it takes, which
   validates, publishes, attests and waits for the release to be immutable.
 
-Both workflows are pinned to the same commit of this repository. Until
-`v1.9.0` is tagged, the examples below show it as `<v1.9.0-commit>`.
+Both workflows are pinned to the same commit of this repository; the
+examples below pin `v1.9.0`'s.
 
 ## 1. Write the spec
 
@@ -147,7 +147,7 @@ permissions:
 
 jobs:
   build:
-    uses: maccavelli/go-selfupdate-lib/.github/workflows/build-selfupdate-release.yml@<v1.9.0-commit> # v1.9.0
+    uses: maccavelli/go-selfupdate-lib/.github/workflows/build-selfupdate-release.yml@39b12945fad311174252038745f5a88f71c4c66c # v1.9.0
     with:
       spec-path: internal/updateclient/selfupdate-release.json
 
@@ -158,7 +158,7 @@ jobs:
       contents: write
       id-token: write
       attestations: write
-    uses: maccavelli/go-selfupdate-lib/.github/workflows/publish-selfupdate-release.yml@<v1.9.0-commit> # v1.9.0
+    uses: maccavelli/go-selfupdate-lib/.github/workflows/publish-selfupdate-release.yml@39b12945fad311174252038745f5a88f71c4c66c # v1.9.0
     with:
       artifact-name: ${{ needs.build.outputs.artifact-name }}
       products-json: ${{ needs.build.outputs.products-json }}
@@ -203,7 +203,7 @@ in its own job, and name the artifact:
 
   build:
     needs: apk
-    uses: maccavelli/go-selfupdate-lib/.github/workflows/build-selfupdate-release.yml@<v1.9.0-commit> # v1.9.0
+    uses: maccavelli/go-selfupdate-lib/.github/workflows/build-selfupdate-release.yml@39b12945fad311174252038745f5a88f71c4c66c # v1.9.0
     with:
       spec-path: internal/updateclient/selfupdate-release.json
       extras-artifact-name: extras

@@ -1047,6 +1047,48 @@ none of the new pieces behave as they did.
   check vets and tests a nested module in that module; CI rehearses the
   build workflow on every push.
 
+### Phase B6: the release (2026-10-06, in progress)
+
+* **Step 1, the tag.** The owner pushed B5 (`39b1294`); CI run
+  37469667843 passed. The owner tagged `v1.9.0`, annotated, and pushed
+  it. `git ls-remote origin 'refs/tags/v1.9.0^{}'` gives
+  `39b12945fad311174252038745f5a88f71c4c66c`, and
+  `scripts/check-release-tag.sh v1.9.0` exits 0.
+* **The tag's CI** (run 37472378613) passed all 16 jobs. It is the first
+  release-mode run on GitHub: both rehearsals built the fixture as
+  `v1.9.0`, and each of the ten identity legs, raw and archive on
+  `ubuntu-24.04`, `ubuntu-24.04-arm`, `macos-15`, `windows-2025` and
+  `windows-11-arm`, printed exactly `v1.9.0 (release) 39b12945fad3`.
+  `release-rehearsal-check` verified both staged sets with the tag, and
+  `selfupdate-release check` unpacked all five archives.
+  * The fixture's module is not the repository root, so the tag as the
+    main module's version is not checked there; the live rehearsal below,
+    whose module is at the root, checks it.
+* **Step 2, the pin commit:**
+  * `README.md` and the migration guide pin
+    `publish-selfupdate-release.yml@39b12945fad311174252038745f5a88f71c4c66c # v1.9.0`;
+    the building guide pins both workflows there, replacing
+    `<v1.9.0-commit>` (three places) and the sentence that explained it.
+  * The migration guide follows the current release: every `go get`
+    (§2, §6, §7, §8 and §9) and every "gives" check (§7, §8, §9) name
+    `v1.9.0`; §2 and §6 point to §9; §5's `go.mod` step and the
+    `ls-remote` example name `v1.9.0`. §3 says what `v1.9.0` adds to the
+    publish workflow (an optional `format`) and that a current call
+    changes nothing.
+  * `README.md`'s status and `go get` name `v1.9.0`; `architecture.md`
+    gives the tag's commit.
+  * Unlike `v1.8.0`, the workflows and `scripts/` changed between
+    `v1.8.0` and `v1.9.0`: the build workflow is new, and the publish
+    workflow and its verifier gained `format`, as §9 and the release
+    notes say.
+  * Checks: `doccheck.py` (57 links, identifiers), markdownlint.
+* **Step 4, the agent's checks, so far:**
+  * `proxy.golang.org`: `go list -m …@v1.9.0` gives `v1.9.0`, at
+    2026-10-06T13:17:39Z, and `@latest` already resolves to `v1.9.0`.
+* **Still open:** step 3, the live publish rehearsal in a throwaway
+  repository, which waits for the owner; and the scratch consumer of
+  step 4. This PLAN stays `in-progress` until both are recorded.
+
 ### Deviations
 
 * **D1 (2026-10-05), B1: verifier parity for archive specs.**

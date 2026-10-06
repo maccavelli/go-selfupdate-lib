@@ -19,11 +19,11 @@ Module: `github.com/maccavelli/go-selfupdate-lib`
 
 ## Status
 
-The module requires Go 1.27.1. The current release is `v1.8.0`. `v1.5.0` was
+The module requires Go 1.27.1. The current release is `v1.9.0`. `v1.5.0` was
 the first under this path:
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.8.0
+go get github.com/maccavelli/go-selfupdate-lib@v1.9.0
 ```
 
 | Package | What it does |
@@ -115,7 +115,7 @@ release:
     contents: write
     id-token: write
     attestations: write
-  uses: maccavelli/go-selfupdate-lib/.github/workflows/publish-selfupdate-release.yml@a99aa66b1a6d48e70ff592f010f6d6d734c52049 # v1.8.0
+  uses: maccavelli/go-selfupdate-lib/.github/workflows/publish-selfupdate-release.yml@39b12945fad311174252038745f5a88f71c4c66c # v1.9.0
   with:
     artifact-name: <the uploaded artifact holding the staged release>
     products-json: '["<product>"]'
