@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "products": [
+    {"name": "mcremote", "package": "./cmd/mcremote", "identity_args": ["version"]},
+    {"name": "mcrelay", "package": "./cmd/mcrelay"}
+  ],
+  "platforms": [
+    {"os": "linux", "arch": "amd64"},
+    {"os": "linux", "arch": "arm64"},
+    {"os": "darwin", "arch": "arm64"},
+    {"os": "windows", "arch": "amd64"}
+  ],
+  "packaging": "binary",
+  "extras": [
+    {"name": "install.sh", "path": "scripts/install.sh"},
+    {"name": "install.ps1", "path": "scripts/install.ps1"},
+    {"name": "magic-cli-remote-{tag}-arm64.apk"}
+  ],
+  "prerelease_channels": ["rc", "beta"]
+}

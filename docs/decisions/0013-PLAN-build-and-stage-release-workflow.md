@@ -168,6 +168,8 @@ tests `spec_test.go`, `fuzz_test.go`, `example_test.go`,
      builds. For selected refused fixtures, the matching verifier input
      is refused. It needs `python3`, and is mandatory under
      `SELFUPDATE_REQUIRE_PYTHON=1`, as `TestManifestDifferential` is.
+     *(Deviation D1, 2026-10-05: B1 covers `binary` specs. The `archive`
+     specs join this test in B3, when the verifier learns `format`.)*
 2. **The package**, as MADR §3, including the four publish-input
    methods. `Parse` uses `json.Decoder` with `DisallowUnknownFields` and
    refuses a second value. Errors are
@@ -193,9 +195,11 @@ tests `spec_test.go`, `fuzz_test.go`, `example_test.go`,
    * `{tag}` not expanded;
    * `AssetSelector` always exact;
    * the extras rule allowing `SHA256SUMS`;
-   * the verifier parity input dropping `format`;
-   * an `os/exec` import planted in the package, which `make lint` must
-     refuse with the rule's message.
+   * ~~the verifier parity input dropping `format`~~ (moved to B3, D1);
+   * ~~an `os/exec` import planted in the package, which `make lint` must
+     refuse with the rule's message~~ (D2): an import of
+     `selfupdate/service`, used, planted in the package, which
+     golangci-lint must refuse with the rule's message.
 
 ### Phase B2: `internal/cmd/selfupdate-release`
 
@@ -388,9 +392,12 @@ runs it).
    * `--github-output` always writing `packed=false`;
    * `--github-output` writing on a failed verification;
    * the archive check moved after "Create a draft release";
-   * `continue-on-error: true` on the archive check.
+   * `continue-on-error: true` on the archive check;
+   * from B1 (D1): `PlatformsJSON` dropping `format`, which the archive
+     cases of `TestVerifierParity` must catch.
 
-   Each must fail the script tests or the shape test.
+   Each must fail the script tests, the shape test or the parity test.
+6. **`TestVerifierParity` gains the `archive` specs** (D1).
 
 ### Phase B4: `build-selfupdate-release.yml` and the CI rehearsal
 
@@ -624,3 +631,96 @@ runs it).
 * **Checks:** markdownlint on copies of the records and on `AGENTS.md`,
   and `doccheck.py` (links and identifiers) on the four files. No code
   changes, so `gate.sh` is not run.
+
+### Phase B1: `selfupdate/releasespec` (2026-10-05)
+
+* **The package** (`doc.go`, `spec.go`, `validate.go`), as MADR §3 with
+  the four publish-input methods. Beyond the MADR's text:
+  * `Platform.Target()` converts an entry to a `selfupdate.Platform`;
+    `MaxSize` and `TagPlaceholder` are exported constants.
+  * `Parse` also walks the JSON and refuses a duplicate key, or a key
+    that is not lowercase letters and underscores. `encoding/json`
+    matches keys case-insensitively and keeps the last of two, so
+    `"Schema"` or a repeated key would otherwise pass silently.
+  * Product names, extras and the extras' clash with canonical assets
+    are compared ignoring case, as the archive unpacker compares member
+    names. "Unique" in MADR §2 is read that way; no rule is looser.
+  * An empty optional list is normalized to nil, so an accepted spec
+    re-encodes to an equal value.
+* **Tests** (`spec_test.go`, `parity_test.go`): 3 accepted fixtures and
+  62 refused cases, one per rule, each asserting the field in the error;
+  the methods; the selector and unpacker matching on every platform;
+  the publish inputs, exactly.
+* **`TestVerifierParity`** runs `verify-selfupdate-release.sh` on a
+  release staged from each `binary` fixture (D1), and on the input each
+  of 7 refused specs would have produced. Each refusal must carry the
+  verifier's own message, not a usage error.
+  * **On the Windows test host** it first failed: Git's `sh.exe` parses
+    a command line by other rules than the ones Go quotes it by. A probe
+    showed `["relay"]` arrive as `[\relay"] --extras [] --dir C:tmpa`.
+    The test now passes the inputs in the environment, and `sh -c`
+    expands them into the verifier's arguments.
+  * The refused cases had passed there on the usage error, a false
+    pass, which is why each now requires its message.
+  * Windows: 96 passes, no skips. macOS: all pass, with
+    `SELFUPDATE_REQUIRE_PYTHON=1`.
+* **`FuzzParse`** (round trip, publish inputs, selector): 20 s ran
+  3,164,214 executions clean. `make fuzz` runs it (`-m 1`), and CI's
+  fuzz-corpus artifact includes its directory.
+* **`ExampleParse`** embeds `testdata/archive.json` and prints each
+  target's asset name and `packed: true`.
+* **depguard:** `selfupdate-releasespec` allows `$gostd`, `selfupdate`
+  and `selfupdate/archive`; `other-packages` excludes the directory.
+* **Plants,** each in a scratch copy, each caught:
+
+  | Plant | Caught by |
+  | :--- | :--- |
+  | unknown fields accepted | `TestParseRefuses` |
+  | trailing data accepted | `TestParseRefuses` |
+  | duplicate key accepted | `TestParseRefuses` |
+  | schema 2 accepted | `TestParseRefuses` |
+  | duplicate platform accepted | `TestParseRefuses` |
+  | product names compared with case | `TestParseRefuses` |
+  | empty `identity_args` accepted | `TestParseRefuses` |
+  | `format` under `binary` accepted | `TestParseRefuses` |
+  | Windows defaulting to tar.gz | `TestFormatFor` |
+  | `{tag}` not expanded | `TestParseAccepts` |
+  | `AssetSelector` always exact | `TestSelectorAndUnpackerMatch` |
+  | `Unpacker` always set | `TestSelectorAndUnpackerMatch` |
+  | extras allowing `SHA256SUMS` | `TestVerifierParity` |
+  | `PlatformsJSON` uppercasing `os` | `TestVerifierParity` |
+  | a usage error in the verifier call | `TestVerifierParity`: `the verifier failed, but not with "invalid product": exit status 2` |
+  | a used `selfupdate/service` import (D2) | depguard: "is not allowed from list 'selfupdate-releasespec'" |
+
+* **Checks:**
+  * `gate.sh`: every step rc 0: gofmt, lint on three GOOS, vet, race,
+    shuffle, tidy, apicheck, fuzz (9 targets), vuln, the script tests,
+    cross vet. It ran twice; the second run followed the parity test's
+    Windows fix.
+  * `make pre-add-check` on the seven Go files: "7 file(s) clean".
+  * `make apicheck`: `compatible with v1.8.0`. `go.mod` is unchanged.
+
+### Deviations
+
+* **D1 (2026-10-05), B1: verifier parity for archive specs.**
+  * **Found:** B1 step 1's `TestVerifierParity` feeds each accepted
+    spec's publish inputs to `verify-selfupdate-release.sh`. The verifier
+    refuses any platform object with a `format` key ("platform objects
+    must have only os and arch", `scripts/verify-selfupdate-release.sh:113`).
+    That is by design until B3, so B1 depended on B3.
+  * **Decision (the owner):** split the parity test. B1 covers `binary`
+    specs; B3 adds the `archive` specs to the same test, and the plant
+    "`PlatformsJSON` dropping `format`" moves to B3. Nothing is skipped.
+  * **Files:** none added; B3's step list gains step 6.
+* **D2 (2026-10-05), B1: the depguard plant.**
+  * **Found:** B1 step 6 planted an `os/exec` import to prove the
+    `selfupdate-releasespec` rule. The rule allows `$gostd`, as every
+    per-package rule here does, so `os/exec` is allowed. A blank import
+    was caught by revive's `blank-imports`, and a used one passed lint
+    with "0 issues": neither tests the rule.
+  * **Decision:** the plant imports a module package the rule does not
+    allow, `selfupdate/service`, and uses it. golangci-lint then fails
+    with "import 'github.com/maccavelli/go-selfupdate-lib/selfupdate/service'
+    is not allowed from list 'selfupdate-releasespec' (depguard)". The
+    rule and the MADR are unchanged; only the plant was wrong.
+  * **Files:** none.

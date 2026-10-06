@@ -117,6 +117,7 @@ jobs:
           path: |
             selfupdate/testdata/fuzz/
             selfupdate/archive/testdata/fuzz/
+            selfupdate/releasespec/testdata/fuzz/
           if-no-files-found: ignore
           retention-days: 14
       # Targets the matrix does not run: a build-tag gap fails here

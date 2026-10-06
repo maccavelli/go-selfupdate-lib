@@ -162,6 +162,18 @@ linters:
             - $gostd
             - github.com/maccavelli/go-selfupdate-lib/selfupdate$
             - github.com/maccavelli/go-selfupdate-lib/selfupdate/service$
+        # selfupdate/releasespec: the standard library, selfupdate and
+        # selfupdate/archive
+        # (docs/decisions/0013-MADR-build-and-stage-release-workflow.md §3).
+        selfupdate-releasespec:
+          list-mode: strict
+          files:
+            - "**/selfupdate/releasespec/*.go"
+            - "!$test"
+          allow:
+            - $gostd
+            - github.com/maccavelli/go-selfupdate-lib/selfupdate$
+            - github.com/maccavelli/go-selfupdate-lib/selfupdate/archive$
         # Every other package, such as a new internal/ helper, gets only the
         # standard library and this module until a record gives it its own
         # rule (docs/decisions/0010-MADR-remediate-second-debugging-pass-findings.md
@@ -182,6 +194,7 @@ linters:
             - "!**/selfupdate/service/systemd/*.go"
             - "!**/selfupdate/archive/*.go"
             - "!**/selfupdate/codesign/*.go"
+            - "!**/selfupdate/releasespec/*.go"
           allow:
             - $gostd
             - github.com/maccavelli/go-selfupdate-lib
