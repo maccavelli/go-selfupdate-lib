@@ -361,3 +361,94 @@ helpers, and a CI job.
 * **Checks:** `gate.sh`, every step rc 0, run twice (the second after the
   fuzz fix); `make apicheck`: `compatible with v1.9.0`; `make
   pre-add-check` on the five Go files: "5 file(s) clean".
+
+### Phase I2: the templates and the renderer (2026-10-06)
+
+* **`installer/install.sh`** (POSIX `sh`, 430 lines) and
+  **`installer/install.ps1`** (PowerShell 5.1 and 7, 429 lines), each a
+  complete script with sample values in its marked block, implementing
+  MADR §4. Decisions made while writing them:
+  * **`wget`.** BusyBox `wget` has no `--https-only`. `install.sh` uses
+    `curl` first, then a `wget` that lists `--https-only` in its help, and
+    refuses any other `wget` ("install curl") rather than risk plain HTTP.
+  * **Exit codes under `iex`.** `exit` there would close the user's
+    session. `install.ps1` exits with its code only when the scriptblock
+    was defined in a file (`$MyInvocation.MyCommand.ScriptBlock.File`);
+    under `iex` or `[scriptblock]::Create` it prints the message and
+    throws `install failed (exit N)`.
+  * **No `$PSCmdlet`, no `-WhatIf`.** `-DryRun` does that job, so D2's
+    unguarded call has nothing to guard.
+  * **`Install-Release` takes its options as parameters.** Reading the
+    outer scriptblock's parameters through dynamic scope left
+    PSScriptAnalyzer reporting 8 `PSReviewUnusedParameter` findings, and
+    an early `$script:NoHooks` would have leaked a variable into the
+    caller's scope under `iex`; both are gone.
+  * **The broadcast** of `WM_SETTINGCHANGE` defines one type,
+    `SelfupdateInstall.NativeMethods`, in the process, as Bun's installer
+    does; it is skipped when a test redirects PATH updates.
+* **The renderer** (`render.go`): `newInstallerValues` builds the values
+  from the spec, the repository and the tag; `check` refuses any value
+  outside `^[A-Za-z0-9._:=/,+@%-]+$`, whatever validated it before;
+  `replaceBlock` replaces the one block, keeps the markers, indents as
+  the start marker is, and refuses no block, two starts, two ends and CR
+  endings. Output has LF endings and no BOM.
+* **`selfupdate-release installer`** renders both into a directory;
+  **`stage`** renders them into the staging directory when the spec asks
+  (`-repository` required then), and the build workflow passes
+  `-repository "$REPOSITORY"` from `github.repository`.
+* **D1** added the argument charset to `releasespec` (see Deviations).
+* **Checks of the scripts as written and as rendered:**
+  * shellcheck 0.11.0 (`-s sh`): clean, after replacing `tr 'A-Z' 'a-z'`
+    with `[:upper:]`/`[:lower:]` (SC2018, SC2019);
+  * `sh -n` (macOS), `dash -n`, `bash -n`: clean, in the tests;
+  * PSScriptAnalyzer 1.25.0 on the Windows test host, warnings and
+    errors: "0 findings" for the template and a render;
+  * the PowerShell parser on this Mac: 0 errors;
+  * `-DryRun` of a render on the Windows test host, under 5.1 and 7:
+    exit 0, the windows/amd64 assets and
+    `%LOCALAPPDATA%\Programs\relay-suite`;
+  * on this Mac under pwsh 7.6.6: as a file, exit 1 with "install.ps1 is
+    for Windows"; under `iex`, the same message, a thrown error, the
+    session kept, and no new variable or function from the script.
+* **Tests** (`render_test.go`): the values in each script, nothing
+  changed outside the block, no CR or BOM; the scripts a spec's
+  platforms produce; refusals of repository, tag, unsafe values and a
+  digit-led prefix; `replaceBlock` cases each with its message; the
+  templates end by calling `main` and the scriptblock, use no `local` as
+  a command, and parse in every shell present; `stage` writes both, not
+  in `SHA256SUMS`, and needs `-repository`; the subcommand. They pass on
+  macOS, the Linux test host and the Windows test host.
+* **Plants,** each in a scratch copy, each caught at an assertion:
+
+  | Plant | Caught by |
+  | :--- | :--- |
+  | a value written unquoted | `TestRenderInstallers`: `install.sh lacks "TAG='v1.2.3-rc.1'"` |
+  | a second start marker accepted | `TestReplaceBlock`: `two starts, one end: replaceBlock: <nil>` |
+  | `stage` dropping `install.ps1` | `TestStageWritesInstallers` |
+  | a quoted repository accepted | `TestRenderRefuses` |
+  | the renderer's own check bypassed | `TestRenderRefuses`: `check: <nil>` |
+  | the end marker dropped | `TestRenderInstallers` |
+  | `local` in `install.sh` | `TestTemplatesAsWritten`: `install.sh uses local` |
+  | D1: `identity_args` unchecked | `TestInstallerArgumentCharset` |
+  | D1: a quote in a hook argument | `TestInstallerRefused` |
+
+  The second plant was first missed: the "two blocks" case had two
+  starts and two ends, so the end check refused it anyway. A case with
+  two starts and one end, and a message asserted per case, now catch it.
+* **Checks:** `gate.sh`, every step rc 0; actionlint, `check-workflows.sh`
+  and the shape test on the changed workflow; `make pre-add-check` on the
+  seven Go files: "7 file(s) clean".
+
+### Deviations
+
+* **D1 (2026-10-06), I2: arguments the installers embed.**
+  * **Found:** MADR §3 says no rendered value can contain a quote, "each
+    is checked against the spec's rules". Hook arguments and
+    `identity_args` may be any non-empty string without NUL, so a quote,
+    a space or a `$` could reach the shell and PowerShell code.
+  * **Decision (the owner):** restrict the character set. With
+    `installer` present, `releasespec` requires every hook argument and
+    every product's `identity_args` to match `^[A-Za-z0-9._:=/,+@%-]+$`,
+    at `Parse`. MADR §3 is amended.
+  * **Files:** `selfupdate/releasespec/installer.go` and
+    `installer_test.go` join I2.

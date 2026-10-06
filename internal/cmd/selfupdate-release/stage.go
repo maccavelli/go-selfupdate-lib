@@ -29,6 +29,7 @@ type stageInput struct {
 	Tag          string // empty in a rehearsal
 	StampVersion string // replaces {tag} in the extras' names
 	ExtrasDir    string // the extras that have no path
+	Repository   string // owner/name, for the installers
 }
 
 // binaryWant is what layer 2 of 0013-MADR §5 requires of one binary's build
@@ -129,7 +130,32 @@ func stage(ctx context.Context, in stageInput, log io.Writer) (map[string]string
 	if err := copyExtras(spec, in); err != nil {
 		return nil, err
 	}
+	if err := writeInstallers(spec, in); err != nil {
+		return nil, err
+	}
 	return sums, nil
+}
+
+// writeInstallers renders the spec's installers into the staging
+// directory (0014-MADR §2, §3). They are extras: SHA256SUMS does not list
+// them, and ExtraNames does.
+func writeInstallers(spec releasespec.Spec, in stageInput) error {
+	if spec.Installer == nil {
+		return nil
+	}
+	if in.Repository == "" {
+		return usagef("the spec asks for installers; -repository is required")
+	}
+	files, err := renderInstallers(spec, in.Repository, in.StampVersion)
+	if err != nil {
+		return err
+	}
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(in.Out, name), data, 0o644); err != nil { //nolint:gosec // a release asset
+			return err
+		}
+	}
+	return nil
 }
 
 // stageOne checks one binary and stages its asset. It returns the asset's
@@ -298,12 +324,13 @@ func runStage(ctx context.Context, args []string, stdout io.Writer) error {
 	version := f.str("stamp-version", true)
 	tag := f.str("tag", false)
 	extras := f.str("extras-dir", false)
+	repository := f.str("repository", false)
 	summary := f.str("summary", false)
 	if err := f.parse(args); err != nil {
 		return err
 	}
 	in := stageInput{SpecPath: *spec, ModuleDir: *moduleDir, Src: *src, Bin: *bin, Out: *out,
-		SHA: *sha, Tag: *tag, StampVersion: *version, ExtrasDir: *extras}
+		SHA: *sha, Tag: *tag, StampVersion: *version, ExtrasDir: *extras, Repository: *repository}
 	sums, err := stage(ctx, in, stdout)
 	if err != nil {
 		return err

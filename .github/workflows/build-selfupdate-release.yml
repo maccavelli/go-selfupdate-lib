@@ -185,6 +185,9 @@ jobs:
           SHA: ${{ github.sha }}
           TAG: ${{ steps.plan.outputs.tag }}
           STAMP_VERSION: ${{ steps.plan.outputs.stamp-version }}
+          # The caller's repository, which the installers download from
+          # (docs/decisions/0014-MADR-shared-installer-templates.md §3).
+          REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
           extras=()
@@ -200,6 +203,7 @@ jobs:
             -sha "$SHA" \
             -tag "$TAG" \
             -stamp-version "$STAMP_VERSION" \
+            -repository "$REPOSITORY" \
             "${extras[@]}" \
             -summary "$GITHUB_STEP_SUMMARY"
 

@@ -11,6 +11,7 @@
 //	selfupdate-release stage    -spec FILE -module-dir DIR -src DIR -bin DIR -out DIR -sha SHA -stamp-version V [-tag TAG] [-extras-dir DIR] [-summary FILE]
 //	selfupdate-release check    -dir DIR -products-json JSON -platforms-json JSON
 //	selfupdate-release identity -staging DIR -asset NAME -product P -os OS -arch ARCH -args-json JSON -want-version V -want-kind K -sha SHA
+//	selfupdate-release installer -spec FILE -repository OWNER/NAME -tag TAG -out DIR
 //
 // It exits 0 on success, 1 when a check fails, and 2 on a usage error.
 package main
@@ -46,11 +47,12 @@ func usagef(format string, args ...any) error {
 type subcommand func(ctx context.Context, args []string, stdout io.Writer) error
 
 var subcommands = map[string]subcommand{
-	"plan":     runPlan,
-	"build":    runBuild,
-	"stage":    runStage,
-	"check":    runCheck,
-	"identity": runIdentity,
+	"plan":      runPlan,
+	"build":     runBuild,
+	"stage":     runStage,
+	"check":     runCheck,
+	"identity":  runIdentity,
+	"installer": runInstaller,
 }
 
 func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {

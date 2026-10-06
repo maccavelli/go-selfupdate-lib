@@ -55,6 +55,10 @@ func TestInstallerRefused(t *testing.T) {
 		{"a hook with 17 arguments", map[string]any{"hooks": []any{hook("after_install", "relay", repeat(17, func(int) any { return "x" })...)}}, nil, "installer.hooks[0].args: 17 listed"},
 		{"an empty hook argument", map[string]any{"hooks": []any{hook("after_install", "relay", "configure", "")}}, nil, "installer.hooks[0].args[1]"},
 		{"a NUL hook argument", map[string]any{"hooks": []any{hook("after_install", "relay", "con\x00figure")}}, nil, "installer.hooks[0].args[0]"},
+		{"a quote in a hook argument", map[string]any{"hooks": []any{hook("after_install", "relay", "it's")}}, nil, "installer.hooks[0].args[0]: \"it's\" must match"},
+		{"a space in a hook argument", map[string]any{"hooks": []any{hook("after_install", "relay", "a b")}}, nil, "as the installers embed it"},
+		{"a dollar in a hook argument", map[string]any{"hooks": []any{hook("after_install", "relay", "$HOME")}}, nil, "installer.hooks[0].args[0]"},
+		{"a backtick in a hook argument", map[string]any{"hooks": []any{hook("after_install", "relay", "`id`")}}, nil, "installer.hooks[0].args[0]"},
 		{"an extra named install.sh", map[string]any{}, []any{map[string]any{"name": "install.sh"}}, `extras[0].name: "install.sh" is already an installer's name`},
 		{"an extra named INSTALL.PS1", map[string]any{}, []any{map[string]any{"name": "INSTALL.PS1"}}, `extras[0].name: "INSTALL.PS1" is already an installer's name`},
 	}
@@ -150,5 +154,26 @@ func TestInstallerDefaults(t *testing.T) {
 	nameOnly := mustParse(t, encode(t, m))
 	if got, err := nameOnly.InstallerEnvPrefix("ignored"); err != nil || got != "RELAY_SUITE" {
 		t.Errorf("InstallerEnvPrefix from name = %q, %v", got, err)
+	}
+}
+
+// TestInstallerArgumentCharset: with the installers on, identity_args must
+// be safe to embed too; without them, any argument is allowed, as before
+// (0014-PLAN deviation D1).
+func TestInstallerArgumentCharset(t *testing.T) {
+	m := base()
+	product(m)["identity_args"] = []any{"version", "--format=it's"}
+	if _, err := Parse(encode(t, m)); err != nil {
+		t.Fatalf("without the installers, a quote in identity_args was refused: %v", err)
+	}
+	m["installer"] = map[string]any{}
+	if _, err := Parse(encode(t, m)); err == nil || !strings.Contains(err.Error(), "products[0].identity_args[1]") {
+		t.Fatalf("with the installers: %v", err)
+	}
+	m = base()
+	product(m)["identity_args"] = []any{"version", "--format=short", "-v", "a.b/c:d=e,f+g@h%i"}
+	m["installer"] = map[string]any{"hooks": []any{map[string]any{"when": "after_install", "product": "relay", "args": []any{"configure", "--encrypt-db=true"}}}}
+	if _, err := Parse(encode(t, m)); err != nil {
+		t.Fatalf("safe arguments refused: %v", err)
 	}
 }

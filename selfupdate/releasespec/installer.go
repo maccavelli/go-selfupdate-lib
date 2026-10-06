@@ -54,8 +54,15 @@ type Hook struct {
 
 const maxHooks = 8
 
-// envPrefixRe is an installer environment prefix.
-var envPrefixRe = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,31}$`)
+var (
+	// envPrefixRe is an installer environment prefix.
+	envPrefixRe = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,31}$`)
+	// installerArgRe is an argument the installers embed in shell and
+	// PowerShell code: hook arguments and identity_args, when the
+	// installers are on. It admits no quote, space or expansion
+	// character (0014-PLAN deviation D1).
+	installerArgRe = regexp.MustCompile(`^[A-Za-z0-9._:=/,+@%-]+$`)
+)
 
 func (s Spec) validateInstaller() error {
 	in := s.Installer
@@ -83,8 +90,15 @@ func (s Spec) validateInstaller() error {
 			return fmt.Errorf("%s.args: %d listed; 1 to %d are allowed", at, len(h.Args), maxList)
 		}
 		for j, arg := range h.Args {
-			if arg == "" || strings.ContainsRune(arg, 0) {
-				return fmt.Errorf("%s.args[%d]: must be non-empty and hold no NUL", at, j)
+			if !installerArgRe.MatchString(arg) {
+				return fmt.Errorf("%s.args[%d]: %q must match %s, as the installers embed it", at, j, arg, installerArgRe)
+			}
+		}
+	}
+	for i, p := range s.Products {
+		for j, arg := range p.IdentityArgs {
+			if !installerArgRe.MatchString(arg) {
+				return fmt.Errorf("releasespec: products[%d].identity_args[%d]: %q must match %s, as the installers embed it", i, j, arg, installerArgRe)
 			}
 		}
 	}

@@ -296,6 +296,13 @@ against a fixture release, as written. No value can contain a quote: each
 is checked against the spec's rules and the repository rule
 `^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$`.
 
+*Amended 2026-10-06 (0014-PLAN deviation D1).* The spec's rules alone did
+not guarantee that: hook arguments and `identity_args` may be any
+non-empty string without NUL. With `installer` present, `releasespec`
+therefore also requires every hook argument and every product's
+`identity_args` to match `^[A-Za-z0-9._:=/,+@%-]+$`, at `Parse`, so a
+program's own tests catch one the installers could not carry.
+
 The generated values: the repository; the release's own tag; the
 prerelease channels; the products, their identity arguments and hooks;
 each platform's asset name and format; the folder name and environment
