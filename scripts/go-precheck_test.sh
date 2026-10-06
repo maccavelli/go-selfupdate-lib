@@ -1,7 +1,8 @@
 #!/bin/sh
 # Offline tests for scripts/go-precheck.sh (docs/decisions/0010-MADR-remediate-second-debugging-pass-findings.md
-# D3 and D4). The Go tools are stubs on PATH, in a throwaway git repository,
-# so each case controls what go vet, go test and govulncheck report.
+# D3 and D4; docs/decisions/0013-PLAN-build-and-stage-release-workflow.md D4).
+# The Go tools are stubs on PATH, in a throwaway git repository, so each case
+# controls what go vet, go test and govulncheck report.
 set -eu
 
 ROOT=$(cd -- "$(dirname "$0")/.." && pwd)
@@ -17,8 +18,8 @@ bad() { echo "  FAIL $1"; FAIL=$((FAIL + 1)); }
 rc0() { if [ "$rc" -eq 0 ]; then ok "$1"; else bad "$1: rc=$rc"; fi; }
 
 # Stubs. Each records its arguments in $WORK/calls; go test exits with
-# $STUB_TEST_RC, and govulncheck exits with $STUB_VULN_RC, after printing
-# a network error when STUB_VULN_NET=1.
+# $STUB_TEST_RC, go -C DIR test with $STUB_NESTED_RC, and govulncheck exits
+# with $STUB_VULN_RC, after printing a network error when STUB_VULN_NET=1.
 STUBS="$WORK/bin"
 mkdir -p "$STUBS"
 cat >"$STUBS/go" <<'EOF'
@@ -26,6 +27,7 @@ cat >"$STUBS/go" <<'EOF'
 echo "go $*" >>"$CALLS"
 case "$1" in
 test) exit "${STUB_TEST_RC:-0}" ;;
+-C) [ "$3" = test ] && exit "${STUB_NESTED_RC:-0}" ;;
 esac
 exit 0
 EOF
@@ -127,6 +129,46 @@ case "$out" in
 *"(gofmt, golangci-lint, go vet, go test, govulncheck)."*) rc0 "a run govulncheck is named in the summary" ;;
 *) bad "vuln summary: rc=$rc out=[$out]" ;;
 esac
+
+# 0013 D4: a file in a nested module is vetted and tested in that module,
+# and the main module's packages still in the main module.
+nested() {
+	r=$(repo "$1")
+	mkdir -p "$r/fix/cmd/x"
+	printf 'module example.com/fix\n' >"$r/fix/go.mod"
+	printf 'package main\n' >"$r/fix/cmd/x/main.go"
+	printf 'package fix\n' >"$r/fix/root.go"
+	git -C "$r" add fix
+	echo "$r"
+}
+r=$(nested nested)
+run "$r" -- fix/cmd/x/main.go fix/root.go pkg/a.go
+if [ "$rc" -eq 0 ] && grep -q '^go -C fix vet \. \./cmd/x$' "$WORK/calls" &&
+	grep -q '^go -C fix test \. \./cmd/x$' "$WORK/calls" && grep -q '^go test \./pkg$' "$WORK/calls" &&
+	! grep -q '^go vet .*fix' "$WORK/calls"; then
+	ok "a nested module's files are vetted and tested in that module"
+else
+	bad "nested: rc=$rc out=[$out] calls=[$(tr '\n' ';' <"$WORK/calls")]"
+fi
+run "$r" STUB_NESTED_RC=1 -- fix/cmd/x/main.go
+if [ "$rc" -eq 1 ]; then
+	ok "a nested module's failing test fails the check"
+else
+	bad "nested failure: rc=$rc out=[$out]"
+fi
+run "$r" --
+if [ "$rc" -eq 0 ] && grep -q '^go vet \./\.\.\.$' "$WORK/calls" && grep -q '^go -C fix vet \./\.\.\.$' "$WORK/calls"; then
+	ok "with no arguments, every module holding a tracked Go file is checked"
+else
+	bad "nested, no arguments: rc=$rc calls=[$(tr '\n' ';' <"$WORK/calls")]"
+fi
+rm -r "$r/fix/cmd/x"
+run "$r" -- fix/cmd/x/main.go
+if [ "$rc" -eq 0 ] && grep -q '^go -C fix vet \./\.\.\.$' "$WORK/calls" && ! grep -q '^go vet' "$WORK/calls"; then
+	ok "a deleted package in a nested module falls back to that module's ./..."
+else
+	bad "nested deletion: rc=$rc calls=[$(tr '\n' ';' <"$WORK/calls")]"
+fi
 
 echo "go-precheck_test: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

@@ -14,7 +14,10 @@
 # fourth amendments). Changed since by
 # docs/decisions/0010-MADR-remediate-second-debugging-pass-findings.md: a
 # deleted file still has its package checked (D3), and an unreachable
-# vulnerability database fails instead of passing (D4).
+# vulnerability database fails instead of passing (D4); and by
+# docs/decisions/0013-PLAN-build-and-stage-release-workflow.md D4: a file in
+# a nested module, such as a fixture module under testdata/, is vetted and
+# tested in that module.
 #
 # Step 2 runs golangci-lint with this repository's .golangci.yml instead of
 # golint. golint is archived, and CI already runs golangci-lint; a gate weaker
@@ -29,6 +32,9 @@
 # A Go argument that is no longer on disk, a deletion, still names its package
 # for go vet and go test; when that package has no Go file left, they run over
 # ./... instead, so a deletion that breaks a dependant still fails.
+# go vet and go test run in the module that owns each package: the nearest
+# go.mod above it. The main module's ./... never reaches a nested module, and
+# lint, which runs ./... in the main module, does not cover one either.
 # The lint step is package-scoped either way: golangci-lint analyses packages,
 # not files, so narrowing it to a file list would report different findings than
 # `make lint` and the two would drift.
@@ -122,29 +128,63 @@ else
 fi
 
 # 3. go vet and go test, over the packages the files belong to (./... with no
-# arguments). AGENTS.md requires both on the touched packages. A package
-# directory with no Go file left, after a deletion, widens the run to ./... .
-if [ "$#" -gt 0 ]; then
+# arguments), each in the module that owns it. AGENTS.md requires both on the
+# touched packages. A package directory with no Go file left, after a
+# deletion, widens its module's run to ./... .
+
+# module_of DIR: the directory, relative to the root, of the go.mod that owns
+# DIR; "." for the main module.
+module_of() {
+  local d="$1"
+  while [ "$d" != "." ] && [ ! -f "$d/go.mod" ]; do
+    d="$(dirname "$d")"
+  done
+  printf '%s\n' "$d"
+}
+
+# entries: one "MODULE|PACKAGE" line per package to check, PACKAGE relative
+# to MODULE.
+entries=()
+while IFS= read -r d; do
+  [ -z "$d" ] && continue
+  m="$(module_of "$d")"
+  if [ "$#" -eq 0 ] || ! compgen -G "$d/*.go" >/dev/null; then
+    entries+=("$m|./...")
+  elif [ "$d" = "$m" ]; then
+    entries+=("$m|.")
+  elif [ "$m" = "." ]; then
+    entries+=(".|./$d")
+  else
+    entries+=("$m|./${d#"$m"/}")
+  fi
+done < <(printf '%s\n' "${dirs[@]}" | sort -u)
+
+vet_out=""
+test_out=""
+while IFS= read -r m; do
   pkgs=()
-  while IFS= read -r d; do
-    [ -z "$d" ] && continue
-    if ! compgen -G "$d/*.go" >/dev/null; then
-      pkgs=("./...")
-      break
-    fi
-    pkgs+=("./$d")
-  done < <(printf '%s\n' "${dirs[@]}" | sort -u)
-else
-  pkgs=("./...")
-fi
-if ! vet_out="$(go vet "${pkgs[@]}" 2>&1)"; then
+  while IFS= read -r p; do
+    pkgs+=("$p")
+  done < <(printf '%s\n' "${entries[@]}" | awk -F'|' -v m="$m" '$1 == m { print $2 }' | sort -u)
+  gocmd=(go)
+  if [ "$m" != "." ]; then
+    gocmd=(env GOWORK=off go -C "$m")
+  fi
+  if ! out="$("${gocmd[@]}" vet "${pkgs[@]}" 2>&1)"; then
+    vet_out+="$out"$'\n'
+  fi
+  if ! out="$("${gocmd[@]}" test "${pkgs[@]}" 2>&1)"; then
+    test_out+="$out"$'\n'
+  fi
+done < <(printf '%s\n' "${entries[@]}" | cut -d'|' -f1 | sort -u)
+if [ -n "$vet_out" ]; then
   echo "go vet:" >&2
-  printf '%s\n' "$vet_out" | sed 's/^/  /' >&2
+  printf '%s' "$vet_out" | sed 's/^/  /' >&2
   fail 1
 fi
-if ! test_out="$(go test "${pkgs[@]}" 2>&1)"; then
+if [ -n "$test_out" ]; then
   echo "go test:" >&2
-  printf '%s\n' "$test_out" | tail -40 | sed 's/^/  /' >&2
+  printf '%s' "$test_out" | tail -40 | sed 's/^/  /' >&2
   fail 1
 fi
 ran+=("go vet" "go test")

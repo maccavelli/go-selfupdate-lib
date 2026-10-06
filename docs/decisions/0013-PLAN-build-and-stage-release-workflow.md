@@ -700,6 +700,120 @@ runs it).
   * `make pre-add-check` on the seven Go files: "7 file(s) clean".
   * `make apicheck`: `compatible with v1.8.0`. `go.mod` is unchanged.
 
+### Phase B2: `internal/cmd/selfupdate-release` (2026-10-05)
+
+* **The command,** one file per subcommand, each a flag-parsing shim over
+  a function the tests call: `plan.go`, `build.go`, `stage.go`,
+  `pack.go`, `check.go`, `identity.go`; `gotool.go` runs the go command;
+  `gha.go` writes step outputs and the summary. Beyond the steps as
+  written:
+  * **The go command's environment** is built, not inherited: the
+    recipe's `GOENV=off`, `GOTOOLCHAIN=local`, `GOFLAGS=-mod=readonly`,
+    `CGO_ENABLED=0` and `GOWORK=off`, then only `PATH`, the home, temp
+    and cache locations, and the module proxy settings. `GOENV=off`
+    keeps a user's go env file out: it could otherwise set `GOAMD64` or
+    `GOARM64`, which the recipe leaves at their defaults.
+  * **`stage` takes `-stamp-version`,** which replaces `{tag}` in the
+    extras' names, so a rehearsal stages them too.
+  * **The tag check at the root** compares the module and source
+    directories with `os.SameFile`.
+  * **Every write is checked:** `printf` returns the write's error, and
+    `run` returns the exit code with the stderr line.
+* **The fixture** (`testdata/fixture/`): `cmd/relay` prints
+  `buildinfo.Identity()` for `version`, prints nothing for `silent`, and
+  sleeps for `hang`; `cmd/nostamp` imports no `buildinfo`; the two specs
+  name relay only; `notes.txt` is the binary spec's extra. It has no
+  `go.sum` (D3).
+* **Tests** (80 passes on each OS): the fixture is copied into a new
+  git repository, tagged `v1.2.3` (annotated), and built once for
+  linux/amd64, darwin/arm64, windows/amd64 and the host; tests copy its
+  output before changing it.
+  * `build`: every target named and stamped, the main module version the
+    tag; `nostamp` refused before anything is written; an unknown
+    target, kind, a version with a space, an occupied output refused;
+    `GOFLAGS`, `CGO_ENABLED` and a go env file ignored, with a check that
+    the planted env file does take effect for a go command that reads
+    it; build tags recorded and accepted by `stage`.
+  * `stage`: raw and archive releases; byte-identical on a second run;
+    `SHA256SUMS` sorted and parsed back; refused: a wrong revision, a tag
+    the build was not made at, a swapped platform, an empty file, a file
+    that is not a Go binary, a missing binary, a bad SHA, a dirty tree;
+    extras from the repository and the extras directory, and refused
+    when missing, stray or a symlink.
+  * `checkBuildInfo`, on edited build information: cgo, no `-trimpath`,
+    build tags, modified, another arch, toolchain, module or package, a
+    dirty version.
+  * `pack`: the tar, zip and gzip headers field by field; repeatable;
+    an unknown format refused; a truncated archive and a changed byte
+    caught by the round trip.
+  * `check`: good tar.gz, zip and gz; refused: the program twice, the
+    program as a symlink, a truncated gzip, a script; a raw release is a
+    no-op.
+  * `identity`: the raw and the packed program report
+    `v1.2.3 (release) <sha12>`; refused: another version, no output, the
+    wrong output, a hang (1 s timeout), another platform, no arguments,
+    a path as the asset, the wrong kind. The pattern refuses `-dirty`,
+    a prefix, a suffix, another revision.
+  * `plan`: tag and rehearsal modes, names, extras, the identity matrix
+    and tool targets, the summary rows; refused: an unlisted channel, a
+    loose tag, a short SHA, attempt 0, a bad artifact name. Outputs are
+    parsed back as the runner parses them, including a value holding
+    `EOF`, a delimiter prefix and a `name<<x` line.
+  * Exit codes: 2 for usage errors, 1 for a failed check.
+* **The host runs found two test defects,** both fixed in the tests:
+  * **Windows:** Git for Windows cannot open `NUL` as
+    `GIT_CONFIG_GLOBAL` ("unable to access 'NUL'"); the helper now gives
+    git an empty configuration file.
+  * **Linux:** flipping an ELF binary's last byte broke its section
+    header table, so the unpacker's image check refused it before the
+    byte comparison the test meant to reach; the test now flips a byte
+    in the middle.
+* **Lint** asked for constants for the stamp kinds and `windows`, a
+  string key for the runner table, and every `fmt.Fprintf` checked. One
+  `nolint:gosec` per file read or command run, each with its reason.
+* **Plants,** each in a scratch copy, each caught by its test:
+
+  | Plant | Caught by |
+  | :--- | :--- |
+  | layer 1 skipped | `TestBuildRefusesAProgramWithoutBuildinfo` |
+  | the `vcs.modified` check removed | `TestStageRefusesADirtyTree` |
+  | the `-trimpath` check removed | `TestCheckBuildInfo` |
+  | the revision check removed | `TestStageRefuses` |
+  | the GOOS check removed | `TestStageRefuses` (the image check then refuses it, with another message) |
+  | the tag check at the root removed | `TestStageRefuses` |
+  | a tar packer that changes one byte | `TestStageArchivesRoundTripAndRepeat`: "the client's unpacker refuses it" |
+  | `SHA256SUMS` sorted in reverse | `TestStageRaw` |
+  | the zip mode 0644 | `TestPackMetadata` |
+  | the identity pattern a prefix match | `TestIdentityPattern` |
+  | a fixed output delimiter, `EOF` | `TestWriteOutputs`: "output tricky holds its delimiter" |
+  | `GOENV=off` dropped | `TestBuildIgnoresTheCallersGoEnvironment`: `GOAMD64="v3"` |
+  | `GOFLAGS` inherited | `TestBuildIgnoresTheCallersGoEnvironment`: `-tags="evil"` |
+  | stray extras accepted | `TestStageExtras` |
+  | a symlinked extra accepted | `TestStageExtras` |
+  | identity on another platform | `TestIdentity` |
+  | `check` skipping archives | `TestCheck` |
+  | the tag rule skipped | `TestPlanRefuses` |
+  | identity legs for products without `identity_args` | `TestPlanTag` |
+  | usage errors exiting 1 | `TestRunExitCodes` |
+
+  Three plants first failed to compile and one was missed; none of
+  those counted. The compile failures were rewritten to compile. The
+  miss, `GOENV=off` dropped, showed that the test set `GOENV` to its
+  file, which the tool never inherits, so the plant changed nothing it
+  could see; the test now places the file where a go command looks by
+  default, under a new home, and the plant is caught.
+* **Checks:**
+  * the tool's tests on macOS, the Linux test host and the Windows test
+    host: 80 passes each, no skips;
+  * `gate.sh`: every step rc 0: gofmt, lint on three GOOS, vet, race,
+    shuffle, tidy, apicheck (`compatible with v1.8.0`), fuzz (9
+    targets), vuln, the script tests, cross vet;
+  * after D4, every script test and shellcheck again;
+  * `make pre-add-check` on the 17 Go files, the fixture's two included:
+    "17 file(s) clean"; and with no arguments: "257 file(s) clean".
+  * The 20 plants above were run again after the host fixes: all
+    caught, each at a test assertion.
+
 ### Deviations
 
 * **D1 (2026-10-05), B1: verifier parity for archive specs.**
@@ -724,3 +838,35 @@ runs it).
     is not allowed from list 'selfupdate-releasespec' (depguard)". The
     rule and the MADR are unchanged; only the plant was wrong.
   * **Files:** none.
+* **D3 (2026-10-05), B2: the fixture has no `go.sum`.**
+  * **Found:** B2's file list names a fixture `go.sum`. `go mod tidy`
+    writes none: the fixture imports only `buildinfo`, which imports the
+    standard library only, and the module graph is pruned, so no
+    checksum is needed. It builds with `GOFLAGS=-mod=readonly`.
+  * **Decision:** no `go.sum`. A fixture that later imports a package
+    with dependencies gets one from `go mod tidy`, and `-mod=readonly`
+    fails loudly until it does.
+  * **Files:** one fewer than listed.
+* **D4 (2026-10-05), B2: the pre-add check and nested modules.**
+  * **Found:** `make pre-add-check` on B2's files passed gofmt and lint,
+    then failed go vet and go test on the fixture's two Go files: "main
+    module (github.com/maccavelli/go-selfupdate-lib) does not contain
+    package …/testdata/fixture/cmd/relay". `scripts/go-precheck.sh` ran
+    every package in the main module. The limit was there before;
+    0013 is the first change to commit Go files in a nested module.
+  * **Decision (the owner):** teach the check. go vet and go test now run
+    in the module that owns each package, the nearest `go.mod` above it,
+    with `go -C <module>` and `GOWORK=off`. With no arguments, `./...` runs
+    in the main module and in every nested module holding a tracked Go
+    file. A deleted package widens its own module's run to `./...`. Lint
+    still runs `./...` in the main module only, which does not reach a
+    nested module; the header says so.
+  * **Tests** (`go-precheck_test.sh`, 4 new cases, 11 in all): a nested
+    module's files are vetted and tested in it; its failing test fails
+    the check; the no-argument mode covers every module; a deleted nested
+    package falls back to its module's `./...`.
+  * **Plants,** each caught by those cases: `module_of` ignoring
+    `go.mod`; test failures dropped; the no-argument mode per package; a
+    nested run without `-C`.
+  * **Files:** `scripts/go-precheck.sh` and `scripts/go-precheck_test.sh`
+    join B2.
