@@ -312,3 +312,52 @@ helpers, and a CI job.
 * **Checks:** markdownlint on copies of the records and on
   `docs/README.md`; `doccheck.py` on links and identifiers. No code
   changes, so `gate.sh` is not run.
+
+### Phase I1: `selfupdate/releasespec` learns the installer (2026-10-06)
+
+* **The code** (`installer.go`, new; `spec.go`; `validate.go`):
+  * `Installer{Name, EnvPrefix, Hooks}`, `Hook{When, Product, Args}`,
+    `Spec.Installer` (a pointer, so `{}` turns the installers on), the
+    constants `InstallerScript`, `InstallerPowerShell`,
+    `HookBeforeInstall` and `HookAfterInstall`;
+  * the rules of MADR §2, checked after the platforms and before the
+    extras;
+  * `InstallerScripts()`: `install.sh` for a platform that is not
+    Windows, then `install.ps1` for a Windows one;
+  * `ExtraNames` appends them, and reserves both names, compared ignoring
+    case, whenever `installer` is present;
+  * the default helpers are `InstallerName(repo)` and
+    `InstallerEnvPrefix(repo)`, the PLAN's `InstallerName` and
+    `EnvPrefix` under those names. A made prefix that is not valid (a
+    repository name starting with a digit, or longer than 32) is an error
+    naming `installer.env_prefix`.
+* **Tests** (`installer_test.go`, `testdata/installer.json`): the fixture
+  and `{}` accepted, and no installers without the field; 12 refusals,
+  each naming its field; the installer names as ordinary extras without
+  the field; `InstallerScripts` and `ExtraNames` for mixed, Unix-only and
+  Windows-only platforms; the defaults for four repository names and
+  their refusals.
+* **`TestVerifierParity`** gains `installer.json`: a release staged with
+  both installers passes the publish verifier, on macOS and on the
+  Windows test host.
+* **`FuzzParse` found a defect** in its first gate run: `"hooks": []`
+  parsed to an empty list, which encoding drops, so the spec changed in a
+  round trip. `Parse` now normalizes an empty hook list to nil, as it
+  does extras and channels. The failing input is kept as a regression
+  seed, `testdata/fuzz/FuzzParse/60baf1860bb34233`, which passes with the
+  fix and fails without it ("round trip changed the spec").
+* **Plants,** each in a scratch copy, each caught:
+
+  | Plant | Caught by |
+  | :--- | :--- |
+  | the installer names not reserved | `TestInstallerRefused`: Parse accepted the spec; want "is already an installer's name" |
+  | a hook on an unlisted product accepted | `TestInstallerRefused` |
+  | a hook at any time accepted | `TestInstallerRefused` |
+  | `install.ps1` without a Windows platform | `TestInstallerScriptsAndExtraNames`: `InstallerScripts = [install.sh install.ps1], want [install.sh]` |
+  | `ExtraNames` without the installers | `TestInstallerScriptsAndExtraNames` |
+  | the made prefix keeping hyphens | `TestInstallerDefaults` |
+  | the empty-hooks normalization removed | the fuzz seed |
+
+* **Checks:** `gate.sh`, every step rc 0, run twice (the second after the
+  fuzz fix); `make apicheck`: `compatible with v1.9.0`; `make
+  pre-add-check` on the five Go files: "5 file(s) clean".

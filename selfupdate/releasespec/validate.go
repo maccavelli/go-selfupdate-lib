@@ -49,6 +49,9 @@ func (s Spec) Validate() error {
 	if err := s.validatePlatforms(); err != nil {
 		return err
 	}
+	if err := s.validateInstaller(); err != nil {
+		return err
+	}
 	if err := s.validateExtras(); err != nil {
 		return err
 	}

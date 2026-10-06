@@ -104,7 +104,7 @@ func runVerifier(t *testing.T, sh, dir, tag string, in verifierInput) (string, e
 func TestVerifierParity(t *testing.T) {
 	sh := verifier(t)
 	const tag = "v1.2.3-rc.1"
-	for _, fixture := range []string{"fleet.json", "minimal.json", "archive.json"} {
+	for _, fixture := range []string{"fleet.json", "minimal.json", "archive.json", "installer.json"} {
 		t.Run(fixture, func(t *testing.T) {
 			s := mustParse(t, readFixture(t, fixture))
 			if len(s.PrereleaseChannels) == 0 {

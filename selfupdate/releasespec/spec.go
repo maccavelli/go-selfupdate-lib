@@ -52,6 +52,9 @@ type Spec struct {
 	// may publish vX.Y.Z-NAME.N tags for, most stable first, in strictly
 	// descending ASCII order.
 	PrereleaseChannels []string `json:"prerelease_channels,omitempty"`
+	// Installer, when present, asks the build workflow to generate
+	// install.sh and install.ps1 (docs/decisions/0014-MADR-shared-installer-templates.md).
+	Installer *Installer `json:"installer,omitempty"`
 }
 
 // Product is one program.
@@ -138,6 +141,9 @@ func (s *Spec) normalize() {
 		if len(s.Products[i].Tags) == 0 {
 			s.Products[i].Tags = nil
 		}
+	}
+	if s.Installer != nil && len(s.Installer.Hooks) == 0 {
+		s.Installer.Hooks = nil
 	}
 }
 
@@ -313,17 +319,25 @@ func (s Spec) Unpacker() (selfupdate.Unpacker, error) {
 }
 
 // ExtraNames returns the extras' asset names for the release tag, in spec
-// order, with TagPlaceholder replaced. Each must still be a valid, unique
-// asset name that is not SHA256SUMS or a canonical asset's name.
+// order, with TagPlaceholder replaced, then the generated installers
+// (InstallerScripts). Each extra must still be a valid, unique asset name
+// that is not SHA256SUMS, a canonical asset's name or an installer's.
 func (s Spec) ExtraNames(tag string) ([]string, error) {
 	canonical, err := s.assetNames()
 	if err != nil {
 		return nil, err
 	}
-	names := make([]string, len(s.Extras))
+	installers := s.InstallerScripts()
+	names := make([]string, len(s.Extras), len(s.Extras)+len(installers))
 	taken := map[string]string{}
 	for _, c := range canonical {
 		taken[strings.ToLower(c)] = "a canonical asset"
+	}
+	if s.Installer != nil {
+		// Both names are reserved whenever the installers are on, even the
+		// one this spec's platforms do not generate.
+		taken[InstallerScript] = "an installer"
+		taken[InstallerPowerShell] = "an installer"
 	}
 	for i, e := range s.Extras {
 		name := strings.ReplaceAll(e.Name, TagPlaceholder, tag)
@@ -333,7 +347,7 @@ func (s Spec) ExtraNames(tag string) ([]string, error) {
 		taken[strings.ToLower(name)] = "another extra"
 		names[i] = name
 	}
-	return names, nil
+	return append(names, installers...), nil
 }
 
 func checkExtraName(name string, taken map[string]string) error {

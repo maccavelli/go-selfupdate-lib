@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"schema\":1,\"products\":[{\"name\":\"0\",\"package\":\".\"},{\"name\":\"00000000\",\"package\":\"./0000000000\"}],\"platforms\":[{\"os\":\"0\",\"arch\":\"0\"},{\"os\":\"0\",\"arch\":\"1\"},{\"os\":\"0\",\"arch\":\"2\"}],\"installer\":{\"name\":\"0\",\"env_prefix\":\"A\",\"hooks\":[]}}")
