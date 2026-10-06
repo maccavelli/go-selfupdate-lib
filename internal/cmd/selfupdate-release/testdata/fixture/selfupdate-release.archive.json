@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "products": [
+    {"name": "relay", "package": "./cmd/relay", "identity_args": ["version"]}
+  ],
+  "platforms": [
+    {"os": "linux", "arch": "amd64"},
+    {"os": "linux", "arch": "arm64", "format": "gz"},
+    {"os": "darwin", "arch": "arm64"},
+    {"os": "windows", "arch": "amd64"},
+    {"os": "windows", "arch": "arm64"}
+  ],
+  "packaging": "archive"
+}

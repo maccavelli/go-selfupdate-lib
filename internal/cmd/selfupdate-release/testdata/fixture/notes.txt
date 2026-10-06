@@ -1,0 +1,1 @@
+relay release notes: a fixture extra asset.
