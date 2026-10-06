@@ -1,6 +1,6 @@
 ---
-status: in-progress
-date: 2026-10-05
+status: complete
+date: 2026-10-06
 associated-madr: "0013-MADR-build-and-stage-release-workflow.md"
 ---
 # Implement the build-and-stage release workflow: `selfupdate/releasespec`, the internal release tool, `build-selfupdate-release.yml`, and archive releases through the publish workflow (`v1.9.0`)
@@ -1047,7 +1047,7 @@ none of the new pieces behave as they did.
   check vets and tests a nested module in that module; CI rehearses the
   build workflow on every push.
 
-### Phase B6: the release (2026-10-06, in progress)
+### Phase B6: the release (2026-10-06)
 
 * **Step 1, the tag.** The owner pushed B5 (`39b1294`); CI run
   37469667843 passed. The owner tagged `v1.9.0`, annotated, and pushed
@@ -1085,9 +1085,104 @@ none of the new pieces behave as they did.
 * **Step 4, the agent's checks, so far:**
   * `proxy.golang.org`: `go list -m …@v1.9.0` gives `v1.9.0`, at
     2026-10-06T13:17:39Z, and `@latest` already resolves to `v1.9.0`.
-* **Still open:** step 3, the live publish rehearsal in a throwaway
-  repository, which waits for the owner; and the scratch consumer of
-  step 4. This PLAN stays `in-progress` until both are recorded.
+* **Step 3, the live publish rehearsal** (2026-10-06). The owner asked
+  the agent to "create the throwaway repo set it immutable, test then
+  remove it".
+  * **The repository:** the throwaway repository, public, created with
+    `gh repo create`. Immutable releases were turned on with
+    `PUT /repos/{owner}/{repo}/immutable-releases` (204); a read showed
+    `"enabled":true` some seconds later.
+  * **The program:** `rehearsal`, a module at the repository root that
+    requires `v1.9.0` from `proxy.golang.org`. It has a `version` command
+    printing `buildinfo.Identity()`, and an `update` command on
+    `cli.Command` whose updater comes from the embedded spec through
+    `releasespec` (`Product`, `AssetSelector`, `Unpacker`). The spec lists
+    five platforms and an extra, `rehearsal-notes-{tag}.md`, from a path.
+    It is also step 4's scratch consumer: built from the proxy's
+    `v1.9.0`, for five platforms.
+  * **The workflow:** MADR §9's two-job caller, pinned to
+    `39b12945fad311174252038745f5a88f71c4c66c`. The org's rule against
+    committing to `main` kept the work on a `feature/rehearsal` branch,
+    which the caller builds on push.
+  * **Runs,** each green, each with five identity legs:
+    * the branch push: a rehearsal; `release` skipped;
+    * `v0.0.1` and `v0.0.2`, `packaging: binary`: five raw binaries, the
+      notes extra and `SHA256SUMS`; immutable; `v0.0.2` became latest;
+    * `v0.0.3` and `v0.0.4`, `packaging: archive` (gz for linux/arm64):
+      `.tar.gz`, `.gz` and `.zip` assets. The publish job logged
+      `verify-selfupdate-release: ok (packed)`, then "…unpacks to an
+      executable for its platform" for each of the five archives, then
+      "v0.0.3 is immutable and verified".
+  * **The tag as the main module's version, from a shallow checkout of
+    an annotated tag:** the published `rehearsal-linux-amd64`'s build
+    information reads `mod <the throwaway repository's module> v0.0.1`,
+    `-trimpath=true`, `CGO_ENABLED=0`, `vcs.modified=false`, and the
+    library at `v1.9.0`. `stage`'s check of it, at the root, passed in
+    every tag run.
+  * **The attestation:** `gh attestation verify rehearsal-linux-amd64
+    --repo <the throwaway repository> --signer-workflow
+    maccavelli/go-selfupdate-lib/.github/workflows/publish-selfupdate-release.yml`
+    exits 0.
+  * **Updates on the three test hosts,** each from a fresh download into
+    a directory under home (the standalone installer's default root),
+    checked against `SHA256SUMS` first:
+
+    | Host | `v0.0.1` → `v0.0.2` (raw) | `v0.0.3` → `v0.0.4` (archive) |
+    | :--- | :--- | :--- |
+    | the development Mac, darwin/arm64 | `--check` 10, `--yes` 0, then `v0.0.2 (release) e5965bc5edb3` | from `.tar.gz`: 10, 0, then `v0.0.4 (release) a28ae517edfb` |
+    | the Linux test host, linux/amd64 | 10, 0, `v0.0.2 (release) e5965bc5edb3` | from `.tar.gz`: 10, 0, `v0.0.4 (release) a28ae517edfb` |
+    | the Windows test host, windows/amd64 | 10, 0, `v0.0.2 (release) e5965bc5edb3` | from `.zip`: 10, 0, `v0.0.4 (release) a28ae517edfb` |
+
+    Each started from `v0.0.1 (release) 2924dc609e2a` or
+    `v0.0.3 (release) e8e5cf123214`. `--check` exiting 10 on a published
+    binary is C2's fix, end to end. The Windows archive run first failed
+    in the test script, before the program ran: Git Bash's GNU `tar`
+    cannot read a zip. The script now extracts with `unzip`, and the
+    re-run passed.
+  * **Reproducibility:** `v0.0.2`'s build job was re-run. Attempt 2's
+    staged `SHA256SUMS` is byte-identical to the published one for all
+    five binaries. Its re-run `release / publish` job failed as designed,
+    on "refuse-existing-release: release v0.0.2 already exists (including
+    drafts)", the existing-release guard, live.
+  * **Removal:** the owner deleted the repository, as asked; the API then returned "Not Found" for it, by name, through both GraphQL and REST.
+* **Step 4, the agent's checks:** CI on the tag, the proxy, and the
+  scratch consumer (the rehearsal program above): done.
+
+**Verification.**
+
+* V1: every new test, rule and gate was seen to fail on a deliberately
+  broken input: 16 plants in B1, 20 in B2 and 4 for D4, 12 in B3, 10 in
+  B4; each is in its phase's table.
+* V2: `make apicheck` reported `compatible with v1.8.0` at every phase;
+  `go.mod` and `go.sum` are unchanged since `v1.8.0`.
+* V3: the 53 verifier fixtures from before 0013 pass against the new
+  verifier; a raw release takes no new publish step; D5 keeps the one
+  rule that would have changed it to packed releases.
+* V4: every rule of MADR §2 has a refusing test (62 cases), and
+  `FuzzParse` runs clean in `make fuzz` and CI.
+* V5: every check of layers 1 and 2 has a refusing test. Layer 3 passed
+  in release mode on all five runners at `v1.9.0`, and in the
+  rehearsal's four tags. The planted wrong version was caught by
+  `TestIdentity` locally; the branch plant on GitHub was optional and
+  the owner did not take it up.
+* V6: two `stage` runs are byte-identical in the tests, and a re-run of
+  a live build reproduced every published digest.
+* V7: the live rehearsal passed every check of step 3.
+* V8: the MADR's "Not verified" entries, as they stand:
+  * **the tag in the shallow checkout,** and **an annotated tag:**
+    settled; Go stamped `v0.0.1` from the workflow's checkout of an
+    annotated tag;
+  * **`ubuntu-24.04-arm` and `windows-11-arm`:** settled; both ran
+    identity legs in every run since B4;
+  * **re-uploading an artifact name:** not needed; the re-run's artifact
+    was `selfupdate-release-v0.0.2-2`, by design;
+  * **a nested reusable call by relative path:** still not verified;
+    option B was not built;
+  * **GoReleaser's checksum line format:** not needed;
+  * **the SLSA level:** still an inference.
+* V9: CI is green on `main` at every phase, and on `v1.9.0`.
+
+This PLAN is `complete`.
 
 ### Deviations
 
