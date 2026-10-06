@@ -41,6 +41,8 @@ name, and the files they cite moved with the rename
 | 0011 | PLAN | [Implement `selfupdate/service`: reference systemd, launchd and Windows SCM lifecycles, the handoff and `sd_notify` (`v1.7.0`)](decisions/0011-PLAN-reference-service-lifecycles.md) | complete |
 | 0012 | MADR | [Build `selfupdate/archive` and `selfupdate/codesign`: extract the program from a verified tar.gz or zip asset in a new stage before the transform, and re-sign or check it on macOS with `/usr/bin/codesign`](decisions/0012-MADR-archive-assets-and-macos-codesign.md) | accepted |
 | 0012 | PLAN | [Implement `selfupdate/archive` and `selfupdate/codesign`: the extract stage, tar.gz, zip and gz assets, and opt-in macOS re-signing and signature checks (`v1.8.0`)](decisions/0012-PLAN-archive-assets-and-macos-codesign.md) | complete |
+| 0013 | MADR | [Build, check and stage a self-update release in a reusable workflow, from one release spec that the program embeds](decisions/0013-MADR-build-and-stage-release-workflow.md) | accepted |
+| 0013 | PLAN | [Implement the build-and-stage release workflow: `selfupdate/releasespec`, the internal release tool, `build-selfupdate-release.yml`, and archive releases through the publish workflow (`v1.9.0`)](decisions/0013-PLAN-build-and-stage-release-workflow.md) | in-progress |
 
 ## I want to…
 
