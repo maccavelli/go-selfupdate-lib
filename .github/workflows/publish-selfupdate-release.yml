@@ -12,7 +12,9 @@ on:
         required: true
         type: string
       platforms-json:
-        description: JSON array of objects with only os and arch
+        description: >-
+          JSON array of objects with os and arch, and, for an archive
+          release, format (tar.gz, zip or gz) on every object
         required: true
         type: string
       extra-assets-json:
@@ -126,7 +128,11 @@ jobs:
           name: ${{ inputs.artifact-name }}
           path: staging
 
+      # With a format on its platforms, the release is packed: the
+      # canonical assets are archives, and the verifier writes packed=true
+      # (docs/decisions/0013-MADR-build-and-stage-release-workflow.md §8).
       - name: Validate the staged file set
+        id: verify
         shell: bash
         env:
           PRODUCTS_JSON: ${{ inputs.products-json }}
@@ -143,7 +149,35 @@ jobs:
             --platforms "$PLATFORMS_JSON" \
             --extras "$EXTRAS_JSON" \
             --channels "$CHANNELS_JSON" \
-            --tag "$TAG"
+            --tag "$TAG" \
+            --github-output "$GITHUB_OUTPUT"
+
+      # A packed release is checked with the client's own unpacker, built
+      # from the called workflow's commit: every archive must extract to an
+      # executable for its platform, so nothing the client would refuse is
+      # published, whoever built it (0013-MADR §8). A raw release skips both
+      # steps.
+      - name: Set up Go for the archive check
+        if: steps.verify.outputs.packed == 'true'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: .core-lib-release-tools/go.mod
+          cache: false
+
+      - name: Check archived programs
+        if: steps.verify.outputs.packed == 'true'
+        shell: bash
+        working-directory: .core-lib-release-tools
+        env:
+          PRODUCTS_JSON: ${{ inputs.products-json }}
+          PLATFORMS_JSON: ${{ inputs.platforms-json }}
+          GOTOOLCHAIN: local
+        run: |
+          set -euo pipefail
+          go run ./internal/cmd/selfupdate-release check \
+            -dir "$GITHUB_WORKSPACE/staging" \
+            -products-json "$PRODUCTS_JSON" \
+            -platforms-json "$PLATFORMS_JSON"
 
       - name: Create a draft release
         shell: bash

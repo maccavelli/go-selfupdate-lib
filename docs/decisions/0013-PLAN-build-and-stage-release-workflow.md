@@ -814,6 +814,79 @@ runs it).
   * The 20 plants above were run again after the host fixes: all
     caught, each at a test assertion.
 
+### Phase B3: the publish workflow learns archives (2026-10-05)
+
+* **`verify-selfupdate-release.sh`:**
+  * a platform object has `os` and `arch`, and may have `format`
+    (`tar.gz`, `zip` or `gz`), on every object or none; an unknown
+    format or another key is refused with its own message;
+  * in a packed release the canonical asset is
+    `<product>-<os>-<arch>.<format>`, and `SHA256SUMS` must list exactly
+    those archives ("…exactly the canonical archives");
+  * in a packed release an extra may not take a canonical asset's name,
+    in any case (D5: packed releases only);
+  * `--github-output FILE` appends `packed=true` or `packed=false` after
+    a successful verification, and nothing on a failure; an empty file
+    name is a usage error.
+* **`publish-selfupdate-release.yml`:** "Validate the staged file set"
+  has `id: verify` and passes `--github-output "$GITHUB_OUTPUT"`. Then,
+  under `if: steps.verify.outputs.packed == 'true'`, "Set up Go for the
+  archive check" (setup-go v7.0.0 from the tools' `go.mod`, cache off)
+  and "Check archived programs" (`go run
+  ./internal/cmd/selfupdate-release check` in the tools checkout, with
+  `GOTOOLCHAIN=local` and the inputs from `env:`). The `platforms-json`
+  input's description names `format`. actionlint and
+  `check-workflows.sh` (all rules) pass.
+* **`scripts/workflow-shape_test.sh`** (new; PyYAML), run by CI's
+  "Verify the workflow contract" step: the tag check first after the
+  tools checkout; the verifier's id and output flag; both Go steps after
+  the verifier and before the draft, guarded by exactly the packed
+  output, without `continue-on-error`; the check step runs
+  `selfupdate-release check`.
+* **Tests:**
+  * `verify-selfupdate-release_test.sh` gains 16 checks (69 in all): a packed
+    release in all three formats; a format on some platforms only,
+    staged to match so only that rule can refuse it; an unknown format;
+    another key; a raw binary where an archive is declared; raw names in
+    a packed `SHA256SUMS`; an archive name, and the same in another
+    case, as an extra; a raw release with an extra named like a binary,
+    accepted as before (D5); the output flag for a packed, a raw and a
+    failed run; the flag without a file. The new refusals assert the
+    verifier's own message (`run_refused`), not just a failure.
+  * **The verifier fixtures from before 0013** (53 cases, the test file
+    at `HEAD`) pass unchanged against the new verifier, in a scratch
+    copy: a caller passing today's inputs gets today's behaviour (V3).
+  * `TestVerifierParity` gains `archive.json` (D1), and two refusals
+    both sides make: an unknown archive format, and an extra named like
+    an archive. It passes on macOS and on the Windows test host.
+* **Plants,** each in a scratch copy, each caught:
+
+  | Plant | Caught by |
+  | :--- | :--- |
+  | mixed formats accepted | `a format on some platforms only (expected exit 1 …, got 0 …)` |
+  | a Windows zip keeping `.exe` | `packed release: tar.gz, zip and gz` |
+  | the packed output always `false` | `packed output is [packed=false]` |
+  | the packed output written before the checks | `packed output is [packed=True …` |
+  | the packed output written on the failure path | `a failed verification wrote [packed=true]` |
+  | extras allowed a canonical name | `an archive name listed as an extra` |
+  | the extra rule applied to raw releases (D5) | `raw release: an extra named like a binary is accepted, as before` |
+  | the archive check moved after the draft | shape: `the archive check runs after the verifier and before the draft` |
+  | `continue-on-error` on the archive check | shape: `the archive check has no continue-on-error` |
+  | the archive check guarded by `always()` | shape: `the archive check runs exactly when the release is packed` |
+  | the verifier called without the output flag | shape: `the verifier writes its packed output` |
+  | `PlatformsJSON` dropping `format` (D1) | `TestVerifierParity`: `the verifier refused a release built from archive.json` |
+
+  The first draft of the new fixtures used `run_fail`, which passes on
+  any failure; two of them failed for a reason other than the rule they
+  named (the mixed case's file set did not match). They now assert the
+  message, and the mixed case is staged to match.
+* **Checks:**
+  * `gate.sh`: every step rc 0: gofmt, lint on three GOOS, vet, race,
+    shuffle, tidy, apicheck, fuzz, vuln, the script tests, cross vet;
+    the script tests again after D5;
+  * shellcheck on the three scripts; actionlint; `check-workflows.sh`;
+  * `make pre-add-check` on `parity_test.go`: "1 file(s) clean".
+
 ### Deviations
 
 * **D1 (2026-10-05), B1: verifier parity for archive specs.**
@@ -870,3 +943,15 @@ runs it).
     nested run without `-C`.
   * **Files:** `scripts/go-precheck.sh` and `scripts/go-precheck_test.sh`
     join B2.
+* **D5 (2026-10-05), B3: the extra-name rule, packed releases only.**
+  * **Found:** B3 step 1 lists "an archive name listed as an extra" as
+    refused. The first implementation refused an extra named like any
+    canonical asset, in raw releases too. For a raw release that changes
+    today's behaviour, where such an extra is merged into the binary's
+    entry, and MADR §8 promises "A caller that passes today's inputs gets
+    today's behaviour".
+  * **Decision (the owner):** packed releases only. The MADR's promise
+    holds; `releasespec` still refuses the name for both packagings, so
+    a release built by the build workflow never has one.
+  * **Files:** none added; a raw-release fixture shows the behaviour is
+    unchanged.

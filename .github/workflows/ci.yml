@@ -209,7 +209,8 @@ jobs:
       # does not ship; it is installed hash-pinned into a venv. Like the
       # release fixtures above it runs on Linux: its verdict depends on the
       # workflow text alone (docs/decisions/0004-PLAN-v1-0-1-defect-release.md
-      # deviation D2).
+      # deviation D2). The shape test holds the publish workflow's archive
+      # check in place (docs/decisions/0013-PLAN-build-and-stage-release-workflow.md B3).
       - name: Verify the workflow contract
         if: runner.os == 'Linux'
         shell: bash
@@ -222,3 +223,4 @@ jobs:
           ./scripts/check-workflows.sh --rule expressions .github/workflows/ci.yml
           ./scripts/check-workflows.sh --rule permissions .github/workflows/ci.yml
           ./scripts/check-workflows_test.sh
+          ./scripts/workflow-shape_test.sh

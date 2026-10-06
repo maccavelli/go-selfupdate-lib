@@ -55,6 +55,20 @@ run_fail() {
 	fi
 }
 
+# run_refused LABEL MESSAGE ARGS...: a validation failure (exit 1) whose
+# output holds MESSAGE, so the case fails for the reason it names.
+run_refused() {
+	label="$1"
+	msg="$2"
+	shift 2
+	rc=0
+	out=$("$SCRIPT" "$@" 2>&1) || rc=$?
+	case "$out" in
+	*"$msg"*) [ "$rc" -eq 1 ] && pass "$label" && return ;;
+	esac
+	fail "$label (expected exit 1 with [$msg], got $rc: $out)"
+}
+
 # A usage error is exit 2, distinct from a validation failure (exit 1).
 run_usage() {
 	label="$1"
@@ -256,5 +270,99 @@ printf '%s  demo-linux-amd64\n%s  demo-windows-amd64.exe\n' \
 	"$(digest_of "$EMPTYBIN/demo-linux-amd64")" "$(digest_of "$EMPTYBIN/demo-windows-amd64.exe")" >"$EMPTYBIN/SHA256SUMS"
 run_fail "empty canonical binary" \
 	--dir "$EMPTYBIN" --products "$PRODUCTS" --platforms "$PLATFORMS" --extras "$EXTRAS"
+
+# 0013-MADR §8: a packed release. Every platform carries a format; the
+# canonical assets are the archives, and SHA256SUMS lists them.
+PACKED_PLATFORMS='[{"os":"linux","arch":"amd64","format":"tar.gz"},{"os":"windows","arch":"amd64","format":"zip"},{"os":"darwin","arch":"arm64","format":"gz"}]'
+make_packed() {
+	d="$1"
+	mkdir -p "$d"
+	printf 'tgz-body' >"$d/demo-linux-amd64.tar.gz"
+	printf 'zip-body' >"$d/demo-windows-amd64.zip"
+	printf 'gz-body' >"$d/demo-darwin-arm64.gz"
+	printf 'installer' >"$d/install.sh"
+	{
+		printf '%s  demo-darwin-arm64.gz\n' "$(digest_of "$d/demo-darwin-arm64.gz")"
+		printf '%s  demo-linux-amd64.tar.gz\n' "$(digest_of "$d/demo-linux-amd64.tar.gz")"
+		printf '%s  demo-windows-amd64.zip\n' "$(digest_of "$d/demo-windows-amd64.zip")"
+	} >"$d/SHA256SUMS"
+}
+PACKED="$WORKDIR/packed"
+make_packed "$PACKED"
+run_ok "packed release: tar.gz, zip and gz" \
+	--dir "$PACKED" --products "$PRODUCTS" --platforms "$PACKED_PLATFORMS" --extras "$EXTRAS"
+
+# Staged to match a mixed declaration exactly, so only the mixed rule can
+# refuse it.
+MIXED="$WORKDIR/mixed"
+make_packed "$MIXED"
+mv "$MIXED/demo-windows-amd64.zip" "$MIXED/demo-windows-amd64.exe"
+{
+	printf '%s  demo-darwin-arm64.gz\n' "$(digest_of "$MIXED/demo-darwin-arm64.gz")"
+	printf '%s  demo-linux-amd64.tar.gz\n' "$(digest_of "$MIXED/demo-linux-amd64.tar.gz")"
+	printf '%s  demo-windows-amd64.exe\n' "$(digest_of "$MIXED/demo-windows-amd64.exe")"
+} >"$MIXED/SHA256SUMS"
+run_refused "a format on some platforms only" "a format is on some platforms only" \
+	--dir "$MIXED" --products "$PRODUCTS" --extras "$EXTRAS" \
+	--platforms '[{"os":"linux","arch":"amd64","format":"tar.gz"},{"os":"windows","arch":"amd64"},{"os":"darwin","arch":"arm64","format":"gz"}]'
+run_refused "an unknown format" "unknown archive format 'tar.xz'" \
+	--dir "$PACKED" --products "$PRODUCTS" --extras "$EXTRAS" \
+	--platforms '[{"os":"linux","arch":"amd64","format":"tar.xz"},{"os":"windows","arch":"amd64","format":"zip"},{"os":"darwin","arch":"arm64","format":"gz"}]'
+run_refused "a platform key other than format" "nothing else but a format" \
+	--dir "$PACKED" --products "$PRODUCTS" --extras "$EXTRAS" \
+	--platforms '[{"os":"linux","arch":"amd64","format":"tar.gz","variant":"v1"},{"os":"windows","arch":"amd64","format":"zip"},{"os":"darwin","arch":"arm64","format":"gz"}]'
+
+RAWINPACKED="$WORKDIR/raw-in-packed"
+make_packed "$RAWINPACKED"
+mv "$RAWINPACKED/demo-linux-amd64.tar.gz" "$RAWINPACKED/demo-linux-amd64"
+run_refused "a raw binary staged where an archive is declared" "file set mismatch missing=['demo-linux-amd64.tar.gz'] extra=['demo-linux-amd64']" \
+	--dir "$RAWINPACKED" --products "$PRODUCTS" --platforms "$PACKED_PLATFORMS" --extras "$EXTRAS"
+
+RAWSUMS="$WORKDIR/raw-sums"
+make_packed "$RAWSUMS"
+for n in demo-linux-amd64 demo-windows-amd64.exe demo-darwin-arm64; do
+	printf 'body' >"$RAWSUMS/$n"
+done
+{
+	printf '%s  demo-darwin-arm64\n' "$(digest_of "$RAWSUMS/demo-darwin-arm64")"
+	printf '%s  demo-linux-amd64\n' "$(digest_of "$RAWSUMS/demo-linux-amd64")"
+	printf '%s  demo-windows-amd64.exe\n' "$(digest_of "$RAWSUMS/demo-windows-amd64.exe")"
+} >"$RAWSUMS/SHA256SUMS"
+run_refused "SHA256SUMS lists the raw binaries in a packed release" "SHA256SUMS must contain exactly the canonical archives" \
+	--dir "$RAWSUMS" --products "$PRODUCTS" --platforms "$PACKED_PLATFORMS" \
+	--extras '["install.sh","demo-linux-amd64","demo-windows-amd64.exe","demo-darwin-arm64"]'
+
+run_refused "an archive name listed as an extra" "'demo-linux-amd64.tar.gz' is named like a canonical asset" \
+	--dir "$PACKED" --products "$PRODUCTS" --platforms "$PACKED_PLATFORMS" \
+	--extras '["install.sh","demo-linux-amd64.tar.gz"]'
+run_refused "an archive name listed as an extra, in another case" "'Demo-Linux-AMD64.tar.gz' is named like a canonical asset" \
+	--dir "$PACKED" --products "$PRODUCTS" --platforms "$PACKED_PLATFORMS" \
+	--extras '["install.sh","Demo-Linux-AMD64.tar.gz"]'
+# A raw release keeps its behaviour from before 0013: an extra named like a
+# binary is merged into that binary's entry, as it always was (D5).
+run_ok "raw release: an extra named like a binary is accepted, as before" \
+	--dir "$VALID" --products "$PRODUCTS" --platforms "$PLATFORMS" \
+	--extras '["install.sh","demo-linux-amd64"]'
+
+# --github-output: packed=true or packed=false after a pass, nothing after
+# a failure.
+OUTFILE="$WORKDIR/github-output"
+: >"$OUTFILE"
+run_ok "packed release with --github-output" \
+	--dir "$PACKED" --products "$PRODUCTS" --platforms "$PACKED_PLATFORMS" --extras "$EXTRAS" --github-output "$OUTFILE"
+[ "$(cat "$OUTFILE")" = "packed=true" ] || fail "packed output is [$(cat "$OUTFILE")]"
+pass "a packed release writes packed=true"
+: >"$OUTFILE"
+run_ok "raw release with --github-output" \
+	--dir "$VALID" --products "$PRODUCTS" --platforms "$PLATFORMS" --extras "$EXTRAS" --github-output "$OUTFILE"
+[ "$(cat "$OUTFILE")" = "packed=false" ] || fail "raw output is [$(cat "$OUTFILE")]"
+pass "a raw release writes packed=false"
+: >"$OUTFILE"
+run_fail "failed verification with --github-output" \
+	--dir "$RAWINPACKED" --products "$PRODUCTS" --platforms "$PACKED_PLATFORMS" --extras "$EXTRAS" --github-output "$OUTFILE"
+[ ! -s "$OUTFILE" ] || fail "a failed verification wrote [$(cat "$OUTFILE")]"
+pass "a failed verification writes no output"
+run_usage "--github-output without a file" \
+	--dir "$VALID" --products "$PRODUCTS" --platforms "$PLATFORMS" --extras "$EXTRAS" --github-output ""
 
 echo "verify-selfupdate-release_test: all fixtures passed"

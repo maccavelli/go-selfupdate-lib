@@ -99,15 +99,15 @@ func runVerifier(t *testing.T, sh, dir, tag string, in verifierInput) (string, e
 // TestVerifierParity holds the spec and the publish verifier to the same
 // rules (0013-PLAN B1). A release built from a spec Parse accepts must pass
 // the verifier, and an input the spec refuses must not reach the verifier
-// in a form it accepts. B1 covers binary specs; the archive specs join in
-// B3, when the verifier learns "format" (0013-PLAN deviation D1).
+// in a form it accepts. B1 covered binary specs; the archive spec joined
+// in B3, when the verifier learned "format" (0013-PLAN deviation D1).
 func TestVerifierParity(t *testing.T) {
 	sh := verifier(t)
 	const tag = "v1.2.3-rc.1"
-	for _, fixture := range []string{"fleet.json", "minimal.json"} {
+	for _, fixture := range []string{"fleet.json", "minimal.json", "archive.json"} {
 		t.Run(fixture, func(t *testing.T) {
 			s := mustParse(t, readFixture(t, fixture))
-			if fixture == "minimal.json" {
+			if len(s.PrereleaseChannels) == 0 {
 				s.PrereleaseChannels = []string{"rc"}
 			}
 			dir := stage(t, s, tag)
@@ -145,6 +145,21 @@ func TestVerifierParity(t *testing.T) {
 			func(in verifierInput) verifierInput { in.channels = `["beta","rc"]`; return in }, "must come after"},
 		{"bad channel", func(m map[string]any) { m["prerelease_channels"] = []any{"RC"} },
 			func(in verifierInput) verifierInput { in.channels = `["RC"]`; return in }, "must match"},
+		{"unknown archive format", func(m map[string]any) {
+			m["packaging"] = "archive"
+			m["platforms"] = []any{map[string]any{"os": "linux", "arch": "amd64", "format": "tar.xz"}}
+		}, func(in verifierInput) verifierInput {
+			in.platforms = `[{"os":"linux","arch":"amd64","format":"tar.xz"}]`
+			return in
+		}, "unknown archive format"},
+		{"extra named like an archive", func(m map[string]any) {
+			m["packaging"] = "archive"
+			m["extras"] = []any{map[string]any{"name": "relay-linux-amd64.tar.gz"}}
+		}, func(in verifierInput) verifierInput {
+			in.platforms = `[{"os":"linux","arch":"amd64","format":"tar.gz"}]`
+			in.extras = `["relay-linux-amd64.tar.gz"]`
+			return in
+		}, "is named like a canonical asset"},
 	}
 	for _, tc := range refused {
 		t.Run("refused/"+tc.name, func(t *testing.T) {
