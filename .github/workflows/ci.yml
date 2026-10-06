@@ -222,5 +222,80 @@ jobs:
           ./scripts/check-workflows.sh
           ./scripts/check-workflows.sh --rule expressions .github/workflows/ci.yml
           ./scripts/check-workflows.sh --rule permissions .github/workflows/ci.yml
+          ./scripts/check-workflows.sh --rule pins .github/workflows/ci.yml
           ./scripts/check-workflows_test.sh
           ./scripts/workflow-shape_test.sh
+
+  # The build workflow, called by its local path on the fixture module: a
+  # rehearsal on every branch and pull request, and a release build on a v*
+  # tag, with the identity run on each platform's own runner. One call
+  # stages raw binaries, the other archives
+  # (docs/decisions/0013-PLAN-build-and-stage-release-workflow.md B4).
+  release-rehearsal:
+    uses: ./.github/workflows/build-selfupdate-release.yml
+    with:
+      spec-path: internal/cmd/selfupdate-release/testdata/fixture/selfupdate-release.json
+      module-dir: internal/cmd/selfupdate-release/testdata/fixture
+      artifact-name: fixture-binary-${{ github.sha }}-${{ github.run_attempt }}
+      retention-days: 3
+
+  release-rehearsal-archive:
+    uses: ./.github/workflows/build-selfupdate-release.yml
+    with:
+      spec-path: internal/cmd/selfupdate-release/testdata/fixture/selfupdate-release.archive.json
+      module-dir: internal/cmd/selfupdate-release/testdata/fixture
+      artifact-name: fixture-archive-${{ github.sha }}-${{ github.run_attempt }}
+      retention-days: 3
+
+  # The hand-off, checked as the publish workflow checks it, without
+  # publishing: the verifier on each staged set with the build workflow's
+  # outputs, and the client's unpacker on the archives.
+  release-rehearsal-check:
+    needs: [release-rehearsal, release-rehearsal-archive]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ needs.release-rehearsal.outputs.artifact-name }}
+          path: ${{ runner.temp }}/binary
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ needs.release-rehearsal-archive.outputs.artifact-name }}
+          path: ${{ runner.temp }}/archive
+      - name: Check the hand-off as the publish workflow would
+        shell: bash
+        env:
+          TAG: ${{ needs.release-rehearsal.outputs.tag }}
+          BIN_PRODUCTS: ${{ needs.release-rehearsal.outputs.products-json }}
+          BIN_PLATFORMS: ${{ needs.release-rehearsal.outputs.platforms-json }}
+          BIN_EXTRAS: ${{ needs.release-rehearsal.outputs.extra-assets-json }}
+          BIN_CHANNELS: ${{ needs.release-rehearsal.outputs.prerelease-channels-json }}
+          ARC_PRODUCTS: ${{ needs.release-rehearsal-archive.outputs.products-json }}
+          ARC_PLATFORMS: ${{ needs.release-rehearsal-archive.outputs.platforms-json }}
+          ARC_EXTRAS: ${{ needs.release-rehearsal-archive.outputs.extra-assets-json }}
+          ARC_CHANNELS: ${{ needs.release-rehearsal-archive.outputs.prerelease-channels-json }}
+        run: |
+          set -euo pipefail
+          tag=()
+          if [ -n "$TAG" ]; then
+            tag=(--tag "$TAG")
+          fi
+          out="$RUNNER_TEMP/verify-output"
+          : >"$out"
+          ./scripts/verify-selfupdate-release.sh --dir "$RUNNER_TEMP/binary" \
+            --products "$BIN_PRODUCTS" --platforms "$BIN_PLATFORMS" \
+            --extras "$BIN_EXTRAS" --channels "$BIN_CHANNELS" "${tag[@]}" \
+            --github-output "$out"
+          ./scripts/verify-selfupdate-release.sh --dir "$RUNNER_TEMP/archive" \
+            --products "$ARC_PRODUCTS" --platforms "$ARC_PLATFORMS" \
+            --extras "$ARC_EXTRAS" --channels "$ARC_CHANNELS" "${tag[@]}" \
+            --github-output "$out"
+          test "$(cat "$out")" = "$(printf 'packed=false\npacked=true')"
+          go run ./internal/cmd/selfupdate-release check -dir "$RUNNER_TEMP/archive" \
+            -products-json "$ARC_PRODUCTS" -platforms-json "$ARC_PLATFORMS"

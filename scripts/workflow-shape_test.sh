@@ -12,15 +12,25 @@
 #     and neither has continue-on-error, so a refused archive stops the job
 #     before anything is published.
 #
-# Usage: workflow-shape_test.sh [PUBLISH-WORKFLOW]
+# build-selfupdate-release.yml:
+#   - the token is contents: read only, at the top and in no job;
+#   - the tools and the source are checked out to sibling directories,
+#     without persisted credentials, so neither makes the other dirty;
+#   - setup-go has its cache off;
+#   - the publish verifier runs on the staged set before it is uploaded;
+#   - the identity job needs the build job and runs the tool's identity
+#     check; no step or job has continue-on-error.
+#
+# Usage: workflow-shape_test.sh [PUBLISH-WORKFLOW [BUILD-WORKFLOW]]
 # Exit 0 when every assertion holds, 1 otherwise, 2 when PyYAML is missing.
 # PyYAML is required: pip install -r scripts/requirements-workflow-check.txt
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PUBLISH="${1:-$ROOT/.github/workflows/publish-selfupdate-release.yml}"
+BUILD="${2:-$ROOT/.github/workflows/build-selfupdate-release.yml}"
 
-python3 - "$PUBLISH" <<'PY'
+python3 - "$PUBLISH" "$BUILD" <<'PY'
 import sys
 
 try:
@@ -39,10 +49,13 @@ def check(cond, msg):
         failures.append(msg)
 
 
-def steps_of(path, job):
+def load(path):
     with open(path, encoding="utf-8") as f:
-        doc = yaml.safe_load(f)
-    return doc["jobs"][job]["steps"]
+        return yaml.safe_load(f)
+
+
+def steps_of(path, job):
+    return load(path)["jobs"][job]["steps"]
 
 
 def index(steps, name):
@@ -72,6 +85,34 @@ for i, what in ((setup, "Go setup"), (archives, "archive check")):
     check("continue-on-error" not in step, "the %s has no continue-on-error" % what)
 check(archives >= 0 and "selfupdate-release check" in publish[archives].get("run", ""),
       "the archive check runs selfupdate-release check")
+
+doc = load(sys.argv[2])
+jobs = doc["jobs"]
+build = jobs["build"]["steps"]
+identity = jobs.get("identity", {})
+check(doc.get("permissions") == {"contents": "read"}, "the build workflow's token is contents: read")
+check(all("permissions" not in j for j in jobs.values()), "no build job widens the token")
+tools = build[index(build, "Check out the called workflow commit")] if index(build, "Check out the called workflow commit") >= 0 else {}
+source = build[index(build, "Check out the source")] if index(build, "Check out the source") >= 0 else {}
+tpath = str(tools.get("with", {}).get("path", ""))
+spath = str(source.get("with", {}).get("path", ""))
+check(tpath and spath and "/" not in tpath.strip("/") and "/" not in spath.strip("/") and tpath != spath,
+      "the tools and the source are sibling checkouts (%r, %r)" % (tpath, spath))
+check(tools.get("with", {}).get("persist-credentials") is False and source.get("with", {}).get("persist-credentials") is False,
+      "neither checkout persists credentials")
+setup = build[index(build, "Set up Go")] if index(build, "Set up Go") >= 0 else {}
+check(setup.get("with", {}).get("cache") is False, "setup-go has its cache off")
+stage = index(build, "Check, pack and stage")
+verified = index(build, "Verify the staged release")
+upload = index(build, "Upload the staged release")
+check(0 <= stage < verified < upload, "the publish verifier runs on the staged set before it is uploaded")
+check(verified >= 0 and "verify-selfupdate-release.sh" in build[verified].get("run", ""), "that step runs the publish verifier")
+check(identity.get("needs") == "build", "the identity job needs the build job")
+check(any("identity" in st.get("run", "") and "-want-version" in st.get("run", "") for st in identity.get("steps", [])),
+      "the identity job runs the tool's identity check")
+check(all("continue-on-error" not in st for j in jobs.values() for st in j.get("steps", []))
+      and all("continue-on-error" not in j for j in jobs.values()),
+      "nothing in the build workflow has continue-on-error")
 
 if failures:
     print("workflow-shape_test: %d failed" % len(failures))

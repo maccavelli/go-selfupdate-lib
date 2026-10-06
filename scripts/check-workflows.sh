@@ -25,8 +25,14 @@
 #                token never takes the repository's default scope (0010-MADR
 #                D7).
 #
-# Usage: check-workflows.sh [--rule expressions|gh-repo|permissions|all] [workflow...]
-# With no workflow, the reusable release workflow is checked. Exit 0 when
+#   pins         every action a step uses, and every reusable workflow a job
+#                uses from another repository, is pinned to a full 40-hex
+#                commit SHA. A local ./ path and a docker:// image are exempt
+#                (docs/decisions/0013-PLAN-build-and-stage-release-workflow.md
+#                B4).
+#
+# Usage: check-workflows.sh [--rule expressions|gh-repo|permissions|pins|all] [workflow...]
+# With no workflow, the two reusable release workflows are checked. Exit 0 when
 # clean, 1 on findings, 2 on a usage, parse or environment error. PyYAML is
 # required: pip install -r scripts/requirements-workflow-check.txt
 set -euo pipefail
@@ -38,14 +44,15 @@ if [ "${1:-}" = "--rule" ]; then
 	shift 2 || true
 fi
 case "$RULE" in
-expressions | gh-repo | permissions | all) ;;
+expressions | gh-repo | permissions | pins | all) ;;
 *)
-	echo "usage: check-workflows.sh [--rule expressions|gh-repo|permissions|all] [workflow...]" >&2
+	echo "usage: check-workflows.sh [--rule expressions|gh-repo|permissions|pins|all] [workflow...]" >&2
 	exit 2
 	;;
 esac
 if [ $# -eq 0 ]; then
-	set -- "$ROOT/.github/workflows/publish-selfupdate-release.yml"
+	set -- "$ROOT/.github/workflows/publish-selfupdate-release.yml" \
+		"$ROOT/.github/workflows/build-selfupdate-release.yml"
 fi
 
 python3 - "$RULE" "$@" <<'PY'
@@ -85,6 +92,12 @@ UniqueKeyLoader.add_constructor(
 GH_GROUPS = {"release", "api", "repo", "run", "workflow", "pr", "issue", "attestation"}
 GH_SCRIPTS = {"refuse-existing-release.sh", "release-latest-flag.sh"}
 OPERATORS = set(";&|()\n")
+# A pinned reference ends in @ and a full commit SHA.
+PIN_RE = re.compile(r"@[0-9a-f]{40}$")
+
+
+def pinned(uses):
+    return uses.startswith("./") or uses.startswith("docker://") or PIN_RE.search(uses) is not None
 
 rule = sys.argv[1]
 paths = sys.argv[2:]
@@ -179,12 +192,20 @@ for path in paths:
     for job_id, job in jobs.items():
         if not isinstance(job, dict):
             continue
+        uses = job.get("uses")
+        if rule in ("pins", "all") and isinstance(uses, str) and not pinned(uses):
+            print("%s: jobs.%s: reusable workflow not pinned to a commit SHA: %s" % (path, job_id, uses), file=sys.stderr)
+            findings += 1
         for i, step in enumerate(job.get("steps") or []):
             if not isinstance(step, dict):
                 continue
             where = "%s: jobs.%s.steps[%d]" % (path, job_id, i)
             if step.get("name"):
                 where += " (%s)" % step["name"]
+            uses = step.get("uses")
+            if rule in ("pins", "all") and isinstance(uses, str) and not pinned(uses):
+                print("%s: action not pinned to a commit SHA: %s" % (where, uses), file=sys.stderr)
+                findings += 1
             script = step.get("run")
             if not isinstance(script, str):
                 continue

@@ -217,5 +217,45 @@ else
 	FAIL=$((FAIL + 1))
 fi
 
+echo "pins (0013-PLAN B4)"
+expect "release workflow, pins" 0 pins "$WORKFLOW"
+expect "ci workflow, pins" 0 pins "$CI"
+plant "$WORK/pintag.yml" "      - name: Tag pin
+        uses: actions/checkout@v7"
+expect "an action pinned to a tag" 1 pins "$WORK/pintag.yml"
+plant "$WORK/pinshort.yml" "      - name: Short pin
+        uses: actions/checkout@3d3c42e"
+expect "an action pinned to a short SHA" 1 pins "$WORK/pinshort.yml"
+plant "$WORK/pinbranch.yml" "      - name: Branch pin
+        uses: actions/checkout@main"
+expect "an action pinned to a branch" 1 pins "$WORK/pinbranch.yml"
+plant "$WORK/pin39.yml" "      - name: Short by one
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b"
+expect "an action pinned to 39 hex characters" 1 pins "$WORK/pin39.yml"
+plant "$WORK/pinupper.yml" "      - name: Upper case
+        uses: actions/checkout@3D3C42E5AAC5BA805825DA76410C181273BA90B1"
+expect "an action pinned to upper-case hex" 1 pins "$WORK/pinupper.yml"
+plant "$WORK/pinfull.yml" "      - name: Full pin
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1"
+expect "an action pinned to a full SHA" 0 pins "$WORK/pinfull.yml"
+plant "$WORK/pinlocal.yml" "      - name: Local action
+        uses: ./.github/actions/local"
+expect "a local action is exempt" 0 pins "$WORK/pinlocal.yml"
+cat >"$WORK/reusable.yml" <<'EOF'
+name: Reusable
+on: push
+permissions:
+  contents: read
+jobs:
+  local:
+    uses: ./.github/workflows/build-selfupdate-release.yml
+  remote:
+    uses: maccavelli/go-selfupdate-lib/.github/workflows/build-selfupdate-release.yml@3d3c42e5aac5ba805825da76410c181273ba90b1
+EOF
+expect "local and SHA-pinned reusable workflows" 0 pins "$WORK/reusable.yml"
+sed 's/@3d3c42e5aac5ba805825da76410c181273ba90b1$/@v1.9.0/' "$WORK/reusable.yml" >"$WORK/reusabletag.yml"
+grep -q '@v1.9.0$' "$WORK/reusabletag.yml"
+expect "a reusable workflow pinned to a tag" 1 pins "$WORK/reusabletag.yml"
+
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

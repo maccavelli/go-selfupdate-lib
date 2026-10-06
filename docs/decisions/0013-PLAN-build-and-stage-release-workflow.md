@@ -887,6 +887,85 @@ runs it).
   * shellcheck on the three scripts; actionlint; `check-workflows.sh`;
   * `make pre-add-check` on `parity_test.go`: "1 file(s) clean".
 
+### Phase B4: `build-selfupdate-release.yml` and the CI rehearsal (2026-10-05)
+
+* **`check-workflows.sh` gains `pins`,** in `all` and in the defaults:
+  every action a step uses, and every reusable workflow a job uses from
+  another repository, ends in `@` and 40 lower-case hex characters; a
+  local `./` path and a `docker://` image are exempt. With no workflow
+  named it now checks both reusable workflows. 11 new cases (44 in all):
+  a tag, a short SHA, a branch, 39 characters and upper-case hex
+  refused; a full SHA and a local action accepted; local and SHA-pinned
+  reusable workflows accepted, a tag-pinned one refused.
+* **`build-selfupdate-release.yml`,** as MADR §7: inputs `spec-path`,
+  `module-dir`, `extras-artifact-name`, `artifact-name`,
+  `retention-days`; outputs `artifact-name`, `tag`, `rehearsal` and the
+  four publish inputs; top-level `contents: read` and nothing else.
+  * **`build`** (ubuntu-24.04, 30 min): the tools at `job.workflow_sha`
+    into `tools/` and the source into `src/` (D6), neither persisting
+    credentials; setup-go from `src/<module-dir>/go.mod`, cache off;
+    the tool built with `GOTOOLCHAIN=local`; `plan`; on a tag,
+    `check-release-tag.sh`; the extras artifact when named; `build`;
+    `stage`; the publish verifier on the staged set; the tool
+    cross-compiled for each identity runner; the staged artifact and,
+    when there is an identity run, `<artifact-name>-tools`
+    (retention 1).
+  * **`identity`:** a matrix from `plan`'s `identity-matrix`, one leg per
+    product with `identity_args` and platform with a runner, each on its
+    own runner, `fail-fast: false`, 10 min; downloads both artifacts,
+    marks the tool executable (artifacts lose modes), runs `identity`.
+  * Every `run:` reads values from `env:`; actionlint and
+    `check-workflows.sh` (all rules) pass.
+* **`ci.yml`:**
+  * `release-rehearsal` and `release-rehearsal-archive` call the
+    workflow by its local path on the fixture's two specs, with explicit
+    artifact names: two calls in one run would otherwise share the
+    default name.
+  * `release-rehearsal-check` downloads both artifacts and runs the
+    publish verifier on each with the workflow's outputs (and the tag on
+    a tag); it requires `packed=false` then `packed=true`, and runs
+    `selfupdate-release check` on the archives.
+  * The workflow-contract step adds `--rule pins` on `ci.yml`.
+* **`workflow-shape_test.sh`** gains the build workflow (19 assertions
+  in all): the token, no job widening it, sibling checkouts without
+  credentials, the cache off, the verifier before the upload, the
+  identity job's dependency and command, no `continue-on-error`.
+* **A local rehearsal of the workflow's command lines**
+  (`simulate_build.sh`, in the session scratchpad): a scratch clone of
+  the tree, committed there, as both `tools/` and `src/`, the steps run
+  as written:
+  * branch, raw: stamped `rehearsal-<sha12>`, local; the verifier ok;
+    the Mac's leg reports `rehearsal-38c4d9da4c68 (local) 38c4d9da4c68`;
+  * tag `v1.9.0`, raw: the tag admitted; the leg reports
+    `v1.9.0 (release) a74b34a6a0d3`;
+  * tag `v1.9.0`, archive: five archives (tar.gz, gz, zip) and
+    `SHA256SUMS`; the verifier `ok (packed)`; the leg unpacks
+    `relay-darwin-arm64.tar.gz` and reports `v1.9.0 (release) b576d627ccee`;
+    the summary lists each asset's identity runner and SHA-256.
+* **Plants,** each in a scratch copy, each caught:
+
+  | Plant | Caught by |
+  | :--- | :--- |
+  | `pinned()` always true | `check-workflows_test.sh`: six pins cases, from "pinned to a tag" to "a reusable workflow pinned to a tag" |
+  | the pin regex accepting 39 characters | `an action pinned to 39 hex characters` |
+  | `${{ inputs.spec-path }}` inside the Plan step's `run` | `check-workflows.sh`: `${{ }} inside a run script (use env:)` |
+  | no top-level permissions | `check-workflows.sh`: `no top-level permissions: block` |
+  | the source checkout pinned to `@v7` | `check-workflows.sh`: `action not pinned to a commit SHA` |
+  | the source checked out into `tools/src` | shape: `the tools and the source are sibling checkouts` |
+  | the go cache on | shape: `setup-go has its cache off` |
+  | the verifier moved after the upload | shape: `the publish verifier runs on the staged set before it is uploaded` |
+  | `continue-on-error` on the identity step | shape: `nothing in the build workflow has continue-on-error` |
+  | the build job widened to `contents: write` | shape: `no build job widens the token` |
+
+* **Not yet run:** the workflow on GitHub. The first push of this phase
+  runs both rehearsals and their identity legs on all five runners; its
+  result is recorded with B6. The plan's branch plant (the fixture's
+  `version` printing a wrong version, which the identity job must fail)
+  needs a branch the owner pushes, and waits for the owner's word.
+* **Checks:** `gate.sh`: every step rc 0 (gofmt, lint on three GOOS, vet, race, shuffle, tidy, apicheck, fuzz, vuln, the script tests, cross vet); shellcheck on the changed scripts;
+  actionlint; `check-workflows.sh` with every rule on all three
+  workflows. No Go file changed.
+
 ### Deviations
 
 * **D1 (2026-10-05), B1: verifier parity for archive specs.**
@@ -955,3 +1034,16 @@ runs it).
     a release built by the build workflow never has one.
   * **Files:** none added; a raw-release fixture shows the behaviour is
     unchanged.
+* **D6 (2026-10-05), B4: the source checkout's ref.**
+  * **Found:** B4 step 2 checks the source out "at `github.sha`". An
+    explicit `ref: ${{ github.sha }}` makes actions/checkout fetch that
+    commit alone, so on a tag the clone holds no tag, and Go cannot
+    stamp the tag as the main module's version (MADR §5, layer 2).
+  * **Decision:** the checkout takes no `ref`, the action's default for
+    the repository that triggered the workflow: the event's ref, checked
+    out at the event's SHA. On a tag that fetches the tag itself.
+    `stage` still requires `vcs.revision` to be `github.sha`, so a
+    moved ref fails the build. Whether the shallow clone holds the
+    annotated tag is still MADR "Not verified"; B6's live rehearsal,
+    whose module is at the repository root, shows it.
+  * **Files:** none.
