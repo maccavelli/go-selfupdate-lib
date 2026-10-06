@@ -43,6 +43,8 @@ name, and the files they cite moved with the rename
 | 0012 | PLAN | [Implement `selfupdate/archive` and `selfupdate/codesign`: the extract stage, tar.gz, zip and gz assets, and opt-in macOS re-signing and signature checks (`v1.8.0`)](decisions/0012-PLAN-archive-assets-and-macos-codesign.md) | complete |
 | 0013 | MADR | [Build, check and stage a self-update release in a reusable workflow, from one release spec that the program embeds](decisions/0013-MADR-build-and-stage-release-workflow.md) | accepted |
 | 0013 | PLAN | [Implement the build-and-stage release workflow: `selfupdate/releasespec`, the internal release tool, `build-selfupdate-release.yml`, and archive releases through the publish workflow (`v1.9.0`)](decisions/0013-PLAN-build-and-stage-release-workflow.md) | complete |
+| 0014 | MADR | [Generate each program's `install.sh` and `install.ps1` from its release spec in the build workflow, from one tested template each](decisions/0014-MADR-shared-installer-templates.md) | accepted |
+| 0014 | PLAN | [Implement the shared installer templates: the spec's `installer` field, `install.sh` and `install.ps1` rendered and staged by the build workflow, and their tests (`v1.10.0`)](decisions/0014-PLAN-shared-installer-templates.md) | in-progress |
 
 ## I want to…
 
