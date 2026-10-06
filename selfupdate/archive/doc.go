@@ -9,7 +9,9 @@
 // selfupdate.Config.
 //
 // The package uses only the standard library and compiles on every OS.
-// This module's release workflow publishes raw binaries only, so the
-// archives this package reads come from other tooling, such as GoReleaser,
-// published as immutable GitHub releases with a SHA-256 checksum file.
+// This module's release workflows build and publish archives from a
+// release spec with "packaging": "archive" (selfupdate/releasespec;
+// docs/decisions/0013-MADR-build-and-stage-release-workflow.md). Archives
+// from other tooling, such as GoReleaser, work too, published as immutable
+// GitHub releases with a SHA-256 checksum file.
 package archive

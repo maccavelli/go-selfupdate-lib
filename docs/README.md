@@ -50,7 +50,7 @@ name, and the files they cite moved with the rename
 | :--- | :--- |
 | see what is in this repository today | [architecture.md](architecture.md) |
 | move a program from `mcplib/selfupdate` to this module | [guides/migrating-from-mcplib-selfupdate.md](guides/migrating-from-mcplib-selfupdate.md) |
-| move to the current release from an earlier one of this module | [guides/migrating-from-mcplib-selfupdate.md, §6 and §7](guides/migrating-from-mcplib-selfupdate.md#6-from-v15-to-v16) |
+| move to the current release from an earlier one of this module | [guides/migrating-from-mcplib-selfupdate.md, §6 to §9](guides/migrating-from-mcplib-selfupdate.md#6-from-v15-to-v16) |
 | add the update command to my program | [guides/migrating-from-mcplib-selfupdate.md, §5](guides/migrating-from-mcplib-selfupdate.md#5-adopt-the-canonical-update-command) |
 | stamp a release build so `update` knows it is one | `buildinfo.LDFlags`; [0004-PLAN-v1-4-0, Step 2](decisions/0004-PLAN-v1-4-0-command-surface.md#step-2-buildinfo-buildinfobuildinfogo-new) |
 | show an update banner | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#show-an-update-banner) |
@@ -64,6 +64,9 @@ name, and the files they cite moved with the rename
 | fuzz locally | `make fuzz` (each target for 20 s), or `make fuzz FUZZTIME=5m`; see [architecture.md, Tooling](architecture.md#tooling) |
 | know what to do when CI finds a crasher | download the `fuzz-corpus` artifact, copy its file into `selfupdate/testdata/fuzz/<Name>/`, fix the defect, and commit the file as a regression seed ([0004-PLAN, H2](decisions/0004-PLAN-h2-fuzzing-and-manifest-differential.md)) |
 | update from releases shipped as tar.gz, zip or gz archives, such as GoReleaser's | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#ship-an-archive) |
+| describe my program's release once (products, platforms, packaging, extras) and read it in Go | [guides/building-releases.md](guides/building-releases.md#1-write-the-spec) |
+| build, check and publish my release in CI, with rehearsals on every pull request | [guides/building-releases.md](guides/building-releases.md#4-call-the-workflows) |
+| know why a release build failed a check | [guides/building-releases.md, §9](guides/building-releases.md#9-when-a-check-fails) |
 | re-sign my macOS binary on update, or require its signature | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#sign-on-macos) |
 | run my program as a systemd, launchd or Windows service, and update it from inside | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#run-as-a-service) |
 | write my own installer, or test a program that self-updates | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#write-your-own-installer) |

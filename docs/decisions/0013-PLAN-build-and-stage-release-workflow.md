@@ -966,6 +966,87 @@ runs it).
   actionlint; `check-workflows.sh` with every rule on all three
   workflows. No Go file changed.
 
+### B4 on GitHub (2026-10-06)
+
+The owner pushed B4 (`65defa3`). CI run 37404279305 passed all 16 jobs:
+
+* `validate` on ubuntu-24.04, macos-15 and windows-2025;
+* `release-rehearsal / build` and `release-rehearsal-archive / build`;
+* ten identity legs, five per call, on `ubuntu-24.04`,
+  `ubuntu-24.04-arm`, `macos-15`, `windows-2025` and `windows-11-arm`,
+  each printing `rehearsal-65defa3a7df2 (local) 65defa3a7df2`; the
+  archive legs unpacked `relay-darwin-arm64.tar.gz`,
+  `relay-linux-amd64.tar.gz`, `relay-linux-arm64.gz`,
+  `relay-windows-amd64.zip` and `relay-windows-arm64.zip` first;
+* `release-rehearsal-check`: the verifier accepted both staged sets,
+  wrote `packed=false` then `packed=true`, and `selfupdate-release check`
+  reported each of the five archives "unpacks to an executable for its
+  platform".
+
+The MADR's "Not verified" entry on the arm64 runners is settled: both run
+jobs for this public repository.
+
+### Phase B5: docs, guide and release notes (2026-10-06)
+
+* **`docs/guides/building-releases.md`** (new): the spec; embedding it
+  and configuring the updater from it (the Go example, extracted and
+  compiled against the tree, vets clean); the identity command; the two
+  calls; rehearsals; extras from another job; archives; the recipe; a
+  table of failure messages and their meaning, quoting the tool's own;
+  verifying an attestation with `--signer-workflow`; moving from a
+  Makefile build. The workflow pins read `<v1.9.0-commit>` until B6's pin
+  commit replaces them.
+* **`README.md`:** the `releasespec` package row; "Publishing releases"
+  becomes "Building and publishing releases", with both workflows and the
+  `format` key; an "I want to…" row for the guide.
+* **`docs/architecture.md`:** "What it is", the tree, the Go code table
+  (rows for `releasespec` and the release tool, counted), a "Build
+  workflow" section, and the publish workflow's archive step. **Stale
+  before this phase, and corrected:** "one package per top-level
+  directory" (the subpackages live under `selfupdate/` since `v1.7.0`);
+  "six `depguard` rules" (14 now, listed); `make fuzz` on `selfupdate`
+  alone (three packages since `v1.8.0`); CI's list without the rehearsal.
+* **`docs/README.md`:** three "I want to…" rows for the guide; the
+  current-release row names §6 to §9.
+* **`docs/guides/extending-selfupdate.md`:** "Ship an archive" no longer
+  says the workflow publishes bare binaries only.
+* **The migration guide:** "9. From v1.8 to v1.9", and §2's list of
+  releases that only add. Its version references move in B6.
+* **`selfupdate/archive/doc.go`:** the package comment no longer says
+  this module publishes raw binaries only.
+* **Checks:** markdownlint on every changed document (the records on
+  copies, MD004 expected there); `doccheck.py` on links, anchors and
+  identifiers; `make pre-add-check` on `doc.go`; `gate.sh`.
+
+### Release notes for `v1.9.0` (2026-10-06)
+
+Additions only: `make apicheck` reports `compatible with v1.8.0`, and
+`go.mod` is unchanged. A program, and a release workflow call, that use
+none of the new pieces behave as they did.
+
+* **`selfupdate/releasespec`:** a program's release spec,
+  `selfupdate-release.json`, read with `Parse`: products, platforms,
+  packaging (`binary` or `archive`), extras with a `{tag}` placeholder,
+  and prerelease channels. `Product` refuses a name the spec does not
+  list; `AssetSelector` and `Unpacker` always match; `AssetName`,
+  `Targets`, `FormatFor`, `ExtraNames` and the publish inputs as JSON.
+* **`build-selfupdate-release.yml`,** a new reusable workflow: builds
+  every product for every platform with a fixed recipe and the
+  `buildinfo` stamp; checks each binary's dependencies and build
+  information; runs each product's identity command, when the spec names
+  one, on its platform's runner; packs archives deterministically and
+  unpacks them with the client's unpacker; writes `SHA256SUMS`; runs the
+  publish verifier; uploads. Off a tag it rehearses, stamped local.
+* **`publish-selfupdate-release.yml`:** a `format` (`tar.gz`, `zip` or
+  `gz`) on every `platforms-json` object publishes archives, named
+  `<product>-<os>-<arch>.<format>` and listed in `SHA256SUMS`, after the
+  client's unpacker accepts each. Without a `format`, nothing changes; an
+  existing call needs no edit.
+* **Tooling** (no release surface): `check-workflows.sh` gains the `pins`
+  rule; `workflow-shape_test.sh` holds both workflows' shape; the pre-add
+  check vets and tests a nested module in that module; CI rehearses the
+  build workflow on every push.
+
 ### Deviations
 
 * **D1 (2026-10-05), B1: verifier parity for archive specs.**

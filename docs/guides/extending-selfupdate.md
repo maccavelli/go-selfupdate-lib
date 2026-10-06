@@ -217,10 +217,13 @@ binary. Why it works as it does is in
     and more than one program.
   - It then checks that the program is an executable for the platform.
   - Every refusal is an `ErrIntegrity`.
-- **Publishing:** this repository's release workflow publishes bare
-  binaries only, and its `SHA256SUMS` must list exactly those. Publish
-  archives with other tooling, such as GoReleaser, as immutable GitHub
-  releases: the updater refuses a mutable one.
+- **Publishing:** since `v1.9.0`, this repository's workflows build,
+  pack and publish archives from a release spec with
+  `"packaging": "archive"`, and `spec.AssetSelector()` and
+  `spec.Unpacker()` configure both halves; see
+  [Building releases](building-releases.md#7-archives). Archives
+  published with other tooling, such as GoReleaser, work too, as
+  immutable GitHub releases: the updater refuses a mutable one.
 
 Pointers:
 

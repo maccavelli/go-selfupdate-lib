@@ -25,9 +25,10 @@ go get github.com/maccavelli/go-selfupdate-lib@v1.8.0
 
 `v1.8.0` is the current release. `v1.6.0` changed a few behaviours that
 `v1.5.x` had; they are listed in [6. From v1.5 to v1.6](#6-from-v15-to-v16).
-`v1.7.0` and `v1.8.0` only add to the API: see
-[7. From v1.6 to v1.7](#7-from-v16-to-v17) and
-[8. From v1.7 to v1.8](#8-from-v17-to-v18).
+`v1.7.0`, `v1.8.0` and `v1.9.0` only add to the API: see
+[7. From v1.6 to v1.7](#7-from-v16-to-v17),
+[8. From v1.7 to v1.8](#8-from-v17-to-v18) and
+[9. From v1.8 to v1.9](#9-from-v18-to-v19).
 
 Replace every `github.com/maccavelli/mcplib/selfupdate` import with
 `github.com/maccavelli/go-selfupdate-lib/selfupdate`. No identifier or signature
@@ -534,3 +535,48 @@ runs unless you configure it. Why, and how, is in
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
 - `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.8.0`.
+
+## 9. From v1.8 to v1.9
+
+```bash
+go get github.com/maccavelli/go-selfupdate-lib@v1.9.0
+```
+
+`v1.9.0` only adds. `make apicheck` reports it compatible with `v1.8.0`,
+and it requires the same three modules. A program and a release workflow
+that use none of the new pieces behave as they did. Why, and how, is in
+[0013-MADR](../decisions/0013-MADR-build-and-stage-release-workflow.md).
+
+### What is new
+
+- **`selfupdate/releasespec`:** a release spec, `selfupdate-release.json`,
+  that your program embeds and the build workflow reads: products,
+  platforms, packaging, extras and prerelease channels, in one file. It
+  gives your updater its asset selector and unpacker, and refuses a
+  product name the spec does not list.
+- **`build-selfupdate-release.yml`,** a new reusable workflow: it builds
+  every product for every platform with a fixed recipe, checks each binary,
+  runs your identity command on each platform's runner, packs archives,
+  writes `SHA256SUMS` and stages the release. Off a tag it rehearses.
+- **`publish-selfupdate-release.yml` publishes archives:** a `format` on
+  every `platforms-json` object, which the build workflow writes for you,
+  makes the release one of archives, checked with the client's own
+  unpacker before anything is published. Without a `format`, nothing
+  changes.
+
+### Adopting it
+
+- **Nothing is required.** Your current pin of the publish workflow keeps
+  working, and so does moving the pin to `v1.9.0` with the same inputs.
+- **To build with the new workflow,** follow
+  [Building releases](building-releases.md): write the spec, embed it,
+  configure the updater from it, and replace your build, checksum and
+  staging jobs with the build workflow. If you stamp your own variables,
+  move to `buildinfo` first.
+- **To ship archives,** set `"packaging": "archive"` in the spec.
+
+### Check
+
+- `go build ./...`, `go vet ./...` and `go test ./...` pass.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.9.0`.
+- A pull request runs the build workflow as a rehearsal, and it passes.

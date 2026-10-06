@@ -34,6 +34,7 @@ go get github.com/maccavelli/go-selfupdate-lib@v1.8.0
 | [`selfupdate/selfupdatetest`](selfupdate/selfupdatetest/) | test doubles: release fixtures, a fake source, a fake GitHub API |
 | [`selfupdate/archive`](selfupdate/archive/) | updating from a release asset that is a tar.gz, zip or gz holding the program |
 | [`selfupdate/codesign`](selfupdate/codesign/) | opt-in macOS re-signing of the staged binary, and signature checks, with `/usr/bin/codesign` |
+| [`selfupdate/releasespec`](selfupdate/releasespec/) | the release spec a program embeds and the build workflow reads: products, platforms, packaging, extras, channels |
 | [`selfupdate/service`](selfupdate/service/) | what the service lifecycles share: health polling, typed errors, and the handoff of an update started inside the service |
 | [`selfupdate/service/systemd`](selfupdate/service/systemd/), [`launchd`](selfupdate/service/launchd/), [`scm`](selfupdate/service/scm/) | the managed-update lifecycle for a systemd unit, a launchd job and a Windows service |
 
@@ -75,22 +76,38 @@ An exact `--version` is pinned: a source that returns another tag is an
 `ErrIntegrity` failure. Redirects must stay on HTTPS unless they go to a
 loopback host. End of input at the confirmation prompt is a decline.
 
-### Publishing releases
+### Building and publishing releases
 
-Programs publish through the reusable workflow
-`.github/workflows/publish-selfupdate-release.yml`, pinned to the full SHA of
-a tag commit of this repository. It accepts only a complete staged set that matches
-the declared products, platforms and extras, refuses a tag that already has a
-release (drafts included), attests the files, and publishes an immutable
-release. It never `--clobber`s. It is the only supported publication path for
-the asset contract. Its `SHA256SUMS` check is the client's own parser,
+Two reusable workflows, both pinned to the full SHA of a tag commit of
+this repository:
+
+- **`build-selfupdate-release.yml`** builds every product for every
+  platform from the program's release spec (`selfupdate-release.json`,
+  read by `selfupdate/releasespec`) with a fixed recipe. It checks each
+  binary from its own build information, runs it on its platform's runner
+  when the spec names an identity command, packs archives when the spec
+  says so, writes `SHA256SUMS`, and uploads the staged set. Off a tag it
+  rehearses, stamped local. Its outputs are the publish workflow's inputs.
+  See [the building guide](docs/guides/building-releases.md).
+- **`publish-selfupdate-release.yml`** accepts only a complete staged set
+  that matches the declared products, platforms and extras, refuses a tag
+  that already has a release (drafts included), attests the files, and
+  publishes an immutable release. It never `--clobber`s. It is the only
+  supported publication path for the asset contract.
+
+The publish workflow's `SHA256SUMS` check is the client's own parser,
 ported, so it never publishes a manifest the client cannot read. Extra asset
 names must match `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`, and staged entries
-must be regular files. The optional `prerelease-channels-json` names the
-channels it may publish `vX.Y.Z-NAME.N` prereleases for, which never become
-the latest release; the default `[]` publishes stable tags only. A stable
-tag lower than the current latest, such as a backport, is published without
-becoming the latest release either, so clients keep seeing the newest one.
+must be regular files. A `format` (`tar.gz`, `zip` or `gz`) on every
+platform object makes the release one of archives, which it unpacks with the
+client's own unpacker before publishing. The optional
+`prerelease-channels-json` names the channels it may publish
+`vX.Y.Z-NAME.N` prereleases for, which never become the latest release; the
+default `[]` publishes stable tags only. A stable tag lower than the
+current latest, such as a backport, is published without becoming the
+latest release either, so clients keep seeing the newest one.
+
+A program that stages its own release calls the publish workflow alone:
 
 ```yaml
 release:
@@ -132,6 +149,7 @@ A re-run is refused while any release for the tag exists, drafts included.
 | see what is in this repository today | [architecture.md](docs/architecture.md) |
 | move a program from `mcplib/selfupdate` to this module | [the migration guide](docs/guides/migrating-from-mcplib-selfupdate.md) |
 | offer a beta or rc channel | [the extending guide](docs/guides/extending-selfupdate.md#offer-a-beta-channel) |
+| build and publish my program's releases from one spec | [the building guide](docs/guides/building-releases.md) |
 | know why `selfupdate` moved here, and what changed on the way | [0002-MADR](docs/decisions/0002-MADR-rehome-selfupdate-from-mcplib.md) |
 | know why the repository is set up the way it is | [0001-MADR](docs/decisions/0001-MADR-scaffold-shared-go-library.md) |
 | know why it was renamed from `go-core-lib` | [0009-MADR](docs/decisions/0009-MADR-rename-to-go-selfupdate-lib.md) |

@@ -7,10 +7,12 @@ argument, and [README.md](README.md) indexes them.
 ## What it is
 
 A Git repository for the Go module `github.com/maccavelli/go-selfupdate-lib`,
-the fleet's self-update library: one package per top-level directory, with
-no root package and no binary. It was `go-core-lib` up to `v1.4.1`. It also
-hosts the reusable GitHub Actions workflow that programs using `selfupdate`
-publish their releases through.
+the fleet's self-update library: `buildinfo` and `selfupdate` at the top,
+each `selfupdate` subpackage in a directory under `selfupdate/`, no root
+package, and no released binary. `internal/cmd/selfupdate-release` is a
+tool the workflows build from source. It was `go-core-lib` up to `v1.4.1`.
+It also hosts the two reusable GitHub Actions workflows that programs using
+`selfupdate` build and publish their releases through.
 
 The module requires Go 1.27.1 and three modules: `golang.org/x/mod v0.40.0`,
 `golang.org/x/sys v0.47.0` and `golang.org/x/term v0.43.0`. Its current
@@ -32,6 +34,8 @@ Makefile                    development targets (below)
 .gitattributes              LF line endings, except the byte-exact parity fixtures
 .github/workflows/
   ci.yml                    CI
+  build-selfupdate-release.yml     reusable build workflow (workflow_call):
+                            builds, checks, packs and stages from a spec
   publish-selfupdate-release.yml   reusable release workflow (workflow_call)
 scripts/
   go-precheck.sh            the pre-add check
@@ -42,7 +46,11 @@ scripts/
   check-release-tag.sh      the tag rule: strict, or a listed prerelease
                             channel; the workflow and the verifier call it
   check-workflows.sh        parses workflows as YAML: no ${{ }} in a run script,
-                            and every repository-scoped gh step sets GH_REPO
+                            every repository-scoped gh step sets GH_REPO,
+                            a top-level permissions block, and every action
+                            pinned to a commit SHA
+  workflow-shape_test.sh    holds the two reusable workflows' step order,
+                            guards and permissions in place
   check-api-compat.sh       fails on an incompatible exported API change
                             against the newest v1.* tag (apidiff)
   go-fuzz.sh                fuzzes each fuzz target of a package in turn
@@ -57,11 +65,17 @@ selfupdate/                 the self-update package
   archive/                  tar.gz, zip and gz release assets: selection
                             and extraction
   codesign/                 opt-in macOS re-signing and signature checks
+  releasespec/              the release spec: products, platforms, packaging,
+                            extras and channels, for the program and CI
   service/                  what the reference service lifecycles share,
                             and the handoff
     systemd/                the systemd lifecycle, and sd_notify
     launchd/                the launchd lifecycle
     scm/                    the Windows SCM lifecycle
+internal/cmd/selfupdate-release/  the workflows' logic: plan, build, stage,
+                            check, identity; never released
+  testdata/fixture/         a module of its own: the relay program the
+                            tests and CI's rehearsal build
 docs/
   README.md                 record index and the "I want to…" table
   architecture.md           this file
@@ -80,10 +94,12 @@ docs/
 | `selfupdate/selfupdatetest/` | `selfupdatetest` | 2 | 1 | none (`selfupdate` itself) |
 | `selfupdate/archive/` | `archive` | 3 | 6, including three fuzz targets, plus a real GoReleaser `testdata/` checksum file | none (`selfupdate`) |
 | `selfupdate/codesign/` | `codesign` | 2 | 4 | none (`selfupdate`, `service`) |
+| `selfupdate/releasespec/` | `releasespec` | 3 | 4, including a fuzz target, plus 3 `testdata/` specs | none (`selfupdate`, `archive`) |
 | `selfupdate/service/` | `service` | 16 | 13 | `x/sys/windows` (and `selfupdate`) |
 | `selfupdate/service/systemd/` | `systemd` | 8 | 12, plus 3 `testdata/` captures of `systemctl show` | none (`selfupdate`, `service`) |
 | `selfupdate/service/launchd/` | `launchd` | 6 | 11, plus 7 `testdata/` captures of `launchctl print` and `list` | none (`selfupdate`, `service`) |
 | `selfupdate/service/scm/` | `scm` | 7 | 9 | `x/sys/windows`, `x/sys/windows/svc`, `x/sys/windows/svc/mgr` (and `selfupdate`, `service`) |
+| `internal/cmd/selfupdate-release/` | `main` | 9 | 6, plus the `testdata/fixture/` module (2 programs, 2 specs, an extra) | none (`buildinfo`, `selfupdate`, `archive`, `releasespec`) |
 
 - `selfupdate` began as `mcplib` `v1.6.0`'s `selfupdate` (commit
   `4e1f9a53e265`), and its `v1.0.x` API is that package's. It differs from
@@ -246,6 +262,40 @@ docs/
   `UserAgent` builds one. It reads
   `GH_TOKEN`, then `GITHUB_TOKEN`, when set.
 
+## Build workflow
+
+`build-selfupdate-release.yml` is called with `spec-path`, and optionally
+`module-dir` (default `.`), `extras-artifact-name`, `artifact-name` and
+`retention-days` (default 7). Its token is `contents: read`. Its `build`
+job, on `ubuntu-24.04`:
+
+1. checks out its own commit at `tools/` and the caller's source, at the
+   event's ref and SHA, at `src/`, neither with persisted credentials;
+2. sets up the source module's Go, cache off, and builds the tool;
+3. `plan`: reads the spec, picks a release (on a tag) or a rehearsal, and
+   writes the publish inputs, the artifact name and the identity matrix;
+   on a tag, `check-release-tag.sh` with the spec's channels;
+4. `build`: per product and platform, requires `buildinfo` among the
+   package's dependencies, then builds with the fixed recipe
+   (`CGO_ENABLED=0`, `-trimpath`, `-buildvcs=true`, `-s -w` and the
+   `buildinfo` stamp, `GOFLAGS=-mod=readonly`, `GOENV=off`,
+   `GOTOOLCHAIN=local`);
+5. `stage`: checks each binary's build information (platform, tags, cgo,
+   `-trimpath`, commit, clean tree, toolchain, module and package, and the
+   tag as the main module's version at the repository root) and its
+   image; packs archives with fixed metadata and unpacks each with the
+   client's unpacker; writes `SHA256SUMS` and parses it back; copies the
+   extras;
+6. runs the publish workflow's verifier on the staged set, and uploads it,
+   with the tool cross-compiled for the identity runners.
+
+Its `identity` job runs each staged program with the product's
+`identity_args`, on its own platform's runner (`ubuntu-24.04`,
+`ubuntu-24.04-arm`, `macos-15`, `windows-2025`, `windows-11-arm`), and
+requires `<tag> (release)` (`rehearsal-<sha12> (local)` off a tag) as its
+first line. Its outputs are `artifact-name`, `tag`, `rehearsal` and the
+four publish inputs.
+
 ## Release workflow
 
 `publish-selfupdate-release.yml` is called with `artifact-name`,
@@ -263,8 +313,13 @@ docs/
 5. validates the staged set (`verify-selfupdate-release.sh`): regular files
    only, safe extra names, and a `SHA256SUMS` parsed exactly as the client
    parses it. Both parsers run the fixtures in
-   `selfupdate/testdata/manifest-parity/`;
-6. creates a draft, uploads the files (one argument each), attests them,
+   `selfupdate/testdata/manifest-parity/`. A `format` on every platform
+   object makes the release one of archives,
+   `<product>-<os>-<arch>.<format>`, and `SHA256SUMS` lists those;
+6. for a release of archives only, sets up Go from its own `go.mod` and
+   runs `selfupdate-release check`, which unpacks each archive with the
+   client's own unpacker and checks the program's image;
+7. creates a draft, uploads the files (one argument each), attests them,
    publishes, and waits for the release to be immutable and verified. A
    prerelease tag is created with `--prerelease --latest=false`, so it
    never becomes the release stable clients read.
@@ -277,11 +332,12 @@ interpolated into shell.
 
 - **`make` targets:** `test`, `test-sum`, `fmt`, `vet`, `lint`, `tidy`,
   `vuln`, `apicheck`, `fuzz`, `pre-add-check`, `help`.
-- **`make fuzz`** runs `scripts/go-fuzz.sh` on `selfupdate`. It finds
-  every fuzz target, refuses fewer than five, and fuzzes each for
-  `FUZZTIME` (default 20s), with minimization capped at 5 s. A failing
-  input stays in `selfupdate/testdata/fuzz/<Name>/`, where it is a seed from
-  then on.
+- **`make fuzz`** runs `scripts/go-fuzz.sh` on `selfupdate`,
+  `selfupdate/archive` and `selfupdate/releasespec`. In each it finds every
+  fuzz target, refuses fewer than the package holds (five, three and one),
+  and fuzzes each for `FUZZTIME` (default 20s), with minimization capped
+  at 5 s. A failing input stays in the package's
+  `testdata/fuzz/<Name>/`, where it is a seed from then on.
 - **The running-copy end-to-end tests** (`selfupdate/e2e_running_test.go`).
   - The test builds a small helper twice, as `v1.0.0` and `v1.1.0`,
     with the version stamped by `-ldflags -X`, and starts the v1 build
@@ -309,17 +365,23 @@ interpolated into shell.
   `BASE=`), and any incompatible change fails it.
 - **`make lint`** runs `golangci-lint run -c .golangci.yml ./...` three
   times: `GOOS=linux`, `darwin` and `windows`, each with `CGO_ENABLED=0`.
-- **Import rules** are six `depguard` rules in `.golangci.yml`
+- **Import rules** are 14 `depguard` rules in `.golangci.yml`
   ([0008-MADR](decisions/0008-MADR-enforce-import-rules-with-depguard.md)):
   - `banned`: mcplib, the MCP go-sdk, go-llmprovider-sdk and Charm, in
     every file;
   - `module`: only the standard library, this module, `x/mod`, `x/sys`
     and `x/term`, in every file;
-  - `buildinfo`, `selfupdate`, `selfupdate-cli` and `selfupdatetest`: each
-    package's own allowed imports, outside its tests.
+  - `buildinfo`, `selfupdate`, `selfupdate-cli`, `selfupdatetest`,
+    `service`, `service-launchd`, `service-scm`, `service-systemd`,
+    `selfupdate-archive`, `selfupdate-codesign` and
+    `selfupdate-releasespec`: each package's own allowed imports, outside
+    its tests;
+  - `other-packages`: any other package, `internal/` included, only the
+    standard library and this module.
 - **`scripts/go-precheck.sh`** runs `gofmt` on the given Go files, the same
-  three golangci-lint runs, `go vet` and `go test` on their packages, and
-  `govulncheck ./...`. `make pre-add-check` runs it, and so does the
+  three golangci-lint runs, `go vet` and `go test` on their packages, each
+  in the module that owns it (a nested module, such as the release tool's
+  fixture, with `go -C`), and `govulncheck ./...`. `make pre-add-check` runs it, and so does the
   machine-wide agent gate before an agent `git commit` that stages Go files.
 - **`.golangci.yml`** enables `revive`'s `exported`, `package-comments` and
   `var-naming` rules in place of `golint`. Test files are exempt from
@@ -340,8 +402,16 @@ interpolated into shell.
     `shellcheck` v0.11.0 (the latest release, pinned by SHA-256 and first
     on `PATH`, so actionlint's embedded checks use it too),
     `markdownlint-cli2` 0.23.2 and `actionlint` v1.7.12; the verifier's
-    fixture test; the release tag rule's test; and the workflow checker
-    and its test.
+    fixture test; the release tag rule's test; the workflow checker, with
+    every rule on both reusable workflows and `expressions`,
+    `permissions` and `pins` on `ci.yml`, its test, and the workflow shape
+    test.
+  - **The release rehearsal:** two calls of `build-selfupdate-release.yml`
+    by its local path on the release tool's fixture, one of raw binaries
+    and one of archives, each with its identity runs on the five runners;
+    then a job that checks both staged sets as the publish workflow
+    would, without publishing. On a branch or pull request it rehearses;
+    on a `v*` tag it builds the fixture as that release.
   - One run per ref (`concurrency`, cancel in progress). Actions are pinned
     to commit SHAs.
 
