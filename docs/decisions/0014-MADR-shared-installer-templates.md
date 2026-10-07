@@ -631,8 +631,13 @@ On macOS 26.6.2 arm64 (`/bin/sh` is bash 3.2.57), dash and PowerShell
 ### Not verified
 
 * A `CGO_ENABLED=0` binary run on Alpine or under BusyBox. The PLAN's
-  container job runs one.
+  container job runs one. *Established in 0014-PLAN I3 (2026-10-06):* the
+  fixture's static linux/amd64 binaries and the test binary ran in an
+  Alpine 3.24.2 root filesystem, under BusyBox ash and BusyBox wget, with
+  every case passing.
 * BusyBox `ash` and `local`; the templates do not use `local`.
+  *Established in 0014-PLAN I3:* the templates still use none, and
+  `install.sh` passes its cases under Alpine's and Ubuntu's BusyBox ash.
 * Which macOS version added `/sbin/sha256sum`; the templates fall back to
   `shasum` and `openssl`.
 * Whether Windows PowerShell 5.1 negotiates TLS 1.2 by default; the

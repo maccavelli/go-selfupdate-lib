@@ -354,12 +354,14 @@ public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wP
             try { Get-Download "$download/SHA256SUMS" $sums } catch { Invoke-Fail 2 "download of SHA256SUMS for $want failed: $($_.Exception.Message)" }
             foreach ($a in $plan) {
                 $file = Join-Path $work $a.Name
-                try { Get-Download "$download/$($a.Name)" $file } catch { Invoke-Fail 2 "download of $($a.Name) failed: $($_.Exception.Message)" }
+                # A release that does not list the asset is refused before
+                # anything is downloaded.
                 $listed = Get-ListedSum $sums $a.Name
                 if ($null -eq $listed) {
                     if ($want -cne $Tag) { Invoke-Fail 1 "release $want has no $($a.Name); its own installer is $download/install.ps1" }
                     Invoke-Fail 2 "SHA256SUMS has no entry for $($a.Name)"
                 }
+                try { Get-Download "$download/$($a.Name)" $file } catch { Invoke-Fail 2 "download of $($a.Name) failed: $($_.Exception.Message)" }
                 $got = (Get-FileHash -Algorithm SHA256 -LiteralPath $file).Hash.ToLowerInvariant()
                 if ($got -cne $listed) { Invoke-Fail 2 "$($a.Name): SHA-256 $got does not match SHA256SUMS ($listed)" }
                 if ($VerifyAttestation) {

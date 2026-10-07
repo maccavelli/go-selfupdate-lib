@@ -169,6 +169,9 @@ var (
 	buildOnce sync.Once
 	shared    built
 	sharedErr error
+	// releasesTemp is the installer tests' staged releases, when they made
+	// them in a temporary directory (installer_harness_test.go).
+	releasesTemp string
 )
 
 // sharedBuild builds the tagged fixture once per test binary. Tests read
@@ -229,6 +232,9 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 	if shared.base != "" {
 		os.RemoveAll(shared.base)
+	}
+	if releasesTemp != "" {
+		os.RemoveAll(releasesTemp)
 	}
 	os.Exit(code)
 }

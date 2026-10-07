@@ -87,6 +87,11 @@ set_base() {
 		WGET_HTTPS_ONLY=1
 		;;
 	http://127.0.0.1:* | http://localhost:*)
+		# Only a port may follow, or "localhost:@host" would be a user
+		# name and another host.
+		case ${BASE#http://*:} in
+		'' | *[!0-9]*) die 1 "SELFUPDATE_INSTALL_BASE_URL must be an https:// URL, or a loopback http:// one" ;;
+		esac
 		CURL_PROTO='=http,https'
 		WGET_HTTPS_ONLY=0
 		;;
@@ -278,10 +283,10 @@ uninstall() {
 	say "configuration, if any, is left in place"
 }
 
-# fetch_verified NAME FILE: download NAME from the release to FILE and
-# check it against SHA256SUMS; exit 2 on a mismatch.
+# fetch_verified NAME FILE: find NAME in SHA256SUMS, download it to FILE
+# and check it; exit 2 on a mismatch. A release that does not list NAME is
+# refused before anything is downloaded.
 fetch_verified() {
-	fetch "$BASE/$REPOSITORY/releases/download/$VERSION/$1" "$2" || die 2 "download of $1 failed"
 	rc=0
 	want=$(sum_for "$WORK/SHA256SUMS" "$1") || rc=$?
 	case $rc in
@@ -294,6 +299,7 @@ fetch_verified() {
 		;;
 	*) die 2 "SHA256SUMS has a malformed or duplicate entry for $1" ;;
 	esac
+	fetch "$BASE/$REPOSITORY/releases/download/$VERSION/$1" "$2" || die 2 "download of $1 failed"
 	got=$(hash_of "$2")
 	[ "$got" = "$want" ] || die 2 "$1: SHA-256 $got does not match SHA256SUMS ($want)"
 	if [ "$VERIFY_ATTESTATION" = 1 ]; then

@@ -439,6 +439,93 @@ helpers, and a CI job.
   and the shape test on the changed workflow; `make pre-add-check` on the
   seven Go files: "7 file(s) clean".
 
+### Phase I3: `install.sh`'s behaviour (2026-10-06)
+
+* **The harness** (`installer_harness_test.go`, shared with I4): one
+  build of the fixture with two products (`relay`, which reports its
+  identity, and `relayctl`, which does not) for linux/amd64, linux/arm64,
+  darwin/arm64, windows/amd64 and the host, staged three times at
+  `v1.2.3` with installers: raw (`fixture/relay`), tar.gz
+  (`fixture/relay-tgz`) and gz (`fixture/relay-gz`). An `httptest`
+  server serves `/<owner>/<repo>/releases/download/<tag>/<name>` from
+  them. A test can route another tag to a release, replace a file,
+  replace an asset with its `SHA256SUMS` line updated, or stall a
+  response halfway. `SELFUPDATE_INSTALL_TEST_RELEASES` names a directory
+  for the staged releases: a run that finds it complete reuses it,
+  otherwise it builds into it and keeps it. It is built for `unix`
+  only until I4's tests use it on Windows: on `GOOS=windows` the lint's
+  `unused` check refused it with no caller.
+* **The tests** (`installer_sh_test.go`, `unix` only) run the rendered
+  script as `curl … | sh -s -- …` runs it, on standard input, with
+  `HOME` and the install directory in a temporary directory and stubs
+  ahead of `PATH`, under each of `sh`, `dash`, `bash` and `busybox sh`
+  found once by its real path. Each case checks the exit code, a line
+  of output, and the install directory byte for byte and mode 0755.
+  * `TestInstallSh`, 27 cases: the PLAN's list, plus `--dir` and
+    `RELAY_INSTALL_DIR`, an upper-case hash, a fresh install skipping
+    `before_install`, `RELAY_NO_HOOKS`, `--uninstall --product` and
+    `--uninstall --dry-run`, `aarch64`, an Intel Mac (the sysctl
+    failing), and base URLs carrying user information. A stand-in
+    script, with its line in `SHA256SUMS`, plays the copy a hook or
+    the identity check runs.
+  * `TestInstallShInterrupt`: SIGINT to the process group while the
+    asset stalls halfway; the temporary directory exists before, and
+    after the script exits 130 the install directory is empty.
+  * `TestInstallShTruncated`: the script cut at each of its 435 line
+    ends and at half its bytes; no request reaches the server and
+    nothing is written under `HOME`.
+  * `TestInstallShFetchers`: with no `curl` on `PATH`, no `wget` either
+    (exit 1); a `wget` without `--https-only` refused before it runs; one
+    with it run as `wget --https-only -q -O …`.
+  * `TestInstallShHashTools`: no `sha256sum`, `shasum` or `openssl`:
+    exit 1, nothing installed.
+  * `SELFUPDATE_INSTALL_REQUIRE_SHELLS` lists shell binaries a run must
+    reach with working stubs, so a container job cannot pass without its
+    shell.
+* **D2** fixed two defects in the templates; **D3** skips six cases
+  under a shell that runs its own applets ahead of `PATH` (see
+  Deviations).
+* **The container job** (`ci.yml`, `installer-containers`): the runner
+  stages the releases and cross-compiles the test binary with
+  `CGO_ENABLED=0`, then runs it as the runner's user in
+  `alpine:3.24.2` (BusyBox ash and wget, musl, no curl; required shell
+  `busybox`) and `buildpack-deps:trixie-curl` (dash and curl; required
+  `dash,bash`), each pinned by index digest. Its first run is CI's.
+* **Runs:**
+  * this Mac (`/bin/sh`, `/bin/dash`, Homebrew bash): the package's
+    tests pass;
+  * the Linux test host (dash as `sh`, bash, Ubuntu's `busybox-static`):
+    "pass=95 skip=6 fail=0", the six being D3's;
+  * an Alpine 3.24.2 minirootfs (sha256 checked) in a chroot on the
+    Linux test host, not as root, `curl` absent, required shell
+    `busybox`: "pass=37 skip=0 fail=0". This settles the MADR's first
+    two "Not verified" entries.
+* **Plants,** each in a scratch copy, each caught at an assertion:
+
+  | Plant | Caught by |
+  | :--- | :--- |
+  | the checksum step skipped | "an altered asset": `exit 0, want 2` |
+  | CR accepted (`sub(/\r$/, "")` in the parser) | "SHA256SUMS with CR line endings": `exit 0, want 2` |
+  | the Rosetta correction removed | "Rosetta is corrected to arm64": `exit 1, want 0` |
+  | `.prev` not restored | "an identity mismatch restores the previous copy": the directory's contents |
+  | the INT trap without `exit` | `TestInstallShInterrupt`: `exit 2 after SIGINT, want 130` |
+  | a `local` added | `TestTemplatesAsWritten`: `install.sh uses local` |
+  | `wget` without `--https-only` | `TestInstallShFetchers`: `wget ran as "wget -q -O …"` |
+  | D2: the asset fetched before `SHA256SUMS` is read | "… with other asset names": `exit 2, want 1` |
+  | D2: any text after the loopback colon | the base URL case: `exit 2, want 1` |
+  | `hash_of` hashing nothing | `TestInstallShHashTools`: `exit 2, want 1` |
+  | a command at the top level | `TestInstallShTruncated`: `a truncated script wrote to its home: [.local/ stubs/]` |
+
+  `SELFUPDATE_INSTALL_REQUIRE_SHELLS=busybox` on this Mac, which has no
+  BusyBox, failed the run with "no busybox that honours PATH".
+* **`install.ps1`** (D2): PowerShell's parser reports 0 errors here and
+  on the Windows test host, and PSScriptAnalyzer 0 findings there.
+  I4's tests cover the change.
+* **Checks:** `gate.sh`; actionlint 1.7.12; `check-workflows.sh` (all,
+  and `expressions` and `pins` on `ci.yml`); `workflow-shape_test.sh`;
+  shellcheck 0.11.0 on the template; `make pre-add-check` on the three
+  Go files.
+
 ### Deviations
 
 * **D1 (2026-10-06), I2: arguments the installers embed.**
@@ -452,3 +539,34 @@ helpers, and a CI job.
     at `Parse`. MADR §3 is amended.
   * **Files:** `selfupdate/releasespec/installer.go` and
     `installer_test.go` join I2.
+* **D2 (2026-10-06), I3: two template defects the tests found.**
+  * **Found:** `install.sh`'s `fetch_verified` downloaded the asset
+    before reading its line in `SHA256SUMS`. For a release without the
+    asset GitHub answers 404, so `--version` of a release with other
+    asset names exited 2 with "download of … failed", not 1 with that
+    release's installer URL as MADR §4 requires. `install.ps1` had the
+    same order. And `set_base` accepted `http://localhost:@example.invalid`
+    as a loopback URL; curl reads `localhost:` as a user name and went to
+    the other host over plain HTTP. `install.ps1` anchors a numeric port,
+    and was not affected.
+  * **Decision (the owner):** fix both scripts in I3. Each reads the
+    asset's line first and downloads only a listed asset; `install.sh`
+    accepts only digits after the loopback colon. The MADR's contract is
+    unchanged; the scripts now meet it.
+  * **Files:** `installer/install.sh` and `installer/install.ps1` join
+    I3. I4's tests cover the PowerShell change.
+* **D3 (2026-10-06), I3: a BusyBox that runs its applets first.**
+  * **Found:** on the Linux test host, `busybox` is Ubuntu's
+    `busybox-static`, built with `FEATURE_SH_STANDALONE`: its ash runs its
+    own `uname`, `id`, `wget` and `sha256sum` whatever `PATH` holds (a
+    `uname` stub ahead of `PATH` still printed `Linux`). Six cases fake
+    their conditions with stubs: the unsupported platform, `aarch64`,
+    Rosetta, root, and the fetcher and hash-tool tests. Alpine builds
+    BusyBox without that option ("`# CONFIG_FEATURE_SH_STANDALONE is not
+    set`" in aports' `main/busybox/busyboxconfig`).
+  * **Decision (the owner):** detect it and skip with the reason. The
+    harness runs a `uname` stub under each shell; where the stub does not
+    run, those six cases skip, saying why, and the rest run. The Alpine
+    job runs all of them, and `SELFUPDATE_INSTALL_REQUIRE_SHELLS` fails it
+    if they cannot.
+  * **Files:** none beyond I3's.

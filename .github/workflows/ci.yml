@@ -226,6 +226,40 @@ jobs:
           ./scripts/check-workflows_test.sh
           ./scripts/workflow-shape_test.sh
 
+  # install.sh under shells the runners lack: BusyBox ash, with BusyBox
+  # wget, in Alpine (musl), and dash with curl in Debian. The releases are
+  # staged on the runner, which has go and git; the static test binary then
+  # runs in each image as the runner's user, since the installer refuses
+  # root. Each run must reach its shell with stubs working
+  # (docs/decisions/0014-PLAN-shared-installer-templates.md I3).
+  installer-containers:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Stage the releases and build the test binary
+        run: |
+          SELFUPDATE_INSTALL_TEST_RELEASES="$RUNNER_TEMP/releases" \
+            go test -count=1 -run '^TestInstallSh' ./internal/cmd/selfupdate-release
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+            go test -c -o "$RUNNER_TEMP/selfupdate-release.test" ./internal/cmd/selfupdate-release
+      - name: install.sh in Alpine
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" -v "$RUNNER_TEMP:/work:ro" \
+            -e SELFUPDATE_INSTALL_TEST_RELEASES=/work/releases -e SELFUPDATE_INSTALL_REQUIRE_SHELLS=busybox \
+            alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 \
+            /work/selfupdate-release.test -test.run '^TestInstallSh' -test.count=1 -test.v
+      - name: install.sh in Debian
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" -v "$RUNNER_TEMP:/work:ro" \
+            -e SELFUPDATE_INSTALL_TEST_RELEASES=/work/releases -e SELFUPDATE_INSTALL_REQUIRE_SHELLS=dash,bash \
+            buildpack-deps:trixie-curl@sha256:2145408a141dfcc7bb88b3089a62b22ebd29be69cbb9905e339f87e7d67bad8b \
+            /work/selfupdate-release.test -test.run '^TestInstallSh' -test.count=1 -test.v
+
   # The build workflow, called by its local path on the fixture module: a
   # rehearsal on every branch and pull request, and a release build on a v*
   # tag, with the identity run on each platform's own runner. One call
