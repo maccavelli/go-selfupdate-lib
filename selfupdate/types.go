@@ -585,7 +585,9 @@ const (
 	EventResolvingTarget
 	// EventFetchingRelease is emitted before release discovery.
 	EventFetchingRelease
-	// EventSelected is emitted after exact asset selection.
+	// EventSelected is emitted after exact asset selection. A check that
+	// succeeds, and a run that finds the program up to date, end here: no
+	// terminal event follows, and Result.Operation is the outcome.
 	EventSelected
 	// EventDownloadingManifest is emitted before the SHA256SUMS body.
 	EventDownloadingManifest
@@ -600,6 +602,7 @@ const (
 	// EventComplete is emitted after a healthy committed installation, and
 	// at the end of a dry run, whose Detail is "dry-run". It is the run's
 	// one terminal event: a later error is an EventWarning, not a failure.
+	// A check and an up-to-date run never emit it (EventSelected).
 	EventComplete
 )
 

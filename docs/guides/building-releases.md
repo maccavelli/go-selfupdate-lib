@@ -186,6 +186,17 @@ jobs:
 - **`artifact-name`** overrides the staged artifact's name. Set it when one
   run calls the build workflow twice.
 
+**Before the first release,** set up the repository:
+
+- **Turn on immutable releases:** Settings → General → Releases → "Enable
+  release immutability", or the organization's release policy. It applies
+  only to releases published after it is on. Without it the publish job
+  publishes the release, waits 120 s for GitHub to mark it immutable, and
+  fails, leaving a live, mutable release that clients refuse and the
+  installers would still install from. Delete it, turn the setting on, and
+  re-run the jobs.
+- **Attestations** need a public repository, or GitHub Enterprise Cloud.
+
 ## 5. Rehearsals
 
 On any ref that is not a tag (a branch push, a pull request), the build
@@ -317,6 +328,11 @@ it lists a Windows one. The build workflow renders them from this
 repository's templates with your products, platforms, formats, channels,
 repository and tag. They are extras: published and attested with the
 release, and not listed in `SHA256SUMS`.
+
+Your program's module must require `v1.10.0` or later, the version the
+workflow is pinned to: an older `releasespec.Parse` refuses the spec's
+`installer` field, and the shipped program cannot update itself. Move
+`go.mod` and both pins together.
 
 ```json
 "installer": {

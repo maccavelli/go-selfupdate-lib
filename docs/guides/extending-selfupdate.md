@@ -97,7 +97,10 @@ a per-run choice, and a workflow input.
 final `Result`. Its `schema_version` is 2 since `v1.6.0`, which added
 `service_started`, and `warnings` when there are any.
 
-A run has one terminal event: `complete`, `failed` or `declined`. Since
+A run that goes on past selection has one terminal event: `complete`,
+`failed` or `declined`. A check that succeeds, and a run that finds the
+program up to date, install nothing: they end at `selected`, the result's
+`operation` is the outcome, and no `complete` follows. Since
 `v1.6.0`, an error that arrives after `complete`, such as a failed unlock
 once the binary is replaced, does not fail the run. Each one is a `warning`
 event, `Result.Warnings` lists them, and `Run` returns no error. A dry run's
@@ -113,8 +116,8 @@ between `EventProgress` events; zero reports none. The text reporter skips
 progress events either way.
 
 - `ExampleNewJSONReporter`, `ExampleMultiReporter`, `ExampleResult_Document`
-- `selfupdate/testdata/golden/`: the exact text and JSON Lines output of six
-  whole runs
+- `selfupdate/testdata/golden/`: the exact text and JSON Lines output of
+  seven whole runs
 
 ## Plug in a credential
 

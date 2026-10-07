@@ -63,6 +63,44 @@ func TestLateErrorIsNotAFailure(t *testing.T) {
 	}
 }
 
+// TestRunEndsAtSelected: a check, and a run that finds the program up to
+// date, install nothing. Their last event is EventSelected, the result's
+// Operation is the outcome, and no complete, failed or declined follows
+// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md C5,
+// owner answer Q2).
+func TestRunEndsAtSelected(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		current string
+		check   bool
+		wantErr error
+		wantOp  Operation
+	}{
+		{"check finds an update", "v1.0.0", true, ErrUpdateAvailable, OperationUpgrade},
+		{"up-to-date check", "v1.1.0", true, nil, OperationNone},
+		{"up-to-date apply", "v1.1.0", false, nil, OperationNone},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			env := newContractEnv(t)
+			req := applyReq()
+			req.CurrentVersion, req.CheckOnly, req.Yes = c.current, c.check, !c.check
+			res, err := env.build(t).Run(context.Background(), req)
+			if !errors.Is(err, c.wantErr) || (c.wantErr == nil && err != nil) || res.Operation != c.wantOp {
+				t.Fatalf("Run = %v, %v; want %v, %v", res.Operation, err, c.wantOp, c.wantErr)
+			}
+			kinds := env.rep.kinds
+			if len(kinds) == 0 || kinds[len(kinds)-1] != EventSelected {
+				t.Fatalf("events %v: want the last to be selected", kinds)
+			}
+			for _, k := range kinds {
+				if k == EventComplete || k == EventFailed || k == EventDeclined {
+					t.Fatalf("events %v: %v follows selected", kinds, k)
+				}
+			}
+		})
+	}
+}
+
 // TestDryRunCompleteDetail: a dry run's EventComplete says so in its own
 // Detail (C11).
 func TestDryRunCompleteDetail(t *testing.T) {

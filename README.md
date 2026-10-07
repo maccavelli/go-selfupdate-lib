@@ -95,7 +95,10 @@ this repository:
   that matches the declared products, platforms and extras, refuses a tag
   that already has a release (drafts included), attests the files, and
   publishes an immutable release. It never `--clobber`s. It is the only
-  supported publication path for the asset contract.
+  supported publication path for the asset contract. Before the first
+  release, turn on immutable releases for the repository (Settings →
+  General → Releases → "Enable release immutability"); attestations need
+  a public repository or GitHub Enterprise Cloud.
 
 The publish workflow's `SHA256SUMS` check is the client's own parser,
 ported, so it never publishes a manifest the client cannot read. Extra asset
@@ -141,8 +144,16 @@ A re-run is refused while any release for the tag exists, drafts included.
   ```
 
 - **Failed after "Publish the draft"** (waiting for immutability): the
-  release is published, and immutable once GitHub marks it so. Its tag can never be reused, even if the release is deleted. Fix
-  forward with a new patch tag.
+  release is published, and immutable once GitHub marks it so. With
+  immutable releases on, its tag can never be reused, even if the release
+  is deleted. Fix forward with a new patch tag.
+- **Timed out waiting for immutability, with the setting off:** the release
+  is live and mutable. Delete it, turn on immutable releases, and re-run
+  all jobs.
+
+  ```sh
+  gh release delete <tag> --repo <owner>/<repo> --yes
+  ```
 
 ## I want to…
 

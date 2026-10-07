@@ -67,7 +67,7 @@ name, and the files they cite moved with the rename
 | see the update path proven end to end on each OS | `selfupdate/e2e_running_test.go`; [0004-PLAN, H4](decisions/0004-PLAN-h4-running-copy-end-to-end.md) |
 | run every check before a commit | `make gate`, one line per step; see [AGENTS.md, Pre-add checks](../AGENTS.md#pre-add-checks) and [architecture.md, Tooling](architecture.md#tooling) |
 | fuzz locally | `make fuzz` (each target for 20 s), or `make fuzz FUZZTIME=5m`; see [architecture.md, Tooling](architecture.md#tooling) |
-| know what to do when CI finds a crasher | download the `fuzz-corpus` artifact, copy its file into `selfupdate/testdata/fuzz/<Name>/`, fix the defect, and commit the file as a regression seed ([0004-PLAN, H2](decisions/0004-PLAN-h2-fuzzing-and-manifest-differential.md)) |
+| know what to do when CI finds a crasher | download the `fuzz-corpus` artifact, copy its file into `<package>/testdata/fuzz/<Name>/` of the package that owns the target (`selfupdate`, `selfupdate/archive` or `selfupdate/releasespec`), fix the defect, and commit the file as a regression seed ([0004-PLAN, H2](decisions/0004-PLAN-h2-fuzzing-and-manifest-differential.md)) |
 | update from releases shipped as tar.gz, zip or gz archives, such as GoReleaser's | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#ship-an-archive) |
 | describe my program's release once (products, platforms, packaging, extras) and read it in Go | [guides/building-releases.md](guides/building-releases.md#1-write-the-spec) |
 | build, check and publish my release in CI, with rehearsals on every pull request | [guides/building-releases.md](guides/building-releases.md#4-call-the-workflows) |

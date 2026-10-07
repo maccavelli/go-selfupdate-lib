@@ -2455,3 +2455,64 @@ approved it: "proceed". The PLAN as approved is commit `47f0f97`.
     `overall=0`. apicheck "compatible with v1.10.0"; fuzz clean; vuln "No
     vulnerabilities found."; links "330 links in 49 files, 0 broken"; ids
     "6 files, 16 deny-list rules, 0 findings".
+* Committed by the owner as `8607cef`.
+
+### Phase R3: documentation (2026-10-07)
+
+* **C5,** a pin test: `terminal_event_test.go` `TestRunEndsAtSelected`.
+  Its three subtests:
+  * a check that finds an update (`ErrUpdateAvailable`, `upgrade`);
+  * an up-to-date check (`none`, no error);
+  * an up-to-date apply.
+
+  Each ends at `selected`, with no `complete`, `failed` or `declined`. Its
+  first run failed on the test's own mistake, not the code: it set `Yes`
+  on the checks, which the library refuses as "--check and --yes are
+  contradictory". With `Yes` set only for the apply, it passes on the
+  unchanged code, as a pin test must.
+  * **Plant** (`scripts/plant-copy.sh`): a `complete` reported before the
+    up-to-date apply's return in `updater.go`. Its failure:
+    `TestRunEndsAtSelected/up-to-date_apply: events [resolving-target
+    fetching-release selected complete]: want the last to be selected`.
+  * **Docs:** `doc.go`'s Reporter paragraph; the `EventSelected` and
+    `EventComplete` comments in `types.go`; the extending guide, "Read
+    JSON output"; `docs/architecture.md`, the coordinator bullet.
+* **G8:**
+  * the migration guide's "still publishes bare binaries only" now says
+    archives are built and published since `v1.9.0`, linking the building
+    guide's §7;
+  * "six whole runs" → "seven" (the seven `jsonl-*` and `text-*` pairs in
+    `selfupdate/testdata/golden/`);
+  * the docs index's crasher row names the owning package's
+    `testdata/fuzz/<Name>/`.
+* **G9, `docs/architecture.md`:**
+  * `release-latest-flag.sh` in the tree;
+  * the cache file is schema 3, read from `checkRecordSchema` and
+    `oldestCheckRecordSchema` (both 3) in `checkcache.go`;
+  * build step 4 adds `GOWORK=off`, as `gotool.go:35` sets it;
+  * publish step 7 states the backport rule;
+  * the CI list gains the live tests by OS with their `SELFUPDATE_REQUIRE_*`
+    variables, the latest-release rule's test and the pre-add gate's test;
+  * "the gate's own test" became "the API gate's test", as the new `make
+    gate` would otherwise be confused with it.
+* **F3:** building guide step 12 states the `v1.10.0` floor; the migration
+  guide's "Move both" bullet adds "Until `v1.11.0`, the build workflow does
+  not check this."
+* **F4:**
+  * building guide step 4 gains **Before the first release**: the
+    immutable-releases setting, and what happens without it;
+    attestations' prerequisite;
+  * `README.md`: the publish bullet names both; "Its tag can never be
+    reused" is now conditioned on the setting; a new "When a publish fails"
+    bullet covers a timeout with the setting off, with the `gh release
+    delete` command.
+* **Checks:**
+  * `check-docs.sh --links` on the six changed Markdown files: 147 links,
+    0 broken;
+  * markdownlint: three MD004 errors (`*` list markers in the new CI
+    sub-list), fixed to `-`, then clean;
+  * `make pre-add-check` on `doc.go`, `types.go` and the test: "3 file(s)
+    clean";
+  * `make gate` on `8607cef` with R3's changes: all 14 steps `rc=0`,
+    `overall=0`; links "331 links in 49 files, 0 broken"; ids "9 files, 16
+    deny-list rules, 0 findings".

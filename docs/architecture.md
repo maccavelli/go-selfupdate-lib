@@ -49,6 +49,8 @@ scripts/
   selfupdate_manifest.py    the verifier's SHA256SUMS parser, as a module;
                             the differential test calls it too
   refuse-existing-release.sh       refuses a tag that already has a release
+  release-latest-flag.sh    the latest-flag rule: a stable tag below the
+                            current latest is published --latest=false
   check-release-tag.sh      the tag rule: strict, or a listed prerelease
                             channel; the workflow and the verifier call it
   check-installers.sh       lints the installer templates, or a staged
@@ -159,8 +161,9 @@ docs/
     whose policy is a `ChannelPolicy` (`types.go`, with `ValidChannel`
     and `Admits`);
   - **the opt-in:** `Request.Channel` and `CheckRequest.Channel`, checked
-    by `validateRequest`; the cache file is schema 2, which keys the
-    channel, and still reads schema 1 (`checkcache.go`);
+    by `validateRequest`; the cache file is schema 3, which keys the
+    channel and holds the cached outcome; a record of an older schema
+    reads as a miss (`checkcache.go`);
   - **listing:** `ReleaseLister` and `ListOptions` (`types.go`), and
     `GitHubSource.ListReleases`, which pages `releases?per_page=30` up to
     90 releases by default and 300 at most (`github.go`);
@@ -235,7 +238,9 @@ docs/
   staging. It pins an exact `--version`, and closes the session before
   reporting `complete`, the run's one terminal event. An error after that
   point is a `warning` event and an entry in `Result.Warnings`
-  (`warnings.go`), not a failure.
+  (`warnings.go`), not a failure. A check that succeeds, and a run that
+  finds the program up to date, install nothing and end at `selected`: the
+  result's `Operation` is the outcome, and no `complete` follows.
 - The install path (`session.go`, `replace_*.go`, `lock*.go`, `cleanup*.go`,
   `managed.go`):
   - locks the target directory through `os.Root`, refusing a symlinked lock
@@ -291,7 +296,7 @@ job, on `ubuntu-24.04`:
    package's dependencies, then builds with the fixed recipe
    (`CGO_ENABLED=0`, `-trimpath`, `-buildvcs=true`, `-s -w` and the
    `buildinfo` stamp, `GOFLAGS=-mod=readonly`, `GOENV=off`,
-   `GOTOOLCHAIN=local`);
+   `GOTOOLCHAIN=local`, `GOWORK=off`);
 5. `stage`: checks each binary's build information (platform, tags, cgo,
    `-trimpath`, commit, clean tree, toolchain, module and package, and the
    tag as the main module's version at the repository root) and its
@@ -339,7 +344,10 @@ four publish inputs.
 7. creates a draft, uploads the files (one argument each), attests them,
    publishes, and waits for the release to be immutable and verified. A
    prerelease tag is created with `--prerelease --latest=false`, so it
-   never becomes the release stable clients read.
+   never becomes the release stable clients read. A stable tag below the
+   current latest release, such as a backport, is created and published
+   with `--latest=false` too (`release-latest-flag.sh`), so clients keep
+   seeing the newest one.
 
 Every `gh` step that acts on the calling repository sets `GH_REPO`. Every
 `run:` block reads the ref from `env:` (`TAG`, `REF_TYPE`); no `${{ }}` is
@@ -426,18 +434,28 @@ interpolated into shell.
   - **Linux and macOS:** `go test -race`, with
     `SELFUPDATE_REQUIRE_PYTHON=1`, so the differential runs rather than
     skips.
+  - **The live tests,** each required, so a skip fails:
+    - Linux: "ownership as root", the staging-owner test under `sudo`
+      (`SELFUPDATE_REQUIRE_ROOT`); the systemd live tests, in system scope
+      under `sudo` and in the runner's user scope
+      (`SELFUPDATE_REQUIRE_SYSTEMD`);
+    - macOS: the launchd live tests (`SELFUPDATE_REQUIRE_LAUNCHD`) and the
+      codesign live tests (`SELFUPDATE_REQUIRE_CODESIGN`);
+    - Windows: the SCM live tests (`SELFUPDATE_REQUIRE_SCM`).
   - **Linux also:** a full-history checkout; `go test -shuffle=on -count=2`;
     the fuzz script's test, then `make fuzz`, with the corpus uploaded as
     an artifact when it fails;
     `go vet` for `freebsd/amd64`, `openbsd/amd64` and `linux/386`;
     `go vet`, `gofmt`, `go mod tidy -diff`, `make lint` (golangci-lint
-    v2.14.0); `make apicheck` and the gate's own test; `govulncheck` v1.8.0;
+    v2.14.0); `make apicheck` and the API gate's test; `govulncheck` v1.8.0;
     `shellcheck` v0.11.0 (the latest release, pinned by SHA-256 and first
     on `PATH`, so actionlint's embedded checks use it too),
     `markdownlint-cli2` 0.23.2 and `actionlint` v1.7.12; the installer
     lint script's test, then the script on both templates, with the
     runner's PSScriptAnalyzer; the verifier's
-    fixture test; the release tag rule's test; the workflow checker, with
+    fixture test; the release tag rule's test; the latest-release rule's
+    test (`release-latest-flag_test.sh`); the pre-add gate's test
+    (`go-precheck_test.sh`); the workflow checker, with
     every rule on both reusable workflows and `expressions`,
     `permissions` and `pins` on `ci.yml`, its test, and the workflow shape
     test; the full gate's test, the document checker's and the plant

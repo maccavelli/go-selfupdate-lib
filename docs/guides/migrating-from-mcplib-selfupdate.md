@@ -528,8 +528,10 @@ runs unless you configure it. Why, and how, is in
 
 - **To ship archives,** set `Config.Assets` to `archive.NewSelector` and
   `Config.Unpacker` to `archive.NewUnpacker`. See
-  [Ship an archive](extending-selfupdate.md#ship-an-archive). This
-  repository's release workflow still publishes bare binaries only.
+  [Ship an archive](extending-selfupdate.md#ship-an-archive). Since
+  `v1.9.0` this repository's workflows build and publish archives too,
+  from a spec whose platforms set `format`: see
+  [the building guide, §7](building-releases.md#7-archives).
 - **If you re-sign on update** with your own `Transformer`, as
   magic-cli-remote's `codesignTransformer` does, replace it with
   `codesign.NewSigner`, with an `Identifier`. That fixes two defects: the
@@ -633,6 +635,7 @@ stages exactly what `v1.9.0` staged. Why, and how, is in
   `releasespec.Parse` reads the spec it embeds, and the build workflow's
   pin, so that it renders the installers. `v1.9.0` refuses a spec with
   `installer` as an unknown field, in your program and in the workflow.
+  Until `v1.11.0`, the build workflow does not check this.
 
 ### Check
 
