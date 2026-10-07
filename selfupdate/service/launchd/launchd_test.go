@@ -197,6 +197,18 @@ func TestInsideByAncestry(t *testing.T) {
 	if inside, err := testJob(t, f, Options{}).Inside(context.Background()); err != nil || inside {
 		t.Fatalf("a job with no process: inside %t, %v", inside, err)
 	}
+	// Not an ancestor, but in this process's group, which launchd reaps
+	// with the job.
+	f.pid = 4242
+	f.parents = map[int]int{os.Getpid(): 777}
+	f.groups = map[int]int{4242: 1}
+	if inside, err := testJob(t, f, Options{}).Inside(context.Background()); err != nil || !inside {
+		t.Fatalf("a job in this process's group: inside %t, %v", inside, err)
+	}
+	f.groups = map[int]int{4242: 2}
+	if inside, err := testJob(t, f, Options{}).Inside(context.Background()); err != nil || inside {
+		t.Fatalf("a job in another group: inside %t, %v", inside, err)
+	}
 }
 
 // TestLaunchctlError: the exit codes of 0011-MADR §5 map to the typed

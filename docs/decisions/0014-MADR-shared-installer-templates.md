@@ -433,6 +433,16 @@ Both scripts share one contract.
 * **A live rehearsal** runs the real one-liners against a real release on
   the three test hosts.
 
+*Amended 2026-10-07 (0014-PLAN deviation D8):* the installers unpack
+tar.gz and gz assets with the system's gzip and tar, which read the gzip
+stream to its end: GNU tar 1.35 refused a cut trailer, a wrong checksum
+and data after the member; macOS bsdtar refused the cut one. The client's
+unpacker does not read that far, by 0012-MADR §4's decision. So the
+publish workflow's archive check (`selfupdate-release check`) reads each
+tar.gz and gz asset to its end with gzip, one member and nothing after
+it, before the client's unpacker runs, and a release `install.sh` could
+not unpack is not published. The client is unchanged.
+
 ### 6. Product-specific steps
 
 magic-cli-remote's service management and recall's `configure` stay in

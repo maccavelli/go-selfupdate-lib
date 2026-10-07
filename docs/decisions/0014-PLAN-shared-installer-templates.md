@@ -757,10 +757,17 @@ Additions only: `make apicheck` reports `compatible with v1.9.0`, and
 * **`build-selfupdate-release.yml`:** `stage` renders the installers for
   the calling repository; nothing changes for a spec without the field,
   and the workflow's inputs and outputs are the same.
+* **`publish-selfupdate-release.yml`'s archive check** (D8) also reads
+  every tar.gz and gz asset to its end with gzip, and refuses one that is
+  cut, has a wrong checksum, or has data after its one member, before the
+  client's unpacker runs. The build workflow never writes such an asset;
+  the client's own unpacker is unchanged.
 * **Tooling** (no release surface): `selfupdate-release installer`;
   `scripts/check-installers.sh`; behaviour tests of both installers
   under sh, dash, bash, BusyBox, Windows PowerShell 5.1 and PowerShell
-  7; a CI job running `install.sh`'s tests in Alpine and Debian.
+  7; a CI job running `install.sh`'s tests in Alpine and Debian; the
+  launchd backend's tests no longer ask the system about a fixture PID
+  (D9).
 
 ### Deviations
 
@@ -866,3 +873,74 @@ Additions only: `make apicheck` reports `compatible with v1.9.0`, and
     `Invoke-WebRequest` or one of its aliases outside a comment. MADR's
     fact is qualified.
   * **Files:** `render_test.go`.
+* **D7 (2026-10-07), after I6's push: CI's Windows leg.**
+  * **Found:** CI runs 37565767526, 37567660285 and 37568546818 failed on
+    `windows-2025` at `TestInstallPs1Interrupt`: "AllocConsole: Access is
+    denied." The runner starts its steps with a console but no console
+    window, so `GetConsoleWindow` returned 0 and `AllocConsole`, finding a
+    console already there, failed. I4's record named this path as not yet
+    run. Launched with `CREATE_NO_WINDOW` on the Windows test host, the
+    committed test binary failed the same way.
+  * **Decision (the owner):** fix as reproduced: `ensureConsole` calls
+    `AllocConsole` and takes `ERROR_ACCESS_DENIED` as a console being
+    there. Under the same launch the fixed binary passed:
+    `--- PASS: TestInstallPs1Interrupt/pwsh`.
+  * **Files:** `installer_ps_test.go`.
+* **D8 (2026-10-07), after I6's push: a truncated tar.gz accepted.**
+  * **Found:** run 37568546818 failed on `macos-15` at
+    `TestCheck/a_truncated_gzip`: "check: <nil>". The client's tar.gz
+    unpacker stops at tar's end and never reads the gzip trailer, as
+    0012-MADR §4 decided ("a gzip CRC adds nothing" once `SHA256SUMS` has
+    checked the archive). Whether the case's 12-byte cut reaches the
+    program depends on how the fixture binary compresses, and the binary
+    changes with every fixture commit. I5's `mark-installed` moved it: on
+    this Mac the case failed 4 of 12 runs with fresh fixtures, against 12
+    of 12 passes with the fixture before I5.
+  * **What it matters for:** the installers unpack with system tools. A
+    tar.gz cut in its trailer, with a wrong CRC, and with data after it:
+    GNU tar 1.35 on the Linux test host refused all three (rc 2); macOS
+    bsdtar 3.5.3 refused the cut one only; `gzip -t` refused all three on
+    both. A release the client accepts could fail `install.sh`.
+  * **Decision (the owner),** after a first answer of "harden the
+    client's unpacker", which would have reversed 0012-MADR §4 and was
+    withdrawn when that was put to the owner: the publish check reads
+    every tar.gz and gz asset to its end with gzip, one member and
+    nothing after it, before the client's unpacker runs; the client is
+    unchanged. The first route's edit to `selfupdate/archive` was
+    reverted before anything was staged. MADR §5 is amended.
+  * **Evidence:** `TestCheck` gains six cases (no trailer, a wrong
+    checksum, data after the member, a second member, a `.gz` without its
+    trailer, a cut in half); "a truncated gzip" now fails the same way
+    every time. Twelve runs with fresh fixtures: 12 passes. Plants: the
+    check removed (six cases fail, two with the unpacker's own refusal),
+    the trailing-data test removed, and `Multistream(true)`, each caught.
+  * **Files:** `check.go`, `pack_test.go`; the building guide's table of
+    failures, `docs/architecture.md`, the migration guide's §10 and the
+    release notes.
+* **D9 (2026-10-07), after I6's push: a launchd test that read the
+  system.**
+  * **Found:** run 37568546818 failed on `ubuntu-24.04` at
+    `TestInsideByAncestry`: "an unrelated job: inside true". `Inside`
+    asks the kernel for the job PID's process group
+    (`syscall.Getpgid`), and the test's fake does not answer it: when a
+    process of the same `go test` run held the fixture PID 4242, the
+    "unrelated" job was in this process's group. The code is
+    0011-MADR's (commit `d207bd5`, 2026-10-04); 0014 did not cause it.
+    Made deterministic in a scratch copy, with the job's PID set to the
+    test's parent, `go test`: "an unrelated job: inside true, <nil>".
+  * **Decision (the owner):** fix it here, because `v1.10.0` needs green
+    CI. The `Job` holds its group lookup, `processGroups` by default;
+    the tests' fake answers it from its own table, never the system.
+    `TestInsideByAncestry` gains the case it covered only by accident: a
+    job in this process's group, and one in another. The deterministic
+    repro passes with the fix; the group branch removed fails the new
+    case: "a job in this process's group: inside false".
+  * **Files:** `selfupdate/service/launchd/job.go`, `detach.go`,
+    `fake_test.go`, `launchd_test.go`.
+* **CI after the pushes (2026-10-07).** Run 37567660285 (I5) ran the
+  steps I3 and I5 had not seen run: the Linux lint step, the script's
+  test and "check-installers: clean" on both templates under the
+  runner's PSScriptAnalyzer; `installer-containers`, with
+  `TestInstallSh/sh_(busybox)` in Alpine and `sh_(dash)` and `bash` in
+  Debian, each passing; and "Check the staged installers", "clean" for
+  both sets. Its one failure, and run 37568546818's three, are D7 to D9.

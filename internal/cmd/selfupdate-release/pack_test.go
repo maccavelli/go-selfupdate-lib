@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -180,6 +181,12 @@ func TestCheck(t *testing.T) {
 		t.Fatal(err)
 	}
 	good := packed(t, archive.TarGz, name, prog)
+	goodGz := packed(t, archive.Gz, name, prog)
+	// Changed only in gzip's trailer, so the program inside is intact:
+	// the client's unpacker accepts these (0012-MADR §4), and gzip and tar,
+	// which the installers use, refuse them (0014-PLAN deviation D8).
+	badCRC := slices.Clone(good)
+	badCRC[len(badCRC)-8] ^= 0xff
 
 	for _, tc := range []struct {
 		name   string
@@ -192,7 +199,13 @@ func TestCheck(t *testing.T) {
 		{"a good gz", archive.Gz, packed(t, archive.Gz, name, prog), ""},
 		{"the program twice", archive.TarGz, tarOf(t, regular(name), regular(name)), "the client's unpacker refuses it"},
 		{"the program as a symlink", archive.Zip, symlinkZip.Bytes(), "the client's unpacker refuses it"},
-		{"a truncated gzip", archive.TarGz, good[:len(good)-12], "the client's unpacker refuses it"},
+		{"a truncated gzip", archive.TarGz, good[:len(good)-12], "the gzip stream is not whole: unexpected EOF"},
+		{"a tar.gz without its gzip trailer", archive.TarGz, good[:len(good)-8], "the gzip stream is not whole: unexpected EOF"},
+		{"a tar.gz with a wrong gzip checksum", archive.TarGz, badCRC, "the gzip stream is not whole: gzip: invalid checksum"},
+		{"data after the tar.gz member", archive.TarGz, append(slices.Clone(good), "junk"...), "the gzip stream is not whole: data follows the gzip member"},
+		{"a second gzip member after a tar.gz", archive.TarGz, append(slices.Clone(good), goodGz...), "data follows the gzip member"},
+		{"a gz without its trailer", archive.Gz, goodGz[:len(goodGz)-8], "the gzip stream is not whole: unexpected EOF"},
+		{"a tar.gz cut in half", archive.TarGz, good[:len(good)/2], "the gzip stream is not whole: unexpected EOF"},
 		{"a script, not an executable", archive.Gz, packed(t, archive.Gz, name, []byte("#!/bin/sh\n")), "the client's unpacker refuses it"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

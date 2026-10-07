@@ -326,8 +326,10 @@ four publish inputs.
    object makes the release one of archives,
    `<product>-<os>-<arch>.<format>`, and `SHA256SUMS` lists those;
 6. for a release of archives only, sets up Go from its own `go.mod` and
-   runs `selfupdate-release check`, which unpacks each archive with the
-   client's own unpacker and checks the program's image;
+   runs `selfupdate-release check`, which reads each tar.gz and gz to its
+   end with gzip (one member, its checksum, nothing after it), then
+   unpacks each archive with the client's own unpacker and checks the
+   program's image;
 7. creates a draft, uploads the files (one argument each), attests them,
    publishes, and waits for the release to be immutable and verified. A
    prerelease tag is created with `--prerelease --latest=false`, so it

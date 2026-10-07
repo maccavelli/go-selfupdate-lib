@@ -115,6 +115,9 @@ type Job struct {
 	manager               string
 	mu                    sync.Mutex
 	previous              int // the job's PID before this update
+	// groups is processGroups; the tests answer it themselves, so that no
+	// real process can share a fixture PID's group.
+	groups func(pid int) (mine, theirs int, ok bool)
 }
 
 var (
@@ -145,7 +148,7 @@ func newJob(o Options, goos string, uid, euid int) (*Job, error) {
 	if !filepath.IsAbs(o.Plist) {
 		return nil, fmt.Errorf("selfupdate: launchd: plist path %q is not absolute", o.Plist)
 	}
-	j := &Job{o: o, uid: uid, euid: euid}
+	j := &Job{o: o, uid: uid, euid: euid, groups: processGroups}
 	for _, t := range []struct {
 		dst          *string
 		given, deflt string

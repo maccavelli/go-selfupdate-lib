@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"os"
@@ -789,7 +790,6 @@ func TestInstallPs1(t *testing.T) {
 var (
 	kernel32                = syscall.NewLazyDLL("kernel32.dll")
 	procGenerateConsoleCtrl = kernel32.NewProc("GenerateConsoleCtrlEvent")
-	procGetConsoleWindow    = kernel32.NewProc("GetConsoleWindow")
 	procAllocConsole        = kernel32.NewProc("AllocConsole")
 	consoleOnce             sync.Once
 	consoleErr              error
@@ -797,15 +797,14 @@ var (
 
 const ctrlBreakEvent = 1 // CTRL_BREAK_EVENT
 
-// ensureConsole gives the test process a console when it has none, as
-// under a CI runner: a console control event reaches only processes that
-// share the sender's console.
+// ensureConsole gives the test process a console when it has none: a
+// console control event reaches only processes that share the sender's
+// console. A CI runner starts its steps with a console but no console
+// window; AllocConsole then fails with ERROR_ACCESS_DENIED, which means
+// one is there.
 func ensureConsole() error {
 	consoleOnce.Do(func() {
-		if w, _, _ := procGetConsoleWindow.Call(); w != 0 {
-			return
-		}
-		if r, _, err := procAllocConsole.Call(); r == 0 {
+		if r, _, err := procAllocConsole.Call(); r == 0 && !errors.Is(err, syscall.ERROR_ACCESS_DENIED) {
 			consoleErr = fmt.Errorf("AllocConsole: %w", err)
 		}
 	})

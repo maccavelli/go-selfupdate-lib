@@ -612,6 +612,10 @@ stages exactly what `v1.9.0` staged. Why, and how, is in
 - **With `installer` present,** `install.sh` and `install.ps1` are
   reserved extra names, and hook arguments and `identity_args` keep to
   `[A-Za-z0-9._:=/,+@%-]`, because the installers embed them.
+- **The publish workflow's archive check** also reads each tar.gz and gz
+  asset to its end, and refuses one that is cut, has a wrong checksum or
+  has data after it, as `gzip` and `tar` would. The build workflow never
+  writes one; an archive you stage yourself must be whole.
 
 ### Adopting it
 

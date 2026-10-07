@@ -274,6 +274,7 @@ CGO_ENABLED=0 GOOS=<os> GOARCH=<arch> GOFLAGS=-mod=readonly GOTOOLCHAIN=local GO
 | `vcs.revision is "…", want "…"` | the checkout is not the commit the workflow ran for |
 | `the main module version is "…", want "<tag>"` | the checkout did not hold the tag at its commit |
 | `… the client's unpacker refuses it` | a packed archive the client could not read; a bug to report |
+| `… the gzip stream is not whole: …` | a tar.gz or gz asset that is cut, has a wrong checksum, or has data after it, which `gzip` and `tar` would refuse; a bug to report |
 | `… printed "…" first, want "<tag> (release) …"` | the identity command does not print `buildinfo.Identity()` |
 | `… did not finish within 30s` | the identity command waits for input or the network |
 | `the extras directory holds …, which the spec does not list` | the extras artifact holds a file the spec does not name |

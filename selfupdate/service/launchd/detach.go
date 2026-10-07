@@ -30,7 +30,7 @@ func (j *Job) Inside(ctx context.Context) (bool, error) {
 	if s.pid <= 0 {
 		return false, nil
 	}
-	if mine, theirs, ok := processGroups(s.pid); ok && mine == theirs {
+	if mine, theirs, ok := j.groups(s.pid); ok && mine == theirs {
 		return true, nil
 	}
 	cur := os.Getpid()

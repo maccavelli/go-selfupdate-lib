@@ -1,11 +1,15 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
@@ -44,6 +48,11 @@ func check(ctx context.Context, dir, productsJSON, platformsJSON string) ([]stri
 				return nil, err
 			}
 			path := filepath.Join(dir, name)
+			if pp.Format == archive.TarGz || pp.Format == archive.Gz {
+				if err := wholeGzip(path); err != nil {
+					return nil, fmt.Errorf("%s: the gzip stream is not whole: %w", name, err)
+				}
+			}
 			prog, err := unpackProgram(ctx, path, prod, p)
 			if err != nil {
 				return nil, err
@@ -56,6 +65,42 @@ func check(ctx context.Context, dir, productsJSON, platformsJSON string) ([]stri
 	}
 	return checked, nil
 }
+
+// wholeGzip reads a gzip asset to its end: one member, its trailer's CRC
+// and length checked, and nothing after it. The client's unpacker stops at
+// the program and leaves the rest unread (0012-MADR §4); the installers
+// unpack with gzip and tar, which read to the end, so the publish check
+// does too (docs/decisions/0014-PLAN-shared-installer-templates.md
+// deviation D8).
+func wholeGzip(path string) error {
+	f, err := os.Open(path) //nolint:gosec // a staged asset
+	if err != nil {
+		return err
+	}
+	defer f.Close() //nolint:errcheck // read only
+	br := bufio.NewReader(f)
+	gz, err := gzip.NewReader(br)
+	if err != nil {
+		return err
+	}
+	gz.Multistream(false)
+	limit := selfupdate.DefaultLimits().Executable + maxGzipOverhead
+	n, err := io.Copy(io.Discard, io.LimitReader(gz, limit+1))
+	if err != nil {
+		return err
+	}
+	if n > limit {
+		return fmt.Errorf("it expands past %d bytes", limit)
+	}
+	if _, err := br.ReadByte(); !errors.Is(err, io.EOF) {
+		return errors.New("data follows the gzip member")
+	}
+	return nil
+}
+
+// maxGzipOverhead is what a release archive may expand to beyond its
+// program: tar's headers and padding.
+const maxGzipOverhead = 8 << 20
 
 func runCheck(ctx context.Context, args []string, stdout io.Writer) error {
 	f := newFlags("check")

@@ -32,6 +32,9 @@ type fakeLaunchd struct {
 	onStart func(f *fakeLaunchd)
 	// parents maps a PID to its parent, for ps.
 	parents map[int]int
+	// groups maps a PID to its process group; this process is in group 1.
+	// A PID it does not list has no group, as a process that has gone.
+	groups map[int]int
 	// fail maps a verb to its output.
 	fail map[string]service.Output
 	// handOffs answers print for one-shot jobs, by label.
@@ -45,8 +48,17 @@ func newFake() *fakeLaunchd {
 		onStart: func(f *fakeLaunchd) {
 			f.loaded, f.pid, f.state = true, 200, "running"
 		},
-		parents: map[int]int{}, fail: map[string]service.Output{}, handOffs: map[string]service.Output{},
+		parents: map[int]int{}, groups: map[int]int{}, fail: map[string]service.Output{}, handOffs: map[string]service.Output{},
 	}
+}
+
+// processGroups answers the Job's group lookup from f.groups, never from
+// the system (0014-PLAN deviation D9).
+func (f *fakeLaunchd) processGroups(pid int) (mine, theirs int, ok bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	g, ok := f.groups[pid]
+	return 1, g, ok
 }
 
 func (f *fakeLaunchd) Run(_ context.Context, c service.Command) (service.Output, error) {
@@ -195,5 +207,6 @@ func testJob(t *testing.T, f *fakeLaunchd, o Options) *Job {
 	if err != nil {
 		t.Fatal(err)
 	}
+	j.groups = f.processGroups
 	return j
 }
