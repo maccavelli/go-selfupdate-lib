@@ -19,6 +19,10 @@ import sys
 import unicodedata
 
 MAX_CHECKSUM_LINE = 4096  # selfupdate/checksums.go maxChecksumLine
+# selfupdate/checksums.go maxChecksumName: the longest name whose canonical
+# line, "<digest>  <name>" and its newline, fits the line cap
+# (0015-MADR amendment A2, A10).
+MAX_CHECKSUM_NAME = MAX_CHECKSUM_LINE - 1 - 64 - 2
 HEX_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 
 
@@ -87,6 +91,8 @@ def parse_manifest(raw, label):
         # (0010-MADR A12).
         if name in (".", "..") or "/" in name or "\\" in name or ":" in name or os.path.basename(name) != name:
             raise ManifestError("%s line %d: filename is not a basename" % (label, i))
+        if len(name.encode("utf-8", errors="surrogateescape")) > MAX_CHECKSUM_NAME:
+            raise ManifestError("%s line %d: filename longer than a SHA256SUMS line holds" % (label, i))
         if name in entries:
             raise ManifestError("%s duplicate filename %s" % (label, name))
         entries[name] = digest.lower()

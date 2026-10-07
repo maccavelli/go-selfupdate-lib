@@ -475,6 +475,31 @@ left as written.
   probe evidence), plus 30 s; systemd `TimeoutStopUSec` plus 30 s. A stop
   never waits less than it does today.
 
+### A2 (2026-10-07): A10, a manifest line that does not survive its own canonical form
+
+*Status: accepted (2026-10-07). The owner chose "Fix now as P0, before R1"
+when the PLAN's R1 gate found it.*
+
+**Found.** The first run of `make gate` (0015-PLAN R1) failed its fuzz
+step: `FuzzParseSHA256SUMS` found an input that `ParseSHA256SUMS`
+accepts, whose canonical form it refuses. The fuzz test checks that every
+accepted manifest, written back as `<digest>  <name>`, parses again.
+
+| ID | Where | Finding | Evidence |
+| :--- | :--- | :--- | :--- |
+| A10 | `selfupdate/checksums.go:14,47,104-115`; `scripts/selfupdate_manifest.py:21,69-71` | A manifest line is capped at 4096 bytes with its newline, and a name is not capped at all. A line with one space before its name, or a `*` binary marker, is one byte shorter than the canonical two-space line. So a 4030-byte name fits at 4095 bytes, and its canonical line, 4096 bytes before the newline, does not: "bufio.Scanner: token too long". The verifier's Python parser shares the cap, so the two still agree; the defect is the round trip. No real asset name comes near that length. The visible effect is that CI's 20 s fuzz run, and `make gate`, can fail at random. | R: `FuzzParseSHA256SUMS` found it in 13 s; its input, kept as `selfupdate/testdata/fuzz/FuzzParseSHA256SUMS/ec5a3a374e24bbcf`, has a line of 4095 bytes (a 64-character digest, one space, a 4030-byte name) |
+
+**Decided.**
+
+* Severity Low; fixed in `v1.10.1`, as the PLAN's new Phase P0, before R1.
+* Both parsers refuse a name longer than 4029 bytes: the canonical line,
+  64 + 2 + 4029 = 4095 bytes plus its newline, then just fits the cap. A
+  manifest whose names all fit is parsed as before, so the documented
+  contract holds.
+* The fuzz input is committed as the regression seed, and the
+  differential test gains both boundary cases, so the two parsers must
+  agree on them.
+
 ## More Information
 
 * Earlier passes:

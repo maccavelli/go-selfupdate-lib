@@ -134,3 +134,26 @@ func TestChecksumNameRefusesColon(t *testing.T) {
 		}
 	}
 }
+
+// TestChecksumNameFitsTheLine: a name is accepted only when its canonical
+// line, "<digest>  <name>" and a newline, fits the line cap, so every
+// manifest the parser accepts still parses once written back. A line with
+// one space before its name is a byte shorter than the canonical one
+// (0015-MADR amendment A2, A10).
+func TestChecksumNameFitsTheLine(t *testing.T) {
+	fits := strings.Repeat("n", 4029)
+	for _, body := range []string{testDigest + " " + fits + "\n", testDigest + "  " + fits + "\n"} {
+		got, err := ParseSHA256SUMS([]byte(body))
+		if err != nil || got[fits] != testDigest {
+			t.Fatalf("a %d-byte name in a %d-byte line: %v", len(fits), len(body), err)
+		}
+	}
+	over := fits + "n"
+	line := testDigest + " " + over + "\n"
+	if _, err := ParseSHA256SUMS([]byte(line)); !errors.Is(err, ErrIntegrity) {
+		t.Fatalf("a %d-byte name in a %d-byte line: err = %v, want ErrIntegrity", len(over), len(line), err)
+	}
+	if err := validateChecksumName(over); !errors.Is(err, ErrIntegrity) {
+		t.Fatalf("validateChecksumName of %d bytes: err = %v, want ErrIntegrity", len(over), err)
+	}
+}

@@ -12,6 +12,11 @@ const (
 	githubDigestPrefix = "sha256:"
 	sha256HexLen       = 64
 	maxChecksumLine    = 4096
+	// maxChecksumName is the longest name whose canonical line,
+	// "<digest>  <name>" and its newline, fits maxChecksumLine, so a
+	// manifest that parses still parses once written back (0015-MADR
+	// amendment A2, A10).
+	maxChecksumName = maxChecksumLine - 1 - sha256HexLen - 2
 )
 
 func parseGitHubDigest(digest string) (string, error) {
@@ -110,6 +115,9 @@ func validateChecksumName(name string) error {
 	// Windows only, so the result used to depend on the OS (0010-MADR A12).
 	if strings.ContainsAny(name, `/\:`) {
 		return fmt.Errorf("filename %q is not a basename: %w", name, ErrIntegrity)
+	}
+	if len(name) > maxChecksumName {
+		return fmt.Errorf("filename is %d bytes; at most %d fit a SHA256SUMS line: %w", len(name), maxChecksumName, ErrIntegrity)
 	}
 	return nil
 }

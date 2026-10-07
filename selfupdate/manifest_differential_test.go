@@ -37,10 +37,19 @@ func TestManifestDifferential(t *testing.T) {
 	rng := rand.New(rand.NewPCG(seed, seed^0x9e3779b97f4a7c15))
 
 	dir := t.TempDir()
-	cases := make([][]byte, n)
-	for i := range cases {
-		cases[i] = genManifest(rng)
-		if err := os.WriteFile(filepath.Join(dir, caseName(i)), cases[i], 0o600); err != nil {
+	cases := make([][]byte, 0, n+2)
+	for range n {
+		cases = append(cases, genManifest(rng))
+	}
+	// The name-length boundary, which random names never reach: the
+	// longest name whose canonical line fits, and one byte more, each after
+	// a single space (0015-MADR amendment A2, A10).
+	digest := strings.Repeat("a", 64)
+	for _, size := range []int{4029, 4030} {
+		cases = append(cases, []byte(digest+" "+strings.Repeat("n", size)+"\n"))
+	}
+	for i, data := range cases {
+		if err := os.WriteFile(filepath.Join(dir, caseName(i)), data, 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -65,8 +74,8 @@ func TestManifestDifferential(t *testing.T) {
 		}
 		results[r.Case] = r
 	}
-	if len(results) != n {
-		t.Fatalf("the verifier's parser returned %d results for %d cases", len(results), n)
+	if len(results) != len(cases) {
+		t.Fatalf("the verifier's parser returned %d results for %d cases", len(results), len(cases))
 	}
 
 	accepted, disagreements := 0, 0

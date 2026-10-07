@@ -9,7 +9,8 @@ Associated MADR: [0015-MADR-remediate-third-debugging-pass-findings.md](0015-MAD
 
 ## Goal
 
-* Each of the MADR's 63 findings ends in one of three states:
+* Each of the MADR's 64 findings (63, and A10 from its amendment A2) ends
+  in one of three states:
   * fixed, with a test that failed on the unfixed code and passes after;
   * decided, by a row of "Decisions this PLAN assumes";
   * recorded as open in 0004-MADR P3, with the reason.
@@ -32,6 +33,7 @@ Associated MADR: [0015-MADR-remediate-third-debugging-pass-findings.md](0015-MAD
 | Phase | Track | Findings | Commit |
 | :--- | :--- | :--- | :--- |
 | R0 | 1 | records | the MADR accepted, this PLAN in progress, the index |
+| P0 | 2 | A10 (deviation D1) | a manifest name that fits its canonical line, in both parsers; committed before R1 |
 | R1 | 1 | G2 | `scripts/gate.sh`, `scripts/check-docs.sh`, `scripts/plant-copy.sh` and their tests; `make gate`; a CI step |
 | R2 | 1 | G1, G3 (record), G10 (record), N4, N5 | 0004 P3; 0011 A6 and its PLAN's D8; the 0010 note |
 | R3 | 1 | C5, G8, G9, F3 (docs), F4 (docs) | the guides, the READMEs, `docs/architecture.md`, godoc, one test |
@@ -155,7 +157,8 @@ R0 records these in the MADR as amendment A1, before any code changes.
 
 ## Rules for every phase
 
-1. **Order.** R0, R1, R2, R3, then P1–P8, then Q1–Q5. Track 1 changes no
+1. **Order.** R0, P0 (deviation D1), R1, R2, R3, then P1–P8, then Q1–Q5.
+   Track 1 changes no
    release and may interleave with track 2 once R0 and R1 are committed.
    Q1–Q4 start only after `v1.10.1` is tagged.
 2. **One commit per phase.** The agent stages exactly the phase's
@@ -325,6 +328,51 @@ and workflow line there equals `18e0575`'s. Bare Go file names are in
 4. **Checks:** `--links` and `--ids` (the session's checker) on the three
    files; markdownlint on `docs/README.md`. This is the bootstrap
    exception: records only, no code.
+
+### Phase P0: a manifest name that fits its canonical line (A10)
+
+*Added by deviation D1 (2026-10-07). It runs after R0 and is committed
+before R1, whose gate found it.*
+
+**Files:** `selfupdate/checksums.go`, `scripts/selfupdate_manifest.py`,
+`selfupdate/checksums_test.go`, `selfupdate/manifest_differential_test.go`,
+`selfupdate/testdata/fuzz/FuzzParseSHA256SUMS/ec5a3a374e24bbcf`,
+`docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md`
+(amendment A2), this PLAN.
+
+1. **A10** (`checksums.go:11-15,104-115`; `selfupdate_manifest.py:21,69-90`).
+   * **Fix:**
+     * Go: a new constant `maxChecksumName = maxChecksumLine - 1 -
+       sha256HexLen - 2` (4029). `validateChecksumName` refuses a longer
+       name: `filename is %d bytes; at most %d fit a SHA256SUMS line`,
+       wrapping `ErrIntegrity`;
+     * Python: `MAX_CHECKSUM_NAME = MAX_CHECKSUM_LINE - 1 - 64 - 2`, and
+       `parse_manifest` refuses a name whose UTF-8 bytes exceed it, after
+       the basename check.
+   * **Tests:**
+     * `checksums_test.go` `TestChecksumNameFitsTheLine`. A 4029-byte name
+       after one space is accepted, and so is its canonical line. A
+       4030-byte name after one space (a 4095-byte line) is
+       `ErrIntegrity`, and so is `validateChecksumName` on it;
+     * `manifest_differential_test.go`: the generated cases gain both
+       boundary manifests, so Go and Python must agree on each. The result
+       count check uses the number of cases written;
+     * the fuzz input is committed as `FuzzParseSHA256SUMS`'s regression
+       seed, and runs in every `go test`.
+   * **Red:** `TestChecksumNameFitsTheLine`: the 4030-byte name is
+     accepted; the seed: `round trip rejected: … token too long`.
+   * **Plants:**
+     * the Go check off: `TestChecksumNameFitsTheLine` and the seed fail;
+     * the Python check off: `TestManifestDifferential` fails, with Go
+       refusing and Python accepting.
+2. **Run:** `SELFUPDATE_REQUIRE_PYTHON=1 go test -count=1 -run
+   'TestChecksumNameFitsTheLine|TestManifestDifferential|FuzzParseSHA256SUMS|TestParseSHA256SUMS|TestChecksumNameRefusesColon'
+   ./selfupdate`.
+3. **Checks:** the session gate (R1's `make gate` is not yet committed, but
+   its uncommitted copy in the tree is the same program); `make
+   pre-add-check` on the Go files; `make apicheck` against `v1.10.0`;
+   `scripts/verify-selfupdate-release_test.sh`, which runs the Python
+   parser.
 
 ### Phase R1: the gate in the repository (G2)
 
@@ -2122,7 +2170,7 @@ hold).
 
 * **V1.** Each finding has an entry in the execution record's coverage
   table: ID, phase, test, red line, plant line. A decided or open finding
-  has its decision row or its 0004 P3 row instead. All 63 IDs appear.
+  has its decision row or its 0004 P3 row instead. All 64 IDs appear.
 * **V2.** Every plant listed was applied in a scratch copy, and made its
   test fail.
 * **V3.** For `v1.10.1`, the full API report is empty. In a scratch
@@ -2202,3 +2250,84 @@ approved it: "proceed". The PLAN as approved is commit `47f0f97`.
   No code changed, so the gate was not run (rule 5's Go and script checks
   do not apply).
 * **Bootstrap exception:** records and the index only.
+* Committed by the owner as `bae9813`.
+
+### Deviation D1 (2026-10-07): R1's first gate run found A10
+
+* **Found.** R1's scripts were written and their tests passed, and the
+  first full `make gate` ended `overall=1`. 13 of its 14 steps passed;
+  `fuzz` exited 2. `FuzzParseSHA256SUMS` found, in 13 s, a manifest that
+  `ParseSHA256SUMS` accepts and whose canonical form it refuses ("round
+  trip rejected: … bufio.Scanner: token too long"). This is pre-existing,
+  in code R1 does not touch, and the MADR did not list it. Go wrote the
+  input into the tree, as
+  `selfupdate/testdata/fuzz/FuzzParseSHA256SUMS/ec5a3a374e24bbcf`, where
+  `go test ./selfupdate` then failed on it.
+* **Options put to the owner:**
+  1. fix it now as P0, committed before R1 (recommended);
+  2. commit R1 with the gate failing, and fix it in P2;
+  3. a stricter 255-byte name rule, which changes the contract.
+* **Decision:** the owner chose "Fix now as P0, before R1".
+* **Records:** MADR amendment A2 adds finding A10. This PLAN gains Phase
+  P0, a scope row, the order in rule 1, and 64 findings in the Goal and
+  V1.
+* **Files added:** P0's own list. R1's files, already written in the tree,
+  wait uncommitted until P0 is committed.
+
+### Phase P0: a manifest name that fits its canonical line (2026-10-07)
+
+* **The input** (decoded): a 64-character digest, one space, and a
+  4030-byte name, a 4095-byte line. Its canonical form, `<digest>
+  <name>`, is 4096 bytes before its newline, one past what the 4096-byte
+  scanner buffer holds with the newline.
+* **Fix:**
+  * `selfupdate/checksums.go`: `maxChecksumName = maxChecksumLine - 1 -
+    sha256HexLen - 2` (4029), refused in `validateChecksumName` with
+    "filename is %d bytes; at most %d fit a SHA256SUMS line";
+  * `scripts/selfupdate_manifest.py`: `MAX_CHECKSUM_NAME`, the same rule
+    on the name's UTF-8 bytes, after the basename check.
+* **Red,** on the unfixed code:
+  * `TestChecksumNameFitsTheLine`: `a 4030-byte name in a 4096-byte line:
+    err = <nil>, want ErrIntegrity`;
+  * the seed: `round trip rejected: selfupdate: SHA256SUMS is malformed:
+    bufio.Scanner: token too long`;
+  * `TestManifestDifferential`, with its two new boundary cases, passed
+    there: both parsers accepted the 4030-byte name.
+* **Green:** the P0 run passed (`TestManifestDifferential`: N=5000,
+  accepted 1274, rejected 3726); `scripts/verify-selfupdate-release_test.sh`:
+  "all fixtures passed".
+* **Plants,** each in a scratch copy:
+  * the Go check off: `TestChecksumNameFitsTheLine`,
+    `TestManifestDifferential` and `FuzzParseSHA256SUMS` fail ("case 5001
+    … go: <nil>; python: ok=false … filename longer than a SHA256SUMS line
+    holds");
+  * the Python check off: `TestManifestDifferential` fails ("go: … filename
+    is 4030 bytes; at most 4029 fit a SHA256SUMS line").
+* **Lint:** the first pre-add check failed on `makezero`: an `append` to the
+  differential's cases, made with a length. They are now built with a
+  capacity, and both plants were run again, each caught.
+* **Checks:**
+  * `make pre-add-check` on the three Go files: "3 file(s) clean (gofmt,
+    golangci-lint, go vet, go test, govulncheck)";
+  * the gate (R1's `scripts/gate.sh`, uncommitted in the tree), every
+    step `rc=0`, `overall=0`:
+
+    | Step | Last line |
+    | :--- | :--- |
+    | gofmt | gofmt: clean |
+    | lint | 0 issues. |
+    | vet | (none) |
+    | race | ok … `service/systemd` |
+    | shuffle | ok … `service/systemd` |
+    | tidy | (none) |
+    | apicheck | check-api-compat: compatible with v1.10.0 |
+    | fuzz | go-fuzz: 1 fuzz targets ran clean in ./selfupdate/releasespec |
+    | vuln | No vulnerabilities found. |
+    | scripts | all script tests passed |
+    | shellcheck | (none) |
+    | crossvet | cross go vet clean |
+    | links | check-docs: 317 links in 49 files, 0 broken |
+    | ids | check-docs: 24 files, 16 deny-list rules, 0 findings |
+
+    The run covered R1's uncommitted files as well; R1's own record cites
+    its own run.
