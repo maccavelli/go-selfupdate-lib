@@ -1,6 +1,6 @@
 ---
-status: in-progress
-date: 2026-10-06
+status: complete
+date: 2026-10-07
 associated-madr: "0014-MADR-shared-installer-templates.md"
 ---
 # Implement the shared installer templates: the spec's `installer` field, `install.sh` and `install.ps1` rendered and staged by the build workflow, and their tests (`v1.10.0`)
@@ -847,10 +847,67 @@ Additions only: `make apicheck` reports `compatible with v1.9.0`, and
     script's own attempt to run `rehearsal.exe.prev` failed, as Windows
     runs no program without an `.exe` name; that is the script's, not
     the installer's.
+  * **Removal:** the owner deleted the repository, as asked; the API then
+    returned "Not Found" for it, by name, through both GraphQL and REST.
 * **Step 4, the agent's checks:** CI on the tag, above; on
   `proxy.golang.org`, `go list -m …@v1.10.0` gives `v1.10.0` at
   2026-10-07T04:25:29Z, its origin `a0a26b6` and `refs/tags/v1.10.0`, and
   `@latest` already resolves to `v1.10.0`.
+
+### Verification (2026-10-07)
+
+* **V1.** Every new test, rule and gate was seen to fail on a planted
+  break, in a scratch copy, with the failure in its phase's table: 7 in
+  I1, 9 in I2, 11 in I3, 12 in I4 and a thirteenth for D4's wait, 9 in
+  I5, 3 for D8, 1 for D9 and 7 for D10. D7's fix was seen against the
+  failure it fixes, reproduced on the Windows test host.
+* **V2.** `make apicheck` reported `compatible with v1.9.0` at every
+  phase's gate. `go.mod` and `go.sum` are unchanged since `v1.9.0`.
+* **V3.** A spec without `installer` stages what `v1.9.0` staged: `stage`
+  renders nothing without the field, and the verifier, its fixtures,
+  `stage_test.go` and `releasespec`'s parity cases are unchanged since
+  `v1.9.0` (its test data only gained `installer.json` and a fuzz seed).
+  One publish-side check changed by decision: D8's whole-gzip read, for
+  archive releases.
+* **V4.** Each of MADR's D1–D22 the templates address, against its test:
+
+  | Defect | Test that fails with it present |
+  | :--- | :--- |
+  | D1, checksum lookup by a legacy name | every install case of `TestInstallPs1` and `TestInstallSh`: `SHA256SUMS` lists the canonical names only |
+  | D2, an unguarded `$PSCmdlet` | none to guard: the template has no `$PSCmdlet` (I2); the `iex` and scriptblock forms run every case under strict mode |
+  | D3, the asset name reported as the version | `installed <dir>/relay (v1.2.3)`, asserted in each install case |
+  | D4, no version through `iex` | "RELAY_VERSION installs another release", in the `iex` form |
+  | D5, `v` and validation | "-Version installs another release" (`1.2.3` and `v1.2.3`); "-Version outside the tag rule or the channels"; `install.sh`'s equivalents |
+  | D6, no Windows uninstall | "-Uninstall" |
+  | D7, backups and checks | "a reinstall keeps the previous copy"; "an identity mismatch restores the previous copy" (I3's plant) |
+  | D8, four Windows folders | every `install.ps1` case asserts `%LOCALAPPDATA%\Programs\relay` |
+  | D9, Machine entries copied to the user PATH | "the user PATH: added once…": the exact value and kind (I4's plant) |
+  | D10, no real Windows coverage | `TestInstallPs1` itself: real downloads, three forms, both PowerShells, on CI's `windows-2025` |
+  | D11, no shellcheck in CI | `check-installers.sh` in the lint step (I5's plant) |
+  | D12, comments on versioned manifests | not testable: documentation; neither template nor guide describes them |
+  | D14, test seams in production | "SELFUPDATE_INSTALL_BASE_URL is https or loopback", both scripts (D2's plant). The PATH key's loopback rule is untested, as a test would write the real PATH (I4) |
+  | D15, transport | `TestInstallShFetchers` (I3's `wget` plant); curl's flags in `TestTemplatesAsWritten` (D10's plant); the 5.1 TLS session check (I4's plant) |
+  | D16, two `latest` redirects | the harness serves `releases/download/<tag>/` only; "--version of a release with other asset names" asserts the one request, by tag |
+  | D17, Rosetta | "Rosetta is corrected to arm64" (I3's plant) |
+  | D18, x64 PowerShell on Arm64 | `TestTemplatesAsWritten`: the registry, never `OSArchitecture` (D10's plant). A run on Arm64 is not verified |
+  | D19, `iex` scope | the session check after every `iex` and scriptblock run (I4's plant) |
+  | D20, Ctrl-C | `TestInstallShInterrupt` (I3's plant); `TestInstallPs1Interrupt` under PowerShell 7 (D5, I4's plant). 5.1 is not verified |
+  | D21, loose `SHA256SUMS` parsing | the CR, 63-character, upper-case, duplicate and missing cases, both scripts (I3's plant) |
+  | D22, archives, channels, products, attestation | the tar.gz, gz and zip cases; the channel cases; `--product`; D10's attestation cases |
+* **V5.** The templates pass shellcheck 0.11.0, `dash -n` and
+  PSScriptAnalyzer as written and as rendered (I2, I4, I5), in CI's lint
+  step and in the rehearsal's staged-installer check.
+* **V6.** The behaviour tests pass under `sh` (macOS), dash, bash,
+  Ubuntu's busybox-static (D3's six cases skipped, saying why) and
+  Alpine's BusyBox (none skipped, in CI's container job), and under
+  Windows PowerShell 5.1 and PowerShell 7 as a file, through `iex` and
+  through `[scriptblock]::Create`.
+* **V7.** The live rehearsal passed every check of I7 step 3, and the
+  repository is gone.
+* **V8.** MADR's "Not verified" entries for Alpine and BusyBox (I3) and
+  TLS 1.2 on 5.1 (I4) are restated; the Arm64 entry stays, with D18.
+* **V9.** CI is green on `main`, at `a0a26b6` (run 37571411162) and the
+  pin commit `18e0575`, and on `v1.10.0` (run 37577710330).
 
 ### Deviations
 
@@ -1027,3 +1084,39 @@ Additions only: `make apicheck` reports `compatible with v1.9.0`, and
   `TestInstallSh/sh_(busybox)` in Alpine and `sh_(dash)` and `bash` in
   Debian, each passing; and "Check the staged installers", "clean" for
   both sets. Its one failure, and run 37568546818's three, are D7 to D9.
+* **D10 (2026-10-07), closing: V4's untested defects.**
+  * **Found:** checking V4 before closing, each of MADR's D1–D22 against
+    the tests, four had none: D22's attestation verification
+    (`--verify-attestation` passed only in the live rehearsal; no test
+    covered a missing `gh`, a logged-out one or a failing verification);
+    D15's curl retries and timeout (`wget --https-only` and TLS 1.2 on
+    5.1 are tested); D18, the native architecture on Arm64 Windows (no
+    Arm64 host); and D12, comments describing versioned manifests
+    (documentation).
+  * **Decision (the owner):** add the tests, then close. A stub `gh`
+    ahead of `PATH` tests `--verify-attestation` and `-VerifyAttestation`
+    in both installers: each download verified with this release's
+    repository and the publish workflow as signer; a failing
+    verification (exit 2, nothing changed); `gh` logged out (exit 1); no
+    `gh` (exit 1). `TestTemplatesAsWritten` pins curl's `--proto`,
+    `--tlsv1.2`, `--fail`, `--retry 3` and `--connect-timeout 20`, and that
+    `install.ps1` reads the architecture from the registry and never from
+    `OSArchitecture` or `$env:PROCESSOR_ARCHITECTURE`. D18's run on Arm64
+    and D12 stay recorded as not testable here.
+  * **Files:** `installer_sh_test.go`, `installer_ps_test.go`,
+    `render_test.go`.
+  * **Evidence:** three cases in `TestInstallSh` and three in
+    `TestInstallPs1` (file and scriptblock forms): each download verified,
+    named with `--repo fixture/relay --signer-workflow
+    maccavelli/go-selfupdate-lib/.github/workflows/publish-selfupdate-release.yml`;
+    a failing verification, exit 2 and the earlier binary kept; logged
+    out, exit 1; no `gh`, exit 1 with nothing downloaded. They pass on
+    this Mac (sh, dash, bash), on the Linux test host ("pass=104 skip=6
+    fail=0", busybox-static included, as `gh` is no applet) and on the
+    Windows test host, the whole package "pass=266 fail=0 skip=0".
+    Plants, each caught: attestation never verified, in each script (`gh
+    calls "" lack …`); the login check removed, in each (`exit 0, want
+    1`); the signer workflow dropped from `install.sh`'s call; curl
+    without `--retry` (`the curl call lacks --retry 3`); the architecture
+    from `OSArchitecture` (`install.ps1 reads the architecture from
+    OSArchitecture`).

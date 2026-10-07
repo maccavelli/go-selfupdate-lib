@@ -204,6 +204,9 @@ var localRe = regexp.MustCompile(`(?m)(^|[;&|{(]|\bthen|\bdo|\belse)\s*local\s`)
 
 // iwrRe finds each line that calls Invoke-WebRequest, by name or by its
 // aliases, outside a comment.
+// curlRe finds install.sh's curl call, continuation lines included.
+var curlRe = regexp.MustCompile(`(?m)^\s*curl (?:[^\n]*\\\n)*[^\n]*$`)
+
 var iwrRe = regexp.MustCompile(`(?im)^[^#\n]*\b(Invoke-WebRequest|iwr|curl|wget)\b[^\n]*$`)
 
 func TestTemplatesAsWritten(t *testing.T) {
@@ -229,6 +232,27 @@ func TestTemplatesAsWritten(t *testing.T) {
 	for _, call := range calls {
 		if !bytes.Contains(call, []byte("-UseBasicParsing")) {
 			t.Errorf("install.ps1: %q lacks -UseBasicParsing", bytes.TrimSpace(call))
+		}
+	}
+	// What no run here can show (0014-PLAN deviation D10): curl's
+	// transport flags, against a server that answers at once; and the
+	// architecture from the registry, which an x64 process on Arm64
+	// Windows reads truthfully and OSArchitecture before .NET 7 does not.
+	curl := curlRe.Find(sh)
+	if curl == nil {
+		t.Error("install.sh: no curl call")
+	}
+	for _, flag := range []string{`--proto "$CURL_PROTO"`, "--tlsv1.2", "--fail", "--retry 3", "--connect-timeout 20"} {
+		if !bytes.Contains(curl, []byte(flag)) {
+			t.Errorf("install.sh: the curl call lacks %s", flag)
+		}
+	}
+	if !bytes.Contains(ps, []byte(`'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment'`)) {
+		t.Error("install.ps1 does not read the architecture from the registry")
+	}
+	for _, other := range []string{"OSArchitecture", "env:PROCESSOR_ARCHITECTURE"} {
+		if bytes.Contains(ps, []byte(other)) {
+			t.Errorf("install.ps1 reads the architecture from %s", other)
 		}
 	}
 	for name, data := range map[string][]byte{"install.sh": sh, "install.ps1": ps} {

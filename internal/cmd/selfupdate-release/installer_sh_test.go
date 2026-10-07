@@ -426,6 +426,71 @@ var shCases = []struct {
 		}
 		expectFiles(c.t, c.dir, nil)
 	}},
+	{"--verify-attestation verifies each download", func(c *shCase) {
+		c.stub("gh", ghStub)
+		c.expect(c.run("--verify-attestation"), 0, c.installed("relay"), c.installed("relayctl"))
+		log := c.hookLog()
+		for _, product := range []string{"relay", "relayctl"} {
+			want := "gh attestation verify " + c.asset("raw", product) + " --repo fixture/relay --signer-workflow " + publishWorkflow + "\n"
+			if !strings.Contains(log, want) {
+				c.t.Fatalf("gh calls %q lack %q", log, want)
+			}
+		}
+	}},
+	{"a failed attestation changes nothing", func(c *shCase) {
+		c.stub("gh", ghStub)
+		c.env = append(c.env, "GH_VERIFY_EXIT=1")
+		old := standIn("old", fixtureTag)
+		c.place("relay", old)
+		c.expect(c.run("--verify-attestation"), 2, c.asset("raw", "relay")+": attestation verification failed")
+		expectFiles(c.t, c.dir, map[string][]byte{"relay": old})
+	}},
+	{"--verify-attestation needs gh, logged in", func(c *shCase) {
+		c.stub("gh", ghStub)
+		c.env = append(c.env, "GH_AUTH_EXIT=1")
+		c.expect(c.run("--verify-attestation"), 1, "--verify-attestation needs gh to be logged in (gh auth login)")
+		// No gh at all: the stub goes, and PATH holds only basic tools.
+		c.path = c.stubs + string(os.PathListSeparator) + linkTools(c.t, "awk", "cat", "grep", "id", "mkdir", "sort", "sysctl", "tr", "uname")
+		if err := os.Remove(filepath.Join(c.stubs, "gh")); err != nil {
+			c.t.Fatal(err)
+		}
+		c.expect(c.run("--verify-attestation"), 1, "--verify-attestation needs gh")
+		if got := c.srv.got(); len(got) != 0 {
+			c.t.Fatalf("downloaded %v before the attestation check", got)
+		}
+		expectFiles(c.t, c.dir, nil)
+	}},
+}
+
+// ghStub stands in for gh: auth status exits $GH_AUTH_EXIT, and attestation
+// verify logs its arguments, with the downloaded file's base name, and
+// exits $GH_VERIFY_EXIT (0014-PLAN deviation D10).
+const ghStub = `case "$1 $2" in
+"auth status") exit "${GH_AUTH_EXIT:-0}" ;;
+"attestation verify")
+	file=$3
+	shift 3
+	echo "gh attestation verify ${file##*/} $*" >>"$HOOK_LOG"
+	exit "${GH_VERIFY_EXIT:-0}"
+	;;
+esac
+exit 9`
+
+// publishWorkflow is the signer the installers require.
+const publishWorkflow = "maccavelli/go-selfupdate-lib/.github/workflows/publish-selfupdate-release.yml"
+
+// linkTools is a directory of links to the named tools, as found on PATH.
+func linkTools(t *testing.T, names ...string) string {
+	t.Helper()
+	dir := t.TempDir()
+	for _, name := range names {
+		if path, err := exec.LookPath(name); err == nil {
+			if err := os.Symlink(path, filepath.Join(dir, name)); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	return dir
 }
 
 func TestInstallSh(t *testing.T) {

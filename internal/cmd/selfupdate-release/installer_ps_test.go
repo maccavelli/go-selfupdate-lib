@@ -174,6 +174,7 @@ type psCase struct {
 	key    string // under HKCU
 	log    string // HOOK_LOG
 	work   string // the case's own files
+	path   string // replaces PATH when set
 }
 
 func newPsCase(t *testing.T, ps psHost, mode psMode, r installReleases) *psCase {
@@ -195,11 +196,40 @@ func (c *psCase) envFor() []string {
 		case strings.EqualFold(name, "PSModulePath"), strings.EqualFold(name, "LOCALAPPDATA"),
 			strings.HasPrefix(strings.ToUpper(name), "RELAY_"), strings.HasPrefix(strings.ToUpper(name), "SELFUPDATE_INSTALL_"):
 			continue
+		case strings.EqualFold(name, "PATH") && c.path != "":
+			env = append(env, name+"="+c.path)
+			continue
 		}
 		env = append(env, kv)
 	}
 	return append(append(env, "LOCALAPPDATA="+c.local, "HOOK_LOG="+c.log, "SELFUPDATE_INSTALL_BASE_URL="+c.srv.URL,
 		"SELFUPDATE_INSTALL_TEST_ENV_KEY="+c.key), c.env...)
+}
+
+// ghStubCmd stands in for gh: auth status exits %GH_AUTH_EXIT%, and
+// attestation verify logs its arguments, with the downloaded file's name,
+// and exits %GH_VERIFY_EXIT% (0014-PLAN deviation D10).
+const ghStubCmd = "@echo off\r\n" +
+	"if \"%1 %2\"==\"auth status\" exit /b %GH_AUTH_EXIT%\r\n" +
+	"if \"%1 %2\"==\"attestation verify\" goto verify\r\n" +
+	"exit /b 9\r\n" +
+	":verify\r\n" +
+	">>\"%HOOK_LOG%\" echo gh attestation verify %~nx3 %4 %5 %6 %7\r\n" +
+	"exit /b %GH_VERIFY_EXIT%\r\n"
+
+// stubGh puts gh.cmd ahead of PATH, verifying with the given exit codes.
+func (c *psCase) stubGh(auth, verify int) string {
+	c.t.Helper()
+	dir := filepath.Join(c.work, "stubs")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		c.t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "gh.cmd"), []byte(ghStubCmd), 0o755); err != nil {
+		c.t.Fatal(err)
+	}
+	c.path = dir + string(os.PathListSeparator) + os.Getenv("PATH")
+	c.env = append(c.env, "GH_AUTH_EXIT="+strconv.Itoa(auth), "GH_VERIFY_EXIT="+strconv.Itoa(verify))
+	return dir
 }
 
 func (c *psCase) writeFile(name string, data []byte) string {
@@ -652,6 +682,41 @@ var psCases = []struct {
 		if log := c.hookLog(); log != "" {
 			c.t.Fatalf("hooks ran: %q", log)
 		}
+	}},
+	{"-VerifyAttestation verifies each download", argModes, func(c *psCase) {
+		c.stubGh(0, 0)
+		c.expect(c.run("-VerifyAttestation"), 0, c.installed("relay"), c.installed("relayctl"))
+		log := c.hookLog()
+		for _, product := range []string{"relay", "relayctl"} {
+			want := "gh attestation verify " + c.asset("raw", product) + " --repo fixture/relay --signer-workflow " +
+				"maccavelli/go-selfupdate-lib/.github/workflows/publish-selfupdate-release.yml\n"
+			if !strings.Contains(log, want) {
+				c.t.Fatalf("gh calls %q lack %q", log, want)
+			}
+		}
+	}},
+	{"a failed attestation changes nothing", argModes, func(c *psCase) {
+		c.stubGh(0, 1)
+		old := standInExe(c.t, "old", fixtureTag)
+		c.place("relay.exe", old)
+		c.expect(c.run("-VerifyAttestation"), 2, c.asset("raw", "relay")+": attestation verification failed")
+		expectFiles(c.t, c.dir, map[string][]byte{"relay.exe": old})
+		c.expectNoPath()
+	}},
+	{"-VerifyAttestation needs gh, logged in", argModes, func(c *psCase) {
+		stubs := c.stubGh(1, 0)
+		c.expect(c.run("-VerifyAttestation"), 1, "-VerifyAttestation needs gh to be logged in (gh auth login)")
+		// No gh at all: the stub goes, and PATH holds only Windows itself.
+		if err := os.Remove(filepath.Join(stubs, "gh.cmd")); err != nil {
+			c.t.Fatal(err)
+		}
+		root := os.Getenv("SystemRoot")
+		c.path = strings.Join([]string{stubs, filepath.Join(root, "System32"), root}, string(os.PathListSeparator))
+		c.expect(c.run("-VerifyAttestation"), 1, "-VerifyAttestation needs gh")
+		if got := c.srv.got(); len(got) != 0 {
+			c.t.Fatalf("downloaded %v before the attestation check", got)
+		}
+		expectFiles(c.t, c.dir, nil)
 	}},
 	{"-Uninstall", argModes, func(c *psCase) {
 		c.expect(c.run(), 0)
