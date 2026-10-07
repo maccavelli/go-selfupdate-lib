@@ -526,6 +526,107 @@ helpers, and a CI job.
   shellcheck 0.11.0 on the template; `make pre-add-check` on the three
   Go files.
 
+### Phase I4: `install.ps1`'s behaviour (2026-10-06)
+
+* **The harness** is shared now, as I3's record said it would be: its
+  `unix` constraint is gone, `exitCode`, `filesIn`, `expectFiles` (mode
+  0755 checked outside Windows only), `runResult`, `rawRepo` and
+  `SELFUPDATE_INSTALL_REQUIRE_SHELLS` moved into it, the server offers
+  the script under test at a path it does not count as a request, and
+  `TestMain` removes any directory registered with `keepUntilExit`.
+* **The tests** (`installer_ps_test.go`, Windows only) run the rendered
+  script under `powershell.exe` (5.1) and `pwsh.exe` (7), with
+  `LOCALAPPDATA` and the install folder in a temporary directory, PATH
+  updates sent to a scratch key `HKCU\Software\SelfupdateInstallTest\<pid>-<n>`
+  (deleted after each case), and the environment cleaned of `RELAY_*`,
+  `SELFUPDATE_INSTALL_*` and `PSModulePath`. Three forms:
+  * **file:** `-File install.ps1 <options>`;
+  * **iex:** a driver runs `Invoke-RestMethod <url> | Invoke-Expression`,
+    options in environment variables only;
+  * **scriptblock:** the driver runs
+    `& ([scriptblock]::Create((Invoke-RestMethod <url>))) <options>`, the
+    options as typed text.
+
+  After each iex and scriptblock run the driver reports what the session
+  kept; each run must show no new variable or function,
+  `$ErrorActionPreference` and strict mode unchanged, and the TLS set
+  unchanged on 7 and with only Tls12 added on 5.1 (0 -> 3072 on the test
+  host).
+* **`TestInstallPs1`, 33 cases,** each in the forms its options allow:
+  146 runs, 33 + 9 + 31 per PowerShell. I3's cases for Windows assets
+  (`.exe`, and zip from the archive release), and:
+  * the user PATH: created as `REG_EXPAND_SZ`; added once to an existing
+    value with its `%USERPROFILE%` entry unexpanded and its kind kept,
+    `REG_SZ` included; an entry already there, with a trailing backslash,
+    left alone; nothing written with `-NoPathUpdate` or
+    `RELAY_NO_PATH_UPDATE`; removed with the last program on
+    `-Uninstall`, and kept while another remains;
+  * a running copy: a held stand-in renamed to `relay.exe.prev` and the
+    new binary in place; a second install sets the still-running `.prev`
+    aside as `relay.exe.old-<guid>`;
+  * an unknown option and a switch given a value: exit 1, nothing done.
+
+  Stand-ins are a small Go program built at test time, so a hook or an
+  identity check runs a real `.exe` that prints, logs and exits as told.
+* **`TestInstallPs1Truncated`:** one process per PowerShell runs the
+  script cut at each of its 451 line ends through `Invoke-Expression` and
+  through `[scriptblock]::Create`; then half the script runs as a file.
+  No request, nothing under `LOCALAPPDATA`, no PATH value.
+* **`TestInstallPs1Interrupt`** (D5): Ctrl+Break to PowerShell 7 during a
+  stalled download; it exits non-zero and the install folder is empty.
+  The test gives itself a console first if it has none, as on a CI
+  runner; the test host's ssh session already had one, so that path has
+  not run yet.
+* **I3 cases with no Windows counterpart:** root (`--allow-root` has
+  none, MADR §4); the `uname`, `sysctl` and `aarch64` stubs (the script
+  reads the architecture from `HKLM`, which a test cannot replace; the
+  unsupported-platform case uses a release for the other architecture
+  instead); missing `curl`, `wget` or hash tools (built-ins on Windows).
+* **Not tested:** that `SELFUPDATE_INSTALL_TEST_ENV_KEY` is ignored with
+  an `https://` base URL. A test of it would write the real user PATH.
+* **D4** fixed four defects in `install.ps1`; **D5** decided Ctrl-C;
+  **D6** added a static check (see Deviations). With the template as
+  committed in I3 the same tests failed 43 of 158; with the fixes, none.
+* **PLAN step 3, CI:** the `go test ./...` step now sets
+  `SELFUPDATE_INSTALL_REQUIRE_SHELLS` (`powershell,pwsh` on Windows,
+  `dash,bash` on Linux, `sh,bash` on macOS), so windows-2025 runs the
+  tests under both PowerShells or fails. PSScriptAnalyzer in CI is I5's
+  step 2, which names it too; it lands there with shellcheck.
+* **Runs:** the Windows test host, the whole package with both
+  PowerShells required: "pass=247 fail=0 skip=0", `TestInstallPs1Interrupt/pwsh`
+  included, and `TestInstallPs1*` three times over: "pass=480 fail=0
+  skip=0"; this Mac, the package with `sh,dash,bash` required; the Linux
+  test host, `TestInstallSh*`: "pass=95 skip=6 fail=0", the six being D3's.
+* **Plants,** each in a scratch copy, the Windows ones run on the
+  Windows test host:
+
+  | Plant | Caught by |
+  | :--- | :--- |
+  | `-UseBasicParsing` removed | not by a run (D6); `TestTemplatesAsWritten`: `"Invoke-WebRequest -Uri $Url -OutFile $Path -TimeoutSec 60" lacks -UseBasicParsing` |
+  | PATH written expanded, as `REG_SZ` | the `%VAR%` case: `PATH is REG_SZ "C:\\Users\\<user>\\bin;…"` |
+  | a function leaking from the scriptblock (`function global:Write-Line`) | the iex session check: `no "driver: new functions []"` |
+  | TLS 1.2 not added on 5.1 | `Windows PowerShell ran the script without adding TLS 1.2 (0 -> 0)` |
+  | D4: hook output returned | "a failed before_install changes nothing": `exit 0, want 1` |
+  | D4: the rejected binary renamed, not deleted (`if ($true)` for `Clear-SettledFile`) | the identity case: the folder holds `relay.exe.bad-…` |
+  | D4: PATH cleared by a partial uninstall | `-Uninstall`: `PATH is REG_EXPAND_SZ ""` |
+  | D4: positional binding allowed | "a switch given a value": `exit 0, want 1` |
+  | D4: a binding error not a usage error | "an unknown option": `exit 0, want 1` |
+  | D5: the temporary folder not removed | `TestInstallPs1Interrupt`: the folder holds `.relay-install.…` |
+  | a statement at the top level | `TestInstallPs1Truncated`: `a cut script wrote to LOCALAPPDATA: [Programs/]` |
+  | a BOM written by the renderer | `TestRenderInstallers`: `install.ps1: CR or BOM in the output` |
+
+  The PLAN's "write PATH through `SetEnvironmentVariable`" plant is
+  replaced by writing the scratch key as that call would, expanded and
+  `REG_SZ`: the call itself writes the real user PATH. Its "`$PSCmdlet`
+  guard removed" plant has no site: the template has no `$PSCmdlet`
+  (I2).
+* **Checks:** PowerShell's parser (0 errors) here and on the Windows
+  test host, and PSScriptAnalyzer 1.25.0 there (0 findings) on the
+  template and a render; shellcheck on `install.sh`; actionlint 1.7.12;
+  `check-workflows.sh` (all, and `expressions`, `permissions` and `pins` on
+  `ci.yml`); `workflow-shape_test.sh`; `gate.sh`; `make pre-add-check` on
+  the changed Go files.
+
 ### Deviations
 
 * **D1 (2026-10-06), I2: arguments the installers embed.**
@@ -570,3 +671,63 @@ helpers, and a CI job.
     job runs all of them, and `SELFUPDATE_INSTALL_REQUIRE_SHELLS` fails it
     if they cannot.
   * **Files:** none beyond I3's.
+* **D4 (2026-10-06), I4: four `install.ps1` defects the tests found.**
+  * **Found,** with the template as committed in I3:
+    1. a hook's output became part of `Invoke-InstallHook`'s result, an
+       array, which is true however the hook ended: a failing
+       `before_install` hook that printed anything let the install go
+       on, and a failing `after_install` hook exited 0, not 3;
+    2. an identity failure renamed the rejected binary to
+       `relay.exe.bad-<guid>` and left it in the folder;
+    3. `-Uninstall -Product relayctl` took the folder off PATH while
+       `relay.exe` stayed;
+    4. options were bound by `& { … } @args` itself: as a file, `-Bogus`
+       exited 0; under the scriptblock form it was a bare binding error;
+       and `@args` passes `-Uninstall:$false` on as `-Uninstall` and a
+       stray `False`, which became `-InstallDir`:
+       `-Uninstall:$false -Version v1.2.3` printed "removed
+       False\relay.exe".
+  * **Decision (the owner):** fix as tested. Hook output is written to
+    the console, not returned; a rejected binary is deleted, and set
+    aside only if it cannot be; the PATH entry goes with the last
+    program; the outer scriptblock takes no parameters and runs the
+    `[CmdletBinding(PositionalBinding = $false)]` block inside a `try`,
+    so a wrong option is a usage error and a switch given a value is
+    refused. MADR §4 is amended.
+  * **Then found,** in the final run on the Windows test host: two of six
+    identity-mismatch runs under PowerShell 7 still left
+    `relay.exe.bad-<guid>`. The delete had met a handle still closing,
+    from the identity check's process or a scanner, and the script set
+    the file aside as for a running one. `Clear-SettledFile` now retries the
+    delete for up to 2 s before a file is set aside, for the rejected
+    binary and for an old `.prev` alike. Three passes of
+    `TestInstallPs1` then ran 480 runs without a failure. This keeps the
+    owner's decision; "cannot be deleted" now means after that wait.
+    Named `Remove-Settled` first, it drew PSScriptAnalyzer's
+    `PSUseShouldProcessForStateChangingFunctions`; it is
+    `Clear-SettledFile`, a verb the rule leaves alone, as
+    `Clear-UserPathEntry` is.
+  * **Files:** `installer/install.ps1`, and `render_test.go`, whose
+    expected PowerShell lines are one level deeper.
+* **D5 (2026-10-06), I4: Ctrl-C on Windows.**
+  * **Found:** Ctrl+Break sent to a new process group stops PowerShell 7,
+    which runs its `finally` blocks; Windows PowerShell 5.1 ignored it
+    for 20 s. A real Ctrl-C (`CTRL_C_EVENT` to the console, from a sender
+    in a new console that ignored it itself) stopped neither within 20 s.
+  * **Decision (the owner):** a Ctrl+Break case under PowerShell 7 only.
+    How 5.1 cleans up after Ctrl-C is not verified.
+  * **Files:** none beyond I4's.
+* **D6 (2026-10-06), I4: `-UseBasicParsing` cannot fail a run.**
+  * **Found:** the plant removing it passed. On the Windows test host
+    (5.1.26100.9444, September 2026 updates), non-interactively,
+    `Invoke-WebRequest` without the flag failed with "Windows PowerShell
+    is in NonInteractive mode. Read and Prompt functionality is not
+    available." for HTML, plain-text and octet-stream responses kept in
+    memory, and downloaded all three without a prompt given `-OutFile`,
+    which the template always uses. `Invoke-RestMethod`, as in
+    `irm … | iex`, ran under 5.1 in every iex case.
+  * **Decision (the owner):** a static check. `TestTemplatesAsWritten`
+    requires `-UseBasicParsing` on every line that calls
+    `Invoke-WebRequest` or one of its aliases outside a comment. MADR's
+    fact is qualified.
+  * **Files:** `render_test.go`.

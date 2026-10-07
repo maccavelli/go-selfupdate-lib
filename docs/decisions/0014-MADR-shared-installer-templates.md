@@ -142,6 +142,15 @@ From the research (sources under "More Information"; probes on macOS
   `Get-FileHash` exists on 5.1. Before .NET 7, `OSArchitecture` reports
   X64 inside an emulated process on Arm64; the native architecture is in
   `HKLM\…\Session Manager\Environment` (Bun's approach).
+  *Amended 2026-10-06 (0014-PLAN deviation D6):* the prompt is for a
+  response kept in memory. On the Windows test host (5.1.26100.9444,
+  September 2026 updates), run non-interactively, `Invoke-WebRequest`
+  without `-UseBasicParsing` failed with "Windows PowerShell is in
+  NonInteractive mode. Read and Prompt functionality is not available."
+  for HTML, plain text and octet-stream alike, and downloaded all three
+  without a prompt given `-OutFile`. `Invoke-RestMethod`, as in
+  `irm … | iex`, did not prompt. The template keeps the flag, and a
+  static test requires it.
 * **PowerShell arguments and scope.** `iex` runs in the caller's scope.
   Arguments pass as `& ([scriptblock]::Create((irm url))) -Version x`, or
   through environment variables. The script is published without a BOM.
@@ -378,6 +387,15 @@ Both scripts share one contract.
     strict mode set inside, PowerShell 5.1 and 7, no BOM, a guarded
     `$PSCmdlet`. The one process-wide change is TLS 1.2 added to the
     protocol set on 5.1, which the script says;
+    *Amended 2026-10-06 (0014-PLAN deviation D4):* the one outer
+    scriptblock takes no parameters, and runs the
+    `[CmdletBinding(PositionalBinding = $false)]` block inside a `try`.
+    An option PowerShell cannot bind is then a usage error (exit 1, or
+    `install failed (exit 1)` under `iex`), not an error it reports and
+    runs past; and a switch takes no value, since `@args` passes
+    `-DryRun:$true` on as `-DryRun` and a stray `True`, which is refused.
+    The script has no `$PSCmdlet` (0014-PLAN I2), so nothing needs a
+    guard;
   * arguments through flags or environment variables; for PowerShell
     also `& ([scriptblock]::Create((irm <url>))) -Version vX.Y.Z`.
     `install.ps1` takes the same options as parameters: `-Version`,
@@ -641,9 +659,13 @@ On macOS 26.6.2 arm64 (`/bin/sh` is bash 3.2.57), dash and PowerShell
 * Which macOS version added `/sbin/sha256sum`; the templates fall back to
   `shasum` and `openssl`.
 * Whether Windows PowerShell 5.1 negotiates TLS 1.2 by default; the
-  template adds it.
+  template adds it. *0014-PLAN I4 (2026-10-06):* on the Windows test host
+  the protocol set was `SystemDefault` (0) before the script and `Tls12`
+  after, in every 5.1 run through `iex` or a scriptblock. The downloads
+  were loopback HTTP, so 5.1's own negotiation is still not verified.
 * `OSArchitecture` under 5.1 on Windows 11; the template reads the
-  registry.
+  registry. *0014-PLAN I4:* still not verified; the Windows test host is
+  x64, and no Arm64 host ran the template.
 * How GitHub rate-limits the web `releases/download` URLs; undocumented.
 * Whether a Terminal "Developer Tools" exemption affected the Gatekeeper
   probes.

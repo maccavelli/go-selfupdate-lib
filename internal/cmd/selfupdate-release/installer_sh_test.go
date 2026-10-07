@@ -33,11 +33,6 @@ type shell struct {
 	stubbable bool
 }
 
-// requireShellsEnv lists, comma-separated, the shell binaries a job must
-// run the tests under, with stubs: "busybox" in the Alpine job, "dash" in
-// the Debian one.
-const requireShellsEnv = "SELFUPDATE_INSTALL_REQUIRE_SHELLS"
-
 // shells are sh, dash, bash and BusyBox's ash, each once: on Debian sh is
 // dash, and on Alpine it is BusyBox. Each is named for the binary it is.
 func shells(t *testing.T) []shell {
@@ -176,34 +171,16 @@ func (c *shCase) command(ctx context.Context, args ...string) *exec.Cmd {
 	return cmd
 }
 
-type shResult struct {
-	code int
-	out  string
-}
-
-func exitCode(t *testing.T, err error) int {
-	t.Helper()
-	var ee *exec.ExitError
-	switch {
-	case err == nil:
-		return 0
-	case errors.As(err, &ee):
-		return ee.ExitCode()
-	}
-	t.Fatal(err)
-	return 0
-}
-
-func (c *shCase) run(args ...string) shResult {
+func (c *shCase) run(args ...string) runResult {
 	c.t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	out, err := c.command(ctx, args...).CombinedOutput()
-	return shResult{exitCode(c.t, err), string(out)}
+	return runResult{exitCode(c.t, err), string(out)}
 }
 
 // expect checks the exit code, and that the output has each of wants.
-func (c *shCase) expect(r shResult, code int, wants ...string) {
+func (c *shCase) expect(r runResult, code int, wants ...string) {
 	c.t.Helper()
 	if r.code != code {
 		c.t.Fatalf("exit %d, want %d; output:\n%s", r.code, code, r.out)
@@ -211,63 +188,6 @@ func (c *shCase) expect(r shResult, code int, wants ...string) {
 	for _, w := range wants {
 		if !strings.Contains(r.out, w) {
 			c.t.Fatalf("the output lacks %q:\n%s", w, r.out)
-		}
-	}
-}
-
-// filesIn is a directory's entries and their contents; a directory, such
-// as a temporary one left behind, has a nil body.
-func filesIn(t *testing.T, dir string) map[string][]byte {
-	t.Helper()
-	entries, err := os.ReadDir(dir)
-	if errors.Is(err, os.ErrNotExist) {
-		return map[string][]byte{}
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	out := map[string][]byte{}
-	for _, e := range entries {
-		if e.IsDir() {
-			out[e.Name()+"/"] = nil
-			continue
-		}
-		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
-		if err != nil {
-			t.Fatal(err)
-		}
-		out[e.Name()] = data
-	}
-	return out
-}
-
-// expectFiles checks that dir holds exactly want, byte for byte, and that
-// each file is mode 0755.
-func expectFiles(t *testing.T, dir string, want map[string][]byte) {
-	t.Helper()
-	got := filesIn(t, dir)
-	var gotNames, wantNames []string
-	for n := range got {
-		gotNames = append(gotNames, n)
-	}
-	for n := range want {
-		wantNames = append(wantNames, n)
-	}
-	slices.Sort(gotNames)
-	slices.Sort(wantNames)
-	if !slices.Equal(gotNames, wantNames) {
-		t.Fatalf("%s holds %v, want %v", dir, gotNames, wantNames)
-	}
-	for n, data := range want {
-		if !bytes.Equal(got[n], data) {
-			t.Errorf("%s: not the expected bytes (%d, want %d)", n, len(got[n]), len(data))
-		}
-		info, err := os.Stat(filepath.Join(dir, n))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if info.Mode().Perm() != 0o755 {
-			t.Errorf("%s: mode %v, want 0755", n, info.Mode().Perm())
 		}
 	}
 }
@@ -299,8 +219,6 @@ func unchanged(c *shCase, edit func(), code int, wants ...string) {
 	c.expect(c.run(), code, wants...)
 	expectFiles(c.t, c.dir, map[string][]byte{"relay": old})
 }
-
-const rawRepo = "fixture/relay"
 
 var shCases = []struct {
 	name string

@@ -100,12 +100,12 @@ func TestRenderInstallers(t *testing.T) {
 	}
 	ps := string(files[releasespec.InstallerPowerShell])
 	for _, want := range []string{
-		"    $Repository = 'maccavelli/relay-suite'\n",
-		"    $Channels = @('rc')\n",
-		"    $Products = @('relay', 'relayctl')\n",
-		"        @{ Product = 'relay'; Arch = 'amd64'; Name = 'relay-windows-amd64.exe'; Format = 'binary' }\n",
-		"    $Identity = @{ 'relay' = @('version') }\n",
-		"        @{ When = 'after_install'; Product = 'relay'; Args = @('configure', '--encrypt-db=true') }\n",
+		"        $Repository = 'maccavelli/relay-suite'\n",
+		"        $Channels = @('rc')\n",
+		"        $Products = @('relay', 'relayctl')\n",
+		"            @{ Product = 'relay'; Arch = 'amd64'; Name = 'relay-windows-amd64.exe'; Format = 'binary' }\n",
+		"        $Identity = @{ 'relay' = @('version') }\n",
+		"            @{ When = 'after_install'; Product = 'relay'; Args = @('configure', '--encrypt-db=true') }\n",
 	} {
 		if !strings.Contains(ps, want) {
 			t.Errorf("install.ps1 lacks %q", want)
@@ -202,6 +202,10 @@ func TestReplaceBlock(t *testing.T) {
 // ksh lacks (0014-MADR §4), and not `.local/bin`.
 var localRe = regexp.MustCompile(`(?m)(^|[;&|{(]|\bthen|\bdo|\belse)\s*local\s`)
 
+// iwrRe finds each line that calls Invoke-WebRequest, by name or by its
+// aliases, outside a comment.
+var iwrRe = regexp.MustCompile(`(?im)^[^#\n]*\b(Invoke-WebRequest|iwr|curl|wget)\b[^\n]*$`)
+
 func TestTemplatesAsWritten(t *testing.T) {
 	sh := template(t, releasespec.InstallerScript)
 	if m := localRe.Find(sh); m != nil {
@@ -213,6 +217,19 @@ func TestTemplatesAsWritten(t *testing.T) {
 	ps := template(t, releasespec.InstallerPowerShell)
 	if !bytes.HasSuffix(bytes.TrimRight(ps, "\n"), []byte("\n} @args")) {
 		t.Error("install.ps1 does not end by invoking its one scriptblock")
+	}
+	// Windows PowerShell 5.1 prompts, or fails non-interactively, when
+	// Invoke-WebRequest keeps a response in memory without
+	// -UseBasicParsing; -OutFile avoids it today, so no run shows the
+	// flag missing (0014-PLAN deviation D6).
+	calls := iwrRe.FindAll(ps, -1)
+	if len(calls) == 0 {
+		t.Error("install.ps1 has no Invoke-WebRequest")
+	}
+	for _, call := range calls {
+		if !bytes.Contains(call, []byte("-UseBasicParsing")) {
+			t.Errorf("install.ps1: %q lacks -UseBasicParsing", bytes.TrimSpace(call))
+		}
 	}
 	for name, data := range map[string][]byte{"install.sh": sh, "install.ps1": ps} {
 		if bytes.ContainsRune(data, '\r') || bytes.HasPrefix(data, []byte("\xef\xbb\xbf")) {

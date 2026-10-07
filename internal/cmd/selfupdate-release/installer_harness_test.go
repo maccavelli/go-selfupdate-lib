@@ -1,20 +1,19 @@
-// Only install.sh's tests use the harness until I4's install.ps1 tests do,
-// which drop this constraint.
-
-//go:build unix
-
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -31,6 +30,12 @@ import (
 // fixture's releases, staged with their installers, and a loopback server
 // that serves them as github.com does, at SELFUPDATE_INSTALL_BASE_URL
 // (0014-MADR §5).
+
+// requireShellsEnv lists, comma-separated, the shell binaries a job must
+// run the tests under: "busybox" in the Alpine job, "dash" in the Debian
+// one, "powershell" and "pwsh" on Windows. A Unix shell counts only where
+// stubs ahead of PATH work in it.
+const requireShellsEnv = "SELFUPDATE_INSTALL_REQUIRE_SHELLS"
 
 // releasesEnv names a directory for the staged releases. A run that finds
 // it complete uses it without building; otherwise it builds into it and
@@ -113,7 +118,8 @@ func prepareReleases() (installReleases, error) {
 		if err != nil {
 			return installReleases{}, err
 		}
-		releasesTemp, dir = d, d
+		keepUntilExit(d)
+		dir = d
 	} else if _, err := os.Stat(filepath.Join(dir, "complete")); err == nil {
 		return installReleases{dir}, nil
 	}
@@ -198,6 +204,15 @@ func (r installReleases) render(t *testing.T, kind, name, tag string) []byte {
 	return files[name]
 }
 
+// rawRepo is the raw release's repository.
+const rawRepo = "fixture/relay"
+
+// runResult is an installer run's exit code and combined output.
+type runResult struct {
+	code int
+	out  string
+}
+
 // releaseServer serves /<owner>/<repo>/releases/download/<tag>/<name>
 // from the staged directories, with a test's replacements.
 type releaseServer struct {
@@ -207,7 +222,12 @@ type releaseServer struct {
 	replaced map[string][]byte        // "<owner>/<repo>@<tag>/<name>": a body
 	stalls   map[string]chan struct{} // name: closed when the stalled response starts
 	requests []string
+	script   []byte // served at scriptPath, and not listed in requests
 }
+
+// scriptPath is where the server offers the installer under test, for the
+// forms that fetch it themselves.
+const scriptPath = "/installer-under-test"
 
 func newReleaseServer(t *testing.T, r installReleases) *releaseServer {
 	t.Helper()
@@ -223,6 +243,12 @@ func newReleaseServer(t *testing.T, r installReleases) *releaseServer {
 func (s *releaseServer) serve(w http.ResponseWriter, req *http.Request) {
 	parts := strings.Split(req.URL.Path, "/")
 	s.mu.Lock()
+	if req.URL.Path == scriptPath {
+		script := s.script
+		s.mu.Unlock()
+		_, _ = w.Write(script)
+		return
+	}
 	s.requests = append(s.requests, req.URL.Path)
 	if len(parts) != 7 || parts[0] != "" || parts[3] != "releases" || parts[4] != "download" || parts[6] == "." || parts[6] == ".." {
 		s.mu.Unlock()
@@ -258,7 +284,7 @@ func (s *releaseServer) serve(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-// got is the paths requested so far.
+// got is the release paths requested so far.
 func (s *releaseServer) got() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -326,4 +352,74 @@ func (s *releaseServer) replaceAsset(t *testing.T, repository, tag, name string,
 		return lines
 	})
 	s.replace(repository, tag, name, body)
+}
+
+func exitCode(t *testing.T, err error) int {
+	t.Helper()
+	var ee *exec.ExitError
+	switch {
+	case err == nil:
+		return 0
+	case errors.As(err, &ee):
+		return ee.ExitCode()
+	}
+	t.Fatal(err)
+	return 0
+}
+
+// filesIn is a directory's entries and their contents; a directory, such
+// as a temporary one left behind, has a nil body.
+func filesIn(t *testing.T, dir string) map[string][]byte {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return map[string][]byte{}
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := map[string][]byte{}
+	for _, e := range entries {
+		if e.IsDir() {
+			out[e.Name()+"/"] = nil
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		out[e.Name()] = data
+	}
+	return out
+}
+
+// expectFiles checks that dir holds exactly want, byte for byte, and,
+// outside Windows, that each file is mode 0755.
+func expectFiles(t *testing.T, dir string, want map[string][]byte) {
+	t.Helper()
+	got := filesIn(t, dir)
+	var gotNames, wantNames []string
+	for n := range got {
+		gotNames = append(gotNames, n)
+	}
+	for n := range want {
+		wantNames = append(wantNames, n)
+	}
+	slices.Sort(gotNames)
+	slices.Sort(wantNames)
+	if !slices.Equal(gotNames, wantNames) {
+		t.Fatalf("%s holds %v, want %v", dir, gotNames, wantNames)
+	}
+	for n, data := range want {
+		if !bytes.Equal(got[n], data) {
+			t.Errorf("%s: not the expected bytes (%d, want %d)", n, len(got[n]), len(data))
+		}
+		info, err := os.Stat(filepath.Join(dir, n))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if runtime.GOOS != goosWindows && info.Mode().Perm() != 0o755 {
+			t.Errorf("%s: mode %v, want 0755", n, info.Mode().Perm())
+		}
+	}
 }

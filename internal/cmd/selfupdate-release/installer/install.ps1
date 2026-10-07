@@ -21,409 +21,440 @@
 # failure is an error instead.
 
 & {
-    [CmdletBinding()]
-    param(
-        [string]$Version = '',
-        [string]$InstallDir = '',
-        [string[]]$Product = @(),
-        [switch]$VerifyAttestation,
-        [switch]$NoHooks,
-        [switch]$NoPathUpdate,
-        [switch]$DryRun,
-        [switch]$Uninstall
-    )
-    Set-StrictMode -Version 3.0
-    $ErrorActionPreference = 'Stop'
-    $ProgressPreference = 'SilentlyContinue'
-
-    # >>> selfupdate-release values
-    # The build workflow replaces this block with the release's values; the
-    # ones below are the template's samples.
-    $Repository = 'maccavelli/relay'
-    $Tag = 'v1.2.3'
-    $Channels = @('rc', 'beta')
-    $InstallerName = 'relay'
-    $EnvPrefix = 'RELAY'
-    $Products = @('relay', 'relayctl')
-    $Assets = @(
-        @{ Product = 'relay'; Arch = 'amd64'; Name = 'relay-windows-amd64.zip'; Format = 'zip' }
-        @{ Product = 'relay'; Arch = 'arm64'; Name = 'relay-windows-arm64.zip'; Format = 'zip' }
-        @{ Product = 'relayctl'; Arch = 'amd64'; Name = 'relayctl-windows-amd64.zip'; Format = 'zip' }
-        @{ Product = 'relayctl'; Arch = 'arm64'; Name = 'relayctl-windows-arm64.zip'; Format = 'zip' }
-    )
-    $Identity = @{ 'relay' = @('version') }
-    $Hooks = @(
-        @{ When = 'before_install'; Product = 'relayctl'; Args = @('service', 'stop', '--if-running') }
-        @{ When = 'after_install'; Product = 'relay'; Args = @('configure') }
-    )
-    # <<< selfupdate-release values
-
-    $PublishWorkflow = 'maccavelli/go-selfupdate-lib/.github/workflows/publish-selfupdate-release.yml'
     # A scriptblock defined in a file knows its file; one from iex or
     # [scriptblock]::Create does not. Only a file run may exit.
     $FromFile = -not [string]::IsNullOrEmpty($MyInvocation.MyCommand.ScriptBlock.File)
+    # The options bind inside the try below, so a wrong one is a usage
+    # error (exit 1), not an error PowerShell reports and then runs past. A
+    # value with no option, such as the True that -DryRun:$true leaves when
+    # @args passes it on, is refused rather than taken as -Version.
+    $main = {
+        [CmdletBinding(PositionalBinding = $false)]
+        param(
+            [string]$Version = '',
+            [string]$InstallDir = '',
+            [string[]]$Product = @(),
+            [switch]$VerifyAttestation,
+            [switch]$NoHooks,
+            [switch]$NoPathUpdate,
+            [switch]$DryRun,
+            [switch]$Uninstall
+        )
+        Set-StrictMode -Version 3.0
+        $ErrorActionPreference = 'Stop'
+        $ProgressPreference = 'SilentlyContinue'
 
-    function Write-Line([string]$Text) {
-        [Console]::Out.WriteLine($Text)
-    }
+        # >>> selfupdate-release values
+        # The build workflow replaces this block with the release's values; the
+        # ones below are the template's samples.
+        $Repository = 'maccavelli/relay'
+        $Tag = 'v1.2.3'
+        $Channels = @('rc', 'beta')
+        $InstallerName = 'relay'
+        $EnvPrefix = 'RELAY'
+        $Products = @('relay', 'relayctl')
+        $Assets = @(
+            @{ Product = 'relay'; Arch = 'amd64'; Name = 'relay-windows-amd64.zip'; Format = 'zip' }
+            @{ Product = 'relay'; Arch = 'arm64'; Name = 'relay-windows-arm64.zip'; Format = 'zip' }
+            @{ Product = 'relayctl'; Arch = 'amd64'; Name = 'relayctl-windows-amd64.zip'; Format = 'zip' }
+            @{ Product = 'relayctl'; Arch = 'arm64'; Name = 'relayctl-windows-arm64.zip'; Format = 'zip' }
+        )
+        $Identity = @{ 'relay' = @('version') }
+        $Hooks = @(
+            @{ When = 'before_install'; Product = 'relayctl'; Args = @('service', 'stop', '--if-running') }
+            @{ When = 'after_install'; Product = 'relay'; Args = @('configure') }
+        )
+        # <<< selfupdate-release values
 
-    function Invoke-Fail([int]$Code, [string]$Message) {
-        $e = [Exception]::new($Message)
-        $e.Data['InstallExitCode'] = $Code
-        throw $e
-    }
+        $PublishWorkflow = 'maccavelli/go-selfupdate-lib/.github/workflows/publish-selfupdate-release.yml'
 
-    function Get-EnvSetting([string]$Name) {
-        return [Environment]::GetEnvironmentVariable("${EnvPrefix}_$Name")
-    }
-
-    # The download origin. A loopback http origin is allowed only for tests.
-    function Get-BaseUrl {
-        $base = $env:SELFUPDATE_INSTALL_BASE_URL
-        if ([string]::IsNullOrEmpty($base)) { $base = 'https://github.com' }
-        $base = $base.TrimEnd('/')
-        if ($base -cmatch '^https://') { return $base }
-        if ($base -cmatch '^http://(127\.0\.0\.1|localhost):[0-9]+$') { return $base }
-        Invoke-Fail 1 'SELFUPDATE_INSTALL_BASE_URL must be an https:// URL, or a loopback http:// one'
-    }
-
-    function Test-Loopback([string]$Base) {
-        return $Base -cmatch '^http://'
-    }
-
-    function Get-Download([string]$Url, [string]$Path) {
-        for ($try = 1; ; $try++) {
-            try {
-                Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $Path -TimeoutSec 60
-                return
-            } catch {
-                if ($try -ge 3) { throw }
-                Start-Sleep -Seconds $try
-            }
+        function Write-Line([string]$Text) {
+            [Console]::Out.WriteLine($Text)
         }
-    }
 
-    # The one hash SHA256SUMS lists for $Name: exactly "<64 lower-case
-    # hex>  $Name". Returns $null when there is no line; fails on a bad or
-    # second one.
-    function Get-ListedSum([string]$SumsPath, [string]$Name) {
-        $found = @()
-        foreach ($line in ([IO.File]::ReadAllText($SumsPath) -split "`n")) {
-            if ($line.Length -ne 66 + $Name.Length) { continue }
-            if ($line.Substring(64, 2) -cne '  ' -or $line.Substring(66) -cne $Name) { continue }
-            $hash = $line.Substring(0, 64)
-            if ($hash -cnotmatch '^[0-9a-f]{64}$') { Invoke-Fail 2 "SHA256SUMS has a malformed entry for $Name" }
-            $found += $hash
+        function Invoke-Fail([int]$Code, [string]$Message) {
+            $e = [Exception]::new($Message)
+            $e.Data['InstallExitCode'] = $Code
+            throw $e
         }
-        if ($found.Count -gt 1) { Invoke-Fail 2 "SHA256SUMS has $($found.Count) entries for $Name" }
-        if ($found.Count -eq 0) { return $null }
-        return $found[0]
-    }
 
-    function Test-ReleaseTag([string]$Value) {
-        if ($Value -cnotmatch '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-([a-z][a-z0-9]{0,15})\.(0|[1-9][0-9]*))?$') {
-            Invoke-Fail 1 "$Value is not a release tag (vMAJOR.MINOR.PATCH)"
+        function Get-EnvSetting([string]$Name) {
+            return [Environment]::GetEnvironmentVariable("${EnvPrefix}_$Name")
         }
-        if ($Matches[5] -and $Channels -cnotcontains $Matches[5]) {
-            Invoke-Fail 1 "$Value is a prerelease on channel $($Matches[5]), which this release does not publish"
-        }
-    }
 
-    # The machine's own architecture. A 64-bit process under emulation on
-    # Arm64 reports AMD64 in its environment; the registry does not.
-    function Get-NativeArch {
-        $key = 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment'
-        switch ((Get-ItemProperty -LiteralPath $key -Name PROCESSOR_ARCHITECTURE).PROCESSOR_ARCHITECTURE) {
-            'AMD64' { return 'amd64' }
-            'ARM64' { return 'arm64' }
-            default { return $_.ToLowerInvariant() }
+        # The download origin. A loopback http origin is allowed only for tests.
+        function Get-BaseUrl {
+            $base = $env:SELFUPDATE_INSTALL_BASE_URL
+            if ([string]::IsNullOrEmpty($base)) { $base = 'https://github.com' }
+            $base = $base.TrimEnd('/')
+            if ($base -cmatch '^https://') { return $base }
+            if ($base -cmatch '^http://(127\.0\.0\.1|localhost):[0-9]+$') { return $base }
+            Invoke-Fail 1 'SELFUPDATE_INSTALL_BASE_URL must be an https:// URL, or a loopback http:// one'
         }
-    }
 
-    function Expand-Program([string]$Name, [string]$File, [string]$Format, [string]$Dest, [string]$Work) {
-        switch ($Format) {
-            'binary' { Move-Item -LiteralPath $File -Destination $Dest -Force }
-            'zip' {
-                Add-Type -AssemblyName System.IO.Compression.FileSystem
-                $zip = [IO.Compression.ZipFile]::OpenRead($File)
+        function Test-Loopback([string]$Base) {
+            return $Base -cmatch '^http://'
+        }
+
+        function Get-Download([string]$Url, [string]$Path) {
+            for ($try = 1; ; $try++) {
                 try {
-                    $entries = @($zip.Entries | Where-Object { $_.FullName -ceq $Name })
-                    if ($entries.Count -ne 1) { Invoke-Fail 2 "$File holds $($entries.Count) copies of $Name" }
-                    [IO.Compression.ZipFileExtensions]::ExtractToFile($entries[0], $Dest, $true)
-                } finally {
-                    $zip.Dispose()
+                    Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $Path -TimeoutSec 60
+                    return
+                } catch {
+                    if ($try -ge 3) { throw }
+                    Start-Sleep -Seconds $try
                 }
             }
-            'tar.gz' {
-                & "$env:SystemRoot\System32\tar.exe" -xzf $File -C $Work $Name
-                if ($LASTEXITCODE -ne 0) { Invoke-Fail 2 "$File could not be extracted" }
-                Move-Item -LiteralPath (Join-Path $Work $Name) -Destination $Dest -Force
+        }
+
+        # The one hash SHA256SUMS lists for $Name: exactly "<64 lower-case
+        # hex>  $Name". Returns $null when there is no line; fails on a bad or
+        # second one.
+        function Get-ListedSum([string]$SumsPath, [string]$Name) {
+            $found = @()
+            foreach ($line in ([IO.File]::ReadAllText($SumsPath) -split "`n")) {
+                if ($line.Length -ne 66 + $Name.Length) { continue }
+                if ($line.Substring(64, 2) -cne '  ' -or $line.Substring(66) -cne $Name) { continue }
+                $hash = $line.Substring(0, 64)
+                if ($hash -cnotmatch '^[0-9a-f]{64}$') { Invoke-Fail 2 "SHA256SUMS has a malformed entry for $Name" }
+                $found += $hash
             }
-            'gz' {
-                $in = [IO.File]::OpenRead($File)
-                try {
-                    $gz = [IO.Compression.GZipStream]::new($in, [IO.Compression.CompressionMode]::Decompress)
-                    $out = [IO.File]::Create($Dest)
-                    try { $gz.CopyTo($out) } finally { $out.Dispose(); $gz.Dispose() }
-                } finally {
-                    $in.Dispose()
+            if ($found.Count -gt 1) { Invoke-Fail 2 "SHA256SUMS has $($found.Count) entries for $Name" }
+            if ($found.Count -eq 0) { return $null }
+            return $found[0]
+        }
+
+        function Test-ReleaseTag([string]$Value) {
+            if ($Value -cnotmatch '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-([a-z][a-z0-9]{0,15})\.(0|[1-9][0-9]*))?$') {
+                Invoke-Fail 1 "$Value is not a release tag (vMAJOR.MINOR.PATCH)"
+            }
+            if ($Matches[5] -and $Channels -cnotcontains $Matches[5]) {
+                Invoke-Fail 1 "$Value is a prerelease on channel $($Matches[5]), which this release does not publish"
+            }
+        }
+
+        # The machine's own architecture. A 64-bit process under emulation on
+        # Arm64 reports AMD64 in its environment; the registry does not.
+        function Get-NativeArch {
+            $key = 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment'
+            switch ((Get-ItemProperty -LiteralPath $key -Name PROCESSOR_ARCHITECTURE).PROCESSOR_ARCHITECTURE) {
+                'AMD64' { return 'amd64' }
+                'ARM64' { return 'arm64' }
+                default { return $_.ToLowerInvariant() }
+            }
+        }
+
+        function Expand-Program([string]$Name, [string]$File, [string]$Format, [string]$Dest, [string]$Work) {
+            switch ($Format) {
+                'binary' { Move-Item -LiteralPath $File -Destination $Dest -Force }
+                'zip' {
+                    Add-Type -AssemblyName System.IO.Compression.FileSystem
+                    $zip = [IO.Compression.ZipFile]::OpenRead($File)
+                    try {
+                        $entries = @($zip.Entries | Where-Object { $_.FullName -ceq $Name })
+                        if ($entries.Count -ne 1) { Invoke-Fail 2 "$File holds $($entries.Count) copies of $Name" }
+                        [IO.Compression.ZipFileExtensions]::ExtractToFile($entries[0], $Dest, $true)
+                    } finally {
+                        $zip.Dispose()
+                    }
                 }
+                'tar.gz' {
+                    & "$env:SystemRoot\System32\tar.exe" -xzf $File -C $Work $Name
+                    if ($LASTEXITCODE -ne 0) { Invoke-Fail 2 "$File could not be extracted" }
+                    Move-Item -LiteralPath (Join-Path $Work $Name) -Destination $Dest -Force
+                }
+                'gz' {
+                    $in = [IO.File]::OpenRead($File)
+                    try {
+                        $gz = [IO.Compression.GZipStream]::new($in, [IO.Compression.CompressionMode]::Decompress)
+                        $out = [IO.File]::Create($Dest)
+                        try { $gz.CopyTo($out) } finally { $out.Dispose(); $gz.Dispose() }
+                    } finally {
+                        $in.Dispose()
+                    }
+                }
+                default { Invoke-Fail 1 "unknown archive format $Format" }
             }
-            default { Invoke-Fail 1 "unknown archive format $Format" }
         }
-    }
 
-    # The user environment key: HKCU\Environment, or, for tests only, a
-    # scratch key that SELFUPDATE_INSTALL_TEST_ENV_KEY names while the base
-    # URL is a loopback one.
-    function Get-EnvKeyName([string]$Base) {
-        $test = $env:SELFUPDATE_INSTALL_TEST_ENV_KEY
-        if (-not [string]::IsNullOrEmpty($test) -and (Test-Loopback $Base)) { return $test }
-        return 'Environment'
-    }
-
-    function Test-PathEntry([string]$PathValue, [string]$Dir) {
-        $want = $Dir.TrimEnd('\')
-        foreach ($entry in ($PathValue -split ';')) {
-            if ($entry.TrimEnd('\') -eq $want) { return $true }
+        # The user environment key: HKCU\Environment, or, for tests only, a
+        # scratch key that SELFUPDATE_INSTALL_TEST_ENV_KEY names while the base
+        # URL is a loopback one.
+        function Get-EnvKeyName([string]$Base) {
+            $test = $env:SELFUPDATE_INSTALL_TEST_ENV_KEY
+            if (-not [string]::IsNullOrEmpty($test) -and (Test-Loopback $Base)) { return $test }
+            return 'Environment'
         }
-        return $false
-    }
 
-    function Send-SettingChange {
-        if (-not ('SelfupdateInstall.NativeMethods' -as [type])) {
-            Add-Type -Namespace SelfupdateInstall -Name NativeMethods -MemberDefinition @'
+        # Delete a file, waiting up to 2 s for a handle that is closing, such
+        # as a scanner's or that of a process that has just exited. Returns
+        # whether it is gone.
+        function Clear-SettledFile([string]$Path) {
+            for ($try = 1; $try -le 10; $try++) {
+                Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+                if (-not (Test-Path -LiteralPath $Path)) { return $true }
+                Start-Sleep -Milliseconds 200
+            }
+            return $false
+        }
+
+        function Test-PathEntry([string]$PathValue, [string]$Dir) {
+            $want = $Dir.TrimEnd('\')
+            foreach ($entry in ($PathValue -split ';')) {
+                if ($entry.TrimEnd('\') -eq $want) { return $true }
+            }
+            return $false
+        }
+
+        function Send-SettingChange {
+            if (-not ('SelfupdateInstall.NativeMethods' -as [type])) {
+                Add-Type -Namespace SelfupdateInstall -Name NativeMethods -MemberDefinition @'
 [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
 public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);
 '@
-        }
-        $result = [UIntPtr]::Zero
-        [void][SelfupdateInstall.NativeMethods]::SendMessageTimeout([IntPtr]0xffff, 0x1A, [UIntPtr]::Zero, 'Environment', 2, 5000, [ref]$result)
-    }
-
-    # Add $Dir to the user PATH, editing the raw value so %VAR% entries stay
-    # unexpanded and REG_EXPAND_SZ stays REG_EXPAND_SZ.
-    function Add-UserPath([string]$Dir, [string]$Base) {
-        $keyName = Get-EnvKeyName $Base
-        $machine = [Environment]::GetEnvironmentVariable('Path', 'Machine')
-        $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($keyName)
-        try {
-            $raw = [string]$key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
-            if ((Test-PathEntry $raw $Dir) -or ($keyName -eq 'Environment' -and $machine -and (Test-PathEntry $machine $Dir))) {
-                return $false
             }
-            $kind = [Microsoft.Win32.RegistryValueKind]::ExpandString
-            if ($key.GetValueNames() -contains 'Path') { $kind = $key.GetValueKind('Path') }
-            $new = if ($raw) { $raw.TrimEnd(';') + ';' + $Dir } else { $Dir }
-            $key.SetValue('Path', $new, $kind)
-        } finally {
-            $key.Dispose()
+            $result = [UIntPtr]::Zero
+            [void][SelfupdateInstall.NativeMethods]::SendMessageTimeout([IntPtr]0xffff, 0x1A, [UIntPtr]::Zero, 'Environment', 2, 5000, [ref]$result)
         }
-        if ($keyName -eq 'Environment') { Send-SettingChange }
-        return $true
-    }
 
-    function Clear-UserPathEntry([string]$Dir, [string]$Base) {
-        $keyName = Get-EnvKeyName $Base
-        $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($keyName)
-        try {
-            if ($key.GetValueNames() -notcontains 'Path') { return }
-            $raw = [string]$key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
-            $kind = $key.GetValueKind('Path')
-            $want = $Dir.TrimEnd('\')
-            $kept = @($raw -split ';' | Where-Object { $_ -and $_.TrimEnd('\') -ne $want })
-            $key.SetValue('Path', ($kept -join ';'), $kind)
-        } finally {
-            $key.Dispose()
-        }
-        if ($keyName -eq 'Environment') { Send-SettingChange }
-    }
-
-    # Run the hooks of one time. before_install runs the installed copy,
-    # and skips a product not installed yet. Returns whether all passed.
-    function Invoke-InstallHook([string]$When, [string]$Dir, [string[]]$Selected, [bool]$Skip) {
-        if ($Skip) { return $true }
-        $ok = $true
-        foreach ($hook in $Hooks) {
-            if ($hook.When -cne $When -or $Selected -cnotcontains $hook.Product) { continue }
-            $exe = Join-Path $Dir ($hook.Product + '.exe')
-            if (-not (Test-Path -LiteralPath $exe)) { continue }
-            $hookArgs = $hook.Args
-            Write-Line "running $($hook.Product) $($hookArgs -join ' ')"
-            $ErrorActionPreference = 'Continue'
-            & $exe @hookArgs
-            $code = $LASTEXITCODE
-            $ErrorActionPreference = 'Stop'
-            if ($code -ne 0) {
-                [Console]::Error.WriteLine("install: $When hook failed: $($hook.Product) $($hookArgs -join ' ')")
-                $ok = $false
-                if ($When -ceq 'before_install') { break }
+        # Add $Dir to the user PATH, editing the raw value so %VAR% entries stay
+        # unexpanded and REG_EXPAND_SZ stays REG_EXPAND_SZ.
+        function Add-UserPath([string]$Dir, [string]$Base) {
+            $keyName = Get-EnvKeyName $Base
+            $machine = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+            $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($keyName)
+            try {
+                $raw = [string]$key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+                if ((Test-PathEntry $raw $Dir) -or ($keyName -eq 'Environment' -and $machine -and (Test-PathEntry $machine $Dir))) {
+                    return $false
+                }
+                $kind = [Microsoft.Win32.RegistryValueKind]::ExpandString
+                if ($key.GetValueNames() -contains 'Path') { $kind = $key.GetValueKind('Path') }
+                $new = if ($raw) { $raw.TrimEnd(';') + ';' + $Dir } else { $Dir }
+                $key.SetValue('Path', $new, $kind)
+            } finally {
+                $key.Dispose()
             }
+            if ($keyName -eq 'Environment') { Send-SettingChange }
+            return $true
         }
-        return $ok
-    }
 
-    function Test-Identity([string]$Dir, [string[]]$Selected, [string]$Want) {
-        foreach ($name in $Selected) {
-            if (-not $Identity.ContainsKey($name)) { continue }
-            $idArgs = $Identity[$name]
-            $ErrorActionPreference = 'Continue'
-            $first = & (Join-Path $Dir "$name.exe") @idArgs 2>$null | Select-Object -First 1
-            $ErrorActionPreference = 'Stop'
-            $first = [string]$first
-            $pattern = '^' + [regex]::Escape("$Want (release)") + '( [0-9a-f]{12})?$'
-            if ($first -cnotmatch $pattern) {
-                [Console]::Error.WriteLine("install: $name reports `"$first`", not $Want (release)")
-                return $false
+        function Clear-UserPathEntry([string]$Dir, [string]$Base) {
+            $keyName = Get-EnvKeyName $Base
+            $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($keyName)
+            try {
+                if ($key.GetValueNames() -notcontains 'Path') { return }
+                $raw = [string]$key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+                $kind = $key.GetValueKind('Path')
+                $want = $Dir.TrimEnd('\')
+                $kept = @($raw -split ';' | Where-Object { $_ -and $_.TrimEnd('\') -ne $want })
+                $key.SetValue('Path', ($kept -join ';'), $kind)
+            } finally {
+                $key.Dispose()
             }
+            if ($keyName -eq 'Environment') { Send-SettingChange }
         }
-        return $true
-    }
 
-    function Install-Release {
-        param(
-            [string]$Version, [string]$InstallDir, [string[]]$Product,
-            [bool]$VerifyAttestation, [bool]$NoHooks, [bool]$NoPathUpdate,
-            [bool]$DryRun, [bool]$Uninstall
-        )
-        if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
-            Invoke-Fail 1 'install.ps1 is for Windows; on Linux and macOS use install.sh'
+        # Run the hooks of one time. before_install runs the installed copy,
+        # and skips a product not installed yet. Returns whether all passed.
+        function Invoke-InstallHook([string]$When, [string]$Dir, [string[]]$Selected, [bool]$Skip) {
+            if ($Skip) { return $true }
+            $ok = $true
+            foreach ($hook in $Hooks) {
+                if ($hook.When -cne $When -or $Selected -cnotcontains $hook.Product) { continue }
+                $exe = Join-Path $Dir ($hook.Product + '.exe')
+                if (-not (Test-Path -LiteralPath $exe)) { continue }
+                $hookArgs = $hook.Args
+                Write-Line "running $($hook.Product) $($hookArgs -join ' ')"
+                $ErrorActionPreference = 'Continue'
+                # Shown, not returned: output would make this function's result
+                # an array, which is true however the hook ended.
+                & $exe @hookArgs | ForEach-Object { Write-Line ([string]$_) }
+                $code = $LASTEXITCODE
+                $ErrorActionPreference = 'Stop'
+                if ($code -ne 0) {
+                    [Console]::Error.WriteLine("install: $When hook failed: $($hook.Product) $($hookArgs -join ' ')")
+                    $ok = $false
+                    if ($When -ceq 'before_install') { break }
+                }
+            }
+            return $ok
         }
-        if ($PSVersionTable.PSVersion.Major -lt 6) {
-            [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-        }
-        $want = $Version
-        if (-not $want) { $want = Get-EnvSetting 'VERSION' }
-        if (-not $want) { $want = $Tag }
-        if (-not $want.StartsWith('v')) { $want = 'v' + $want }
-        $dir = $InstallDir
-        if (-not $dir) { $dir = Get-EnvSetting 'INSTALL_DIR' }
-        if (-not $dir) { $dir = Join-Path $env:LOCALAPPDATA "Programs\$InstallerName" }
-        $skipPath = $NoPathUpdate -or ((Get-EnvSetting 'NO_PATH_UPDATE') -eq '1')
-        $skipHooks = $NoHooks -or ((Get-EnvSetting 'NO_HOOKS') -eq '1')
-        $selected = @($Product)
-        if ($selected.Count -eq 0) { $selected = $Products }
-        foreach ($name in $selected) {
-            if ($Products -cnotcontains $name) { Invoke-Fail 1 "$name is not a product of this release ($($Products -join ' '))" }
-        }
-        $base = Get-BaseUrl
 
-        if ($Uninstall) {
+        function Test-Identity([string]$Dir, [string[]]$Selected, [string]$Want) {
+            foreach ($name in $Selected) {
+                if (-not $Identity.ContainsKey($name)) { continue }
+                $idArgs = $Identity[$name]
+                $ErrorActionPreference = 'Continue'
+                $first = & (Join-Path $Dir "$name.exe") @idArgs 2>$null | Select-Object -First 1
+                $ErrorActionPreference = 'Stop'
+                $first = [string]$first
+                $pattern = '^' + [regex]::Escape("$Want (release)") + '( [0-9a-f]{12})?$'
+                if ($first -cnotmatch $pattern) {
+                    [Console]::Error.WriteLine("install: $name reports `"$first`", not $Want (release)")
+                    return $false
+                }
+            }
+            return $true
+        }
+
+        function Install-Release {
+            param(
+                [string]$Version, [string]$InstallDir, [string[]]$Product,
+                [bool]$VerifyAttestation, [bool]$NoHooks, [bool]$NoPathUpdate,
+                [bool]$DryRun, [bool]$Uninstall
+            )
+            if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
+                Invoke-Fail 1 'install.ps1 is for Windows; on Linux and macOS use install.sh'
+            }
+            if ($PSVersionTable.PSVersion.Major -lt 6) {
+                [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+            }
+            $want = $Version
+            if (-not $want) { $want = Get-EnvSetting 'VERSION' }
+            if (-not $want) { $want = $Tag }
+            if (-not $want.StartsWith('v')) { $want = 'v' + $want }
+            $dir = $InstallDir
+            if (-not $dir) { $dir = Get-EnvSetting 'INSTALL_DIR' }
+            if (-not $dir) { $dir = Join-Path $env:LOCALAPPDATA "Programs\$InstallerName" }
+            $skipPath = $NoPathUpdate -or ((Get-EnvSetting 'NO_PATH_UPDATE') -eq '1')
+            $skipHooks = $NoHooks -or ((Get-EnvSetting 'NO_HOOKS') -eq '1')
+            $selected = @($Product)
+            if ($selected.Count -eq 0) { $selected = $Products }
             foreach ($name in $selected) {
-                $exe = Join-Path $dir "$name.exe"
-                if ($DryRun) { Write-Line "would remove $exe"; continue }
-                Remove-Item -LiteralPath $exe, "$exe.prev" -Force -ErrorAction SilentlyContinue
-                Write-Line "removed $exe"
+                if ($Products -cnotcontains $name) { Invoke-Fail 1 "$name is not a product of this release ($($Products -join ' '))" }
             }
-            if (-not $DryRun) { Clear-UserPathEntry $dir $base }
-            Write-Line 'configuration, if any, is left in place'
-            return 0
-        }
+            $base = Get-BaseUrl
 
-        Test-ReleaseTag $want
-        $arch = Get-NativeArch
-        $plan = @()
-        foreach ($name in $selected) {
-            $asset = @($Assets | Where-Object { $_.Product -ceq $name -and $_.Arch -ceq $arch })
-            if ($asset.Count -ne 1) {
-                $have = ($Assets | ForEach-Object { 'windows/' + $_.Arch } | Sort-Object -Unique) -join ' '
-                Invoke-Fail 1 "windows/$arch is not a platform of this release (it ships $have)"
-            }
-            $plan += $asset[0]
-        }
-        if ($VerifyAttestation) {
-            if (-not (Get-Command gh -ErrorAction SilentlyContinue)) { Invoke-Fail 1 '-VerifyAttestation needs gh' }
-            $ErrorActionPreference = 'Continue'
-            & gh auth status *> $null
-            $authed = $LASTEXITCODE -eq 0
-            $ErrorActionPreference = 'Stop'
-            if (-not $authed) { Invoke-Fail 1 '-VerifyAttestation needs gh to be logged in (gh auth login)' }
-        }
-        $download = "$base/$Repository/releases/download/$want"
-        if ($DryRun) {
-            foreach ($a in $plan) { Write-Line "would download $download/$($a.Name) and install $(Join-Path $dir ($a.Product + '.exe'))" }
-            return 0
-        }
-
-        [void](New-Item -ItemType Directory -Force -Path $dir)
-        $work = Join-Path $dir (".$InstallerName-install." + [Guid]::NewGuid().ToString('N'))
-        [void](New-Item -ItemType Directory -Path $work)
-        $swapped = @()
-        try {
-            $sums = Join-Path $work 'SHA256SUMS'
-            try { Get-Download "$download/SHA256SUMS" $sums } catch { Invoke-Fail 2 "download of SHA256SUMS for $want failed: $($_.Exception.Message)" }
-            foreach ($a in $plan) {
-                $file = Join-Path $work $a.Name
-                # A release that does not list the asset is refused before
-                # anything is downloaded.
-                $listed = Get-ListedSum $sums $a.Name
-                if ($null -eq $listed) {
-                    if ($want -cne $Tag) { Invoke-Fail 1 "release $want has no $($a.Name); its own installer is $download/install.ps1" }
-                    Invoke-Fail 2 "SHA256SUMS has no entry for $($a.Name)"
-                }
-                try { Get-Download "$download/$($a.Name)" $file } catch { Invoke-Fail 2 "download of $($a.Name) failed: $($_.Exception.Message)" }
-                $got = (Get-FileHash -Algorithm SHA256 -LiteralPath $file).Hash.ToLowerInvariant()
-                if ($got -cne $listed) { Invoke-Fail 2 "$($a.Name): SHA-256 $got does not match SHA256SUMS ($listed)" }
-                if ($VerifyAttestation) {
-                    $ErrorActionPreference = 'Continue'
-                    & gh attestation verify $file --repo $Repository --signer-workflow $PublishWorkflow *> $null
-                    $verified = $LASTEXITCODE -eq 0
-                    $ErrorActionPreference = 'Stop'
-                    if (-not $verified) { Invoke-Fail 2 "$($a.Name): attestation verification failed" }
-                }
-                Expand-Program ($a.Product + '.exe') $file $a.Format (Join-Path $work ($a.Product + '.exe.new')) $work
-            }
-
-            if (-not (Invoke-InstallHook 'before_install' $dir $selected $skipHooks)) { Invoke-Fail 1 'a before_install hook failed; nothing was changed' }
-            foreach ($name in $selected) {
-                $exe = Join-Path $dir "$name.exe"
-                if (Test-Path -LiteralPath $exe) {
-                    # A running .exe can be renamed, not deleted.
-                    Remove-Item -LiteralPath "$exe.prev" -Force -ErrorAction SilentlyContinue
-                    if (Test-Path -LiteralPath "$exe.prev") {
-                        Move-Item -LiteralPath "$exe.prev" -Destination ("$exe.old-" + [Guid]::NewGuid().ToString('N')) -Force
-                    }
-                    Move-Item -LiteralPath $exe -Destination "$exe.prev" -Force
-                }
-                Move-Item -LiteralPath (Join-Path $work "$name.exe.new") -Destination $exe -Force
-                $swapped += $name
-            }
-            if (-not (Test-Identity $dir $selected $want)) {
-                foreach ($name in $swapped) {
+            if ($Uninstall) {
+                foreach ($name in $selected) {
                     $exe = Join-Path $dir "$name.exe"
-                    if (Test-Path -LiteralPath "$exe.prev") {
-                        Move-Item -LiteralPath $exe -Destination ("$exe.bad-" + [Guid]::NewGuid().ToString('N')) -Force
-                        Move-Item -LiteralPath "$exe.prev" -Destination $exe -Force
-                    } else {
-                        Remove-Item -LiteralPath $exe -Force -ErrorAction SilentlyContinue
-                    }
+                    if ($DryRun) { Write-Line "would remove $exe"; continue }
+                    Remove-Item -LiteralPath $exe, "$exe.prev" -Force -ErrorAction SilentlyContinue
+                    Write-Line "removed $exe"
                 }
-                Invoke-Fail 2 "the new binaries do not report $want; the previous ones were restored"
+                # The folder leaves PATH only with the last of the programs.
+                $left = @($Products | Where-Object { Test-Path -LiteralPath (Join-Path $dir "$_.exe") })
+                if (-not $DryRun -and $left.Count -eq 0) { Clear-UserPathEntry $dir $base }
+                Write-Line 'configuration, if any, is left in place'
+                return 0
             }
-            foreach ($name in $selected) { Write-Line "installed $(Join-Path $dir "$name.exe") ($want)" }
-            if ($skipPath) {
-                Write-Line "add $dir to your PATH to run the programs by name"
-            } elseif (Add-UserPath $dir $base) {
-                Write-Line "added $dir to your user PATH; open a new terminal to use it"
-            }
-            if (-not (Invoke-InstallHook 'after_install' $dir $selected $skipHooks)) {
-                [Console]::Error.WriteLine('install: installed, but an after_install hook failed')
-                return 3
-            }
-            return 0
-        } finally {
-            Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
-        }
-    }
 
-    $code = 0
+            Test-ReleaseTag $want
+            $arch = Get-NativeArch
+            $plan = @()
+            foreach ($name in $selected) {
+                $asset = @($Assets | Where-Object { $_.Product -ceq $name -and $_.Arch -ceq $arch })
+                if ($asset.Count -ne 1) {
+                    $have = ($Assets | ForEach-Object { 'windows/' + $_.Arch } | Sort-Object -Unique) -join ' '
+                    Invoke-Fail 1 "windows/$arch is not a platform of this release (it ships $have)"
+                }
+                $plan += $asset[0]
+            }
+            if ($VerifyAttestation) {
+                if (-not (Get-Command gh -ErrorAction SilentlyContinue)) { Invoke-Fail 1 '-VerifyAttestation needs gh' }
+                $ErrorActionPreference = 'Continue'
+                & gh auth status *> $null
+                $authed = $LASTEXITCODE -eq 0
+                $ErrorActionPreference = 'Stop'
+                if (-not $authed) { Invoke-Fail 1 '-VerifyAttestation needs gh to be logged in (gh auth login)' }
+            }
+            $download = "$base/$Repository/releases/download/$want"
+            if ($DryRun) {
+                foreach ($a in $plan) { Write-Line "would download $download/$($a.Name) and install $(Join-Path $dir ($a.Product + '.exe'))" }
+                return 0
+            }
+
+            [void](New-Item -ItemType Directory -Force -Path $dir)
+            $work = Join-Path $dir (".$InstallerName-install." + [Guid]::NewGuid().ToString('N'))
+            [void](New-Item -ItemType Directory -Path $work)
+            $swapped = @()
+            try {
+                $sums = Join-Path $work 'SHA256SUMS'
+                try { Get-Download "$download/SHA256SUMS" $sums } catch { Invoke-Fail 2 "download of SHA256SUMS for $want failed: $($_.Exception.Message)" }
+                foreach ($a in $plan) {
+                    $file = Join-Path $work $a.Name
+                    # A release that does not list the asset is refused before
+                    # anything is downloaded.
+                    $listed = Get-ListedSum $sums $a.Name
+                    if ($null -eq $listed) {
+                        if ($want -cne $Tag) { Invoke-Fail 1 "release $want has no $($a.Name); its own installer is $download/install.ps1" }
+                        Invoke-Fail 2 "SHA256SUMS has no entry for $($a.Name)"
+                    }
+                    try { Get-Download "$download/$($a.Name)" $file } catch { Invoke-Fail 2 "download of $($a.Name) failed: $($_.Exception.Message)" }
+                    $got = (Get-FileHash -Algorithm SHA256 -LiteralPath $file).Hash.ToLowerInvariant()
+                    if ($got -cne $listed) { Invoke-Fail 2 "$($a.Name): SHA-256 $got does not match SHA256SUMS ($listed)" }
+                    if ($VerifyAttestation) {
+                        $ErrorActionPreference = 'Continue'
+                        & gh attestation verify $file --repo $Repository --signer-workflow $PublishWorkflow *> $null
+                        $verified = $LASTEXITCODE -eq 0
+                        $ErrorActionPreference = 'Stop'
+                        if (-not $verified) { Invoke-Fail 2 "$($a.Name): attestation verification failed" }
+                    }
+                    Expand-Program ($a.Product + '.exe') $file $a.Format (Join-Path $work ($a.Product + '.exe.new')) $work
+                }
+
+                if (-not (Invoke-InstallHook 'before_install' $dir $selected $skipHooks)) { Invoke-Fail 1 'a before_install hook failed; nothing was changed' }
+                foreach ($name in $selected) {
+                    $exe = Join-Path $dir "$name.exe"
+                    if (Test-Path -LiteralPath $exe) {
+                        # A running .exe can be renamed, not deleted.
+                        if ((Test-Path -LiteralPath "$exe.prev") -and -not (Clear-SettledFile "$exe.prev")) {
+                            Move-Item -LiteralPath "$exe.prev" -Destination ("$exe.old-" + [Guid]::NewGuid().ToString('N')) -Force
+                        }
+                        Move-Item -LiteralPath $exe -Destination "$exe.prev" -Force
+                    }
+                    Move-Item -LiteralPath (Join-Path $work "$name.exe.new") -Destination $exe -Force
+                    $swapped += $name
+                }
+                if (-not (Test-Identity $dir $selected $want)) {
+                    foreach ($name in $swapped) {
+                        $exe = Join-Path $dir "$name.exe"
+                        if (Test-Path -LiteralPath "$exe.prev") {
+                            if (-not (Clear-SettledFile $exe)) {
+                                # Still held: set it aside.
+                                Move-Item -LiteralPath $exe -Destination ("$exe.bad-" + [Guid]::NewGuid().ToString('N')) -Force
+                            }
+                            Move-Item -LiteralPath "$exe.prev" -Destination $exe -Force
+                        } else {
+                            Remove-Item -LiteralPath $exe -Force -ErrorAction SilentlyContinue
+                        }
+                    }
+                    Invoke-Fail 2 "the new binaries do not report $want; the previous ones were restored"
+                }
+                foreach ($name in $selected) { Write-Line "installed $(Join-Path $dir "$name.exe") ($want)" }
+                if ($skipPath) {
+                    Write-Line "add $dir to your PATH to run the programs by name"
+                } elseif (Add-UserPath $dir $base) {
+                    Write-Line "added $dir to your user PATH; open a new terminal to use it"
+                }
+                if (-not (Invoke-InstallHook 'after_install' $dir $selected $skipHooks)) {
+                    [Console]::Error.WriteLine('install: installed, but an after_install hook failed')
+                    return 3
+                }
+                return 0
+            } finally {
+                Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        $code = 0
+        try {
+            $code = Install-Release -Version $Version -InstallDir $InstallDir -Product $Product `
+                -VerifyAttestation $VerifyAttestation.IsPresent -NoHooks $NoHooks.IsPresent `
+                -NoPathUpdate $NoPathUpdate.IsPresent -DryRun $DryRun.IsPresent -Uninstall $Uninstall.IsPresent
+        } catch {
+            $code = 1
+            if ($_.Exception.Data.Contains('InstallExitCode')) { $code = $_.Exception.Data['InstallExitCode'] }
+            [Console]::Error.WriteLine('install: ' + $_.Exception.Message)
+        }
+        return $code
+    }
+    $code = 1
     try {
-        $code = Install-Release -Version $Version -InstallDir $InstallDir -Product $Product `
-            -VerifyAttestation $VerifyAttestation.IsPresent -NoHooks $NoHooks.IsPresent `
-            -NoPathUpdate $NoPathUpdate.IsPresent -DryRun $DryRun.IsPresent -Uninstall $Uninstall.IsPresent
+        $code = & $main @args
     } catch {
-        $code = 1
-        if ($_.Exception.Data.Contains('InstallExitCode')) { $code = $_.Exception.Data['InstallExitCode'] }
         [Console]::Error.WriteLine('install: ' + $_.Exception.Message)
     }
     if ($FromFile) { exit $code }
