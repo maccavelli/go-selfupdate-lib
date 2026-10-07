@@ -129,13 +129,10 @@ func (u *Unit) Start(ctx context.Context, product string) error {
 	if err != nil {
 		return err
 	}
-	p, err := u.show(ctx, unit, "InvocationID", "NRestarts")
+	p, err := u.show(ctx, unit, "InvocationID")
 	if err != nil {
 		return err
 	}
-	u.mu.Lock()
-	u.baseline[unit] = baseline{invocation: p["InvocationID"], restarts: p["NRestarts"]}
-	u.mu.Unlock()
 	out, err := u.systemctlRun(ctx, "start", "--no-ask-password", "--quiet", "--", unit)
 	if err != nil {
 		return err
@@ -143,6 +140,17 @@ func (u *Unit) Start(ctx context.Context, product string) error {
 	if out.ExitCode != 0 {
 		return commandError("start", unit, out)
 	}
+	// The restart count is read once the start returned: what the start
+	// itself does to it is not a restart. A start during the RestartSec
+	// wait is counted as one, so a count from before would differ
+	// (0015-MADR D2, A3).
+	after, err := u.show(ctx, unit, "NRestarts")
+	if err != nil {
+		return err
+	}
+	u.mu.Lock()
+	u.baseline[unit] = baseline{invocation: p["InvocationID"], restarts: after["NRestarts"]}
+	u.mu.Unlock()
 	return nil
 }
 

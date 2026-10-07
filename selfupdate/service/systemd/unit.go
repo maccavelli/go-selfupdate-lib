@@ -55,7 +55,9 @@ type Options struct {
 	// the unit's TimeoutStopUSec plus 30 s.
 	Poll service.PollOptions
 	// RewritePath lets Reconcile point the unit at a binary that moved, with
-	// a drop-in. Without it, a unit running another binary is an error.
+	// a drop-in. Without it, a unit running another binary is an error. A
+	// drop-in that loads later and sets ExecStart again makes the rewrite
+	// an error.
 	RewritePath bool
 	// DropInDir is where Reconcile writes its drop-in directory. Empty means
 	// /etc/systemd/system, or $XDG_CONFIG_HOME/systemd/user (by default
@@ -235,8 +237,25 @@ func commandError(step, unit string, out service.Output) error {
 	case strings.Contains(lower, "access denied"), strings.Contains(lower, "authentication required"),
 		strings.Contains(lower, "permission denied"):
 		return fmt.Errorf("%w: %w", service.ErrPermission, err)
-	case strings.Contains(lower, "not loaded"), strings.Contains(lower, "not found"), strings.Contains(lower, "does not exist"):
+	case unitMissing(lower, strings.ToLower(unit)):
 		return fmt.Errorf("%w: %w", service.ErrNotInstalled, err)
 	}
 	return err
+}
+
+// unitMissing reports systemd saying this unit, not another, is missing: a
+// start that fails on a missing dependency names the dependency
+// (0015-MADR D11). lower and unit are lowercased.
+func unitMissing(lower, unit string) bool {
+	for _, phrase := range []string{
+		"unit " + unit + " not found",
+		"unit " + unit + " not loaded",
+		"unit " + unit + " could not be found",
+		"unit file " + unit + " does not exist",
+	} {
+		if strings.Contains(lower, phrase) {
+			return true
+		}
+	}
+	return false
 }

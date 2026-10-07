@@ -55,7 +55,8 @@ func TestDetach(t *testing.T) {
 			t.Fatalf("a secret reached the command line: %q", run)
 		}
 	}
-	if !strings.HasPrefix(envFile, u.getenv("XDG_RUNTIME_DIR")+"/selfupdate/handoff-abc123.env") {
+	// Each unit's handoffs keep to its own directory (0015-MADR D8).
+	if !strings.HasPrefix(envFile, u.getenv("XDG_RUNTIME_DIR")+"/selfupdate/relay@eu.service/handoff-abc123.env") {
 		t.Fatalf("environment file %q", envFile)
 	}
 	if _, err := os.Stat(envFile); !errors.Is(err, os.ErrNotExist) {
@@ -79,7 +80,7 @@ func TestDetachOldSystemd(t *testing.T) {
 	if !slices.Contains(run, "--no-block") || slices.Contains(run, "Type=exec") {
 		t.Fatalf("systemd-run %q", run)
 	}
-	file := filepath.Join(u.getenv("XDG_RUNTIME_DIR"), "selfupdate", "handoff-abc123.env")
+	file := filepath.Join(u.getenv("XDG_RUNTIME_DIR"), "selfupdate", "demo.service", "handoff-abc123.env")
 	body := readFile(t, file)
 	if !strings.Contains(body, `SECRET_TOKEN="s3cret"`) || !strings.Contains(body, service.EnvHandOff+`="abc123"`) {
 		t.Fatalf("environment file %q", body)
@@ -119,7 +120,7 @@ func TestDetachFailureRemovesFile(t *testing.T) {
 	if _, err := u.Detach(context.Background(), handOffSpec(t)); !errors.Is(err, service.ErrPermission) {
 		t.Fatalf("err = %v", err)
 	}
-	entries, _ := os.ReadDir(filepath.Join(u.getenv("XDG_RUNTIME_DIR"), "selfupdate"))
+	entries, _ := os.ReadDir(filepath.Join(u.getenv("XDG_RUNTIME_DIR"), "selfupdate", "demo.service"))
 	if len(entries) != 0 {
 		t.Fatalf("a failed handoff left %v", entries)
 	}

@@ -203,15 +203,21 @@ docs/
     (`handoffhop.go`);
   - **`systemd`:** probes over one `systemctl show` per call, read by key;
     `Stop`, `Start` and `WaitHealthy` on the unit's state and
-    `InvocationID`; a drop-in for a moved binary; `Inside` by cgroup; the
-    handoff by `systemd-run`; and `Notify` (`notify.go`);
+    `InvocationID`, with the restart count read after the start; a
+    drop-in for a moved binary, checked against the effective `ExecStart`
+    after the reload; `Inside` by cgroup; the handoff by `systemd-run`,
+    its environment file under a directory per unit; and `Notify`
+    (`notify.go`);
   - **`launchd`:** `launchctl` exit codes, `list`, and `print`'s top-level
     `pid` and `state` lines only; `Stop` waits until the job has left the
-    domain and its process has exited; `plutil` for the plist; `Inside`
-    by process group or ancestry; the handoff by a one-shot job;
+    domain and its process has exited; `plutil` for the plist, its values
+    read with their types; a rewritten plist reloaded when the job is
+    loaded but not running; `Inside` by process group or ancestry; the
+    handoff by a one-shot job;
   - **`scm`:** an unexported interface over the SCM and the process table,
     which the tests fake; handles opened with only each call's rights;
-    Microsoft's wait-hint and checkpoint loop; `Inside` by an ancestor
+    Microsoft's wait-hint and checkpoint loop; an unquoted command line
+    read as `CreateProcess` reads it; `Inside` by an ancestor
     walk that checks creation times; the handoff by `DetachProcess`
     through a hop.
 

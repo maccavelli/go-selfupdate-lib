@@ -52,17 +52,27 @@ func TestReconcileRewrite(t *testing.T) {
 	f.props["NeedDaemonReload"] = "yes"
 	dropIns := filepath.Join(dir, "etc")
 	u := testUnit(t, f, Options{RewritePath: true, DropInDir: dropIns})
+	path := filepath.Join(dropIns, "demo.service.d", dropInName)
+	// systemd runs the drop-in's ExecStart once it is reloaded with it
+	// (0015-MADR D4).
+	f.onReload = func(p map[string]string) {
+		p["ExecStart"] = "{ path=/opt/old/demo ; argv[]=/opt/old/demo serve --name a b ; }"
+		if b, err := os.ReadFile(path); err == nil && strings.Contains(string(b), "/opt/new/demo") { //nolint:gosec // the test's own drop-in
+			p["ExecStart"] = "{ path=/opt/new/demo ; argv[]=/opt/new/demo serve --name a b ; }"
+		}
+	}
 
 	res, err := u.Reconcile(context.Background(), "demo", "/opt/new/demo")
 	if err != nil || !res.Changed {
 		t.Fatalf("res %+v, err %v", res, err)
 	}
-	path := filepath.Join(dropIns, "demo.service.d", dropInName)
 	body := readFile(t, path)
 	if !strings.Contains(body, "[Service]\nExecStart=\nExecStart=-\"/opt/new/demo\" serve    --name \"a b\"\n") {
 		t.Fatalf("drop-in:\n%s", body)
 	}
-	if v := f.verbs(); v[len(v)-2] != "daemon-reload" {
+	// daemon-reload, the NeedDaemonReload check, then the effective
+	// ExecStart (0015-MADR D4).
+	if v := f.verbs(); v[len(v)-3] != "daemon-reload" {
 		t.Fatalf("verbs %q", v)
 	}
 

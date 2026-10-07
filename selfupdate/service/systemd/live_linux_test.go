@@ -213,6 +213,19 @@ func requireLive(t *testing.T) Scope {
 // test binary, starts it, and removes it when the test ends.
 func newLiveUnit(t *testing.T, scope Scope, extra ...string) *liveEnv {
 	t.Helper()
+	return newLiveUnitWith(t, scope, liveUnitOpts{}, extra...)
+}
+
+// liveUnitOpts add lines to the throwaway unit's [Unit] and [Service]
+// sections, and can leave it stopped.
+type liveUnitOpts struct {
+	unit, service string
+	noStart       bool
+}
+
+// newLiveUnitWith is newLiveUnit with o's lines, started unless o.noStart.
+func newLiveUnitWith(t *testing.T, scope Scope, o liveUnitOpts, extra ...string) *liveEnv {
+	t.Helper()
 	var b [4]byte
 	if _, err := rand.Read(b[:]); err != nil {
 		t.Fatal(err)
@@ -250,7 +263,7 @@ func newLiveUnit(t *testing.T, scope Scope, extra ...string) *liveEnv {
 	}
 	env = append(env, extra...)
 	var unit strings.Builder
-	unit.WriteString("[Unit]\nDescription=go-selfupdate-lib live test\n[Service]\nType=notify\n")
+	unit.WriteString("[Unit]\nDescription=go-selfupdate-lib live test\n" + o.unit + "[Service]\nType=notify\n" + o.service)
 	for _, kv := range env {
 		fmt.Fprintf(&unit, "Environment=%q\n", kv)
 	}
@@ -269,6 +282,9 @@ func newLiveUnit(t *testing.T, scope Scope, extra ...string) *liveEnv {
 	})
 	if err := e.systemctl("daemon-reload"); err != nil {
 		t.Fatal(err)
+	}
+	if o.noStart {
+		return e
 	}
 	if err := e.systemctl("start", e.unit); err != nil {
 		t.Fatal(err)

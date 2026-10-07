@@ -110,7 +110,7 @@ documented contract or fail a supported setup.
 | C1 | `cli/run.go:143-155,173-176` | Under `--json` the result object is written before two steps that can still fail the run: writing the `warning:` lines (its error never reaches `finish`) and `HandOff.Report`. The object says `"exit_code":0` with no error while the process exits 1. 0004 F8: the result object carries the run's exit code. cli/doc.go also says an error after the run did its work leaves the status 0, while `HandOff.Report` is documented to fail the run. | R: `{"kind":"result","exit_code":0,…,"applied":true…}`, process exit 1 |
 | C2 | `cli/command.go:39-57` | A detached handoff run that fails before `Run` (the updater cannot be built, or the options are refused) ends through `Options.report` and never calls `HandOff.Report`. In a detached run that is what writes the result file, so the agent that handed off finds none. 0011 §9: "Report runs after the update with its outcome, in every run". | R: `newUpdater fails: exit=1 Report calls=0` |
 | C4 | `checker.go:95-97,134-150` vs `updater.go:157-167` | `Run` refuses a selector and unpacker that disagree (`matchUnpacker`, 0012 §2); `Updater.Checker()` carries no unpacker, so `Check` and `CheckCached` report an update `Run` refuses. The comment two lines above says "Run and Check cannot disagree (0004-MADR G3)". A startup banner can advertise an update that can never apply. | C; R\*: `Run --check err=… no Unpacker is configured`, `Checker.Check available=true` |
-| D2 | `service/systemd/lifecycle.go:99-104,138` | `Start` reads `NRestarts` while the unit is stopped; `WaitHealthy` fails on any difference. systemd zeroes the counter on a start that is not an automatic restart (`src/core/service.c:3623-3625` on `main`, read 2026-10-07: "This is not an automatic restart? Flush the restart counter then."). A unit that auto-restarted since its last manual start has its first update rolled back as unhealthy. 0011 §7 says it fails "on an `NRestarts` increase". | C; R\*: baseline 3, after start 0: `not healthy: … NRestarts=0` |
+| D2 | `service/systemd/lifecycle.go:99-104,138` | `Start` reads `NRestarts` while the unit is stopped; `WaitHealthy` fails on any difference. systemd zeroes the counter on a start that is not an automatic restart (`src/core/service.c:3623-3625` on `main`, read 2026-10-07: "This is not an automatic restart? Flush the restart counter then."). A unit that auto-restarted since its last manual start has its first update rolled back as unhealthy. 0011 §7 says it fails "on an `NRestarts` increase". *A3: on systemd 255 and 259 the counter is already 0 once the unit is stopped, so an update does not hit this; a start during the `RestartSec` wait does.* | C; R\*: baseline 3, after start 0: `not healthy: … NRestarts=0` |
 | D3 | `service/launchd/reconcile.go:29-34`, `lifecycle.go:171-176`, `managed.go:96-108` | `RewritePath` assumes `Stop` booted the job out and `Start` bootstraps it. A job that is loaded but not running (`RunAtLoad`, process exited) is not stopped, so after the plist is rewritten `Start` sees it loaded and `kickstart` runs launchd's cached definition: the old path. The update reports success with the old binary running. 0011 §5: "A changed plist needs `bootout`, the wait, then `bootstrap`." | R\*: launchctl verbs `[managername list print-disabled list enable kickstart]`, no `bootout` or `bootstrap` |
 | D4 | `service/systemd/reconcile.go:17,88-102,130-146` | systemd applies drop-ins sorted by file name across directories, so `90-selfupdate.conf` loads before `override.conf` (`systemctl edit`). An override that resets `ExecStart=` keeps the old binary, and `reload` checks only `NeedDaemonReload`, never the resulting `ExecStart`. `Reconcile` reports success. | R\*: `changed=true err=<nil>`, effective `ExecStart` `/opt/old/demo run --flag` |
 | D5 | `service/scm/reconcile.go:48-61,92-108` | An unquoted `BinaryPathName` containing a space, naming a moved binary (the T1574.009 case 0011 cites), is split at the first space. `RewritePath` writes the tail of the old path as arguments; without it the error names the wrong path. | R\*: `C:\Program Files\Old\demo.exe run` → `"C:\Program Files\New\demo.exe" Files\Old\demo.exe run` |
@@ -500,6 +500,47 @@ accepted manifest, written back as `<digest>  <name>`, parses again.
   differential test gains both boundary cases, so the two parsers must
   agree on them.
 
+### A3 (2026-10-07): D2's systemd behaviour, as probed
+
+*Status: accepted (2026-10-07). The owner chose "Retarget live test" when
+the PLAN's P5 live run contradicted D2's evidence (0015-PLAN Deviation
+D3).*
+
+**Found.** D2's row says systemd zeroes `NRestarts` on a start that is not
+an automatic restart, so a unit that auto-restarted since its last manual
+start has its first update rolled back. Probed on systemd 259 (Ubuntu
+26.04) and systemd 255 (Ubuntu 24.04 under WSL), 2026-10-07, with a
+throwaway unit:
+
+* `Restart=always`, its process killed once: `NRestarts=1 active`; after
+  `systemctl stop`: `NRestarts=0 inactive`.
+* `Restart=on-failure`, a first run that exits 3 and a second that exits
+  0: once the unit is inactive, `NRestarts=0`; after the next start, 0.
+* `Restart=always`, `RestartSec=6`, its process killed twice: during the
+  wait, `NRestarts=1 activating auto-restart`; a `systemctl start` then
+  ends the wait and is counted as a restart: `NRestarts=2 active running`.
+
+So on both versions the counter already reads 0 whenever the unit is
+stopped. A managed update stops a running or activating unit before it
+replaces the binary, and starts it from that stopped state: D2's update
+case does not occur there. The defect is real by the third route: a
+caller's `Start` and `WaitHealthy` on a unit waiting out `RestartSec`.
+The committed `v1.10.0` code fails it, "not healthy: … NRestarts=2", on
+the Linux test host.
+
+**Decided.**
+
+* D2's fix stands: the baseline is read after the start, so any change
+  the start itself makes to the counter is not a restart. Its severity is
+  unchanged; its trigger is the third case above, not an update after an
+  auto-restart.
+* D2's live test is `TestLiveStartDuringAutoRestart`, the third case, in
+  place of `TestLiveUpdateAfterAutoRestart`, which passes on the unfixed
+  code. The unit test models the third case: `NRestarts` 1 before the
+  start, 2 after it.
+* The source line cited under More Information describes `main`; the
+  probes above describe what this module's test hosts run.
+
 ## More Information
 
 * Earlier passes:
@@ -513,7 +554,7 @@ accepted manifest, written back as `<digest>  <name>`, parses again.
   [0014-MADR-shared-installer-templates.md](0014-MADR-shared-installer-templates.md).
 * External fact: systemd `src/core/service.c:3623-3625` (`main`, read
   2026-10-07) resets `n_restarts` on a start that is not an automatic
-  restart (D2).
+  restart (D2). A3 records what systemd 255 and 259 do on the test hosts.
 * The reviewers' probes were not committed: the PLAN that follows this
   record turns each into the test its fix needs.
 * The PLAN:

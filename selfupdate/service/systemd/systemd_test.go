@@ -110,7 +110,7 @@ func TestProbes(t *testing.T) {
 // TestCommandShape: --user in user scope, -- before the unit, and the
 // built environment, never this process's.
 func TestCommandShape(t *testing.T) {
-	t.Setenv("HOME", "/home/someone")
+	t.Setenv("HOME", "/home/<user>")
 	f := newFake()
 	u := testUnit(t, f, Options{Scope: User})
 	if _, err := u.Running(context.Background(), "demo"); err != nil {
@@ -122,7 +122,7 @@ func TestCommandShape(t *testing.T) {
 		t.Fatalf("call %q", call)
 	}
 	env := f.envs[0]
-	if !slices.Contains(env, "LC_ALL=C") || !slices.Contains(env, "SYSTEMD_PAGER=cat") || slices.Contains(env, "HOME=/home/someone") ||
+	if !slices.Contains(env, "LC_ALL=C") || !slices.Contains(env, "SYSTEMD_PAGER=cat") || slices.Contains(env, "HOME=/home/<user>") ||
 		!slices.ContainsFunc(env, func(s string) bool { return strings.HasPrefix(s, "XDG_RUNTIME_DIR=") }) {
 		t.Fatalf("env %q", env)
 	}
@@ -196,6 +196,16 @@ func TestCommandErrors(t *testing.T) {
 	if err := u.Start(context.Background(), "demo"); !errors.Is(err, service.ErrNotInstalled) {
 		t.Fatalf("err = %v, want ErrNotInstalled", err)
 	}
+	// Another unit's "not found", such as a missing dependency, does not
+	// make this one uninstalled (0015-MADR D11).
+	f.fail["start"] = service.Output{ExitCode: 5, Stderr: []byte("Failed to start demo.service: Unit missing-dep.service not found.")}
+	if err := u.Start(context.Background(), "demo"); err == nil || errors.Is(err, service.ErrNotInstalled) {
+		t.Fatalf("err = %v, want an error that is not ErrNotInstalled", err)
+	}
+	f.fail["stop"] = service.Output{ExitCode: 5, Stderr: []byte("Failed to stop demo.service: Unit demo.service not loaded.")}
+	if err := u.Stop(context.Background(), "demo"); !errors.Is(err, service.ErrNotInstalled) {
+		t.Fatalf("not loaded: err = %v, want ErrNotInstalled", err)
+	}
 	f.fail["show"] = service.Output{ExitCode: 1, Stderr: []byte("Failed to connect to bus")}
 	if _, err := u.Running(context.Background(), "demo"); err == nil || !strings.Contains(err.Error(), "Failed to connect to bus") {
 		t.Fatalf("err = %v", err)
@@ -239,12 +249,22 @@ func TestWaitHealthyFailsFast(t *testing.T) {
 		"auto-restart": func(p map[string]string) {
 			p["ActiveState"], p["SubState"], p["InvocationID"] = "activating", "auto-restart", "bbb"
 		},
-		"restarted": func(p map[string]string) { p["ActiveState"], p["InvocationID"], p["NRestarts"] = "active", "ccc", "1" },
+		"restarted": nil, // below: a restart after the start's baseline
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := newFake()
 			u := testUnit(t, f, Options{})
 			f.onStart = after
+			if after == nil {
+				// The baseline is read once the start returned, so the
+				// restart comes after it (0015-MADR D2).
+				f.onStart = func(map[string]string) {
+					f.showQueue = []map[string]string{
+						{"NRestarts": "0"},
+						{"ActiveState": "active", "SubState": "running", "InvocationID": "ccc", "NRestarts": "1"},
+					}
+				}
+			}
 			if err := u.Start(context.Background(), "demo"); err != nil {
 				t.Fatal(err)
 			}

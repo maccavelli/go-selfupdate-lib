@@ -30,8 +30,10 @@ type PlistBackup struct {
 // rename at the same path, so the plist already names it: Reconcile checks
 // Program, or else ProgramArguments.0, and changes nothing (0011-MADR §5).
 // A plist that runs another binary is an error, unless Options.RewritePath
-// allows rewriting it. Stop booted the job out and Start bootstraps it, so
-// launchd reads the rewritten plist with no extra reload.
+// allows rewriting it. launchd keeps the definition it loaded: a job Stop
+// booted out reads the rewritten plist at Start's bootstrap, a job loaded
+// but not running is reloaded here, and a running one is refused
+// (0015-MADR D3).
 func (j *Job) Reconcile(ctx context.Context, _ string, executable string) (selfupdate.ReconcileResult, error) {
 	key, current, err := j.program(ctx)
 	if err != nil {
@@ -69,7 +71,18 @@ func (j *Job) program(ctx context.Context) (key, path string, err error) {
 
 // rewrite replaces key with executable in a copy of the plist, lints it,
 // gives it the original's owner and mode, and renames it over the plist.
+// launchd keeps a loaded job's definition, so a job loaded but not running,
+// which Stop left loaded, is reloaded: bootout, the wait, bootstrap. A job
+// that is running is refused before anything changes (0015-MADR D3).
 func (j *Job) rewrite(ctx context.Context, key, executable string) (selfupdate.ReconcileResult, error) {
+	s, err := j.probe(ctx)
+	if err != nil {
+		return selfupdate.ReconcileResult{}, err
+	}
+	if s.loaded && s.running {
+		return selfupdate.ReconcileResult{}, fmt.Errorf(
+			"selfupdate: launchd: %s is running; stop the job first, so its rewritten plist can be loaded", j.target())
+	}
 	info, err := os.Lstat(j.o.Plist)
 	if err != nil {
 		return selfupdate.ReconcileResult{}, err
@@ -99,12 +112,22 @@ func (j *Job) rewrite(ctx context.Context, key, executable string) (selfupdate.R
 	if err := os.Rename(tmp, j.o.Plist); err != nil {
 		return selfupdate.ReconcileResult{}, errors.Join(err, os.Remove(tmp))
 	}
-	return selfupdate.ReconcileResult{Changed: true, Detail: "rewrote " + key + " in " + j.o.Plist, State: backup}, nil
+	result := selfupdate.ReconcileResult{Changed: true, Detail: "rewrote " + key + " in " + j.o.Plist, State: backup}
+	if s.loaded {
+		// The receipt comes back with a failed reload, so recovery puts
+		// the plist back.
+		if err := j.reload(ctx, s.pid); err != nil {
+			return result, err
+		}
+		result.Detail += ", and reloaded the job"
+	}
+	return result, nil
 }
 
 // Restore implements selfupdate.Reconciler: it puts the plist back as it
-// was, owner and mode included.
-func (j *Job) Restore(_ context.Context, _ string, receipt selfupdate.ReconcileResult) error {
+// was, owner and mode included, and reloads a job that is loaded but not
+// running, as rewrite does (0015-MADR D3).
+func (j *Job) Restore(ctx context.Context, _ string, receipt selfupdate.ReconcileResult) error {
 	if !receipt.Changed {
 		return nil
 	}
@@ -119,6 +142,42 @@ func (j *Job) Restore(_ context.Context, _ string, receipt selfupdate.ReconcileR
 	if err := os.Rename(tmp, b.Path); err != nil {
 		return errors.Join(err, os.Remove(tmp))
 	}
+	s, err := j.probe(ctx)
+	if err != nil {
+		return err
+	}
+	switch {
+	case s.loaded && s.running:
+		return fmt.Errorf("selfupdate: launchd: %s is running; the restored plist is read once it is booted out", j.target())
+	case s.loaded:
+		return j.reload(ctx, s.pid)
+	}
+	return nil
+}
+
+// reload makes launchd read the plist again: bootout, the stop wait, then
+// bootstrap, without kickstart. A RunAtLoad job starts at the bootstrap;
+// Start does not take that process for the one before the update.
+func (j *Job) reload(ctx context.Context, pid int) error {
+	bound := j.stopBound(ctx)
+	out, err := j.launchctlRun(ctx, "bootout", j.target())
+	if err != nil {
+		return err
+	}
+	switch out.ExitCode {
+	case 0, exitNotFound, exitNoProcess, exitInProgress:
+	default:
+		return launchctlError("bootout", j.target(), out)
+	}
+	if err := j.waitGone(ctx, pid, bound); err != nil {
+		return err
+	}
+	if err := j.bootstrap(ctx); err != nil {
+		return err
+	}
+	j.mu.Lock()
+	j.reloaded = true
+	j.mu.Unlock()
 	return nil
 }
 

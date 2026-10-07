@@ -36,7 +36,9 @@ type Options struct {
 	// wait runs to Poll's timeout whatever the caller's context does.
 	Poll service.PollOptions
 	// RewritePath lets Reconcile point the service at a binary that moved.
-	// Without it, a service running another binary is an error.
+	// Without it, a service running another binary is an error. The
+	// rewritten command line quotes the program; an unquoted one that
+	// could name two programs is refused.
 	RewritePath bool
 	// StopDependents lets Stop stop running dependent services first.
 	// Without it, a running dependent is an error.

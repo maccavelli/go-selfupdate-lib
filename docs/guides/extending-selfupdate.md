@@ -416,11 +416,28 @@ Why each behaves as it does is in
     `ErrManagedInstall`, and the binary is not replaced.
   - `WaitHealthy` requires a new instance (a new systemd `InvocationID`,
     a new process ID) that stays up for `Options.Poll.Settle`, 10 s by
-    default, then runs `Options.Probe` if you set one.
+    default, then runs `Options.Probe` if you set one. systemd's restart
+    count is read after the start, so a start during a `RestartSec` wait,
+    which systemd counts as a restart, is not a failure (since `v1.10.1`).
   - `Reconcile` checks that the definition still runs the binary, and
     changes nothing. `Options.RewritePath` lets it point the definition at
     a binary that moved. A program that owns its definition through its own
-    install command uses `service.NewExecReconciler` instead.
+    install command uses `service.NewExecReconciler` instead. Since
+    `v1.10.1`, a rewrite:
+    - on systemd, checks the unit's effective `ExecStart` after the
+      reload; a drop-in that loads later and sets it again, such as an
+      `override.conf`, is an error, and recovery removes this package's
+      drop-in;
+    - on launchd, reloads a job that is loaded but not running, so
+      launchd reads the new plist, and refuses a job that is running;
+    - on Windows, reads an unquoted command line whose path holds a
+      space the way the SCM runs it, and refuses one that could name two
+      programs: quote it.
+  - `Enabled` on launchd counts `RunAtLoad` only as `<true/>`; launchd
+    does not run a job at load for an integer, even 1. A plist `plutil`
+    cannot read is an error (since `v1.10.1`).
+  - On systemd, a start that fails because a unit this one requires is
+    missing is not `service.ErrNotInstalled` (since `v1.10.1`).
 - **systemd units: `Type=notify` or `Type=exec`.** With either, a failed
   start fails `systemctl start`. With `Type=simple`, it succeeds before the
   program has run. Under `Type=notify`, call `systemd.Ready()` once the

@@ -47,6 +47,9 @@ type fakeLaunchd struct {
 	corrupt bool
 	// onBootout runs on bootout, before the job starts going.
 	onBootout func(f *fakeLaunchd)
+	// onBootstrap runs on a bootstrap that succeeds, as a RunAtLoad job
+	// starting at load.
+	onBootstrap func(f *fakeLaunchd)
 	// printDeadlines records, for each print of the job, how long its
 	// context had left: zero when it had no deadline.
 	printDeadlines []time.Duration
@@ -145,6 +148,9 @@ func (f *fakeLaunchd) Run(ctx context.Context, c service.Command) (service.Outpu
 			}
 		}
 		f.loaded = true
+		if f.onBootstrap != nil {
+			f.onBootstrap(f)
+		}
 	case "kickstart":
 		if f.onStart != nil {
 			f.onStart(f)

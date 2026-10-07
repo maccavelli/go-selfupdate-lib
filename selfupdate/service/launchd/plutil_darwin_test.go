@@ -33,6 +33,9 @@ func TestEnabledRealPlutil(t *testing.T) {
 		{"KeepAlive empty dict", "<key>KeepAlive</key><dict/>", true},
 		{"both false", "<key>RunAtLoad</key><false/><key>KeepAlive</key><false/>", false},
 		{"neither", "", false},
+		// launchd runs a job at load for <true/> only (0015-MADR D7).
+		{"RunAtLoad integer 1", "<key>RunAtLoad</key><integer>1</integer>", false},
+		{"RunAtLoad integer 0", "<key>RunAtLoad</key><integer>0</integer>", false},
 	} {
 		plist := filepath.Join(t.TempDir(), "com.example.demo.plist")
 		if err := os.WriteFile(plist, []byte(head+c.keys+"\n</dict>\n</plist>\n"), 0o600); err != nil {
@@ -96,6 +99,39 @@ func TestPlistValueRealPlutil(t *testing.T) {
 	if os.Geteuid() != 0 {
 		if _, _, _, err := job(t, head, 0).plistValue(ctx, "ExitTimeOut"); err == nil {
 			t.Fatal("an unreadable plist read without an error")
+		}
+	}
+}
+
+// TestEnabledRealPlutilUnreadable: through the real /usr/bin/plutil, a plist
+// holding a bare word (which plutil -lint passes) and one that cannot be
+// read are errors, not "not enabled" (0015-MADR D7).
+func TestEnabledRealPlutilUnreadable(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		body string
+		mode os.FileMode
+	}{
+		{"a bare word", "garbage\n", 0o600},
+		{"mode 0000", "<plist version=\"1.0\"><dict/></plist>\n", 0},
+	} {
+		if c.mode == 0 && os.Geteuid() == 0 {
+			continue // root reads any file
+		}
+		plist := filepath.Join(t.TempDir(), "com.example.demo.plist")
+		if err := os.WriteFile(plist, []byte(c.body), c.mode); err != nil {
+			t.Fatal(err)
+		}
+		f := newFake()
+		j := testJob(t, f, Options{Plist: plist})
+		j.o.Runner = service.RunnerFunc(func(ctx context.Context, cmd service.Command) (service.Output, error) {
+			if strings.HasSuffix(cmd.Path, "/plutil") {
+				return service.ExecRunner().Run(ctx, cmd)
+			}
+			return f.Run(ctx, cmd)
+		})
+		if got, err := j.Enabled(context.Background(), "demo"); err == nil {
+			t.Errorf("%s: Enabled = %t, <nil>; want an error", c.name, got)
 		}
 	}
 }

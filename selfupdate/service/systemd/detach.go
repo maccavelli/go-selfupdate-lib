@@ -170,19 +170,31 @@ func (u *Unit) envDir() (string, error) {
 }
 
 // writeEnvFile writes this process's environment, then spec.Env, to a new
-// 0600 file in a 0700 directory, removing the files earlier handoffs left.
+// 0600 file in the unit's own 0700 directory, <envDir>/<unit>, removing the
+// files this unit's earlier handoffs left. Another unit's are not this
+// one's to remove: one may still be starting (0015-MADR D8). Files an
+// earlier release left directly in <envDir> are left alone.
 func (u *Unit) writeEnvFile(spec service.HandOff) (path string, err error) {
-	dir, err := u.envDir()
+	top, err := u.envDir()
 	if err != nil {
 		return "", err
 	}
+	if err := privateDir(top); err != nil {
+		return "", err
+	}
+	dir := filepath.Join(top, u.o.Unit)
 	if err := privateDir(dir); err != nil {
 		return "", err
 	}
-	if old, err := filepath.Glob(filepath.Join(dir, "handoff-*.env")); err == nil {
-		for _, f := range old {
-			// Best-effort: a file an earlier handoff left is no one's.
-			if err := os.Remove(f); err != nil {
+	if old, err := os.ReadDir(dir); err == nil {
+		for _, e := range old {
+			name := e.Name()
+			if !strings.HasPrefix(name, "handoff-") || !strings.HasSuffix(name, ".env") {
+				continue
+			}
+			// Best-effort: a file this unit's earlier handoff left is no
+			// one's.
+			if err := os.Remove(filepath.Join(dir, name)); err != nil {
 				continue
 			}
 		}

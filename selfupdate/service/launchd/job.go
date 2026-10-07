@@ -99,6 +99,8 @@ type Options struct {
 	// when the plist does not set it, plus 30 s.
 	Poll service.PollOptions
 	// RewritePath lets Reconcile point the plist at a binary that moved.
+	// A job loaded but not running is reloaded so launchd reads it; a
+	// running job is refused.
 	RewritePath bool
 	// JobDir is where Detach writes its one-shot jobs' property lists and
 	// environment files. Empty means /Library/Application
@@ -116,6 +118,10 @@ type Job struct {
 	manager               string
 	mu                    sync.Mutex
 	previous              int // the job's PID before this update
+	// reloaded marks a job Reconcile or Restore reloaded: a process it
+	// started at the bootstrap runs the new definition, and Start does not
+	// take it for the one before the update (0015-MADR D3).
+	reloaded bool
 	// groups is processGroups; the tests answer it themselves, so that no
 	// real process can share a fixture PID's group.
 	groups func(pid int) (mine, theirs int, ok bool)

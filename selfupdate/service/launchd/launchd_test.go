@@ -121,6 +121,9 @@ func TestEnabled(t *testing.T) {
 		{"disabled override", map[string]string{"RunAtLoad": "true"}, "disabled", false},
 		{"old disabled override", map[string]string{"RunAtLoad": "true"}, "true", false},
 		{"enabled override", map[string]string{"RunAtLoad": "true"}, "enabled", true},
+		// launchd runs a job at load for <true/> only; an integer, even 1,
+		// is not (0015-MADR D7, probe evidence in 0015-PLAN P5).
+		{"RunAtLoad integer", map[string]string{"RunAtLoad": "1"}, "", false},
 	} {
 		f := newFake()
 		f.keys, f.disabled = c.keys, c.disabled
@@ -128,6 +131,18 @@ func TestEnabled(t *testing.T) {
 		if err != nil || got != c.want {
 			t.Errorf("%s: enabled %t, %v; want %t", c.name, got, err, c.want)
 		}
+	}
+}
+
+// TestEnabledRefusesUnreadablePlist: a plist that is no property-list
+// dictionary is an error, not "not enabled": a stopped job that launchd
+// would start must not be left stopped
+// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md D7).
+func TestEnabledRefusesUnreadablePlist(t *testing.T) {
+	f := newFake()
+	f.corrupt = true
+	if got, err := testJob(t, f, Options{}).Enabled(context.Background(), "demo"); err == nil {
+		t.Fatalf("Enabled = %t, <nil>; want an error for an unreadable plist", got)
 	}
 }
 

@@ -26,6 +26,9 @@ type fakeSystemd struct {
 	showQueue []map[string]string
 	// reloadIgnored keeps NeedDaemonReload as it is on daemon-reload.
 	reloadIgnored bool
+	// onReload changes props on daemon-reload, as systemd re-reading the
+	// unit's files does.
+	onReload func(map[string]string)
 }
 
 func newFake() *fakeSystemd {
@@ -82,6 +85,9 @@ func (f *fakeSystemd) Run(_ context.Context, c service.Command) (service.Output,
 	case "daemon-reload":
 		if !f.reloadIgnored {
 			f.props["NeedDaemonReload"] = "no"
+		}
+		if f.onReload != nil {
+			f.onReload(f.props)
 		}
 	}
 	return service.Output{}, nil

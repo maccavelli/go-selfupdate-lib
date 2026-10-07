@@ -10,6 +10,16 @@ import (
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
 )
 
+// plutil -type's names for the value types this package reads.
+const (
+	typeBool       = "bool"
+	typeInteger    = "integer"
+	typeDictionary = "dictionary"
+)
+
+// isTrue reports a plistValue that is a bool and true.
+func isTrue(typ, raw string) bool { return typ == typeBool && raw == "true" }
+
 // plistValue reads key from the job's property list with plutil. It first
 // converts the list to XML: plutil -lint passes a file holding a bare word,
 // a valid old-style property list but no job, so the root must be a
@@ -41,7 +51,7 @@ func (j *Job) plistValue(ctx context.Context, key string) (typ, raw string, pres
 		return "", "", false, nil
 	}
 	typ = strings.TrimSpace(string(out.Stdout))
-	if typ != "bool" && typ != "integer" {
+	if typ != typeBool && typ != typeInteger {
 		return typ, "", true, nil
 	}
 	out, err = j.plutilRun(ctx, "-extract", key, "raw", "-o", "-", "--", j.o.Plist)

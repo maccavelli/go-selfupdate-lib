@@ -1299,13 +1299,19 @@ this PLAN.
      unit has `Restart=always`; its process is killed once
      (`systemctl kill --signal=KILL`), and `NRestarts` reaches 1; then a
      managed update succeeds.
+     *Superseded by Deviation D3:* that test passes on the unfixed code.
+     The live test is `TestLiveStartDuringAutoRestart`: `Restart=always`,
+     `RestartSec=6`, the process killed twice; during the wait, `Start`
+     then `WaitHealthy` succeed. The unit test's `showQueue` gives
+     `NRestarts` 1 before the start and 2 after; its red is `not healthy:
+     … NRestarts=2`.
 2. **D3: a loaded, idle launchd job is reloaded** (`launchd/reconcile.go:72-125`,
    `lifecycle.go:154-191`).
    * **Fix:**
      * `rewrite`, when the job is loaded and running: refuse ("stop the job
        first").
      * When it is loaded and not running:
-       1. check `Inside`;
+       1. ~~check `Inside`;~~ *omitted, Deviation D4;*
        2. write the plist;
        3. `bootout`, and `waitGone` with P1's bound;
        4. `bootstrap`, without `kickstart`;
@@ -2912,3 +2918,177 @@ approved it: "proceed". The PLAN as approved is commit `47f0f97`.
   * `make gate` on `dc2469c` with P4's changes: all 14 steps `rc=0`,
     `overall=0`; apicheck "compatible with v1.10.0"; links "331 links in
     49 files, 0 broken"; ids "23 files, 16 deny-list rules, 0 findings".
+
+### Deviation D3 (2026-10-07): D2's live test passed on the unfixed code
+
+* **Found** in P5's live run on the Linux test host:
+  `TestLiveUpdateAfterAutoRestart`, as step 1 specifies it, passed on the
+  `v1.10.0` code as well as the fixed code. Probes on systemd 259 and 255
+  (0015-MADR A3) show the counter is already 0 whenever the unit is
+  stopped, after a manual stop or an exit of its own, and a managed update
+  always starts the unit from that state. A `systemctl start` during the
+  `RestartSec` wait is counted as a restart (1 → 2): the unfixed code
+  fails `Start` then `WaitHealthy` there, "not healthy: … NRestarts=2", and
+  the fixed code passes. Both runs were in scratch copies.
+* **Options put to the owner:**
+  1. retarget the live test to the `RestartSec` wait, amend the MADR's
+     facts, and correct the comments and the unit test's numbers
+     (recommended);
+  2. the same, and keep the update test as a regression pin that cannot
+     fail on D2;
+  3. no live test for D2; the unit test only.
+* **Decision:** the owner chose "Retarget live test".
+  * 0015-MADR gains A3, and D2's row and the external-fact bullet point
+    to it;
+  * step 1's live bullet is annotated, not rewritten;
+  * `live_fixes_linux_test.go` holds `TestLiveStartDuringAutoRestart` in
+    place of `TestLiveUpdateAfterAutoRestart`;
+  * `TestStartBaselineIsAfterStart` queues 1 before the start and 2 after;
+  * `lifecycle.go`'s comment says what the start does to the counter.
+
+### Deviation D4 (2026-10-07): D3's `Inside` check could only return false
+
+* **Found** while recording P5: step 2.1 of D3 checks `Inside` before
+  the reload. `Inside` (`launchd/detach.go:25-51`) reads the job's pid and
+  returns false when there is none. The reload runs only for a job that
+  is loaded and not running, after a running one is refused, and launchd
+  prints a pid only while the job runs. The call could return nothing but
+  false, and no test could see it fail.
+* **Options put to the owner:**
+  1. omit the call, and record why (recommended);
+  2. add it as written, untested.
+* **Decision:** the owner chose "Omit, record deviation". Step 2.1 is
+  struck through and points here. `Stop` keeps its own `Inside` check.
+
+### Phase P5: the service backends (2026-10-07)
+
+* **Red,** on the unfixed code:
+  * **D2:** `TestStartBaselineIsAfterStart`, first with `NRestarts` 3
+    before the start and 0 after: "not healthy: … NRestarts=0". Under
+    Deviation D3 it queues 1 and 2: "not healthy: … NRestarts=2".
+  * **D3:** `TestReconcileReloadsLoadedJob`: "verbs []; want bootout, then
+    bootstrap, and no kickstart"; `TestReconcileRefusesRunningJob`: "err =
+    <nil>, want the running job refused"; `TestReconcileReloadedProcessIsNew`
+    (added when the plant on `Start`'s `previous` survived the others):
+    "timed out: not healthy within 200ms (last: … pid 0 running false)".
+  * **D4:** `TestReconcileVerifiesEffectiveExecStart`: "changed=true
+    err=<nil>".
+  * **D5:** `TestReconcileUnquotedPathWithSpaces`: "demo runs C:\Program,
+    not C:\Program Files\New\demo.exe".
+  * **D7:** `TestEnabled` "RunAtLoad integer: enabled true";
+    `TestEnabledRefusesUnreadablePlist`: "Enabled = true, <nil>; want an
+    error"; `TestEnabledRealPlutil`: "RunAtLoad integer 1: enabled true",
+    and the same for 0.
+  * **D8:** `TestDetachKeepsOtherUnitsEnvFile`: "other.service's handoff
+    removed demo.service's env file". Its first version asserted the new
+    layout's path and failed on that, not on the defect; it was rewritten
+    to read the `EnvironmentFile` from the `systemd-run` call.
+  * **D11:** `TestCommandErrors`: "not installed: … Unit
+    missing-dep.service not found., want an error that is not
+    ErrNotInstalled".
+* **Fix:**
+  * **D2** (`systemd/lifecycle.go`): `Start` reads `InvocationID` before
+    `systemctl start` and `NRestarts` after it.
+  * **D3** (`launchd/reconcile.go`, `lifecycle.go`, `job.go`): `rewrite`
+    probes first; a running job is refused, and a loaded one is reloaded
+    after the write by a new `reload` (`bootout`, `waitGone` with P1's
+    bound, `bootstrap`), which sets `reloaded`. `Restore` reloads a loaded,
+    idle job and refuses a running one. `Start` does not take a process
+    as `previous` while `reloaded` is set, and clears it. Step 2.1's
+    `Inside` check is omitted (Deviation D4).
+  * **D4** (`systemd/reconcile.go`): after `reload`, `show ExecStart
+    DropInPaths`; a path other than the new binary returns the receipt
+    with "a later drop-in overrides ExecStart; … still runs … (drop-ins:
+    …)".
+  * **D5** (`scm/reconcile.go`): `programAndArgs` sends an unquoted line
+    with a space to `unquotedProgram`, which follows step 4; `statFile`
+    and `hasExtension` are new.
+  * **D7** (`launchd/lifecycle.go`, `plist.go`): `Enabled` reads both keys
+    with `plistValue`; `plistBool` went. `plist.go` names plutil's types
+    (`typeBool`, `typeInteger`, `typeDictionary`) and gains `isTrue`:
+    `goconst` refused a third `"bool"` and `"true"`. `plist.go` was not in
+    the phase's file list.
+  * **D8** (`systemd/detach.go`): `<envDir>/<unit>/handoff-<id>.env`, both
+    levels through `privateDir`, the sweep by `os.ReadDir` of the unit's
+    directory.
+  * **D11** (`systemd/unit.go`): `unitMissing` matches the four phrases
+    for this unit only.
+* **Test edits:**
+  * `TestWaitHealthyFailsFast` "restarted" queues its after-start `show`
+    in `onStart`.
+  * `TestReconcileRewrite`: the fake's new `onReload` sets the new
+    `ExecStart`; its verb assertion reads `v[len(v)-3]`, as `reload` is
+    now followed by the `show`.
+  * `TestReconcileRewriteAndRestore` (launchd) sets `loaded=false`, as
+    after `Stop`'s bootout, where the plan said `pid=0`: a loaded job
+    would now be reloaded, which `TestReconcileReloadsLoadedJob` covers.
+  * `TestDetach`, `TestDetachOldSystemd` and `TestDetachFailureRemovesFile`
+    follow the per-unit layout.
+  * The launchd fake gains `onBootstrap`.
+  * `TestCommandShape`'s fixture home became `/home/<user>`: the gate's
+    `ids` step flagged the earlier placeholder once the file changed.
+* **Test placement:** the new tests sit in their own files, not the files
+  the plan names: `systemd/baseline_test.go`, `effective_test.go`,
+  `envdir_unix_test.go`, `live_fixes_linux_test.go`; `scm/unquoted_test.go`
+  (with `TestReconcileUnquotedRealFiles` in `compose_windows_test.go`),
+  `live_fixes_windows_test.go`; `launchd/live_fixes_darwin_test.go`.
+  `live_linux_test.go` gains `newLiveUnitWith` and `liveUnitOpts`.
+* **Probe evidence** (2026-10-07):
+  * launchd, macOS 26.6.2: `RunAtLoad` `<integer>1</integer>` and
+    `<integer>0</integer>` do not run a job at load; only `<true/>` does.
+    `TestLiveRunAtLoadInteger` pins it.
+  * systemd 259 and 255: 0015-MADR A3.
+* **Live tests,** each green on the fixed code and red on the `v1.10.0`
+  code (a scratch export of `HEAD`, never the tree):
+
+  | Test | Host | Green | Red on `v1.10.0` |
+  | :--- | :--- | :--- | :--- |
+  | `TestLiveStartDuringAutoRestart` (D2) | the Linux test host, system and user scope; WSL, both | PASS | "not healthy: … NRestarts=2" |
+  | `TestLiveRewriteWithOverride` (D4) | the same four | PASS | "Reconcile = {Changed:true …}, <nil>; want the override reported" |
+  | `TestLiveMissingDependency` (D11) | the same four | PASS | "not installed: … Unit selfupdate-live-missing-… not found." |
+  | `TestLiveRewriteLoadedIdleJob` (D3) | this Mac | PASS | "the reload: the marker reads [\"old\"]" |
+  | `TestLiveRunAtLoadInteger` (D7) | this Mac | PASS | "Enabled = true, <nil>" |
+  | `TestLiveUnquotedPathWithSpace` (D5) | the Windows test host, elevated | PASS | the rewrite keeps `live\demo.exe` as an argument |
+
+  * The existing live tests pass beside them: systemd's three at both
+    scopes on both hosts, launchd's five, SCM's three.
+  * `TestLiveRewriteLoadedIdleJob` observes the runs through a marker the
+    old and new scripts append to, and also requires `launchctl print`'s
+    `program =` line to name the new script, as step 2 asks.
+  * `TestLiveStartDuringAutoRestart` kills with `--kill-whom=main`:
+    systemd 255's `systemctl kill` failed "Failed to send signal SIGKILL
+    to auxiliary processes: Invalid argument" without it.
+* **Green:** every package of `./selfupdate/...` passes on darwin; the
+  `systemd` suite on the Linux test host; the `scm` suite on the Windows
+  test host.
+* **Plants,** eleven, each caught:
+
+  | Plant | Fails |
+  | :--- | :--- |
+  | D2: the restart count read before the start | `TestStartBaselineIsAfterStart` |
+  | D3: the rewrite does not reload a loaded job | `TestReconcileReloadsLoadedJob` |
+  | D3: a running job is rewritten | `TestReconcileRefusesRunningJob` |
+  | D3: `Start` takes the reload's process as `previous` | `TestReconcileReloadedProcessIsNew` |
+  | D4: the effective `ExecStart` not checked | `TestReconcileVerifiesEffectiveExecStart` |
+  | D5: an unquoted line split by `decompose` | `TestReconcileUnquotedPathWithSpaces` |
+  | D5: an ambiguous line rewritten | `TestReconcileUnquotedPathWithSpaces` |
+  | D7: an unreadable plist is not enabled | `TestEnabledRefusesUnreadablePlist`, `TestEnabledRealPlutilUnreadable` |
+  | D7: an integer `RunAtLoad` counts | `TestEnabled`, `TestEnabledRealPlutil` |
+  | D8: one directory for every unit | `TestDetachKeepsOtherUnitsEnvFile` |
+  | D11: any "not found" is `ErrNotInstalled` | `TestCommandErrors` |
+
+* **Docs:** the comments on `Start` and `Reconcile` in each backend, the
+  three `RewritePath` fields, and `Enabled`; the extending guide's "Run
+  as a service"; `docs/architecture.md`'s systemd, launchd and SCM
+  entries.
+* **Checks:**
+  * `make pre-add-check` on the 27 Go files: clean;
+  * the full apidiff report against `v1.10.0`: only "Ignoring internal
+    package …";
+  * markdownlint on `docs/architecture.md` and the extending guide: 0
+    issues;
+  * `make gate` on `a354d66` with P5's changes: all 14 steps `rc=0`,
+    `overall=0`; apicheck "compatible with v1.10.0"; links "331 links in
+    49 files, 0 broken"; ids "31 files, 16 deny-list rules, 0 findings".
+    Its first run failed `ids` on `TestCommandShape`'s fixture home,
+    fixed as above.

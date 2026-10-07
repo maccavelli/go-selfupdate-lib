@@ -4,6 +4,8 @@ package scm
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 )
@@ -49,5 +51,37 @@ func TestReconcileRealCommandLine(t *testing.T) {
 	}
 	if svc.cfg.BinaryPathName[0] != '"' {
 		t.Fatalf("the program is not quoted: %s", svc.cfg.BinaryPathName)
+	}
+}
+
+// TestReconcileUnquotedRealFiles: with real files under a directory whose
+// name has a space, an unquoted command line is read as CreateProcess
+// reads it, and a rewrite keeps the arguments
+// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md D5).
+func TestReconcileUnquotedRealFiles(t *testing.T) {
+	place := func(name string) string {
+		dir := filepath.Join(t.TempDir(), name)
+		if err := os.Mkdir(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		exe := filepath.Join(dir, "demo.exe")
+		if err := os.WriteFile(exe, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return exe
+	}
+	old, moved := place("Old Place"), place("New Place")
+	f := newFake()
+	svc := f.add("demo", 1)
+	svc.cfg.BinaryPathName = old + " run --flag"
+	s, _ := testService(t, f, Options{RewritePath: true})
+	s.m = realParse{f}
+	res, err := s.Reconcile(context.Background(), "demo", moved)
+	if err != nil || !res.Changed {
+		t.Fatalf("Reconcile = %+v, %v", res, err)
+	}
+	args, err := sysManager{}.decompose(svc.cfg.BinaryPathName)
+	if err != nil || !slices.Equal(args, []string{moved, "run", "--flag"}) {
+		t.Fatalf("rewrote %s, which splits as %q, %v", svc.cfg.BinaryPathName, args, err)
 	}
 }

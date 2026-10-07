@@ -36,42 +36,27 @@ func (j *Job) Running(ctx context.Context, _ string) (bool, error) {
 }
 
 // Enabled implements selfupdate.EnabledLifecycle: the plist sets RunAtLoad
-// or KeepAlive (a KeepAlive dictionary counts), and the label is not
-// disabled in launchd's override database (0011-MADR §7).
+// to true, or KeepAlive to true or a dictionary, and the label is not
+// disabled in launchd's override database (0011-MADR §7). launchd runs a
+// job at load for a boolean true only; an integer, even 1, is not
+// (0015-MADR D7). A plist plutil cannot read as a dictionary is an error,
+// not "not enabled".
 func (j *Job) Enabled(ctx context.Context, _ string) (bool, error) {
-	atLoad, err := j.plistBool(ctx, "RunAtLoad")
+	typ, raw, _, err := j.plistValue(ctx, "RunAtLoad")
 	if err != nil {
 		return false, err
 	}
-	keepAlive, err := j.plistBool(ctx, "KeepAlive")
+	atLoad := isTrue(typ, raw)
+	typ, raw, _, err = j.plistValue(ctx, "KeepAlive")
 	if err != nil {
 		return false, err
 	}
+	keepAlive := isTrue(typ, raw) || typ == typeDictionary
 	if !atLoad && !keepAlive {
 		return false, nil
 	}
 	disabled, err := j.disabled(ctx)
 	return !disabled, err
-}
-
-// plistBool reads key from the plist with `plutil -extract <key> raw`,
-// which prints a boolean as true or false. A missing key is false. Any
-// other value counts as true: launchd takes KeepAlive as a boolean or a
-// dictionary, and raw prints a dictionary's keys, or nothing for an empty
-// one. (The json format refuses a boolean on its own: "Invalid object in
-// plist for JSON format".)
-func (j *Job) plistBool(ctx context.Context, key string) (bool, error) {
-	out, err := j.o.Runner.Run(ctx, service.Command{
-		Path: j.plutil, Args: []string{"-extract", key, "raw", "-o", "-", "--", j.o.Plist}, Env: env,
-	})
-	if err != nil {
-		return false, err
-	}
-	if out.ExitCode != 0 {
-		// plutil exits 1 for a missing key: "No value at that key path".
-		return false, nil
-	}
-	return strings.TrimSpace(string(out.Stdout)) != "false", nil
 }
 
 // disabled reads the label's override from `launchctl print-disabled`: a
@@ -159,7 +144,7 @@ func (j *Job) stopBound(ctx context.Context) time.Duration {
 	exit := defaultExitTimeOut
 	if present {
 		n, perr := strconv.Atoi(raw)
-		if typ != "integer" || perr != nil || n <= 0 {
+		if typ != typeInteger || perr != nil || n <= 0 {
 			return bound
 		}
 		exit = time.Duration(n) * time.Second
@@ -191,16 +176,19 @@ func (j *Job) waitGone(ctx context.Context, pid int, bound time.Duration) error 
 
 // Start enables the label (bootstrap of a disabled label fails with 5),
 // bootstraps the plist when the job is not loaded, retrying launchd's
-// transient 5 and 37 within the deadline, then kickstarts it.
+// transient 5 and 37 within the deadline, then kickstarts it. A process
+// that Reconcile's reload started is not taken for the one before the
+// update (0015-MADR D3).
 func (j *Job) Start(ctx context.Context, _ string) error {
 	s, err := j.probe(ctx)
 	if err != nil {
 		return err
 	}
 	j.mu.Lock()
-	if s.pid > 0 {
+	if s.pid > 0 && !j.reloaded {
 		j.previous = s.pid
 	}
+	j.reloaded = false
 	j.mu.Unlock()
 	out, err := j.launchctlRun(ctx, "enable", j.target())
 	if err != nil {

@@ -32,7 +32,9 @@ type DropIn struct {
 // rename at the same path, so the unit already names it: Reconcile checks
 // that and changes nothing (0011-MADR §5). A unit that runs another binary
 // is an error, unless Options.RewritePath allows a drop-in that points it
-// at executable.
+// at executable. After the reload, the unit's effective ExecStart must name
+// executable: a later drop-in that sets it again is an error, returned with
+// the receipt, so Restore removes the drop-in (0015-MADR D4).
 func (u *Unit) Reconcile(ctx context.Context, product, executable string) (selfupdate.ReconcileResult, error) {
 	unit, err := u.unit(product)
 	if err != nil {
@@ -98,6 +100,18 @@ func (u *Unit) rewrite(ctx context.Context, unit, executable string, p propertie
 	result := selfupdate.ReconcileResult{Changed: true, Detail: "drop-in " + state.Path, State: state}
 	if err := u.reload(ctx, unit); err != nil {
 		return result, err
+	}
+	// Drop-ins apply in file-name order across directories, so a later one,
+	// such as systemctl edit's override.conf, can reset ExecStart= again.
+	// The unit must now run executable; otherwise the receipt comes back
+	// with the error, so recovery removes the drop-in (0015-MADR D4).
+	after, err := u.show(ctx, unit, "ExecStart", "DropInPaths")
+	if err != nil {
+		return result, err
+	}
+	if now := execStartPath(after["ExecStart"]); !service.SameExecutable(now, executable) {
+		return result, fmt.Errorf("selfupdate: systemd: a later drop-in overrides ExecStart; %s still runs %s (drop-ins: %s)",
+			unit, now, after["DropInPaths"])
 	}
 	return result, nil
 }
