@@ -39,6 +39,17 @@ type fakeLaunchd struct {
 	fail map[string]service.Output
 	// handOffs answers print for one-shot jobs, by label.
 	handOffs map[string]service.Output
+	// types answers plutil -type for a key; a key in keys without one is a
+	// bool for true or false, an integer for digits, else a dictionary.
+	types map[string]string
+	// corrupt makes the plist convert to a root that is not a dictionary,
+	// as a file holding a bare word does.
+	corrupt bool
+	// onBootout runs on bootout, before the job starts going.
+	onBootout func(f *fakeLaunchd)
+	// printDeadlines records, for each print of the job, how long its
+	// context had left: zero when it had no deadline.
+	printDeadlines []time.Duration
 }
 
 func newFake() *fakeLaunchd {
@@ -61,7 +72,7 @@ func (f *fakeLaunchd) processGroups(pid int) (mine, theirs int, ok bool) {
 	return 1, g, ok
 }
 
-func (f *fakeLaunchd) Run(_ context.Context, c service.Command) (service.Output, error) {
+func (f *fakeLaunchd) Run(ctx context.Context, c service.Command) (service.Output, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, append([]string{c.Path}, c.Args...))
@@ -96,6 +107,11 @@ func (f *fakeLaunchd) Run(_ context.Context, c service.Command) (service.Output,
 		if out, ok := f.handOffs[c.Args[1]]; ok {
 			return out, nil
 		}
+		var left time.Duration
+		if dl, ok := ctx.Deadline(); ok {
+			left = time.Until(dl)
+		}
+		f.printDeadlines = append(f.printDeadlines, left)
 		if !f.loaded {
 			return service.Output{ExitCode: exitNotFound, Stderr: []byte("Could not find service")}, nil
 		}
@@ -113,6 +129,9 @@ func (f *fakeLaunchd) Run(_ context.Context, c service.Command) (service.Output,
 		}
 		return service.Output{Stdout: []byte(body + "}\n")}, nil
 	case "bootout":
+		if f.onBootout != nil {
+			f.onBootout(f)
+		}
 		if f.goneAfter == 0 {
 			f.loaded = false
 		}
@@ -143,6 +162,28 @@ func printOutput(pid int, state string) string {
 
 func (f *fakeLaunchd) plutil(args []string) service.Output {
 	switch args[0] {
+	case "-convert":
+		root := "<dict>\n</dict>"
+		if f.corrupt {
+			root = "<string>garbage</string>"
+		}
+		return service.Output{Stdout: []byte("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<plist version=\"1.0\">\n" + root + "\n</plist>\n")}
+	case "-type":
+		v, ok := f.keys[args[1]]
+		if !ok {
+			return service.Output{ExitCode: 1, Stderr: []byte("No value at that key path")}
+		}
+		typ, ok := f.types[args[1]]
+		switch {
+		case ok:
+		case v == "true" || v == "false":
+			typ = "bool"
+		case v != "" && strings.Trim(v, "0123456789") == "":
+			typ = "integer"
+		default:
+			typ = "dictionary"
+		}
+		return service.Output{Stdout: []byte(typ + "\n")}
 	case "-extract":
 		if args[2] != "raw" {
 			return service.Output{ExitCode: 1, Stderr: []byte("the fake answers only raw, as Enabled asks")}

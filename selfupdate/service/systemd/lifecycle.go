@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
 )
@@ -74,7 +75,15 @@ func (u *Unit) Stop(ctx context.Context, product string) error {
 	if inside {
 		return fmt.Errorf("%w: %s", service.ErrInsideService, unit)
 	}
-	out, err := u.systemctlRun(ctx, "stop", "--no-ask-password", "--quiet", "--", unit)
+	bound := u.stopBound(ctx, unit)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	// Once the stop is issued the unit goes whatever the caller does, so
+	// neither the command nor the wait ends with the caller's context; its
+	// error is returned after (0015-MADR B3).
+	sctx := context.WithoutCancel(ctx)
+	out, err := u.systemctlRun(sctx, "stop", "--no-ask-password", "--quiet", "--", unit)
 	if err != nil {
 		return err
 	}
@@ -82,10 +91,34 @@ func (u *Unit) Stop(ctx context.Context, product string) error {
 		return commandError("stop", unit, out)
 	}
 	// The client's exit is not the job's result: wait on the unit.
-	return u.waitState(ctx, unit, "stop", func(p properties) (bool, bool) {
+	err = u.waitState(sctx, unit, "stop", bound, func(p properties) (bool, bool) {
 		s := p["ActiveState"]
 		return s == "inactive" || s == "failed", false
 	})
+	return errors.Join(err, ctx.Err())
+}
+
+// stopGrace is how much longer than the unit's own TimeoutStopUSec the stop
+// wait allows: systemd kills the unit then (0011-MADR §7).
+const stopGrace = 30 * time.Second
+
+// stopBound is how long Stop waits for the unit once the stop is issued: the
+// longer of Options.Poll's timeout and TimeoutStopUSec plus stopGrace. A
+// value that is "infinity" or cannot be read leaves the poll timeout
+// (0015-MADR B3).
+func (u *Unit) stopBound(ctx context.Context, unit string) time.Duration {
+	bound := u.o.Poll.Timeout
+	if bound <= 0 {
+		bound = service.DefaultPollTimeout
+	}
+	p, err := u.show(ctx, unit, "TimeoutStopUSec")
+	if err != nil {
+		return bound
+	}
+	if t, ok := parseTimespan(p["TimeoutStopUSec"]); ok {
+		return max(bound, t+stopGrace)
+	}
+	return bound
 }
 
 // Start records the unit's invocation, so WaitHealthy can require a new
@@ -157,9 +190,9 @@ func (u *Unit) WaitHealthy(ctx context.Context, product string) error {
 	return service.PollHealthy(ctx, u.o.Probe, app)
 }
 
-// waitState polls the unit until done reports true, within Options.Poll's
-// timeout.
-func (u *Unit) waitState(ctx context.Context, unit, step string, done func(properties) (ok, failed bool)) error {
+// waitState polls the unit until done reports true, within timeout, or
+// Options.Poll's when it is zero.
+func (u *Unit) waitState(ctx context.Context, unit, step string, timeout time.Duration, done func(properties) (ok, failed bool)) error {
 	probe := func(ctx context.Context) (service.Health, error) {
 		p, err := u.show(ctx, unit, "ActiveState", "SubState")
 		if err != nil {
@@ -173,6 +206,9 @@ func (u *Unit) waitState(ctx context.Context, unit, step string, done func(prope
 	}
 	poll := u.o.Poll
 	poll.Settle, poll.Previous = -1, ""
+	if timeout > 0 {
+		poll.Timeout = timeout
+	}
 	if err := service.PollHealthy(ctx, probe, poll); err != nil {
 		if errors.Is(err, service.ErrTimeout) {
 			return fmt.Errorf("selfupdate: systemd: %s %s: %w", step, unit, err)

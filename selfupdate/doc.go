@@ -14,7 +14,8 @@
 // download to session-owned staging, verify, unpack an archive, optionally
 // transform and probe, and install. Request.CheckOnly stops after selection and reports
 // ErrUpdateAvailable; Request.DryRun runs everything short of the install,
-// without prompting, and leaves the target untouched.
+// without prompting, and leaves the target and its directory untouched: it
+// removes no leftovers of an earlier update.
 //
 // # Driving an update from an event loop
 //

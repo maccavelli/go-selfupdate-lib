@@ -252,19 +252,26 @@ docs/
     changed after it;
   - refuses a staging path that is not a regular file;
   - reports a failed restore with the backup's path, in
-    `Result.PendingBackup` with `Applied` false, and in the error;
+    `Result.PendingBackup` with `Applied` false, and in the error, and
+    keeps that backup as `.<base>.selfupdate-kept-<n>`, which no later
+    session removes; reports `RolledBack` whenever the previous binary is
+    back in place, its directory sync failed or not;
+  - finishes a replacement with one `Commit` or one `Rollback`, refusing a
+    second;
   - runs the restore after a failed directory sync, and managed recovery,
     on contexts the caller's cancellation does not reach;
   - removes, under the lock, the staging files and backups a crashed
     update left beside the target (`leftovers.go`), but never a backup a
-    cleanup receipt still lists or anything that is not a regular file;
+    cleanup receipt still lists, a kept backup, or anything that is not a
+    regular file; a dry run removes nothing;
   - refuses a setuid or setgid target unless
     `TargetPolicy.AllowSpecialModeBits` allows it, and gives the new binary
     the old one's mode, sticky bit included, and on Unix its owner and
     group where permitted;
   - starts a managed service after the update only when it was running, or
     an `EnabledLifecycle` reports it configured to start, and recovery
-    restarts only what was running or what the update started.
+    restarts only what was running or what the update started; a stop
+    that fails after the service stopped starts it again.
 
   On Windows, a busy running image is retried until the installer's lock
   timeout or the caller's context ends. An access-denied error on a

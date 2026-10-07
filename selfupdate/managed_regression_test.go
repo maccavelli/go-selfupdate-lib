@@ -193,3 +193,47 @@ func TestManagedWithTransformer(t *testing.T) {
 		t.Fatalf("lifecycle counts %+v", life)
 	}
 }
+
+// TestManagedRecoveryReportsRestoredBinary: when recovery leaves the
+// previous binary in place, the result says it was rolled back and names
+// no backup, whether the restore's directory sync failed or Apply itself
+// undid the replacement
+// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md B4).
+func TestManagedRecoveryReportsRestoredBinary(t *testing.T) {
+	check := func(t *testing.T, res InstallResult, err error, target string) {
+		t.Helper()
+		if !errors.Is(err, ErrManagedInstall) || res.Applied {
+			t.Fatalf("Applied=%v err=%v", res.Applied, err)
+		}
+		if !res.RolledBack || res.Backup != "" {
+			t.Fatalf("RolledBack=%v Backup=%q; the previous binary is back (err=%v)", res.RolledBack, res.Backup, err)
+		}
+		if got := readString(t, target); got != "old-bytes" {
+			t.Fatalf("target holds %q", got)
+		}
+	}
+	t.Run("unsynced rollback", func(t *testing.T) {
+		life := &fakeLife{installed: true, running: true, healthErr: errors.New("unhealthy")}
+		_, _, sess, exe := managedEnv(t, life, &fakeRec{})
+		path := stageNew(t, sess)
+		real := syncDirFn
+		calls := 0
+		setSeam(t, &syncDirFn, func(dir string) error {
+			calls++
+			if calls == 2 {
+				return errors.New("injected sync failure after the restore")
+			}
+			return real(dir)
+		})
+		res, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: path}})
+		check(t, res, err, exe)
+	})
+	t.Run("undone apply", func(t *testing.T) {
+		life := &fakeLife{installed: true, running: true}
+		_, _, sess, exe := managedEnv(t, life, &fakeRec{})
+		path := stageNew(t, sess)
+		moved := swapAfterFirstReplace(t, filepath.Dir(exe), false)
+		res, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: path}})
+		check(t, res, err, filepath.Join(moved, filepath.Base(exe)))
+	})
+}

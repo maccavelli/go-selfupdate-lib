@@ -150,6 +150,9 @@ func TestStopTimesOut(t *testing.T) {
 	f := newFake()
 	f.pid = 99999999
 	f.goneAfter = 1 << 30
+	// ExitTimeOut 0 is no kill bound, so the wait is Poll.Timeout's
+	// (0015-MADR B3).
+	f.keys["ExitTimeOut"] = "0"
 	j := testJob(t, f, Options{Poll: service.PollOptions{Timeout: 100 * time.Millisecond}})
 	if err := j.Stop(context.Background(), "demo"); !errors.Is(err, service.ErrTimeout) {
 		t.Fatalf("err = %v, want a timeout", err)

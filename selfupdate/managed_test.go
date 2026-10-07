@@ -20,6 +20,9 @@ type fakeLife struct {
 	starts       int
 	healths      int
 	startCtxErrs []error // ctx.Err() seen by each Start
+	// stopTakesEffect stops the service even when Stop returns stopErr, as
+	// a stop whose wait timed out after the service stopped does.
+	stopTakesEffect bool
 }
 
 func (f *fakeLife) Installed(context.Context, string) (bool, error) {
@@ -28,6 +31,9 @@ func (f *fakeLife) Installed(context.Context, string) (bool, error) {
 func (f *fakeLife) Running(context.Context, string) (bool, error) { return f.running, f.runningErr }
 func (f *fakeLife) Stop(context.Context, string) error {
 	f.stops++
+	if f.stopErr == nil || f.stopTakesEffect {
+		f.running = false
+	}
 	return f.stopErr
 }
 func (f *fakeLife) Start(ctx context.Context, _ string) error {
@@ -238,5 +244,45 @@ func TestManagedRollbackErrorJoined(t *testing.T) {
 	}
 	if rec.restores != 1 {
 		t.Fatalf("restores = %d", rec.restores)
+	}
+}
+
+// TestManagedStopFailsAfterStoppingRestarts: a Stop that fails after the
+// service stopped is recovered: the service is started again and checked,
+// and the update fails with ErrManagedInstall and the stop's error. The
+// binary was never replaced
+// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md B3).
+func TestManagedStopFailsAfterStoppingRestarts(t *testing.T) {
+	stopErr := errors.New("injected: stop wait timed out")
+	life := &fakeLife{installed: true, running: true, stopErr: stopErr, stopTakesEffect: true}
+	_, _, sess, exe := managedEnv(t, life, &fakeRec{})
+	res, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: stageNew(t, sess)}})
+	if !errors.Is(err, ErrManagedInstall) || !errors.Is(err, stopErr) || res.Applied {
+		t.Fatalf("Applied=%v err=%v", res.Applied, err)
+	}
+	if life.stops != 1 || life.starts != 1 || life.healths != 1 {
+		t.Fatalf("stops=%d starts=%d healths=%d; want the stopped service started and checked", life.stops, life.starts, life.healths)
+	}
+	if got := readString(t, exe); got != "old-bytes" {
+		t.Fatalf("target holds %q", got)
+	}
+}
+
+// TestManagedStopFailsStillRunning: a Stop that failed and left the
+// service running, such as one refused from inside the service, ends the
+// update as before: nothing is started (0015-MADR B3).
+func TestManagedStopFailsStillRunning(t *testing.T) {
+	stopErr := errors.New("injected: refused inside the service")
+	life := &fakeLife{installed: true, running: true, stopErr: stopErr}
+	_, _, sess, exe := managedEnv(t, life, &fakeRec{})
+	res, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: stageNew(t, sess)}})
+	if !errors.Is(err, ErrManagedInstall) || !errors.Is(err, stopErr) || res.Applied {
+		t.Fatalf("Applied=%v err=%v", res.Applied, err)
+	}
+	if life.stops != 1 || life.starts != 0 {
+		t.Fatalf("stops=%d starts=%d; a running service is not started again", life.stops, life.starts)
+	}
+	if got := readString(t, exe); got != "old-bytes" {
+		t.Fatalf("target holds %q", got)
 	}
 }

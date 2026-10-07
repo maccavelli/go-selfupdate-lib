@@ -95,7 +95,8 @@ type Options struct {
 	Probe service.HealthProbe
 	// Poll bounds stop, start and health waits. The health settle window
 	// is at least launchd's default ThrottleInterval, 10 s, unless Settle
-	// is negative.
+	// is negative. The stop wait is at least the job's ExitTimeOut, 5 s
+	// when the plist does not set it, plus 30 s.
 	Poll service.PollOptions
 	// RewritePath lets Reconcile point the plist at a binary that moved.
 	RewritePath bool

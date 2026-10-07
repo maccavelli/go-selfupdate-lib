@@ -264,3 +264,133 @@ func TestBeginChecksDirectoryBeforeReceipt(t *testing.T) {
 		t.Fatalf("the receipt in the swapped-in directory was touched: %v", serr)
 	}
 }
+
+// dryRunUpdater is an Updater over the fixture release that installs with
+// inst, for a dry run beside a real target.
+func dryRunUpdater(t *testing.T, inst Installer) *Updater {
+	t.Helper()
+	rel, bodies, plats := fixtureRelease(t, "demo")
+	sel, err := NewExactAssetSelector(plats)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := New(Config{
+		Source: &scriptSource{rel: rel, bodies: bodies}, Versions: NewStrictVersionPolicy(), Assets: sel,
+		Installer: inst, Reporter: &recReporter{}, Confirmer: &recConfirmer{}, Limits: DefaultLimits(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return u
+}
+
+// TestKeptBackupSurvivesLaterSessions: a backup reported as the only copy
+// of the previous binary, because restoring it failed, is still there after
+// any later session: the startup CleanupPending, another update, a dry run,
+// or a managed update's
+// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md B1).
+func TestKeptBackupSurvivesLaterSessions(t *testing.T) {
+	realSync, realReplace := syncDirFn, replacePath
+	// keep fails the restore after an injected sync failure, so the backup
+	// is kept and reported; then it puts the real seams back for the later
+	// session.
+	keep := func(t *testing.T, install func() (InstallResult, error)) string {
+		t.Helper()
+		setSeam(t, &syncDirFn, func(string) error { return errors.New("injected directory sync failure") })
+		failRestore(t)
+		res, err := install()
+		if err == nil || res.Applied || res.Backup == "" {
+			t.Fatalf("Applied=%v Backup=%q err=%v; want a kept backup", res.Applied, res.Backup, err)
+		}
+		setSeam(t, &syncDirFn, realSync)
+		setSeam(t, &replacePath, realReplace)
+		return res.Backup
+	}
+	survives := func(t *testing.T, backup string) {
+		t.Helper()
+		got, err := os.ReadFile(backup)
+		if err != nil || string(got) != "old-bytes" {
+			t.Fatalf("backup %s after a later session: %q, %v; want the previous binary", filepath.Base(backup), got, err)
+		}
+		if !strings.HasPrefix(filepath.Base(backup), ".demo.selfupdate-kept-") {
+			t.Fatalf("backup %s is not named as kept", filepath.Base(backup))
+		}
+	}
+	standalone := func(t *testing.T) (*StandaloneInstaller, Target, string) {
+		t.Helper()
+		_, exe := withTempHome(t)
+		inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		target, err := inst.ResolveTarget(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		sess, err := inst.Begin(context.Background(), target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		backup := keep(t, func() (InstallResult, error) {
+			return sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: stageNew(t, sess)}})
+		})
+		if err := sess.Close(); err != nil {
+			t.Fatal(err)
+		}
+		return inst, target, backup
+	}
+	t.Run("CleanupPending", func(t *testing.T) {
+		inst, _, backup := standalone(t)
+		if err := inst.CleanupPending(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		survives(t, backup)
+	})
+	t.Run("Run", func(t *testing.T) {
+		inst, _, backup := standalone(t)
+		// A later run resolves the target afresh: the first one replaced it.
+		target, err := inst.ResolveTarget(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		sess, err := inst.Begin(context.Background(), target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := sess.Close(); err != nil {
+			t.Fatal(err)
+		}
+		survives(t, backup)
+	})
+	t.Run("DryRun", func(t *testing.T) {
+		inst, _, backup := standalone(t)
+		req := applyReq()
+		req.DryRun = true
+		if _, err := dryRunUpdater(t, inst).Run(context.Background(), req); err != nil {
+			t.Fatal(err)
+		}
+		survives(t, backup)
+	})
+	t.Run("Managed", func(t *testing.T) {
+		life := &fakeLife{installed: true, running: true, healthErr: errors.New("unhealthy")}
+		m, _, sess, _ := managedEnv(t, life, &fakeRec{})
+		backup := keep(t, func() (InstallResult, error) {
+			return sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: stageNew(t, sess)}})
+		})
+		if err := sess.Close(); err != nil {
+			t.Fatal(err)
+		}
+		target, err := m.ResolveTarget(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		later, err := m.Begin(context.Background(), target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := later.Close(); err != nil {
+			t.Fatal(err)
+		}
+		survives(t, backup)
+	})
+}

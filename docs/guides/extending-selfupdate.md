@@ -332,6 +332,12 @@ files and backups of an update that crashed: under the lock they belong to
 no one. An `ErrConcurrentUpdate` from it means another update holds the
 lock, which is benign.
 
+When an update cannot restore the previous binary after the new one went
+live, it reports the backup in `Result.PendingBackup` as the only copy of
+the previous binary. Since `v1.10.1` that backup is
+`.<base>.selfupdate-kept-<n>`, which no later session removes: restore or
+remove it yourself. A dry run removes nothing.
+
 ## Replace a setuid or setgid binary
 
 A target with the setuid or setgid bit is refused, so an update never
@@ -396,7 +402,13 @@ Why each behaves as it does is in
   - `Stop` returns once the service has stopped, not when the stop was
     asked for: systemd `inactive` or `failed`; launchd out of the domain
     with its process gone; the SCM's `STOPPED`, by Microsoft's wait-hint
-    loop.
+    loop. Once the stop is issued, the wait does not end with your context:
+    it runs to the service manager's own kill bound, the longer of
+    `Options.Poll.Timeout` and launchd's `ExitTimeOut` (5 s when unset) or
+    systemd's `TimeoutStopUSec`, plus 30 s.
+  - A stop that fails after the service stopped, such as a wait that timed
+    out, starts the service again; the update fails with
+    `ErrManagedInstall`, and the binary is not replaced.
   - `WaitHealthy` requires a new instance (a new systemd `InvocationID`,
     a new process ID) that stays up for `Options.Poll.Settle`, 10 s by
     default, then runs `Options.Probe` if you set one.

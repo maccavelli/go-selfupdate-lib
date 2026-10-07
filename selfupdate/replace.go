@@ -17,6 +17,7 @@ var (
 	osRemove    = os.Remove
 	osLink      = os.Link
 	syncDirFn   = syncDirectory
+	syncRootFn  = syncRoot
 	replacePath = replacePathOS
 )
 

@@ -98,8 +98,16 @@ func (s *Service) Stop(ctx context.Context, product string) (err error) {
 	if inside {
 		return fmt.Errorf("%w: %s", service.ErrInsideService, name)
 	}
-	ctx, cancel := s.deadline(ctx)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	// Once a stop is sent the service goes whatever the caller does, so the
+	// wait is bounded by Options.Poll's timeout alone, and the caller's
+	// context error is returned after (0015-MADR B3).
+	caller := ctx
+	ctx, cancel := s.deadline(context.WithoutCancel(ctx))
 	defer cancel()
+	defer func() { err = errors.Join(err, caller.Err()) }()
 	h, err := s.open(name, accessStop|accessEnumerateDependent)
 	if err != nil {
 		return err

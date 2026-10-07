@@ -51,3 +51,51 @@ func TestEnabledRealPlutil(t *testing.T) {
 		}
 	}
 }
+
+// TestPlistValueRealPlutil runs plistValue through the real
+// /usr/bin/plutil: an integer, a missing key, a file that is no dictionary
+// (a bare word lints as a valid old-style property list), and an unreadable
+// file (0015-MADR B3, and amendment A1's D7 probe evidence).
+func TestPlistValueRealPlutil(t *testing.T) {
+	const head = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>ExitTimeOut</key>
+	<integer>90</integer>
+</dict>
+</plist>
+`
+	job := func(t *testing.T, body string, mode os.FileMode) *Job {
+		t.Helper()
+		plist := filepath.Join(t.TempDir(), "com.example.demo.plist")
+		if err := os.WriteFile(plist, []byte(body), mode); err != nil {
+			t.Fatal(err)
+		}
+		f := newFake()
+		j := testJob(t, f, Options{Plist: plist})
+		j.o.Runner = service.RunnerFunc(func(ctx context.Context, cmd service.Command) (service.Output, error) {
+			if strings.HasSuffix(cmd.Path, "/plutil") {
+				return service.ExecRunner().Run(ctx, cmd)
+			}
+			return f.Run(ctx, cmd)
+		})
+		return j
+	}
+	ctx := context.Background()
+	j := job(t, head, 0o600)
+	if typ, raw, present, err := j.plistValue(ctx, "ExitTimeOut"); err != nil || typ != "integer" || raw != "90" || !present {
+		t.Fatalf("ExitTimeOut: %q %q %t %v", typ, raw, present, err)
+	}
+	if typ, _, present, err := j.plistValue(ctx, "Missing"); err != nil || present {
+		t.Fatalf("Missing: %q %t %v", typ, present, err)
+	}
+	if _, _, _, err := job(t, "garbage\n", 0o600).plistValue(ctx, "ExitTimeOut"); err == nil {
+		t.Fatal("a plist holding a bare word read as a dictionary")
+	}
+	if os.Geteuid() != 0 {
+		if _, _, _, err := job(t, head, 0).plistValue(ctx, "ExitTimeOut"); err == nil {
+			t.Fatal("an unreadable plist read without an error")
+		}
+	}
+}

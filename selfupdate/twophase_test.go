@@ -350,3 +350,47 @@ func TestStandaloneApplyCommit(t *testing.T) {
 		t.Fatalf("target = %q, want the new bytes", got)
 	}
 }
+
+// TestSecondCommitOrRollbackRefused: a replacement is finished by one
+// Commit or one Rollback. A second call of either is refused and changes
+// nothing; in particular a Commit after a Rollback never reports Applied
+// with the previous binary in place
+// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md B7).
+func TestSecondCommitOrRollbackRefused(t *testing.T) {
+	for _, c := range []struct {
+		name          string
+		first, second string
+		want          string
+	}{
+		{"rollback then commit", "rollback", "commit", "old-bytes"},
+		{"commit then rollback", "commit", "rollback", "new-bytes"},
+		{"commit twice", "commit", "commit", "new-bytes"},
+		{"rollback twice", "rollback", "rollback", "old-bytes"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			sess, exe := standaloneSession(t)
+			two := sess.(TwoPhaseSession)
+			ctx := context.Background()
+			applied, err := two.Apply(ctx, InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: stageNew(t, sess)}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			do := func(op string) (InstallResult, error) {
+				if op == "commit" {
+					return two.Commit(ctx, applied)
+				}
+				return InstallResult{}, two.Rollback(ctx, applied)
+			}
+			if _, err := do(c.first); err != nil {
+				t.Fatalf("first %s: %v", c.first, err)
+			}
+			res, err := do(c.second)
+			if err == nil || res.Applied || !strings.Contains(err.Error(), "already committed or rolled back") {
+				t.Fatalf("%s after %s: Applied=%v err=%v target=%q", c.second, c.first, res.Applied, err, readString(t, exe))
+			}
+			if got := readString(t, exe); got != c.want {
+				t.Fatalf("target holds %q after the refused %s, want %q", got, c.second, c.want)
+			}
+		})
+	}
+}

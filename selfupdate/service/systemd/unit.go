@@ -51,7 +51,8 @@ type Options struct {
 	// Probe, when set, is an application readiness check WaitHealthy runs
 	// once systemd reports the unit healthy.
 	Probe service.HealthProbe
-	// Poll bounds stop, start and health waits.
+	// Poll bounds stop, start and health waits. The stop wait is at least
+	// the unit's TimeoutStopUSec plus 30 s.
 	Poll service.PollOptions
 	// RewritePath lets Reconcile point the unit at a binary that moved, with
 	// a drop-in. Without it, a unit running another binary is an error.

@@ -32,7 +32,8 @@ type Options struct {
 	// Probe, when set, is an application readiness check WaitHealthy runs
 	// once the SCM reports the service healthy.
 	Probe service.HealthProbe
-	// Poll bounds stop, start and health waits.
+	// Poll bounds stop, start and health waits. Once a stop is sent, its
+	// wait runs to Poll's timeout whatever the caller's context does.
 	Poll service.PollOptions
 	// RewritePath lets Reconcile point the service at a binary that moved.
 	// Without it, a service running another binary is an error.

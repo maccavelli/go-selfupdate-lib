@@ -98,7 +98,9 @@ func (j *Job) disabled(ctx context.Context) (bool, error) {
 
 // Stop boots the job out, the only stop that holds against KeepAlive, and
 // waits until launchd has let it go and its process has exited: the
-// bootout-wait magic-cli-remote measured (0011-MADR §7). It refuses with
+// bootout-wait magic-cli-remote measured (0011-MADR §7). Once bootout is
+// issued, the wait runs to stopBound whatever ctx does, and ctx's error is
+// returned after it (0015-MADR B3). It refuses with
 // service.ErrInsideService when this process would die with the job.
 func (j *Job) Stop(ctx context.Context, _ string) error {
 	inside, err := j.Inside(ctx)
@@ -118,6 +120,7 @@ func (j *Job) Stop(ctx context.Context, _ string) error {
 	if !s.loaded {
 		return nil
 	}
+	bound := j.stopBound(ctx)
 	out, err := j.launchctlRun(ctx, "bootout", j.target())
 	if err != nil {
 		return err
@@ -127,11 +130,48 @@ func (j *Job) Stop(ctx context.Context, _ string) error {
 	default:
 		return launchctlError("bootout", j.target(), out)
 	}
-	return j.waitGone(ctx, s.pid)
+	return j.waitGone(ctx, s.pid, bound)
 }
 
-// waitGone polls until `print` exits 113 and pid has exited.
-func (j *Job) waitGone(ctx context.Context, pid int) error {
+// stopGrace and defaultExitTimeOut make the stop wait's bound. launchd
+// kills a job ExitTimeOut seconds after SIGTERM, 5 when the plist does not
+// set it (0011-MADR's probe evidence), and the wait allows stopGrace more
+// (0011-MADR §7). Tests shorten them.
+var (
+	stopGrace          = 30 * time.Second
+	defaultExitTimeOut = 5 * time.Second
+)
+
+// stopBound is how long Stop waits for the job to go once bootout is
+// issued: the longer of Options.Poll's timeout and launchd's own kill
+// bound, ExitTimeOut plus stopGrace (0015-MADR B3). An ExitTimeOut of 0,
+// which launchd reads as no kill, or one that is not an integer or cannot
+// be read, leaves the poll timeout.
+func (j *Job) stopBound(ctx context.Context) time.Duration {
+	bound := j.o.Poll.Timeout
+	if bound <= 0 {
+		bound = service.DefaultPollTimeout
+	}
+	typ, raw, present, err := j.plistValue(ctx, "ExitTimeOut")
+	if err != nil {
+		return bound
+	}
+	exit := defaultExitTimeOut
+	if present {
+		n, perr := strconv.Atoi(raw)
+		if typ != "integer" || perr != nil || n <= 0 {
+			return bound
+		}
+		exit = time.Duration(n) * time.Second
+	}
+	return max(bound, exit+stopGrace)
+}
+
+// waitGone polls until `print` exits 113 and pid has exited, for at most
+// bound. Once bootout is issued the job goes whatever the caller does, so
+// the wait does not end with the caller's context; its error is returned
+// after (0015-MADR B3).
+func (j *Job) waitGone(ctx context.Context, pid int, bound time.Duration) error {
 	probe := func(ctx context.Context) (service.Health, error) {
 		out, err := j.launchctlRun(ctx, "print", j.target())
 		if err != nil {
@@ -140,12 +180,13 @@ func (j *Job) waitGone(ctx context.Context, pid int) error {
 		gone := out.ExitCode == exitNotFound && (pid <= 0 || !pidAlive(pid))
 		return service.Health{Ready: gone, Detail: fmt.Sprintf("%s print exit %d, pid %d", j.target(), out.ExitCode, pid)}, nil
 	}
+	// PollHealthy bounds the wait by poll.Timeout itself.
 	poll := j.o.Poll
-	poll.Interval, poll.Settle, poll.Previous = 50*time.Millisecond, -1, ""
-	if err := service.PollHealthy(ctx, probe, poll); err != nil {
-		return fmt.Errorf("selfupdate: launchd: bootout %s: %w", j.target(), err)
+	poll.Interval, poll.Settle, poll.Previous, poll.Timeout = 50*time.Millisecond, -1, "", bound
+	if err := service.PollHealthy(context.WithoutCancel(ctx), probe, poll); err != nil {
+		return errors.Join(fmt.Errorf("selfupdate: launchd: bootout %s: %w", j.target(), err), ctx.Err())
 	}
-	return nil
+	return ctx.Err()
 }
 
 // Start enables the label (bootstrap of a disabled label fails with 5),

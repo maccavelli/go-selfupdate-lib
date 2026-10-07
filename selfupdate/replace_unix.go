@@ -77,7 +77,8 @@ func replaceTarget(ctx context.Context, target Target, staging string) (applyRes
 			return applyResult{backup: backup, renamed: true},
 				errors.Join(syncErr, fmt.Errorf("selfupdate: restore backup: %w", rerr))
 		}
-		return applyResult{renamed: true}, syncErr
+		// The previous binary is back (0015-MADR B4).
+		return applyResult{renamed: true}, errors.Join(syncErr, errRolledBack)
 	}
 	return applyResult{backup: backup, renamed: true}, nil
 }

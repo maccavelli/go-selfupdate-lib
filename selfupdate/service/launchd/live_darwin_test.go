@@ -438,7 +438,10 @@ func TestLiveExitCodes(t *testing.T) {
 // fixed (0011-MADR §7).
 func TestLiveStopWaitsForSlowExit(t *testing.T) {
 	requireLive(t)
-	const exitTimeOut = 3
+	// launchd kills the job ExitTimeOut after the bootout; the poll timeout
+	// is shorter, so Stop must wait by the job's own bound
+	// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md B3).
+	const exitTimeOut, pollTimeout = 8, 3 * time.Second
 	e := newSlowLiveJob(t, exitTimeOut)
 	pid := waitRunning(t, e)
 	for deadline := time.Now().Add(20 * time.Second); ; {
@@ -454,9 +457,10 @@ func TestLiveStopWaitsForSlowExit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	j.o.Poll.Timeout = pollTimeout
 	start := time.Now()
 	if err := j.Stop(context.Background(), "demo"); err != nil {
-		t.Fatal(err)
+		t.Fatalf("Stop after %v: %v", time.Since(start), err)
 	}
 	took, alive := time.Since(start), pidAlive(pid)
 	printed := launchctlExit(t, "print", liveDomain()+"/"+e.label)

@@ -45,6 +45,10 @@ func TestIsLeftover(t *testing.T) {
 		"demo":                                  false,
 		// Another target whose name starts with this one's.
 		".demo.selfupdate-x.selfupdate-1": false,
+		// A backup kept because restoring it failed is no leftover
+		// (0015-MADR B1).
+		".demo.selfupdate-kept-42":                   false,
+		".demo.selfupdate-kept-42" + stagingSuffix(): false,
 	} {
 		if got := isLeftover("demo", name); got != want {
 			t.Errorf("isLeftover(%q) = %t, want %t", name, got, want)

@@ -2516,3 +2516,162 @@ approved it: "proceed". The PLAN as approved is commit `47f0f97`.
   * `make gate` on `8607cef` with R3's changes: all 14 steps `rc=0`,
     `overall=0`; links "331 links in 49 files, 0 broken"; ids "9 files, 16
     deny-list rules, 0 findings".
+* Committed by the owner as `4d28fe4`.
+
+### Phase P1: the High findings and what they rest on (2026-10-07)
+
+* **Before the red,** one refactor that changes no behaviour: a new seam,
+  `syncRootFn = syncRoot` (`replace.go`), called by `rollbackInRoot`, so
+  the B4 tests can fail the in-root sync.
+* **Red,** the core tests on the unfixed code, each failing as below. No
+  existing test changed its result:
+  * `TestSecondCommitOrRollbackRefused`, all four subtests:
+    * "commit after rollback: Applied=true err=selfupdate: remove backup:
+      …";
+    * "rollback after commit: Applied=false err=selfupdate: restore
+      backup: rename …";
+    * the same for twice each.
+  * `TestManagedRecoveryReportsRestoredBinary`, both subtests:
+    `RolledBack=false Backup=""`.
+  * `TestInstallReportsRestoreAfterSyncFailure`:
+    * after a failed sync: `RolledBack=false Backup=""`;
+    * unsynced in the locked directory: `RolledBack=false
+      Backup=".../.demo.selfupdate-bak-678316334"`, a file the rename had
+      already consumed.
+  * `TestKeptBackupSurvivesLaterSessions`, all four subtests: "backup
+    .demo.selfupdate-bak-<n> after a later session: "", open …: no such
+    file or directory".
+  * `TestDryRunSweepsNothing`: ".demo.selfupdate-1234567 was removed" and
+    ".demo.selfupdate-bak-7654321 was removed".
+  * `TestManagedStopFailsAfterStoppingRestarts`: "stops=1 starts=0
+    healths=0".
+  * Passing as planned: `TestManagedStopFailsStillRunning` (the control)
+    and the new `TestIsLeftover` rows (a pin).
+  * The first red run of `TestKeptBackupSurvivesLaterSessions` failed two
+    subtests on the test's own setup. They reused the target identity
+    resolved before the first install replaced the binary, and `Begin`
+    rightly refused: "target changed during confirmation: concurrent
+    update". The later sessions now resolve the target again, as a later
+    run does.
+* **Red, the backends** (`stopwait_test.go` in each), on the unfixed
+  backends:
+  * launchd `TestStopFinishesAfterCancel`: "verbs [managername list list
+    bootout print], loaded true: Stop returned while the job was still
+    loaded";
+  * systemd: "verbs [show stop show]; want three probes after the stop";
+  * SCM: "Stop = selfupdate: service: timed out: demo STOP_PENDING:
+    context canceled".
+
+  `TestManagedStopTimeoutRestartsJob` goes through the core, which was
+  already fixed. Its red is the core plant below, which fails it.
+
+  `TestStopBound`, `TestStopWaitFollowsExitTimeOut`, `TestParseTimespan`
+  and `TestPlistValueRealPlutil` name functions the fix adds. Their red is
+  the build failing, and their plants prove them.
+* **Fix:**
+  * **B7** (`session.go`): `replacement{sess, applied, finished}` as the
+    State; `stateOf` replaces `appliedState`; `errReplacementFinished`.
+    `Commit` finishes once `commitLocked` ran. `Rollback` finishes on
+    success or `errRestoredUnsynced`. `Apply` finishes a failure that left
+    no live backup.
+  * **B4:**
+    * `errProbeRolledBack` was renamed `errRolledBack` with `gofmt -r`;
+    * `rollbackInRoot` joins `errRestoredUnsynced`;
+    * `Install` reports `RolledBack` for `errRolledBack` and
+      `errRestoredUnsynced`;
+    * `Apply` joins `errRolledBack` to an undo;
+    * both `replaceTarget`s join it when the restore after a failed sync
+      succeeded;
+    * `recover` counts an unsynced `Rollback` as rolled back.
+  * **B1:**
+    * `keptName` (`leftovers.go`);
+    * `retainLocked` on every path that returns a live backup with
+      `Applied` false, and after a failed `Rollback`;
+    * `backupOf` reads the State's current name in `recover`;
+    * `dryRunKey`, set by the updater for `req.DryRun`; `beginSession`
+      then skips the receipt and the sweep.
+
+    `isLeftover` needed no change: it already matches no kept name.
+  * **B3, core:** `recoverStop` (`managed.go`) re-probes `Running` under a
+    recovery context. When the service is down it runs `recover` with
+    `restart`. Otherwise, a stop refused inside the service included, the
+    update ends as before. The core matches no error text.
+  * **B3, launchd:**
+    * `plistValue` (new `plist.go`): `-convert xml1`, a dictionary root,
+      `-type`, `-extract raw` for bool and integer;
+    * `stopBound` = max(poll timeout, ExitTimeOut, 5 s by default, plus
+      `stopGrace`, 30 s);
+    * `waitGone` polls under `context.WithoutCancel` with the bound as
+      its timeout, and joins the caller's error.
+
+    A first version also set the bound as the wait context's deadline.
+    That deadline beat `PollHealthy`'s own timeout, and
+    `TestStopTimesOut` saw "deadline exceeded" rather than `ErrTimeout`.
+    `PollHealthy` alone now bounds it.
+  * **B3, systemd:** `parseTimespan` (new `timespan.go`); `stopBound` =
+    max(poll timeout, `TimeoutStopUSec` + 30 s), read in `Stop`; the
+    `stop` command and `waitState` (which takes the bound) under
+    `WithoutCancel`; a context already ended before the stop returns at
+    once.
+  * **B3, SCM:** the deadline is derived from `WithoutCancel`, and the
+    caller's error is joined on return.
+* **Green:**
+  * every package of `./selfupdate/...` passes;
+  * the eight core tests and the backend tests pass;
+  * Windows and Linux vet of the changed packages: clean.
+* **Plants,** 15, each in a `scripts/plant-copy.sh` copy, each caught:
+
+  | Plant | Fails |
+  | :--- | :--- |
+  | `Commit` skips the finished check | `TestSecondCommitOrRollbackRefused` (rollback then commit, commit twice) |
+  | `recover` ignores an unsynced restore | `TestManagedRecoveryReportsRestoredBinary/unsynced_rollback` |
+  | `Apply`'s undo returns the directory error alone | `…/undone_apply` |
+  | `rollbackInRoot`'s sync error unmarked | `TestInstallReportsRestoreAfterSyncFailure/rolled_back_in_the_locked_directory,_unsynced` |
+  | `retainLocked` keeps the backup's name | `TestKeptBackupSurvivesLaterSessions`, all four |
+  | a dry run sweeps | `TestDryRunSweepsNothing` |
+  | a kept name read as a backup's | `TestIsLeftover` |
+  | a failed stop ends the update (the old line) | `TestManagedStopFailsAfterStoppingRestarts`, launchd `TestManagedStopTimeoutRestartsJob` |
+  | launchd bound is the poll timeout | `TestStopBound`, `TestStopWaitFollowsExitTimeOut` |
+  | launchd wait ends with the caller | launchd `TestStopFinishesAfterCancel` |
+  | launchd plist root not checked | `TestPlistValueRealPlutil`, `TestStopBound` |
+  | systemd wait ends with the caller | systemd `TestStopFinishesAfterCancel` |
+  | systemd bound is the poll timeout | systemd `TestStopBound` |
+  | SCM wait ends with the caller | SCM `TestStopFinishesAfterCancel` |
+  | live: launchd bound is the poll timeout | `TestLiveStopWaitsForSlowExit`: "Stop after 3.19s: … timed out" |
+
+  The dry-run plant was run again after a lint fix changed its line
+  (`isDryRun` checks the assertion's `ok`), and was caught again.
+* **Live, this Mac:** `TestLiveStopWaitsForSlowExit`, now with
+  `ExitTimeOut` 8 and `Poll.Timeout` 3 s, passed in 8.91 s. The job was
+  gone afterwards (`launchctl print` exit 113). The PLAN's "20 and 5 s"
+  became 8 and 3 s: the same relation (the kill bound beyond the poll
+  timeout), in less time.
+* **Placement:** the backend B3 tests are in a new `stopwait_test.go` in
+  each backend, not in `launchd_test.go`, `systemd_test.go` and
+  `scm_test.go`. Their imports differ, and they stay together.
+  `TestStopTimesOut` sets `ExitTimeOut` to 0 in the fake's plist, rather
+  than changing package seams, so its 100 ms poll still bounds it.
+* **Docs:**
+  * `types.go`: `PendingBackup`, `InstallResult.Backup`, and
+    `AppliedReplacement`, single-use;
+  * `doc.go`: a dry run removes no leftovers;
+  * `leftovers.go`'s header;
+  * the launchd `Stop` comment and the three `Poll` comments;
+  * the extending guide: "Keep the previous binary" (the kept backup),
+    and "Run as a service" (the stop wait's bound, and a failed stop's
+    restart);
+  * `docs/architecture.md`, the install-path bullets.
+* **Checks:**
+  * `make pre-add-check` on the 31 changed Go files: "31 file(s) clean".
+    The first run failed on `errcheck` at `isDryRun`'s `v, _ :=` type
+    assertion; fixed.
+  * The full apidiff report against `v1.10.0` (V3) holds only "Ignoring
+    internal package …": no exported change.
+  * markdownlint: 0 issues. `check-docs.sh --links`: 0 broken.
+  * `make gate` on `4d28fe4` with P1's changes: all 14 steps `rc=0`,
+    `overall=0`. race and shuffle ok; apicheck "compatible with v1.10.0";
+    fuzz clean; vuln "No vulnerabilities found."; links "331 links in 49
+    files, 0 broken"; ids "34 files, 16 deny-list rules, 0 findings".
+* **Not yet run:** the systemd and SCM live tests (rule 9). They run with
+  P5's, on the test hosts and in CI, before the `v1.10.1` tag (P8); CI's
+  three legs run the existing live tests on the push of this commit.

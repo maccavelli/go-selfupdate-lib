@@ -124,3 +124,22 @@ func TestLeftoverSymlinkNotFollowed(t *testing.T) {
 		t.Fatalf("the file it points to = %q", got)
 	}
 }
+
+// TestDryRunSweepsNothing: a dry run leaves the target's directory as it
+// found it, crash leftovers included, as doc.go says it leaves the target
+// untouched
+// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md B1).
+func TestDryRunSweepsNothing(t *testing.T) {
+	_, exe := withTempHome(t)
+	removed, kept := plantLeftovers(t, filepath.Dir(exe))
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := applyReq()
+	req.DryRun = true
+	if _, err := dryRunUpdater(t, inst).Run(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	checkLeftovers(t, filepath.Dir(exe), nil, append(removed, kept...))
+}

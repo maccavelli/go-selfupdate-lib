@@ -159,7 +159,8 @@ type Result struct {
 	// before the next download. With Applied false, on any OS, the new
 	// binary is live and restoring the previous one failed; the backup is
 	// the only copy of the previous binary, and the caller must restore or
-	// remove it.
+	// remove it. That backup is .<base>.selfupdate-kept-<n> beside the
+	// target, a name no later session removes.
 	PendingBackup string
 	// DryRun echoes Request.DryRun: the release was checked and nothing
 	// was installed.
@@ -448,7 +449,10 @@ type InstallRequest struct {
 type InstallResult struct {
 	// Target is the replaced executable path.
 	Target string
-	// Backup is the retained rollback path before commit cleanup.
+	// Backup is the retained rollback path before commit cleanup. With
+	// Applied false it is the only copy of the previous binary, because
+	// restoring it failed: the standalone and managed installers keep it as
+	// .<base>.selfupdate-kept-<n>, which no later session removes.
 	Backup string
 	// Applied is true when replacement committed healthily.
 	Applied bool
@@ -494,7 +498,9 @@ type StagingOwner interface {
 }
 
 // AppliedReplacement is a replacement that Apply made live and that
-// Commit or Rollback has not yet finished.
+// Commit or Rollback has not yet finished. It is single-use: once one of
+// them has finished it, the standalone session refuses a second Commit or
+// Rollback of it, and changes nothing.
 type AppliedReplacement struct {
 	// Target is the replaced executable path.
 	Target string

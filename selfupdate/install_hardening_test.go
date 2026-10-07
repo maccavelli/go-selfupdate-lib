@@ -469,3 +469,46 @@ func TestManagedFailureMatrix(t *testing.T) {
 		})
 	}
 }
+
+// TestInstallReportsRestoreAfterSyncFailure: Install reports RolledBack,
+// and no backup, when the previous binary is back in place: after the
+// directory sync failed and the restore succeeded, and after the rollback
+// in the locked directory renamed the backup back and only its sync failed
+// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md B4).
+func TestInstallReportsRestoreAfterSyncFailure(t *testing.T) {
+	check := func(t *testing.T, res InstallResult, err error, target string) {
+		t.Helper()
+		if err == nil || res.Applied {
+			t.Fatalf("Applied=%v err=%v; want a failed, unapplied install", res.Applied, err)
+		}
+		if !res.RolledBack || res.Backup != "" {
+			t.Fatalf("RolledBack=%v Backup=%q; the previous binary is back (err=%v)", res.RolledBack, res.Backup, err)
+		}
+		if got := readString(t, target); got != "old-bytes" {
+			t.Fatalf("target holds %q", got)
+		}
+	}
+	t.Run("restored after a failed sync", func(t *testing.T) {
+		sess, exe := standaloneSession(t)
+		path := stageNew(t, sess)
+		real := syncDirFn
+		calls := 0
+		setSeam(t, &syncDirFn, func(dir string) error {
+			calls++
+			if calls == 1 {
+				return errors.New("injected dir sync failure")
+			}
+			return real(dir)
+		})
+		res, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: path}})
+		check(t, res, err, exe)
+	})
+	t.Run("rolled back in the locked directory, unsynced", func(t *testing.T) {
+		sess, exe := standaloneSession(t)
+		path := stageNew(t, sess)
+		moved := swapAfterFirstReplace(t, filepath.Dir(exe), false)
+		setSeam(t, &syncRootFn, func(*os.Root) error { return errors.New("injected root sync failure") })
+		res, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: path}})
+		check(t, res, err, filepath.Join(moved, filepath.Base(exe)))
+	})
+}

@@ -103,7 +103,7 @@ func (s *managedSession) Install(ctx context.Context, req InstallRequest) (Insta
 	}
 	if running {
 		if err := s.life.Stop(ctx, product); err != nil {
-			return InstallResult{}, fmt.Errorf("selfupdate: stop service: %w", errors.Join(ErrManagedInstall, err))
+			return s.recoverStop(ctx, product, err)
 		}
 	}
 	// Until Start succeeds, recovery restarts only what was running.
@@ -144,6 +144,23 @@ func (s *managedSession) Install(ctx context.Context, req InstallRequest) (Insta
 	return result, err
 }
 
+// recoverStop handles a Stop error. A backend can fail after the stop took
+// effect: its wait timed out, or the caller's context ended while it
+// waited. The service is asked again. When it is down, it is started again
+// and checked, as any recovery does, and the binary was never replaced.
+// When it still runs, or cannot be asked, the update ends as before; a stop
+// refused from inside the service leaves it running (0015-MADR B3).
+func (s *managedSession) recoverStop(parent context.Context, product string, stopErr error) (InstallResult, error) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), recoveryTimeout)
+	running, rerr := s.life.Running(ctx, product)
+	cancel()
+	if rerr != nil || running {
+		return InstallResult{}, fmt.Errorf("selfupdate: stop service: %w", errors.Join(ErrManagedInstall, stopErr, rerr))
+	}
+	return s.recover(parent, product, AppliedReplacement{}, ReconcileResult{}, true, false,
+		fmt.Errorf("selfupdate: stop service: %w", stopErr))
+}
+
 // recoveryTimeout bounds recovery. Recovery does not inherit the caller's
 // cancellation: when the failure being recovered from was the caller's
 // deadline, a cancelled context would leave a stopped service down
@@ -172,16 +189,24 @@ func (s *managedSession) recover(parent context.Context, product string, applied
 	if applied.Backup != "" {
 		if err := s.inner.Rollback(ctx, applied); err != nil {
 			recov = errors.Join(recov, err)
-			if _, serr := os.Lstat(applied.Backup); serr == nil {
-				result = InstallResult{Target: target, Backup: applied.Backup}
+			switch backup := backupOf(applied); {
+			case errors.Is(err, errRestoredUnsynced):
+				// The backup is back in place; only its sync failed
+				// (0015-MADR B4).
+				result = InstallResult{Target: target, RolledBack: true}
+			case backup != "":
+				if _, serr := os.Lstat(backup); serr == nil {
+					result = InstallResult{Target: target, Backup: backup}
+				}
 			}
 		} else {
 			result = InstallResult{Target: target, RolledBack: true}
 		}
 	}
-	if errors.Is(origin, errProbeRolledBack) {
-		// The session rolled back a replacement that failed its
-		// post-install probe before recovery began.
+	if errors.Is(origin, errRolledBack) {
+		// The session undid the replacement before recovery began: after
+		// a failed post-install probe, a failed directory sync, or a
+		// directory swap (0015-MADR B4).
 		result = InstallResult{Target: target, RolledBack: true}
 	}
 	if restart {

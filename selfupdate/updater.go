@@ -216,7 +216,12 @@ func (u *run) execute(ctx context.Context, req Request) (res Result, err error) 
 
 func (u *run) apply(ctx context.Context, req Request, result Result, target Target, rel Release, sel Selection) (resultOut Result, err error) {
 	resultOut = result
-	sess, err := u.installer.Begin(ctx, target)
+	beginCtx := ctx
+	if req.DryRun {
+		// A dry run's session sweeps nothing (0015-MADR B1).
+		beginCtx = withDryRun(ctx)
+	}
+	sess, err := u.installer.Begin(beginCtx, target)
 	if err != nil {
 		return resultOut, wrapRun(req, err)
 	}

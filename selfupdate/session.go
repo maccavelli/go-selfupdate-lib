@@ -51,9 +51,27 @@ func stagingSuffix() string {
 	return ""
 }
 
-// errProbeRolledBack marks a post-install probe failure whose replacement
-// was rolled back.
-var errProbeRolledBack = errors.New("selfupdate: the replacement was rolled back")
+// errRolledBack marks a failure whose replacement was undone: the previous
+// binary is back in place, after a failed post-install probe, a failed
+// directory sync, or a directory swap (0015-MADR B4).
+var errRolledBack = errors.New("selfupdate: the replacement was rolled back")
+
+// errReplacementFinished refuses a second Commit or Rollback of one
+// replacement (0015-MADR B7).
+var errReplacementFinished = errors.New("selfupdate: the replacement was already committed or rolled back")
+
+// dryRunKey marks a dry run's context. Its session sweeps nothing: a dry
+// run leaves the target's directory as it found it (0015-MADR B1).
+type dryRunKey struct{}
+
+func withDryRun(ctx context.Context) context.Context {
+	return context.WithValue(ctx, dryRunKey{}, true)
+}
+
+func isDryRun(ctx context.Context) bool {
+	v, ok := ctx.Value(dryRunKey{}).(bool)
+	return ok && v
+}
 
 // errRestoredUnsynced marks a rollback whose rename restored the backup and
 // whose directory sync then failed: the backup no longer exists
@@ -109,12 +127,24 @@ func (s *installSession) Owns(path string) bool {
 // session did not produce.
 var errForeignReplacement = errors.New("selfupdate: replacement was not applied by this session")
 
-func appliedState(a AppliedReplacement) (applyResult, error) {
-	applied, ok := a.State.(applyResult)
-	if !ok {
-		return applyResult{}, errForeignReplacement
+// replacement is an AppliedReplacement's State: the session that applied
+// it, what it applied, and whether Commit or Rollback has finished it. It
+// is a pointer, so the copies a caller holds see a kept backup's new name
+// and the finish (0015-MADR B1, B7).
+type replacement struct {
+	sess     *installSession
+	applied  applyResult
+	finished bool
+}
+
+// stateOf returns the replacement a's State holds, refusing one this
+// session did not apply.
+func (s *installSession) stateOf(a AppliedReplacement) (*replacement, error) {
+	st, ok := a.State.(*replacement)
+	if !ok || st == nil || st.sess != s {
+		return nil, errForeignReplacement
 	}
-	return applied, nil
+	return st, nil
 }
 
 func (s *installSession) Install(ctx context.Context, req InstallRequest) (InstallResult, error) {
@@ -125,26 +155,35 @@ func (s *installSession) Install(ctx context.Context, req InstallRequest) (Insta
 	defer s.mu.Unlock()
 	applied, err := s.replaceLocked(ctx, req.Artifact.Path)
 	if err != nil {
+		if errors.Is(err, errRolledBack) {
+			return InstallResult{Target: s.target.Path, RolledBack: true}, err
+		}
 		// Backup is non-empty only when the new binary is live and the
-		// restore failed (0003-MADR B1).
-		return InstallResult{Target: s.target.Path, Backup: applied.backup}, err
+		// restore failed (0003-MADR B1). It is kept: it is the only copy of
+		// the previous binary (0015-MADR B1).
+		return InstallResult{Target: s.target.Path, Backup: s.retainLocked(applied.backup)}, err
 	}
 	if err := s.checkDir(); err != nil {
 		// The rename went into the locked directory, wherever it is now:
 		// undo it there, through the handle (0004-MADR R3).
 		if rerr := s.rollbackInRoot(applied); rerr != nil {
+			if errors.Is(rerr, errRestoredUnsynced) {
+				// The backup is back in place; only its sync failed
+				// (0015-MADR B4).
+				return InstallResult{Target: s.target.Path, RolledBack: true}, errors.Join(err, rerr)
+			}
 			// Not applied: the backup is the only copy of the previous
 			// binary, reported as the restore failure above is
 			// (0010-MADR B8).
-			return InstallResult{Target: s.target.Path, Backup: applied.backup}, errors.Join(err, rerr)
+			return InstallResult{Target: s.target.Path, Backup: s.retainLocked(applied.backup)}, errors.Join(err, rerr)
 		}
 		return InstallResult{Target: s.target.Path, RolledBack: true}, err
 	}
 	if err := s.probeInstalled(ctx, req, applied); err != nil {
-		if errors.Is(err, errProbeRolledBack) {
+		if errors.Is(err, errRolledBack) {
 			return InstallResult{Target: s.target.Path, RolledBack: true}, err
 		}
-		return InstallResult{Target: s.target.Path, Backup: applied.backup}, err
+		return InstallResult{Target: s.target.Path, Backup: s.retainLocked(applied.backup)}, err
 	}
 	pending, previous, err := s.commitLocked(ctx, applied)
 	return InstallResult{
@@ -188,26 +227,45 @@ func (s *installSession) Apply(ctx context.Context, req InstallRequest) (Applied
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	st := &replacement{sess: s}
 	applied, err := s.replaceLocked(ctx, req.Artifact.Path)
 	if err == nil {
 		// The directory again, now that the rename has gone into it: Install
 		// checks here too (0004-MADR R3; 0010-MADR B7).
 		if derr := s.checkDir(); derr != nil {
-			if rerr := s.rollbackInRoot(applied); rerr != nil {
-				return AppliedReplacement{Target: s.target.Path, Backup: applied.backup, State: applied}, errors.Join(derr, rerr)
+			rerr := s.rollbackInRoot(applied)
+			switch {
+			case rerr == nil:
+				err = errors.Join(derr, errRolledBack)
+			case errors.Is(rerr, errRestoredUnsynced):
+				// The backup is back in place; only its sync failed
+				// (0015-MADR B4).
+				err = errors.Join(derr, rerr, errRolledBack)
+			default:
+				err = errors.Join(derr, rerr)
 			}
-			return AppliedReplacement{Target: s.target.Path, State: applyResult{}}, derr
-		}
-		if err = s.probeInstalled(ctx, req, applied); errors.Is(err, errProbeRolledBack) {
+			if rerr == nil || errors.Is(rerr, errRestoredUnsynced) {
+				applied = applyResult{}
+			}
+		} else if err = s.probeInstalled(ctx, req, applied); errors.Is(err, errRolledBack) {
 			applied = applyResult{}
 		}
 	}
-	return AppliedReplacement{Target: s.target.Path, Backup: applied.backup, State: applied}, err
+	if err != nil && applied.backup != "" {
+		// The new binary is live and the restore failed: the backup is the
+		// only copy of the previous binary, and is kept (0015-MADR B1).
+		applied.backup = s.retainLocked(applied.backup)
+	}
+	st.applied = applied
+	// A failure that left no live backup has nothing for Commit or
+	// Rollback to finish (0015-MADR B7).
+	st.finished = err != nil && applied.backup == ""
+	return AppliedReplacement{Target: s.target.Path, Backup: applied.backup, State: st}, err
 }
 
 // probeInstalled runs the post-install probe on the replaced target. On
-// failure it rolls the replacement back; the error wraps
-// errProbeRolledBack when that succeeded. The caller holds s.mu.
+// failure it rolls the replacement back; the error wraps errRolledBack when
+// that succeeded. The caller holds s.mu.
 func (s *installSession) probeInstalled(ctx context.Context, req InstallRequest, applied applyResult) error {
 	if s.postInstall == nil {
 		return nil
@@ -224,11 +282,11 @@ func (s *installSession) probeInstalled(ctx context.Context, req InstallRequest,
 		if errors.Is(rerr, errRestoredUnsynced) {
 			// The backup is back in place; only its sync failed. It is
 			// rolled back, and no backup is left to report (0010-MADR B9).
-			return errors.Join(perr, rerr, errProbeRolledBack)
+			return errors.Join(perr, rerr, errRolledBack)
 		}
 		return errors.Join(perr, rerr)
 	}
-	return errors.Join(perr, errProbeRolledBack)
+	return errors.Join(perr, errRolledBack)
 }
 
 // replaceLocked replaces the target with an owned staging file. The caller
@@ -277,7 +335,7 @@ func (s *installSession) checkDir() error {
 // Commit implements TwoPhaseSession: it removes the backup of a
 // replacement this session applied.
 func (s *installSession) Commit(ctx context.Context, a AppliedReplacement) (InstallResult, error) {
-	applied, err := appliedState(a)
+	st, err := s.stateOf(a)
 	if err != nil {
 		return InstallResult{}, err
 	}
@@ -288,15 +346,19 @@ func (s *installSession) Commit(ctx context.Context, a AppliedReplacement) (Inst
 	if s.closed {
 		return InstallResult{}, fmt.Errorf("selfupdate: session is closed")
 	}
+	if st.finished {
+		return InstallResult{}, errReplacementFinished
+	}
 	// The replacement is live either way: a refused commit leaves the new
-	// binary and its backup in place.
+	// binary and its backup in place, for a Rollback.
 	pending, previous := "", ""
 	if err = s.checkDir(); err == nil {
-		pending, previous, err = s.commitLocked(ctx, applied)
+		pending, previous, err = s.commitLocked(ctx, st.applied)
+		st.finished = true
 	}
 	return InstallResult{
 		Target:        s.target.Path,
-		Backup:        applied.backup,
+		Backup:        st.applied.backup,
 		Applied:       true,
 		PendingBackup: pending,
 		Previous:      previous,
@@ -304,9 +366,10 @@ func (s *installSession) Commit(ctx context.Context, a AppliedReplacement) (Inst
 }
 
 // Rollback implements TwoPhaseSession: it restores the backup of a
-// replacement this session applied.
+// replacement this session applied. When the restore fails, the backup is
+// kept, under the name backupOf reports (0015-MADR B1).
 func (s *installSession) Rollback(ctx context.Context, a AppliedReplacement) error {
-	applied, err := appliedState(a)
+	st, err := s.stateOf(a)
 	if err != nil {
 		return err
 	}
@@ -315,13 +378,59 @@ func (s *installSession) Rollback(ctx context.Context, a AppliedReplacement) err
 	if s.closed {
 		return fmt.Errorf("selfupdate: session is closed")
 	}
+	if st.finished {
+		return errReplacementFinished
+	}
 	// A directory swapped since Begin: the backup is in the locked
 	// directory, wherever it is now, so the undo goes through its handle
 	// (0004-MADR R3; 0010-MADR B7).
 	if s.checkDir() != nil {
-		return s.rollbackInRoot(applied)
+		err = s.rollbackInRoot(st.applied)
+	} else {
+		err = rollbackReplacement(withRetryBudget(ctx, s.lockTimeout), s.target, st.applied)
 	}
-	return rollbackReplacement(withRetryBudget(ctx, s.lockTimeout), s.target, applied)
+	if err == nil || errors.Is(err, errRestoredUnsynced) {
+		st.finished = true
+		return err
+	}
+	st.applied.backup = s.retainLocked(st.applied.backup)
+	return err
+}
+
+// retainLocked renames a backup that is the only copy of the previous
+// binary to its kept name, which no later session sweeps (0015-MADR B1),
+// and returns its path. It returns backup unchanged when there is none,
+// when the name is not a backup's, when the kept name is taken, or when the
+// rename fails. The caller holds s.mu.
+func (s *installSession) retainLocked(backup string) string {
+	if backup == "" {
+		return ""
+	}
+	kept, ok := keptName(s.target.Base, filepath.Base(backup))
+	if !ok {
+		return backup
+	}
+	if _, err := s.root.Lstat(kept); err == nil {
+		return backup
+	}
+	if err := s.root.Rename(filepath.Base(backup), kept); err != nil {
+		return backup
+	}
+	advisory(syncRootFn(s.root))
+	return filepath.Join(filepath.Dir(backup), kept)
+}
+
+// backupOf is a's backup as it is now: a session of this package renames a
+// backup it keeps, and records the new name in the State (0015-MADR B1).
+// Another TwoPhaseSession's is a.Backup.
+func backupOf(a AppliedReplacement) string {
+	st, ok := a.State.(*replacement)
+	if !ok || st == nil || st.sess == nil {
+		return a.Backup
+	}
+	st.sess.mu.Lock()
+	defer st.sess.mu.Unlock()
+	return st.applied.backup
 }
 
 // rollbackInRoot restores the backup over the target inside the locked
@@ -333,7 +442,12 @@ func (s *installSession) rollbackInRoot(applied applyResult) error {
 	if err := s.root.Rename(filepath.Base(applied.backup), s.target.Base); err != nil {
 		return fmt.Errorf("selfupdate: restore backup: %w", err)
 	}
-	return syncRoot(s.root)
+	if err := syncRootFn(s.root); err != nil {
+		// The rename restored the backup: no backup is left to report
+		// (0015-MADR B4, as rollbackReplacement does since 0010-MADR B9).
+		return errors.Join(errRestoredUnsynced, err)
+	}
+	return nil
 }
 
 func (s *installSession) Close() error {
@@ -397,13 +511,17 @@ func beginSession(ctx context.Context, policy TargetPolicy, original Target, tim
 	if err != nil || !os.SameFile(rootInfo, pathInfo) {
 		return nil, errors.Join(fmt.Errorf("selfupdate: target directory changed while locking: %w", ErrConcurrentUpdate), lock.release(), root.Close())
 	}
-	if err := processCleanupReceipt(original, root); err != nil {
-		return nil, errors.Join(err, lock.release(), root.Close())
+	// A dry run changes nothing beside the target, so it neither processes
+	// the receipt nor sweeps (0015-MADR B1).
+	if !isDryRun(ctx) {
+		if err := processCleanupReceipt(original, root); err != nil {
+			return nil, errors.Join(err, lock.release(), root.Close())
+		}
+		// Under the lock, what a crashed update left behind is no one's
+		// (0010-MADR Q6).
+		keep, sweepBackups := listedBackups(original)
+		removeLeftovers(original, root, keep, sweepBackups)
 	}
-	// Under the lock, what a crashed update left behind is no one's
-	// (0010-MADR Q6).
-	keep, sweepBackups := listedBackups(original)
-	removeLeftovers(original, root, keep, sweepBackups)
 	if err := revalidateTarget(original, policy); err != nil {
 		return nil, errors.Join(err, lock.release(), root.Close())
 	}
