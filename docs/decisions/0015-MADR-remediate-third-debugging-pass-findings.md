@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-07
 decision-makers: go-selfupdate-lib maintainers
 consulted: the 0004 roadmap's records (0011–0014)
@@ -245,7 +245,7 @@ documented contract or fail a supported setup.
 
 ## Decision Outcome
 
-Proposed: **"A. Three tracks"**, because it ships the two High fixes and
+Chosen option: **"A. Three tracks"**, because it ships the two High fixes and
 every contract-preserving fix at once, without waiting on the contract
 decisions, and keeps `v1.10.1` provably compatible so a program can take
 it with no code change.
@@ -289,6 +289,17 @@ it with no code change.
 The questions below. Each answer is recorded as an amendment here before
 its code is written, and lands in `v1.11.0` (or `v1.10.1` where the answer
 keeps every documented contract).
+
+### 4. Owner answers
+
+Answered 2026-10-07: every recommended answer below. Track 3, `v1.11.0`,
+is therefore C3, C8, C9, G3, A5, B5, D6, D10, E7, E8 and F3's check,
+plus two items amendment A1 below moves or adds: G4, and A1's release
+that does not exist yet. C5's answer is documentation, on `main`. F4's is
+documentation and the timeout message, in tracks 1 and 2. B7 moves to
+`v1.10.1` (amendment A1). The PLAN,
+[0015-PLAN-remediate-third-debugging-pass-findings.md](0015-PLAN-remediate-third-debugging-pass-findings.md),
+states each answer as a row of its "Decisions this PLAN assumes".
 
 ### Consequences
 
@@ -345,6 +356,14 @@ keeps every documented contract).
 
 ## Owner questions
 
+**Answered (2026-10-07).** Asked one by one, the owner chose the
+recommended answer to each of the 15 questions, then approved the PLAN
+("proceed"). The answers, as the PLAN applies them, are rows Q1–Q15 of
+its "Decisions this PLAN assumes"; approving the PLAN also accepted its
+rows N1–N9. Q7 lands in `v1.10.1`, Q11 refuses `size` and `GNU.sparse.*`
+records too (N3), and Q12's check is the spec's per-field floor
+(amendment A1).
+
 Recommended answers first. The answers decide the `v1.11.0` scope.
 
 1. **C3: a handoff without `--yes`.** Refuse it before detaching, with
@@ -397,6 +416,65 @@ Recommended answers first. The answers decide the `v1.11.0` scope.
     document (schema 3), and the live handoff test 0011 promised
     (recommended, in `v1.11.0`); or amend 0011 to drop the item.
 
+## Amendments
+
+### A1 (2026-10-07): corrections found while planning
+
+*Status: accepted with the PLAN (2026-10-07).* Planning read every finding
+against the code at `d6a570f`. These corrections change no finding's
+severity; each is applied in the PLAN, and the finding tables above are
+left as written.
+
+* **B7 moves to `v1.10.1`.** B1's kept backup needs the replacement's state
+  in `Rollback` and in managed recovery, which B7's state provides. B7 adds
+  no exported identifier.
+* **G4 moves to `v1.11.0`:** reporting a reconciler's warnings needs a new
+  exported field, `ReconcileResult.Warnings`.
+* **A1 splits.** The selectors wrap `ErrUnsupportedPlatform` in `v1.10.1`.
+  Caching a release that does not exist yet needs a new sentinel,
+  `ErrNoRelease`, and outcome, `CheckNoRelease`, in `v1.11.0`.
+* **C9 is reproduced** (the table's "—"): a staged probe ran on another
+  platform's binary and failed with `exec format error`.
+* **F3's check is the spec's per-field floor** (`installer` needs
+  `v1.10.0`), not the tool's own version. The tool is built from a
+  tagless checkout, so its version reads as a pseudo-version or
+  `(devel)`. CI's rehearsal fixture replaces the library with a
+  directory, which is not checked.
+* **F7(a) and F7(c) also hold in `install.ps1`.** `Test-ReleaseTag`
+  (`:129`) ends its pattern with `$`, which .NET matches before a final
+  newline. The identity failure's restore (`:411-423`) moves a stale
+  `<name>.exe.prev` into place when no `<name>.exe` existed.
+* **F7(d) needs two rules:** a hook runs only a regular file, and the
+  install refuses a directory at a product's path before changing
+  anything.
+* **Citations:** G7 is `main.go:11`, not `:13`; G5 is `types.go:598`; C1 is
+  `cli/run.go:142-157`. The cli goldens hold 13 `*.json.stdout` files.
+* **F4:** the README's "Its tag can never be reused" is false when
+  immutable releases are off.
+* **E5:** `pack` writes tar.gz as USTAR (`pack.go:43`), so a program name
+  over 100 characters cannot be packed at all. `Validate` refuses it.
+* **D2's external fact** is pinned by the fix's rule, not relied on: the
+  baseline is read after the start, whatever systemd does with the
+  counter.
+* **D7, probe evidence** (macOS 26.6.2, `/usr/bin/plutil`, 2026-10-07).
+  * `plutil -lint` passes a file holding only `garbage`: a bare word is a
+    valid old-style property list.
+  * `plutil -convert xml1 -o -` prints its root as
+    `<string>garbage</string>`.
+  * `-type <key>` prints `integer` for `<integer>0</integer>`, and exits 1
+    with "No value at that key path" for a missing key or a non-dictionary
+    root.
+  * `-extract <key> raw -expect bool` exits 1 for an integer.
+  * A missing file and a mode-0000 file each exit 1, with a message.
+
+  The readable-plist check therefore converts to XML and requires a
+  dictionary root. A live test pins launchd's own reading of an integer
+  `RunAtLoad`.
+* **B3's bound** is the longer of the poll timeout and the service
+  manager's own kill bound: launchd `ExitTimeOut`, 5 s when absent (0011's
+  probe evidence), plus 30 s; systemd `TimeoutStopUSec` plus 30 s. A stop
+  never waits less than it does today.
+
 ## More Information
 
 * Earlier passes:
@@ -413,4 +491,5 @@ Recommended answers first. The answers decide the `v1.11.0` scope.
   restart (D2).
 * The reviewers' probes were not committed: the PLAN that follows this
   record turns each into the test its fix needs.
-* A PLAN follows once the owner has answered the questions above.
+* The PLAN:
+  [0015-PLAN-remediate-third-debugging-pass-findings.md](0015-PLAN-remediate-third-debugging-pass-findings.md).

@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: in-progress
 date: 2026-10-07
 associated-madr: "0015-MADR-remediate-third-debugging-pass-findings.md"
 ---
@@ -2175,4 +2175,30 @@ hold).
 
 ## Execution Record
 
-No phase has run.
+### Approval (2026-10-07)
+
+The owner answered the MADR's 15 questions one by one, choosing every
+recommended answer, then asked for this PLAN to be written in full, and
+approved it: "proceed". The PLAN as approved is commit `47f0f97`.
+
+### Phase R0: records (2026-10-07)
+
+* **The MADR** is `accepted`:
+  * "Chosen option:" replaces "Proposed:";
+  * a new **Answered (2026-10-07)** paragraph opens "Owner questions";
+  * a new `### 4. Owner answers` states track 3's scope;
+  * a new `## Amendments` holds `### A1 (2026-10-07): corrections found
+    while planning`, this PLAN's Corrections with their evidence;
+  * the last bullet of "More Information" names this PLAN.
+* **This PLAN** is `in-progress`. **`docs/README.md`:** the MADR row reads
+  `accepted`, and the PLAN row `in-progress`.
+* **Checks:**
+  * the session's document checker, `--links` and `--ids` on the three
+    files: 88 links checked, 0 failures;
+  * markdownlint-cli2 0.23.2: "0 issues in 0 files". The repository's
+    config excludes MADR and PLAN files, so only `docs/README.md` was
+    linted.
+
+  No code changed, so the gate was not run (rule 5's Go and script checks
+  do not apply).
+* **Bootstrap exception:** records and the index only.
