@@ -769,6 +769,89 @@ Additions only: `make apicheck` reports `compatible with v1.9.0`, and
   launchd backend's tests no longer ask the system about a fixture PID
   (D9).
 
+### Phase I7: the release (2026-10-07)
+
+* **Step 1, the tag.** D7 to D9 landed as `a0a26b6`, pushed by the owner;
+  its CI run, 37571411162, passed all 17 jobs, the Windows leg's
+  Ctrl+Break case and the Linux lint step included. On the owner's ask
+  ("Tag v1.10.0 and push it") the agent tagged `v1.10.0` on `a0a26b6`,
+  annotated with the message `v1.10.0` as `v1.9.0` is, after
+  `scripts/check-release-tag.sh v1.10.0` exited 0, and pushed the tag.
+  `git ls-remote origin 'refs/tags/v1.10.0^{}'` gives
+  `a0a26b6ecf66f51c19e9fea0f665c76ca5e99e4c`.
+* **The tag's CI** (run 37577710330) passed all 17 jobs, the first run to
+  build the fixture as a release with installers: the ten identity legs,
+  raw and archive on the five runners, each printed
+  `v1.10.0 (release) a0a26b6ecf66`, and "Check the staged installers"
+  reported "check-installers: clean" for both sets, rendered for the
+  tag.
+* **Step 2, the pin commit:** `README.md` (the status, `go get`, the
+  publish example's pin), `docs/architecture.md` (the current release and
+  its commit), the building guide (both workflow pins in step 4, the
+  extras example's pin, the `ls-remote` example) and the migration guide
+  (every `go get` line and `go list` check, §2's current release, §3's
+  pin and what `v1.10.0` changes in the publish workflow, §5's `go.mod`
+  step and the list of additive releases) move to `v1.10.0` at
+  `a0a26b6ecf66f51c19e9fea0f665c76ca5e99e4c`. What a version section says
+  of its own release stays.
+* **Step 3, the live rehearsal** (2026-10-07), on the owner's ask
+  ("Proceed then run the rehearsal").
+  * **The repository:** a throwaway public repository, created with
+    `gh repo create`; immutable releases turned on with
+    `PUT /repos/{owner}/{repo}/immutable-releases` (204), read back as
+    `"enabled":true` some seconds later. The agent's token has no
+    `delete_repo` scope, so the owner removes it, as for 0013.
+  * **The program:** a module requiring `v1.10.0` from
+    `proxy.golang.org`, with two products: `rehearsal`, with
+    `identity_args: ["version"]`, a `spec` command that parses the
+    embedded spec with that release's `releasespec` ("installers:
+    [install.sh install.ps1]") and a `mark-installed` command; and
+    `rehearsalctl`, with no identity command. The spec lists five
+    platforms and `"installer"` with an `after_install` hook,
+    `rehearsal mark-installed`. The caller is the building guide's,
+    both workflows pinned to `a0a26b6`, on a `feature/rehearsal` branch
+    as in 0013's rehearsal.
+  * **Runs,** each green: the branch push, a rehearsal with five identity
+    legs and `release` skipped; `v0.0.1` and `v0.0.2`, raw, and `v0.0.3`,
+    archives (tar.gz and zip). Each release is immutable, with
+    `install.sh`, `install.ps1`, ten assets and `SHA256SUMS`; `v0.0.2`
+    became latest, then `v0.0.3`.
+  * **On the development Mac and the Linux test host,** with `HOME` a
+    scratch directory, so neither host's own `~/.local/bin` was touched;
+    the same result on both:
+
+    | One-liner | Exit | Result |
+    | :--- | :--- | :--- |
+    | `curl -fsSL …/releases/latest/download/install.sh \| sh` | 0 | both products at `v0.0.3 (release) f0d73ad1d2d9`, from tar.gz; the hook ran; `rehearsal.installed` holds that identity |
+    | the same, `-s -- --version v0.0.1` | 1 | "release v0.0.1 has no rehearsal-<os>-<arch>.tar.gz; its own installer is …/releases/download/v0.0.1/install.sh" |
+    | `…/download/v0.0.2/install.sh \| sh -s -- --version v0.0.1` | 0 | `v0.0.1 (release) 8df73fd36066`; `rehearsal.prev` reports `v0.0.3` |
+    | `…/download/v0.0.1/install.sh \| sh` | 0 | `v0.0.1` again, the hook's marker rewritten |
+    | the latest, `--uninstall` | 0 | both binaries and their `.prev` removed; "configuration, if any, is left in place" |
+
+    On the Mac, with its own `HOME`, so `gh` was logged in, the latest
+    one-liner with `--verify-attestation --dir <scratch> --no-hooks`
+    exited 0, installing `v0.0.3`.
+  * **On the Windows test host,** under Windows PowerShell 5.1.26100 and
+    PowerShell 7.6.6, with `LOCALAPPDATA` a scratch folder and the real
+    user PATH, its raw value and kind saved first:
+
+    | Form | Result, both PowerShells |
+    | :--- | :--- |
+    | `irm …/latest/download/install.ps1 \| iex` | both products at `v0.0.3 (release) f0d73ad1d2d9`, from zip; the hook ran; "added … to your user PATH"; the user PATH has the folder, still `REG_SZ` |
+    | `& ([scriptblock]::Create((irm …/latest/…))) -Version v0.0.1` | "release v0.0.1 has no rehearsal-windows-amd64.zip; its own installer is …/download/v0.0.1/install.ps1", then the error `install failed (exit 1)`, the session kept |
+    | `& ([scriptblock]::Create((irm …/download/v0.0.2/install.ps1))) -Version v0.0.1` | `v0.0.1 (release) 8df73fd36066`; `rehearsal.exe.prev` and `rehearsalctl.exe.prev` kept |
+    | the latest, `-Uninstall` | both binaries removed, and the folder off the user PATH |
+
+    After each run the user PATH was byte for byte as before ("user PATH
+    as before: True"), so the saved copy was not needed. The test
+    script's own attempt to run `rehearsal.exe.prev` failed, as Windows
+    runs no program without an `.exe` name; that is the script's, not
+    the installer's.
+* **Step 4, the agent's checks:** CI on the tag, above; on
+  `proxy.golang.org`, `go list -m …@v1.10.0` gives `v1.10.0` at
+  2026-10-07T04:25:29Z, its origin `a0a26b6` and `refs/tags/v1.10.0`, and
+  `@latest` already resolves to `v1.10.0`.
+
 ### Deviations
 
 * **D1 (2026-10-06), I2: arguments the installers embed.**
