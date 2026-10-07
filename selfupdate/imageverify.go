@@ -31,9 +31,10 @@ type imageVerifier struct {
 // NewImageVerifier returns a Verifier that requires the staged binary to be
 // an executable image for p: ELF for linux, freebsd, netbsd, openbsd and
 // dragonfly, Mach-O (thin, or fat with a matching arch) for darwin, and PE
-// for windows; for amd64, arm64, 386 or arm. A zero p means the runtime
-// platform. ELF OSABI is not checked: Go's linker writes ELFOSABI_NONE for
-// linux, so it cannot tell operating systems apart (0004-MADR G9).
+// for windows, not a DLL; for amd64, arm64, 386 or arm. A zero p means the
+// runtime platform. ELF OSABI is not checked: Go's linker writes
+// ELFOSABI_NONE for linux, so it cannot tell operating systems apart
+// (0004-MADR G9).
 func NewImageVerifier(p Platform) (Verifier, error) {
 	v, err := imageCheckFor(p)
 	if err != nil {
@@ -137,7 +138,10 @@ func (v imageVerifier) matches(ra io.ReaderAt) bool {
 		return err == nil && f.Cpu == v.machoCPU && f.Type == macho.TypeExec
 	case formatPE:
 		f, err := pe.NewFile(ra)
-		return err == nil && f.Machine == v.peMachine && f.Characteristics&pe.IMAGE_FILE_EXECUTABLE_IMAGE != 0
+		// A DLL sets IMAGE_FILE_EXECUTABLE_IMAGE too; it is no program
+		// (0015-MADR B9).
+		return err == nil && f.Machine == v.peMachine && f.Characteristics&pe.IMAGE_FILE_EXECUTABLE_IMAGE != 0 &&
+			f.Characteristics&pe.IMAGE_FILE_DLL == 0
 	}
 	return false
 }

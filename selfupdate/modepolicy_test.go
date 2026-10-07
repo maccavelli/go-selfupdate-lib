@@ -45,6 +45,10 @@ func TestIsLeftover(t *testing.T) {
 		"demo":                                  false,
 		// Another target whose name starts with this one's.
 		".demo.selfupdate-x.selfupdate-1": false,
+		// The Windows receipt's temporary file is one (0015-MADR B8).
+		".demo.selfupdate.cleanup-tmp-12": true,
+		".demo.selfupdate.cleanup-tmp-":   false,
+		".demo.selfupdate.cleanup-tmp-1x": false,
 		// A backup kept because restoring it failed is no leftover
 		// (0015-MADR B1).
 		".demo.selfupdate-kept-42":                   false,
@@ -61,8 +65,11 @@ func TestIsLeftover(t *testing.T) {
 func TestRemoveLeftoversKeepsListed(t *testing.T) {
 	dir := t.TempDir()
 	listed, other, staging := ".demo.selfupdate-bak-1", ".demo.selfupdate-bak-2", ".demo.selfupdate-3"+stagingSuffix()
+	// The receipt's temporary file is no backup: it goes even when the
+	// receipt could not be read (0015-MADR B8).
+	receiptTmp := ".demo.selfupdate.cleanup-tmp-4"
 	plant := func() {
-		for _, n := range []string{listed, other, staging} {
+		for _, n := range []string{listed, other, staging, receiptTmp} {
 			if err := os.WriteFile(filepath.Join(dir, n), []byte("x"), 0o600); err != nil {
 				t.Fatal(err)
 			}
@@ -85,6 +92,9 @@ func TestRemoveLeftoversKeepsListed(t *testing.T) {
 	removeLeftovers(target, root, nil, false)
 	if !exists(listed) || !exists(other) || exists(staging) {
 		t.Fatalf("unreadable receipt: backups kept %t %t, staging kept %t", exists(listed), exists(other), exists(staging))
+	}
+	if exists(receiptTmp) {
+		t.Fatalf("the receipt's temporary file %s was kept", receiptTmp)
 	}
 }
 

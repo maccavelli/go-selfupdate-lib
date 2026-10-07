@@ -286,3 +286,12 @@ func TestManagedStopFailsStillRunning(t *testing.T) {
 		t.Fatalf("target holds %q", got)
 	}
 }
+
+// TestManagedSessionTarget: a managed session reports the target its inner
+// session locked (0015-MADR B10).
+func TestManagedSessionTarget(t *testing.T) {
+	_, target, sess, _ := managedEnv(t, &fakeLife{installed: true}, &fakeRec{})
+	if got := sess.Target(); got.Path != target.Path || got.Dir != target.Dir || got.Base != target.Base {
+		t.Fatalf("Target() = %+v, want %+v", got, target)
+	}
+}

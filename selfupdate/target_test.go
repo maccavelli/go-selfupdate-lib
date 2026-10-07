@@ -1,9 +1,11 @@
 package selfupdate
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -93,4 +95,50 @@ func withTempHome(t *testing.T) (home, exe string) {
 		t.Fatal(err)
 	}
 	return home, exe
+}
+
+// TestResolveTargetDefaultExecutable: with no ExecutablePath the target is
+// the running executable; a failure to find it, or an empty path, is an
+// error (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md
+// B10).
+func TestResolveTargetDefaultExecutable(t *testing.T) {
+	_, exe := withTempHome(t)
+	setSeam(t, &osExecutable, func() (string, error) { return exe, nil })
+	got, err := resolveTarget(TargetPolicy{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := filepath.EvalSymlinks(exe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Path != want {
+		t.Fatalf("target %q, want the running executable %q", got.Path, want)
+	}
+	setSeam(t, &osExecutable, func() (string, error) { return "", errors.New("injected: no executable") })
+	if _, err := resolveTarget(TargetPolicy{}); err == nil || !strings.Contains(err.Error(), "locate executable") {
+		t.Fatalf("err = %v, want the failure to locate it", err)
+	}
+	setSeam(t, &osExecutable, func() (string, error) { return "", nil })
+	if _, err := resolveTarget(TargetPolicy{}); err == nil || !strings.Contains(err.Error(), "executable path is empty") {
+		t.Fatalf("err = %v, want an empty path refused", err)
+	}
+}
+
+// TestRawExecutablePathRelative: a relative ExecutablePath is made absolute
+// against the working directory (0015-MADR B10).
+func TestRawExecutablePathRelative(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	got, err := rawExecutablePath("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(cwd, "demo"); got != want {
+		t.Fatalf("raw path %q, want %q", got, want)
+	}
 }

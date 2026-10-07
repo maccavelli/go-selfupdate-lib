@@ -102,6 +102,19 @@ func TestImageVerifier(t *testing.T) {
 	}
 	fat := filepath.Join(dir, "darwin-fat")
 	writeFat(t, fat, bin["darwin/amd64"], bin["darwin/arm64"])
+	// A DLL also sets IMAGE_FILE_EXECUTABLE_IMAGE; IMAGE_FILE_DLL (0x2000)
+	// in the COFF header's Characteristics, 18 bytes past the PE signature
+	// at e_lfanew, makes the Windows fixture one (0015-MADR B9).
+	dll := filepath.Join(dir, "windows-dll")
+	img, err := os.ReadFile(bin["windows/amd64"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := int(binary.LittleEndian.Uint32(img[0x3c:])) + 4 + 18
+	binary.LittleEndian.PutUint16(img[at:], binary.LittleEndian.Uint16(img[at:])|0x2000)
+	if err := os.WriteFile(dll, img, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	notExec := filepath.Join(dir, "not-an-executable")
 	if err := os.WriteFile(notExec, []byte("hello, world"), 0o600); err != nil {
 		t.Fatal(err)
@@ -123,6 +136,7 @@ func TestImageVerifier(t *testing.T) {
 		{bin["darwin/arm64"], "darwin/amd64", false},
 		{bin["windows/amd64"], "windows/amd64", true},
 		{bin["windows/amd64"], "windows/arm64", false},
+		{dll, "windows/amd64", false},
 		{fat, "darwin/amd64", true},
 		{fat, "darwin/arm64", true},
 		{fat, "darwin/386", false},

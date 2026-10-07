@@ -2749,3 +2749,69 @@ approved it: "proceed". The PLAN as approved is commit `47f0f97`.
   * `make gate` on `b3022cb` with P2's changes: all 14 steps `rc=0`,
     `overall=0`; apicheck "compatible with v1.10.0"; links "331 links in
     49 files, 0 broken"; ids "14 files, 16 deny-list rules, 0 findings".
+* Committed by the owner as `2a3d7b6`.
+
+### Phase P3: install (2026-10-07)
+
+* **Red,** on the unfixed code:
+  * **B2:** `TestInstallRefusesTargetReplacedAfterBegin/file` and
+    `/symlink`: "applied=true err=<nil>; want ErrConcurrentUpdate";
+  * **B6:** `TestVersionProberHonoursRunContext`:
+    * `/deadline`: "staged probe of demo timed out after 10s, class
+      "error"";
+    * `/cancel`: "failed: signal: killed, class "error"";
+  * **B8:** `TestIsLeftover`: `isLeftover(".demo.selfupdate.cleanup-tmp-12")
+    = false`; `TestRemoveLeftoversKeepsListed`: "the receipt's temporary
+    file .demo.selfupdate.cleanup-tmp-4 was kept";
+  * **B9:** `TestImageVerifier`: "windows-dll as windows/amd64: <nil>,
+    want ErrIntegrity", for `NewImageVerifier` and `CheckImage`;
+  * **B10,** pins, passing as planned: `TestResolveTargetDefaultExecutable`,
+    `TestRawExecutablePathRelative`, `TestManagedSessionTarget`.
+* **Fix:**
+  * **B2:** `lockedTarget` (`target.go`) replaces the `os.Lstat` in both
+    `replaceTarget`s. It refuses a target whose identity
+    (`sameTargetIdentity`) is not the one the session resolved, with
+    "target changed during the update" wrapping `ErrConcurrentUpdate`.
+    `replace_windows.go` no longer imports `os`.
+  * **B6:** `Probe` names its parameter `parent`; when `parent.Err()` is
+    set after the run, it returns "probe of %s stopped: %w" with it.
+  * **B8:** `isLeftover` matches `.<base>.selfupdate.cleanup-tmp-<digits>`.
+  * **B9:** PE requires `Characteristics&IMAGE_FILE_DLL == 0`.
+* **Deviation from the steps as written,** within the phase:
+  * **The plan:** B2 called for a regular-file test beside the identity
+    test, with a plant dropping each.
+  * **What was found:** `os.Lstat` reports a symlink as itself, so
+    `sameTargetIdentity` already refuses one. The regular-file test could
+    never fail alone, and its plant could not be caught.
+  * **What was done:** it was left out. The identity plant fails both
+    subtests. `lockedTarget`'s comment says why.
+* **Green:** every package of `./selfupdate/...` passes; Windows, Linux and
+  FreeBSD vet clean.
+* **Plants,** seven, each caught:
+
+  | Plant | Fails |
+  | :--- | :--- |
+  | the identity check off | `TestInstallRefusesTargetReplacedAfterBegin`, both subtests |
+  | the run's context not checked | `TestVersionProberHonoursRunContext`, both |
+  | the receipt's temporary file not matched | `TestIsLeftover`, `TestRemoveLeftoversKeepsListed` |
+  | the DLL bit not checked | `TestImageVerifier` |
+  | `osExecutable` not called | `TestResolveTargetDefaultExecutable`: "executable path is empty" |
+  | a relative path left relative | `TestRawExecutablePathRelative` |
+  | the managed session's `Target` empty | `TestManagedSessionTarget` |
+
+* **Coverage** (`go test -coverpkg=./... ./...`): `rawExecutablePath`
+  92.9% (0015-MADR B10 measured 35.7%); `managedSession.Target` 100%;
+  `lockedTarget` 83.3%.
+* **Docs:**
+  * `errors.go`: `ErrConcurrentUpdate` covers a target replaced during
+    the update;
+  * the `NewVersionProber` and `NewImageVerifier` comments;
+  * `docs/architecture.md`, the install path.
+* **Checks:**
+  * `make pre-add-check` on the 13 Go files: "13 file(s) clean";
+  * the full apidiff report against `v1.10.0`: only "Ignoring internal
+    package …";
+  * markdownlint: clean;
+  * `make gate` on `2a3d7b6` with P3's changes: all 14 steps `rc=0`,
+    `overall=0`; apicheck "compatible with v1.10.0"; links "331 links in
+    49 files, 0 broken"; ids "15 files, 16 deny-list rules, 0 findings".

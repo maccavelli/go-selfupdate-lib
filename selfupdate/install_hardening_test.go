@@ -512,3 +512,56 @@ func TestInstallReportsRestoreAfterSyncFailure(t *testing.T) {
 		check(t, res, err, filepath.Join(moved, filepath.Base(exe)))
 	})
 }
+
+// TestInstallRefusesTargetReplacedAfterBegin: the target is checked again at
+// the replace. One replaced after Begin, by another file or by a symlink, is
+// ErrConcurrentUpdate, and neither it nor what a symlink names is touched; a
+// symlink's mode never reaches the new binary
+// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md B2).
+func TestInstallRefusesTargetReplacedAfterBegin(t *testing.T) {
+	check := func(t *testing.T, sess InstallSession, path string) {
+		t.Helper()
+		res, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: path}})
+		if !errors.Is(err, ErrConcurrentUpdate) || res.Applied {
+			t.Fatalf("applied=%t err=%v; want ErrConcurrentUpdate", res.Applied, err)
+		}
+	}
+	t.Run("file", func(t *testing.T) {
+		sess, exe := standaloneSession(t)
+		path := stageNew(t, sess)
+		other := exe + ".other"
+		if err := os.WriteFile(other, []byte("swapped-in"), 0o755); err != nil { //nolint:gosec // an executable fixture
+			t.Fatal(err)
+		}
+		if err := os.Rename(other, exe); err != nil {
+			t.Fatal(err)
+		}
+		check(t, sess, path)
+		if got := readString(t, exe); got != "swapped-in" {
+			t.Fatalf("the swapped-in file holds %q", got)
+		}
+	})
+	t.Run("symlink", func(t *testing.T) {
+		sess, exe := standaloneSession(t)
+		path := stageNew(t, sess)
+		other := filepath.Join(filepath.Dir(exe), "elsewhere")
+		if err := os.WriteFile(other, []byte("elsewhere"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(other, 0o777); err != nil { //nolint:gosec // the symlink case needs a world-writable file
+			t.Fatal(err)
+		}
+		if err := os.Remove(exe); err != nil {
+			t.Fatal(err)
+		}
+		symlinkOrSkip(t, other, exe)
+		check(t, sess, path)
+		info, err := os.Lstat(exe)
+		if err != nil || info.Mode()&os.ModeSymlink == 0 {
+			t.Fatalf("the target is no longer the symlink: %v", err)
+		}
+		if got := readString(t, other); got != "elsewhere" {
+			t.Fatalf("the symlink's file holds %q", got)
+		}
+	})
+}

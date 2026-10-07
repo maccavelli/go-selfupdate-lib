@@ -303,3 +303,33 @@ func TestNewVersionProberArguments(t *testing.T) {
 		t.Error("a nil probe accepted")
 	}
 }
+
+// TestVersionProberHonoursRunContext: a probe the run's deadline or
+// cancellation ends says so: its error wraps the run's context error, not
+// the prober's own timeout, so EventFailed's class is the run's
+// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md B6).
+func TestVersionProberHonoursRunContext(t *testing.T) {
+	t.Setenv("SELFUPDATE_TEST_PRINT_VERSION", "demo v1.1.0")
+	t.Setenv("SELFUPDATE_TEST_SLEEP", "10s")
+	p, err := NewVersionProber([]string{"--version"}, nil, 10*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := ProbeRequest{Product: "demo", TargetVersion: "v1.1.0", Path: selfExe(t), Phase: ProbeStaged}
+	t.Run("deadline", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		defer cancel()
+		err := p.Probe(ctx, req)
+		if !errors.Is(err, context.DeadlineExceeded) || failureClass(err) != "deadline-exceeded" {
+			t.Fatalf("err = %v, class %q; want the run's deadline", err, failureClass(err))
+		}
+	})
+	t.Run("cancel", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		time.AfterFunc(100*time.Millisecond, cancel)
+		err := p.Probe(ctx, req)
+		if !errors.Is(err, context.Canceled) || failureClass(err) != "canceled" {
+			t.Fatalf("err = %v, class %q; want the run's cancellation", err, failureClass(err))
+		}
+	})
+}

@@ -14,7 +14,8 @@ var (
 	// ErrConfirmationRequired is returned when apply needs a TTY or --yes.
 	ErrConfirmationRequired = errors.New("selfupdate: confirmation required")
 	// ErrConcurrentUpdate is returned when another update holds the target
-	// lock or an overlapping Run is already in progress on the same Updater.
+	// lock, an overlapping Run is already in progress on the same Updater,
+	// or the target, or its directory, was replaced during the update.
 	ErrConcurrentUpdate = errors.New("selfupdate: concurrent update")
 	// ErrManagedInstall is returned when managed stop, reconcile, start, or
 	// health fails. Recovery errors are joined with it.

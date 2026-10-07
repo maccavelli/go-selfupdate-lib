@@ -219,6 +219,23 @@ func sameTargetIdentity(original Target, info os.FileInfo) bool {
 	return original.identity.mtime == info.ModTime().UnixNano()
 }
 
+// lockedTarget is the target as the replace finds it, which must still be
+// the file the session resolved: one replaced since, by another file or by
+// a symlink, is another update's or someone else's, and taking its owner
+// and mode would be wrong (0015-MADR B2). Lstat reports a symlink as
+// itself, never as the file it names, so the identity check refuses a
+// symlink too.
+func lockedTarget(target Target) (os.FileInfo, error) {
+	info, err := os.Lstat(target.Path)
+	if err != nil {
+		return nil, err
+	}
+	if !sameTargetIdentity(target, info) {
+		return nil, fmt.Errorf("selfupdate: target changed during the update: %w", ErrConcurrentUpdate)
+	}
+	return info, nil
+}
+
 func revalidateTarget(original Target, policy TargetPolicy) error {
 	fresh, err := resolveTarget(policy)
 	if err != nil {

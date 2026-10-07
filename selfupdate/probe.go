@@ -75,7 +75,8 @@ type versionProber struct {
 // NewVersionProber returns a Prober that runs the binary with args, with no
 // stdin, stderr discarded and the environment inherited, and requires it to
 // exit 0 within timeout with stdout containing want(TargetVersion). A nil
-// want is the identity: the output must contain the tag itself.
+// want is the identity: the output must contain the tag itself. A probe the
+// caller's deadline or cancellation ends fails wrapping that context error.
 func NewVersionProber(args []string, want func(tag string) string, timeout time.Duration) (Prober, error) {
 	if len(args) == 0 {
 		return nil, fmt.Errorf("selfupdate: version prober needs arguments")
@@ -89,8 +90,8 @@ func NewVersionProber(args []string, want func(tag string) string, timeout time.
 	return versionProber{args: append([]string(nil), args...), want: want, timeout: timeout}, nil
 }
 
-func (p versionProber) Probe(ctx context.Context, r ProbeRequest) error {
-	ctx, cancel := context.WithTimeout(ctx, p.timeout)
+func (p versionProber) Probe(parent context.Context, r ProbeRequest) error {
+	ctx, cancel := context.WithTimeout(parent, p.timeout)
 	defer cancel()
 	out := &cappedBuffer{limit: maxProbeOutput}
 	// Running the staged or installed binary is the probe's purpose; the
@@ -99,6 +100,12 @@ func (p versionProber) Probe(ctx context.Context, r ProbeRequest) error {
 	cmd.Stdout = out
 	cmd.WaitDelay = time.Second
 	err := cmd.Run()
+	if perr := parent.Err(); perr != nil {
+		// The run's deadline or cancellation ended the probe: say so, so
+		// the failure is the run's and not the prober's own timeout
+		// (0015-MADR B6).
+		return fmt.Errorf("selfupdate: %s probe of %s stopped: %w", r.Phase, sanitizeText(r.Product), perr)
+	}
 	if ctxErr := ctx.Err(); errors.Is(ctxErr, context.DeadlineExceeded) {
 		return fmt.Errorf("selfupdate: %s probe of %s timed out after %s", r.Phase, sanitizeText(r.Product), p.timeout)
 	}

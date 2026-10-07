@@ -45,7 +45,7 @@ func replacePathOS(_ context.Context, oldpath, newpath string) error {
 }
 
 func replaceTarget(ctx context.Context, target Target, staging string) (applyResult, error) {
-	info, err := os.Lstat(target.Path)
+	info, err := lockedTarget(target)
 	if err != nil {
 		return applyResult{}, err
 	}

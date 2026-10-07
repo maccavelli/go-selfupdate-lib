@@ -22,6 +22,11 @@ var leftoverRemove = (*os.Root).Remove
 // decimal number os.CreateTemp chooses, so no other name matches,
 // including another target's whose name starts with base.
 func isLeftover(base, name string) bool {
+	// The Windows cleanup receipt's temporary file, before its rename
+	// (0015-MADR B8).
+	if digits, ok := strings.CutPrefix(name, "."+base+".selfupdate.cleanup-tmp-"); ok {
+		return allDigits(digits)
+	}
 	rest, ok := strings.CutPrefix(name, "."+base+".selfupdate-")
 	if !ok {
 		return false

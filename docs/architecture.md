@@ -250,7 +250,9 @@ docs/
     the replace, after it and before commit;
   - undoes the rename through the directory handle when the directory
     changed after it;
-  - refuses a staging path that is not a regular file;
+  - refuses a staging path that is not a regular file, and a target that is
+    no longer the file it resolved, replaced by another file or a symlink
+    since `Begin` (`ErrConcurrentUpdate`);
   - reports a failed restore with the backup's path, in
     `Result.PendingBackup` with `Applied` false, and in the error, and
     keeps that backup as `.<base>.selfupdate-kept-<n>`, which no later
