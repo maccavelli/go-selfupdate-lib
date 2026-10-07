@@ -34,7 +34,7 @@ go get github.com/maccavelli/go-selfupdate-lib@v1.9.0
 | [`selfupdate/selfupdatetest`](selfupdate/selfupdatetest/) | test doubles: release fixtures, a fake source, a fake GitHub API |
 | [`selfupdate/archive`](selfupdate/archive/) | updating from a release asset that is a tar.gz, zip or gz holding the program |
 | [`selfupdate/codesign`](selfupdate/codesign/) | opt-in macOS re-signing of the staged binary, and signature checks, with `/usr/bin/codesign` |
-| [`selfupdate/releasespec`](selfupdate/releasespec/) | the release spec a program embeds and the build workflow reads: products, platforms, packaging, extras, channels |
+| [`selfupdate/releasespec`](selfupdate/releasespec/) | the release spec a program embeds and the build workflow reads: products, platforms, packaging, extras, channels, installers |
 | [`selfupdate/service`](selfupdate/service/) | what the service lifecycles share: health polling, typed errors, and the handoff of an update started inside the service |
 | [`selfupdate/service/systemd`](selfupdate/service/systemd/), [`launchd`](selfupdate/service/launchd/), [`scm`](selfupdate/service/scm/) | the managed-update lifecycle for a systemd unit, a launchd job and a Windows service |
 
@@ -86,7 +86,9 @@ this repository:
   read by `selfupdate/releasespec`) with a fixed recipe. It checks each
   binary from its own build information, runs it on its platform's runner
   when the spec names an identity command, packs archives when the spec
-  says so, writes `SHA256SUMS`, and uploads the staged set. Off a tag it
+  says so, writes `SHA256SUMS`, and uploads the staged set. When the spec
+  has `installer`, it renders `install.sh` and `install.ps1` into the
+  release from this repository's tested templates. Off a tag it
   rehearses, stamped local. Its outputs are the publish workflow's inputs.
   See [the building guide](docs/guides/building-releases.md).
 - **`publish-selfupdate-release.yml`** accepts only a complete staged set

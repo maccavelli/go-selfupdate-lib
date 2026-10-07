@@ -45,6 +45,9 @@ scripts/
   refuse-existing-release.sh       refuses a tag that already has a release
   check-release-tag.sh      the tag rule: strict, or a listed prerelease
                             channel; the workflow and the verifier call it
+  check-installers.sh       lints the installer templates, or a staged
+                            release's installers: shellcheck, dash -n and
+                            PSScriptAnalyzer
   check-workflows.sh        parses workflows as YAML: no ${{ }} in a run script,
                             every repository-scoped gh step sets GH_REPO,
                             a top-level permissions block, and every action
@@ -66,14 +69,17 @@ selfupdate/                 the self-update package
                             and extraction
   codesign/                 opt-in macOS re-signing and signature checks
   releasespec/              the release spec: products, platforms, packaging,
-                            extras and channels, for the program and CI
+                            extras, channels and installers, for the program
+                            and CI
   service/                  what the reference service lifecycles share,
                             and the handoff
     systemd/                the systemd lifecycle, and sd_notify
     launchd/                the launchd lifecycle
     scm/                    the Windows SCM lifecycle
 internal/cmd/selfupdate-release/  the workflows' logic: plan, build, stage,
-                            check, identity; never released
+                            check, identity, installer; never released
+  installer/                the install.sh and install.ps1 templates, each a
+                            working script with a values block to fill
   testdata/fixture/         a module of its own: the relay program the
                             tests and CI's rehearsal build
 docs/
@@ -94,12 +100,12 @@ docs/
 | `selfupdate/selfupdatetest/` | `selfupdatetest` | 2 | 1 | none (`selfupdate` itself) |
 | `selfupdate/archive/` | `archive` | 3 | 6, including three fuzz targets, plus a real GoReleaser `testdata/` checksum file | none (`selfupdate`) |
 | `selfupdate/codesign/` | `codesign` | 2 | 4 | none (`selfupdate`, `service`) |
-| `selfupdate/releasespec/` | `releasespec` | 3 | 4, including a fuzz target, plus 3 `testdata/` specs | none (`selfupdate`, `archive`) |
+| `selfupdate/releasespec/` | `releasespec` | 4 | 5, including a fuzz target, plus 4 `testdata/` specs | none (`selfupdate`, `archive`) |
 | `selfupdate/service/` | `service` | 16 | 13 | `x/sys/windows` (and `selfupdate`) |
 | `selfupdate/service/systemd/` | `systemd` | 8 | 12, plus 3 `testdata/` captures of `systemctl show` | none (`selfupdate`, `service`) |
 | `selfupdate/service/launchd/` | `launchd` | 6 | 11, plus 7 `testdata/` captures of `launchctl print` and `list` | none (`selfupdate`, `service`) |
 | `selfupdate/service/scm/` | `scm` | 7 | 9 | `x/sys/windows`, `x/sys/windows/svc`, `x/sys/windows/svc/mgr` (and `selfupdate`, `service`) |
-| `internal/cmd/selfupdate-release/` | `main` | 9 | 6, plus the `testdata/fixture/` module (2 programs, 2 specs, an extra) | none (`buildinfo`, `selfupdate`, `archive`, `releasespec`) |
+| `internal/cmd/selfupdate-release/` | `main` | 11, plus the 2 `installer/` templates | 10, plus the `testdata/fixture/` module (2 programs, 2 specs, an extra) | none (`buildinfo`, `selfupdate`, `archive`, `releasespec`) |
 
 - `selfupdate` began as `mcplib` `v1.6.0`'s `selfupdate` (commit
   `4e1f9a53e265`), and its `v1.0.x` API is that package's. It differs from
@@ -285,7 +291,10 @@ job, on `ubuntu-24.04`:
    tag as the main module's version at the repository root) and its
    image; packs archives with fixed metadata and unpacks each with the
    client's unpacker; writes `SHA256SUMS` and parses it back; copies the
-   extras;
+   extras; when the spec has `installer`, renders `install.sh` (for a
+   platform other than Windows) and `install.ps1` (for a Windows one) from
+   the embedded templates, for the calling repository (`-repository`) and
+   the stamp, refusing any value outside `[A-Za-z0-9._:=/,+@%-]`;
 6. runs the publish workflow's verifier on the staged set, and uploads it,
    with the tool cross-compiled for the identity runners.
 
@@ -389,7 +398,10 @@ interpolated into shell.
 - **CI** (`.github/workflows/ci.yml`) runs on Linux, macOS and Windows, with
   the Go version read from `go.mod`.
   - **Every OS:** `go test`, plus, under bash, the refuse-existing-release
-    test.
+    test. The installer tests must reach the runner's shells
+    (`SELFUPDATE_INSTALL_REQUIRE_SHELLS`): dash and bash on Linux, `sh`
+    and bash on macOS, Windows PowerShell 5.1 and PowerShell 7 on
+    Windows.
   - **Linux and macOS:** `go test -race`, with
     `SELFUPDATE_REQUIRE_PYTHON=1`, so the differential runs rather than
     skips.
@@ -401,7 +413,9 @@ interpolated into shell.
     v2.14.0); `make apicheck` and the gate's own test; `govulncheck` v1.8.0;
     `shellcheck` v0.11.0 (the latest release, pinned by SHA-256 and first
     on `PATH`, so actionlint's embedded checks use it too),
-    `markdownlint-cli2` 0.23.2 and `actionlint` v1.7.12; the verifier's
+    `markdownlint-cli2` 0.23.2 and `actionlint` v1.7.12; the installer
+    lint script's test, then the script on both templates, with the
+    runner's PSScriptAnalyzer; the verifier's
     fixture test; the release tag rule's test; the workflow checker, with
     every rule on both reusable workflows and `expressions`,
     `permissions` and `pins` on `ci.yml`, its test, and the workflow shape
@@ -410,8 +424,13 @@ interpolated into shell.
     by its local path on the release tool's fixture, one of raw binaries
     and one of archives, each with its identity runs on the five runners;
     then a job that checks both staged sets as the publish workflow
-    would, without publishing. On a branch or pull request it rehearses;
-    on a `v*` tag it builds the fixture as that release.
+    would, without publishing, and checks their installers as rendered
+    for this repository and the stamp. On a branch or pull request it
+    rehearses; on a `v*` tag it builds the fixture as that release.
+  - **The installer containers:** `install.sh`'s tests, built and staged
+    on the runner, then run by the static test binary in `alpine:3.24.2`
+    (BusyBox ash and wget, musl) and `buildpack-deps:trixie-curl` (dash,
+    curl), each pinned by digest, as the runner's user.
   - One run per ref (`concurrency`, cancel in progress). Actions are pinned
     to commit SHAs.
 

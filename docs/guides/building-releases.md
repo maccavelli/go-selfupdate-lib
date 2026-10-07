@@ -2,8 +2,10 @@
 
 How a program builds, checks, stages and publishes its self-update release
 with this repository's two reusable workflows, from one release spec that
-the program also embeds. Why it works as it does is in
-[0013-MADR](../decisions/0013-MADR-build-and-stage-release-workflow.md).
+the program also embeds, and gives its users installers generated from the
+same spec. Why it works as it does is in
+[0013-MADR](../decisions/0013-MADR-build-and-stage-release-workflow.md) and
+[0014-MADR](../decisions/0014-MADR-shared-installer-templates.md).
 
 The pieces:
 
@@ -16,6 +18,9 @@ The pieces:
   `SHA256SUMS`, and uploads the staged set. Off a tag it rehearses.
 - **`publish-selfupdate-release.yml`,** unchanged in what it takes, which
   validates, publishes, attests and waits for the release to be immutable.
+- **`install.sh` and `install.ps1`,** which the build workflow renders into
+  the release from this repository's templates when the spec asks (step
+  12).
 
 Both workflows are pinned to the same commit of this repository; the
 examples below pin `v1.9.0`'s.
@@ -40,9 +45,10 @@ cannot live at the repository root unless that package does.
   ],
   "packaging": "binary",
   "extras": [
-    {"name": "install.sh", "path": "scripts/install.sh"}
+    {"name": "relay-{tag}.spdx.json", "path": "dist/sbom.spdx.json"}
   ],
-  "prerelease_channels": ["rc", "beta"]
+  "prerelease_channels": ["rc", "beta"],
+  "installer": {}
 }
 ```
 
@@ -53,12 +59,14 @@ cannot live at the repository root unless that package does.
   Go toolchain.
 - **`packaging`:** `binary` (the default) ships
   `<product>-<os>-<arch>[.exe]`; `archive` ships archives (step 7).
-- **`extras`:** further assets, such as installers. `{tag}` in a name is
+- **`extras`:** further assets, such as an SBOM. `{tag}` in a name is
   replaced by the release tag. With `path`, the file comes from your
   repository; without it, from an artifact you upload (step 6).
 - **`prerelease_channels`:** the channels the publish workflow may release
   `vX.Y.Z-NAME.N` tags for, most stable first; see
   [Offer a beta channel](extending-selfupdate.md#offer-a-beta-channel).
+- **`installer`:** present, even empty, it adds `install.sh` and
+  `install.ps1` to every release; see step 12.
 
 Unknown fields, a misspelled key and a duplicate key are errors, so a typo
 fails loudly. `releasespec.Parse`'s errors name the field, such as
@@ -270,6 +278,9 @@ CGO_ENABLED=0 GOOS=<os> GOARCH=<arch> GOFLAGS=-mod=readonly GOTOOLCHAIN=local GO
 | `… did not finish within 30s` | the identity command waits for input or the network |
 | `the extras directory holds …, which the spec does not list` | the extras artifact holds a file the spec does not name |
 | `verify-selfupdate-release: file set mismatch …` | the staged set and the spec disagree; a bug to report |
+| `releasespec: extras[…].name: "install.sh" is already an installer's name` | the spec has `installer` and still lists a hand-written installer; delete the extra |
+| `releasespec: …args[…]: "…" must match …, as the installers embed it` | a hook argument or `identity_args` entry with a space, quote or `$`; with `installer`, both keep to `[A-Za-z0-9._:=/,+@%-]` |
+| `releasespec: installer.env_prefix: the prefix made from …; set installer.env_prefix` | the repository's name makes no valid variable prefix, such as one that starts with a digit |
 
 ## 10. Verify an attestation
 
@@ -291,8 +302,143 @@ gh attestation verify relay-linux-amd64 --repo <owner>/<repo> \
 - **Versions** carry their `v`: the stamp is the tag as written.
 - **The platform list** moves into the spec, and your Go code reads it
   from there. Delete the copies in the Makefile, CI and verify scripts;
-  installers can read the spec later.
+  the installers come from the spec too (step 12).
 - **Delete** the CI steps that build, check cgo, write `SHA256SUMS`,
   re-verify and stage: the build workflow does each of them.
 - **Keep** your test, lint and smoke jobs. The build job can `need` them.
 - **An APK or other non-Go asset** stays in its own job, as in step 6.
+
+## 12. Installers
+
+Add `"installer": {}` to the spec, and every release carries `install.sh`,
+when the spec lists a platform other than Windows, and `install.ps1`, when
+it lists a Windows one. The build workflow renders them from this
+repository's templates with your products, platforms, formats, channels,
+repository and tag. They are extras: published and attested with the
+release, and not listed in `SHA256SUMS`.
+
+```json
+"installer": {
+  "name": "relay",
+  "env_prefix": "RELAY",
+  "hooks": [
+    {"when": "after_install", "product": "relay", "args": ["configure", "--defaults"]}
+  ]
+}
+```
+
+- **`name`** names the Windows install folder,
+  `%LOCALAPPDATA%\Programs\<name>`. The default is the repository's name.
+- **`env_prefix`** prefixes the installers' variables, such as
+  `RELAY_VERSION`. The default is `name` in upper case, with every other
+  character as `_`.
+- **`hooks`,** at most eight, run one of your products around the install
+  (below).
+
+### The one-liners
+
+```sh
+curl -fsSL https://github.com/<owner>/<repo>/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/<owner>/<repo>/releases/download/v1.2.3/install.sh | sh -s -- --dir ~/bin
+```
+
+```powershell
+irm https://github.com/<owner>/<repo>/releases/latest/download/install.ps1 | iex
+& ([scriptblock]::Create((irm https://github.com/<owner>/<repo>/releases/latest/download/install.ps1))) -Version v1.2.3
+```
+
+Each installer installs its own release: the `latest/download` URL the
+latest one, and a tag's URL that tag. It asks no API for "latest", so there
+is no race and no rate limit.
+
+### What they do
+
+- **Download** every file of the release by its tag, over HTTPS only:
+  `curl --proto '=https'`, or a `wget` that has `--https-only` (BusyBox's
+  does not, and is refused); `Invoke-WebRequest` on Windows, with TLS 1.2
+  added on Windows PowerShell 5.1.
+- **Check** each file against the release's `SHA256SUMS`, strictly, with
+  `sha256sum`, `shasum` or `openssl` (or `Get-FileHash`), before anything
+  is installed. A host with none of them gets an error, not an unchecked
+  install.
+- **Pick the platform:** `uname`, with Rosetta read as arm64; on Windows,
+  the machine's own architecture from the registry. A platform the release
+  does not ship is an error that lists the ones it does.
+- **Install** into `~/.local/bin`, never with `sudo`, and refuse to run as
+  root without `--allow-root`; on Windows into
+  `%LOCALAPPDATA%\Programs\<name>`. The previous binary stays as
+  `<product>.prev` (`<product>.exe.prev`); a running `.exe` is renamed, not
+  overwritten.
+- **Check the identity** of each product with `identity_args`: it must
+  print `<tag> (release)` first. If it does not, the previous binaries are
+  put back.
+- **PATH:** advice on Unix. On Windows the user PATH is updated, editing
+  the registry value so `%VAR%` entries and its type are kept.
+
+### Options
+
+| `install.sh` | `install.ps1` | Variable | What it does |
+| :--- | :--- | :--- | :--- |
+| `--version TAG` | `-Version TAG` | `<PREFIX>_VERSION` | install another release, with or without its `v`: a stable tag, or a prerelease on a channel the spec lists. A release whose asset names differ, such as a raw release from an archive release's installer, is refused (exit 1) with its own installer's URL |
+| `--dir DIR` | `-InstallDir DIR` | `<PREFIX>_INSTALL_DIR` | install there |
+| `--product NAME` | `-Product NAME` | | install only that product; repeat it for more |
+| `--verify-attestation` | `-VerifyAttestation` | | also verify each download's attestation with `gh` (below) |
+| `--no-hooks` | `-NoHooks` | `<PREFIX>_NO_HOOKS=1` | skip the hooks |
+| | `-NoPathUpdate` | `<PREFIX>_NO_PATH_UPDATE=1` | print PATH advice instead of updating it |
+| `--allow-root` | | | allow running as root |
+| `--dry-run` | `-DryRun` | | print what would be downloaded and where it would go, and change nothing |
+| `--uninstall` | `-Uninstall` | | remove the binaries and `.prev` files, and on Windows the folder's PATH entry with the last program; configuration is left |
+
+`irm … | iex` cannot pass options: use the variables, or the scriptblock
+form. A switch takes no value: `-DryRun`, not `-DryRun:$true`, which is
+refused.
+
+### Hooks
+
+- **`before_install`** runs the installed copy, when there is one, before
+  the new binary takes its place: for example, to stop a service. If it
+  fails, nothing is changed and the installer exits 1. A first install
+  skips it.
+- **`after_install`** runs the new copy after the swap and the identity
+  check: for example, to write a default configuration. If it fails, the
+  program stays installed and the installer exits 3.
+- **Arguments** keep to `[A-Za-z0-9._:=/,+@%-]`, with no space, quote or
+  `$`, because the installers embed them in shell and PowerShell code. With
+  `installer` present, so do `identity_args`. A step that needs more
+  belongs in a subcommand of your program.
+- Their output is shown; `--no-hooks` skips them.
+
+### Exit codes
+
+| Code | Meaning |
+| :--- | :--- |
+| 0 | installed (or removed, or a dry run) |
+| 1 | a usage or environment error: an unknown option, an unsupported platform, root, a missing tool, a refused version, a failed `before_install` hook |
+| 2 | a verification failure: a download, `SHA256SUMS`, a checksum, an attestation or the identity; nothing was changed, or the previous binaries were put back |
+| 3 | installed, but an `after_install` hook failed |
+
+Through `iex` or the scriptblock form, `install.ps1` never exits your
+session: a failure is the error `install failed (exit N)`.
+
+### Attestations
+
+`--verify-attestation` also runs, for each download, the check in step
+10, and fails (exit 2) on any that does not verify. It needs `gh`, logged
+in: `gh attestation verify` refuses to run without authentication, so a
+missing or logged-out `gh` is an error (exit 1), not a skipped check.
+
+### Moving from a hand-written installer
+
+- **Set `name` and `env_prefix`** to what your script used, so the Windows
+  folder and the variables your users set stay the same.
+- **Delete the scripts,** and their `extras` entries: with `installer`
+  present, both names are the installers' own.
+- **Move product-specific steps,** such as restarting a service or writing
+  a configuration, into a subcommand of your program and name it in a
+  hook. Shell completion and package managers stay outside the
+  installers.
+- **Your README's one-liners keep their URLs:** the asset names are the
+  same.
+- **Testing a release locally:** `SELFUPDATE_INSTALL_BASE_URL` replaces
+  `https://github.com` with another `https://` origin, or a loopback
+  `http://127.0.0.1:<port>` or `http://localhost:<port>`, and nothing else.

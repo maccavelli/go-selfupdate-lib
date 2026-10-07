@@ -688,6 +688,80 @@ helpers, and a CI job.
   pre-add-check` on `build_test.go`; `go vet` and `gofmt` on the fixture
   module.
 
+### Phase I6: docs and release notes (2026-10-06)
+
+* **`docs/guides/building-releases.md`:** the introduction names the
+  installers and 0014-MADR; step 1's example drops its hand-written
+  `install.sh` extra for an SBOM and adds `"installer": {}`, with a bullet
+  for the field; step 9's table gains the three spec errors the field
+  brings (a reserved name, an argument outside the character set, a prefix
+  that cannot be made); step 11 points at the new step. **Step 12,
+  "Installers"**, is new, after the others so no anchor moves: the field,
+  the one-liners (latest and pinned, both shells), what the installers
+  do, the options with their variables, hooks, the exit codes,
+  `--verify-attestation`, and moving from a hand-written installer,
+  `name` and `env_prefix` included, with the test seam.
+* **The migration guide:** "10. From v1.9 to v1.10", and §2's list of
+  additive releases. It says to move the program's module and the
+  workflow pin together: `v1.9.0`'s `Parse` sets `DisallowUnknownFields`
+  (`spec.go:113` at the tag) and has no `Installer`, so it refuses the
+  field in either place. The `go get` lines and "the current release"
+  move in I7's pin commit, as in 0013's B6.
+* **`README.md`:** the `releasespec` row names installers; the build
+  workflow's paragraph says it renders them.
+* **`docs/architecture.md`:** the tree gains `installer/` and
+  `check-installers.sh`, and the tool's `installer` subcommand; the table's
+  counts (`releasespec` 4 and 5 files and 4 specs; the tool 11 and 10, plus
+  the 2 templates); the build workflow's `stage` step renders the
+  installers; CI's required shells, the installer lint, the rehearsal's
+  installer check and the container job.
+* **`docs/README.md`:** an "I want to…" row for the installers; the
+  migration row runs to §10.
+* **Checked against the code,** claim by claim: the options, variables,
+  defaults and exit codes against both templates; the error messages
+  against `releasespec`; the exported names against `installer.go` and
+  `spec.go`. One correction before staging: on Windows the kept copy is
+  `<product>.exe.prev`.
+* **Checks:** markdownlint-cli2 0.23.2 over the repository, "0 issues";
+  `doccheck.py` for links and identifiers on every changed file.
+
+### Release notes for `v1.10.0` (2026-10-06)
+
+Additions only: `make apicheck` reports `compatible with v1.9.0`, and
+`go.mod` is unchanged. A spec without `installer` stages exactly what
+`v1.9.0` staged.
+
+* **Generated installers.** A release spec's new `installer` field makes
+  the build workflow render `install.sh` and `install.ps1` into every
+  release from this repository's templates, with the program's
+  products, platforms, formats, channels, repository and tag. Each
+  installs its own release by tag over HTTPS only; checks every file
+  against `SHA256SUMS` before installing; picks the platform (Rosetta
+  read as arm64, the native architecture on Windows); keeps the previous
+  binary and puts it back if the new one does not report the release;
+  updates the Windows user PATH without expanding `%VAR%` entries; runs
+  optional `before_install` and `after_install` hooks of the program's
+  own products; supports `--version`, `--product`, `--dry-run`,
+  `--uninstall` and `--verify-attestation`; and exits 0, 1, 2 or 3 as
+  documented. `install.ps1` runs as a file, through `irm | iex` and
+  through `[scriptblock]::Create`, under Windows PowerShell 5.1 and
+  PowerShell 7, and leaves nothing in the caller's session but TLS 1.2 on
+  5.1.
+* **`selfupdate/releasespec`:** `Spec.Installer`, the `Installer` and
+  `Hook` types, `InstallerScripts`, `InstallerName`,
+  `InstallerEnvPrefix`, and the constants `InstallerScript`,
+  `InstallerPowerShell`, `HookBeforeInstall` and `HookAfterInstall`.
+  With `installer` present, `install.sh` and `install.ps1` are reserved
+  extra names, and hook arguments and `identity_args` keep to
+  `[A-Za-z0-9._:=/,+@%-]`.
+* **`build-selfupdate-release.yml`:** `stage` renders the installers for
+  the calling repository; nothing changes for a spec without the field,
+  and the workflow's inputs and outputs are the same.
+* **Tooling** (no release surface): `selfupdate-release installer`;
+  `scripts/check-installers.sh`; behaviour tests of both installers
+  under sh, dash, bash, BusyBox, Windows PowerShell 5.1 and PowerShell
+  7; a CI job running `install.sh`'s tests in Alpine and Debian.
+
 ### Deviations
 
 * **D1 (2026-10-06), I2: arguments the installers embed.**

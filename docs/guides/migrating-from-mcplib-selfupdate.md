@@ -25,10 +25,11 @@ go get github.com/maccavelli/go-selfupdate-lib@v1.9.0
 
 `v1.9.0` is the current release. `v1.6.0` changed a few behaviours that
 `v1.5.x` had; they are listed in [6. From v1.5 to v1.6](#6-from-v15-to-v16).
-`v1.7.0`, `v1.8.0` and `v1.9.0` only add to the API: see
+`v1.7.0`, `v1.8.0`, `v1.9.0` and `v1.10.0` only add to the API: see
 [7. From v1.6 to v1.7](#7-from-v16-to-v17),
-[8. From v1.7 to v1.8](#8-from-v17-to-v18) and
-[9. From v1.8 to v1.9](#9-from-v18-to-v19).
+[8. From v1.7 to v1.8](#8-from-v17-to-v18),
+[9. From v1.8 to v1.9](#9-from-v18-to-v19) and
+[10. From v1.9 to v1.10](#10-from-v19-to-v110).
 
 Replace every `github.com/maccavelli/mcplib/selfupdate` import with
 `github.com/maccavelli/go-selfupdate-lib/selfupdate`. No identifier or signature
@@ -583,3 +584,53 @@ that use none of the new pieces behave as they did. Why, and how, is in
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
 - `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.9.0`.
 - A pull request runs the build workflow as a rehearsal, and it passes.
+
+## 10. From v1.9 to v1.10
+
+```bash
+go get github.com/maccavelli/go-selfupdate-lib@v1.10.0
+```
+
+`v1.10.0` only adds. `make apicheck` reports it compatible with `v1.9.0`,
+and it requires the same three modules. A spec without `installer`
+stages exactly what `v1.9.0` staged. Why, and how, is in
+[0014-MADR](../decisions/0014-MADR-shared-installer-templates.md).
+
+### What is new
+
+- **The spec's `installer` field:** present, even empty, it makes the
+  build workflow render `install.sh` and `install.ps1` into every release
+  from this repository's templates, with the program's products,
+  platforms, formats, channels, repository and tag. Each installer
+  installs its own release, checks every file against `SHA256SUMS`, checks
+  the identity, keeps the previous binary, and can run hooks of your
+  products before and after the install. `releasespec` gains the
+  `Spec.Installer` field, the `Installer` and `Hook` types,
+  `InstallerScripts`, `InstallerName` and `InstallerEnvPrefix`, and the
+  constants `InstallerScript`, `InstallerPowerShell`, `HookBeforeInstall`
+  and `HookAfterInstall`.
+- **With `installer` present,** `install.sh` and `install.ps1` are
+  reserved extra names, and hook arguments and `identity_args` keep to
+  `[A-Za-z0-9._:=/,+@%-]`, because the installers embed them.
+
+### Adopting it
+
+- **Nothing is required.** A spec without `installer`, and your
+  hand-written installers, keep working.
+- **To use the generated installers,** follow
+  [step 12 of the building guide](building-releases.md#12-installers):
+  add `installer`, with `name` and `env_prefix` set to what your scripts
+  used; delete your scripts and their extras; move any product-specific
+  step into a subcommand and a hook. The one-liners' URLs stay the same.
+- **Move both to `v1.10.0` together:** your program's module, so that
+  `releasespec.Parse` reads the spec it embeds, and the build workflow's
+  pin, so that it renders the installers. `v1.9.0` refuses a spec with
+  `installer` as an unknown field, in your program and in the workflow.
+
+### Check
+
+- `go build ./...`, `go vet ./...` and `go test ./...` pass.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.10.0`.
+- A pull request's rehearsal stages `install.sh` and `install.ps1`, and a
+  dry run of the released one-liner (`… | sh -s -- --dry-run`) names the
+  assets you expect.
