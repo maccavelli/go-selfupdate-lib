@@ -106,7 +106,9 @@ func (s *exactAssetSelector) Select(rel Release, product string, platform Platfo
 		}
 	}
 	if binaries == 0 {
-		return Selection{}, fmt.Errorf("selfupdate: release %s has no exact asset %q", rel.Tag, want)
+		// A release that dropped a platform in the matrix is unsupported
+		// for it, so CheckCached caches the answer (0015-MADR A1).
+		return Selection{}, fmt.Errorf("selfupdate: release %s has no exact asset %q: %w", rel.Tag, want, ErrUnsupportedPlatform)
 	}
 	if manifests == 0 {
 		return Selection{}, fmt.Errorf("selfupdate: release %s has no exact asset %q", rel.Tag, manifestAssetName)

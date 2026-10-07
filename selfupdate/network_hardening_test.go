@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -57,8 +58,11 @@ func TestNotBeforeClamped(t *testing.T) {
 		}
 	}
 
-	c, src, req, _ := cacheEnv(t)
-	store := &memStore{rec: CheckRecord{Request: req, NotBefore: cacheNow.Add(48 * time.Hour)}}
+	// The stored record must match the request as CheckCached keys it, the
+	// platform normalised, or the cap is never what makes it a miss
+	// (0015-MADR A7).
+	c, src, req, key := cacheEnv(t)
+	store := &memStore{rec: CheckRecord{Request: key, NotBefore: cacheNow.Add(48 * time.Hour)}}
 	before := networkCalls(src)
 	if _, err := c.CheckCached(context.Background(), req, store, time.Hour); err != nil {
 		t.Fatalf("a stored deferral beyond the cap: %v, want a fresh check", err)
@@ -244,5 +248,46 @@ func TestByTagRefusesDotSegments(t *testing.T) {
 	}
 	if hits != 0 {
 		t.Fatalf("%d requests were sent", hits)
+	}
+}
+
+// TestRedirectKeepsOnlyFixedHeaders: a hop to another origin carries only
+// the source's fixed headers. A credential header the request still holds,
+// though the source's credential has since moved to another header, does
+// not cross (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md A3).
+func TestRedirectKeepsOnlyFixedHeaders(t *testing.T) {
+	noEnv(t, nil)
+	api := httptest.NewTLSServer(http.NotFoundHandler())
+	t.Cleanup(api.Close)
+	src := hardeningSource(t, api, nil)
+	src.cred.mu.Lock()
+	src.cred.cred = Credential{Header: "X-New-Key", Value: []byte("new-secret"), Source: "provider"}
+	src.cred.mu.Unlock()
+	first, err := http.NewRequest(http.MethodGet, api.URL+"/repos/maccavelli/demo/releases/assets/7", http.NoBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hop, err := http.NewRequest(http.MethodGet, "https://objects.example.invalid/blob", http.NoBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for k, v := range map[string]string{
+		"Accept": gitHubAcceptAsset, "Accept-Encoding": "identity", "User-Agent": "demo/v1.0.0",
+		"X-GitHub-Api-Version": gitHubAPIVersion, "X-Old-Key": "old-secret", "Authorization": "Bearer old",
+		"Cookie": "session=1",
+	} {
+		hop.Header.Set(k, v)
+	}
+	if err := src.checkRedirect(hop, []*http.Request{first}); err != nil {
+		t.Fatal(err)
+	}
+	var kept []string
+	for k := range hop.Header {
+		kept = append(kept, k)
+	}
+	slices.Sort(kept)
+	want := []string{"Accept", "Accept-Encoding", "User-Agent", "X-Github-Api-Version"}
+	if !slices.Equal(kept, want) {
+		t.Fatalf("headers on the foreign hop %v, want only %v", kept, want)
 	}
 }

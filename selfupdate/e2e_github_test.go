@@ -118,7 +118,14 @@ func TestE2EGitHubRedirectedDownload(t *testing.T) {
 // anonymous source.
 func e2eUpdater(t *testing.T, gh *selfupdatetest.GitHubServer, opts selfupdate.GitHubOptions) (*selfupdate.Updater, string) {
 	t.Helper()
-	t.Setenv("GH_TOKEN", "")
+	return e2eUpdaterWithEnvToken(t, gh, opts, "")
+}
+
+// e2eUpdaterWithEnvToken is e2eUpdater with GH_TOKEN set to ghToken, which
+// the source reads when it is built.
+func e2eUpdaterWithEnvToken(t *testing.T, gh *selfupdatetest.GitHubServer, opts selfupdate.GitHubOptions, ghToken string) (*selfupdate.Updater, string) {
+	t.Helper()
+	t.Setenv("GH_TOKEN", ghToken)
 	t.Setenv("GITHUB_TOKEN", "")
 	opts.Repository = selfupdate.Repository{Owner: "owner", Name: "demo"}
 	opts.Client, opts.APIBaseURL, opts.UserAgent, opts.Limits = gh.Client, gh.APIBase, "demo/v1.0.0", selfupdate.DefaultLimits()

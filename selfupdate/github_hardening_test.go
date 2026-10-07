@@ -1,6 +1,8 @@
 package selfupdate
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"errors"
 	"io"
@@ -313,5 +315,81 @@ func TestRedirectCap(t *testing.T) {
 	}
 	if err := src.checkRedirect(req, via); err == nil || !strings.Contains(err.Error(), "too many redirects") {
 		t.Fatalf("redirect %d: err = %v, want too many redirects", maxRedirects, err)
+	}
+}
+
+// TestGitHubSecondaryRateLimitWithoutHeaders: a 403 whose body names a
+// secondary rate limit is a RateLimitError even with neither Retry-After
+// nor X-RateLimit-Remaining, so CheckCached backs off
+// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md A4).
+func TestGitHubSecondaryRateLimitWithoutHeaders(t *testing.T) {
+	noEnv(t, nil)
+	requests := 0
+	env := newGitHubEnv(t, func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"message":"You have exceeded a secondary rate limit. Please wait a few minutes before you try again."}`))
+	}, "")
+	_, err := env.src.Latest(context.Background())
+	var rl *RateLimitError
+	if !errors.As(err, &rl) || rl.StatusCode != http.StatusForbidden {
+		t.Fatalf("err = %v; isRateLimited=%t", err, errors.Is(err, ErrRateLimited))
+	}
+	setSeam(t, &timeNow, func() time.Time { return cacheNow })
+	plat := Platform{OS: "linux", Arch: "amd64"}
+	sel, err := NewExactAssetSelector([]Platform{plat})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := NewChecker(CheckerConfig{Source: env.src, Versions: NewStrictVersionPolicy(), Assets: sel, Limits: DefaultLimits()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := CheckRequest{Product: "demo", CurrentVersion: "v1.0.0", CurrentBuild: ReleaseBuild, Platform: plat}
+	store := &memStore{}
+	requests = 0
+	for range 3 {
+		_, _ = c.CheckCached(context.Background(), req, store, time.Hour)
+	}
+	if requests != 1 {
+		t.Fatalf("calls=%d over three CheckCached; want one, then the deferral", requests)
+	}
+}
+
+// TestOpenAssetKeepsContentEncodedBytes: an asset is read as served. The
+// request asks for no encoding, and a response a CDN encodes anyway is not
+// decoded, so the size and digest checks see the published bytes
+// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md A6).
+func TestOpenAssetKeepsContentEncodedBytes(t *testing.T) {
+	noEnv(t, nil)
+	var asked string
+	var gz bytes.Buffer
+	zw := gzip.NewWriter(&gz)
+	if _, err := zw.Write([]byte("the published asset bytes")); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	body := gz.Bytes()
+	env := newGitHubEnv(t, func(w http.ResponseWriter, r *http.Request) {
+		asked = r.Header.Get("Accept-Encoding")
+		w.Header().Set("Content-Encoding", "gzip")
+		_, _ = w.Write(body)
+	}, "")
+	asset := Asset{ID: 7, Name: "demo.gz", State: "uploaded", Size: int64(len(body))}
+	rel := Release{ID: 1, Tag: "v1.0.0", Assets: []Asset{asset}}
+	rc, err := env.src.OpenAsset(context.Background(), rel, asset)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := io.ReadAll(rc)
+	_ = rc.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, body) || asked != "identity" {
+		t.Fatalf("received %d bytes (decoded=%t), Accept-Encoding %q; want the %d bytes as served and identity",
+			len(got), !bytes.Equal(got, body), asked, len(body))
 	}
 }

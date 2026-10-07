@@ -98,3 +98,25 @@ func TestCredentialRequestInteractive(t *testing.T) {
 		}
 	}
 }
+
+// TestPromptAfterStartupCheckWithEnvToken: an environment token the source
+// fell back to, because the provider declined outside a Stream, holds for
+// that check only. A later Start asks the provider again, and its answer
+// replaces a stale token
+// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md A2).
+func TestPromptAfterStartupCheckWithEnvToken(t *testing.T) {
+	gh := e2eServer(t)
+	gh.RequireToken("good")
+	u, _ := e2eUpdaterWithEnvToken(t, gh, selfupdate.GitHubOptions{Credentials: selfupdate.PromptCredential()}, "stale")
+	if _, err := u.Checker().Check(context.Background(), selfupdate.CheckRequest{
+		Product: "demo", CurrentVersion: "v1.0.0", CurrentBuild: selfupdate.ReleaseBuild, Platform: goldenPlatform,
+	}); err == nil {
+		t.Fatal("the startup check with a stale environment token succeeded")
+	}
+	n, fin := answerCredentials(t, selfupdate.Start(context.Background(), u, e2eReq()), func(_ int, c *selfupdate.CredentialNeeded) {
+		c.Supply(selfupdate.Credential{Value: []byte("good"), Source: "prompt"})
+	})
+	if n != 1 || fin.Err != nil || !fin.Result.Applied {
+		t.Fatalf("later Start: prompts=%d applied=%v err=%v, want one prompt and an applied update", n, fin.Result.Applied, fin.Err)
+	}
+}

@@ -128,10 +128,15 @@ and `GITHUB_TOKEN`. `ChainCredentials` asks providers in order, and
 
 - An empty `Credential.Header` sends `Authorization: Bearer <Value>`;
   otherwise `Header: Value` is sent as given.
-- The credential goes only to the API origin. It is removed from a redirect
-  to any other origin, such as GitHub's download host.
+- The credential goes only to the API origin. A redirect to any other
+  origin, such as GitHub's download host, keeps only `Accept`,
+  `Accept-Encoding`, `User-Agent` and `X-GitHub-Api-Version`.
 - On a 401 the provider is asked once more, with `CredentialRequest.Cause`
   set.
+- When the provider declines (`ErrNoCredential`, as `PromptCredential` does
+  outside a `Stream`) and `GH_TOKEN` or `GITHUB_TOKEN` is used instead, that
+  token holds for that run only. A startup check therefore does not stop a
+  later `Start` from asking the provider.
 - `GitHubOptions.Observer` is told once when a credential was accepted. That
   is the moment to save a credential the user just typed.
 

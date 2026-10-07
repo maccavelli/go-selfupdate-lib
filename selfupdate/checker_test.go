@@ -48,6 +48,10 @@ func checkRows() []checkRow {
 			wantText: "not a stable published release"},
 		{name: "unsupported platform", req: with(func(r *CheckRequest) { r.Platform = Platform{OS: "plan9", Arch: "amd64"} }),
 			wantErr: ErrUnsupportedPlatform},
+		// A release that dropped a platform in the matrix is unsupported too,
+		// so its answer is cached (0015-MADR A1).
+		{name: "release lacks the platform's asset", mutate: func(r *Release) { r.Assets = r.Assets[1:] }, req: release,
+			wantErr: ErrUnsupportedPlatform},
 		{name: "bad digest syntax", mutate: func(r *Release) { r.Assets[0].Digest = "sha256:zz" }, req: release,
 			wantErr: ErrIntegrity},
 		{name: "configured policy", policy: prereleasePolicy{},

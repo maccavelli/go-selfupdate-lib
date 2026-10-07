@@ -25,8 +25,8 @@ func outcomeRows(t *testing.T) []checkRow {
 			rows = append(rows, r)
 		}
 	}
-	if len(rows) != 3 {
-		t.Fatalf("found %d deterministic rows, want 3", len(rows))
+	if len(rows) != 4 {
+		t.Fatalf("found %d deterministic rows, want 4", len(rows))
 	}
 	return rows
 }

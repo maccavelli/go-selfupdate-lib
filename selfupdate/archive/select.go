@@ -127,19 +127,23 @@ func (s *selector) Select(rel selfupdate.Release, product string, p selfupdate.P
 	if name == manifest || name == manifestName {
 		return selfupdate.Selection{}, fmt.Errorf("selfupdate: archive: the archive name %q names the manifest", name)
 	}
-	archive, err := exactlyOne(rel, name)
+	// A release without the platform's archive is unsupported for it, so
+	// CheckCached caches the answer; a missing manifest is not
+	// (0015-MADR A1).
+	archive, err := exactlyOne(rel, name, selfupdate.ErrUnsupportedPlatform)
 	if err != nil {
 		return selfupdate.Selection{}, err
 	}
-	sums, err := exactlyOne(rel, manifest)
+	sums, err := exactlyOne(rel, manifest, nil)
 	if err != nil {
 		return selfupdate.Selection{}, err
 	}
 	return selfupdate.Selection{Binary: archive, Manifest: sums, ManifestName: name, Packed: true}, nil
 }
 
-// exactlyOne returns rel's one asset named name.
-func exactlyOne(rel selfupdate.Release, name string) (selfupdate.Asset, error) {
+// exactlyOne returns rel's one asset named name. When there is none, the
+// error wraps missing, when it is set.
+func exactlyOne(rel selfupdate.Release, name string, missing error) (selfupdate.Asset, error) {
 	var found []selfupdate.Asset
 	for _, a := range rel.Assets {
 		if a.Name == name {
@@ -148,7 +152,11 @@ func exactlyOne(rel selfupdate.Release, name string) (selfupdate.Asset, error) {
 	}
 	switch len(found) {
 	case 0:
-		return selfupdate.Asset{}, fmt.Errorf("selfupdate: archive: release %s has no asset %q", rel.Tag, name)
+		err := fmt.Errorf("selfupdate: archive: release %s has no asset %q", rel.Tag, name)
+		if missing != nil {
+			err = fmt.Errorf("%w: %w", err, missing)
+		}
+		return selfupdate.Asset{}, err
 	case 1:
 		return found[0], nil
 	}

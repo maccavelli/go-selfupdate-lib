@@ -189,8 +189,12 @@ func TestSelectRefusals(t *testing.T) {
 			if err == nil || !strings.Contains(err.Error(), c.want) {
 				t.Fatalf("Select = %v, want %q", err, c.want)
 			}
-			if c.name == "platform outside the list" && !errors.Is(err, selfupdate.ErrUnsupportedPlatform) {
-				t.Fatalf("%v is not ErrUnsupportedPlatform", err)
+			// A release without the platform's archive is unsupported, so
+			// CheckCached caches it; one without the manifest is not
+			// (0015-MADR A1).
+			wantUnsupported := c.name == "platform outside the list" || c.name == "no archive"
+			if errors.Is(err, selfupdate.ErrUnsupportedPlatform) != wantUnsupported {
+				t.Fatalf("%v: ErrUnsupportedPlatform is %t, want %t", err, !wantUnsupported, wantUnsupported)
 			}
 		})
 	}

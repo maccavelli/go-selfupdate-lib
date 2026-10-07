@@ -2675,3 +2675,77 @@ approved it: "proceed". The PLAN as approved is commit `47f0f97`.
 * **Not yet run:** the systemd and SCM live tests (rule 9). They run with
   P5's, on the test hosts and in CI, before the `v1.10.1` tag (P8); CI's
   three legs run the existing live tests on the push of this commit.
+* Committed by the owner as `b3022cb`.
+
+### Phase P2: network and the check cache (2026-10-07)
+
+* **Red,** on the unfixed code:
+  * **A1:**
+    * `TestCheckerAvailability`, `TestCheckCachedDeterministicErrorCached`
+      and `TestCheckCachedOutcomeRecorded`, each on the new row "release
+      lacks the platform's asset": `release v1.1.0 has no exact asset
+      "demo-darwin-arm64", want selfupdate: unsupported platform`;
+    * `TestSelectRefusals/no_archive`: "ErrUnsupportedPlatform is false,
+      want true".
+  * **A2:** `TestPromptAfterStartupCheckWithEnvToken`: "prompts=0
+    applied=false err=… github http 401: {"message":"Bad credentials"}",
+    the MADR's evidence. Its first red run passed, on the test's own
+    setup: `e2eUpdater` clears `GH_TOKEN` before it builds the source, and
+    so undid the test's `t.Setenv`. `e2eUpdater` now calls a new
+    `e2eUpdaterWithEnvToken(t, gh, opts, token)`, which sets the variable
+    after clearing it.
+  * **A3:** `TestRedirectKeepsOnlyFixedHeaders`: "headers on the foreign
+    hop [Accept Accept-Encoding Cookie User-Agent X-Github-Api-Version
+    X-Old-Key]".
+  * **A4:** `TestGitHubSecondaryRateLimitWithoutHeaders`: "github http
+    403: … secondary rate limit …; isRateLimited=false".
+  * **A6:** `TestOpenAssetKeepsContentEncodedBytes`: "received 25 bytes
+    (decoded=true), Accept-Encoding "gzip"; want the 50 bytes as served
+    and identity".
+  * **A7:** the corrected `TestNotBeforeClamped` passes, as a pin; its
+    plant proves it.
+* **Fix:**
+  * **A1:** `assets.go` wraps `ErrUnsupportedPlatform` with `%w`.
+    `exactlyOne` (`archive/select.go`) takes a `missing` error: the
+    platform's archive passes `ErrUnsupportedPlatform`, `SHA256SUMS` nil.
+  * **A2:** `credentialState.perRun`, set when the token came from the
+    environment after the provider declined (`has && !fromProvider &&
+    !explicit && provider != nil`); the cache test reads `(has &&
+    !perRun) || anonRun == mark`.
+  * **A3:** `checkRedirect` deletes every header outside
+    `forwardedHeaders` on a hop to another origin. The credential-header
+    lookup went.
+  * **A4:** `rateLimitedForbidden(resp, body)` is also true for a body
+    naming a "secondary rate limit", lowercased.
+  * **A6:** `newRequest` sets `Accept-Encoding: identity` for an asset.
+  * **A7:** the test stores `Request: key`, as `CheckCached` keys it.
+* **Green:** every package of `./selfupdate/...` passes.
+* **Plants,** seven, each caught:
+
+  | Plant | Fails |
+  | :--- | :--- |
+  | the exact selector's error unwrapped (`%v`) | `TestCheckerAvailability`, `TestCheckCachedDeterministicErrorCached`, `TestCheckCachedOutcomeRecorded` |
+  | the archive selector passes no `missing` error | `TestSelectRefusals/no_archive` |
+  | an environment token cached for the source's life | `TestPromptAfterStartupCheckWithEnvToken` |
+  | `X-` headers cross origins | `TestRedirectKeepsOnlyFixedHeaders` |
+  | the body not read | `TestGitHubSecondaryRateLimitWithoutHeaders` |
+  | no identity encoding asked | `TestOpenAssetKeepsContentEncodedBytes` |
+  | the stored-deferral cap off | `TestNotBeforeClamped`: "check deferred by an earlier rate limit" |
+
+* **Docs:**
+  * `errors.go`: `ErrUnsupportedPlatform` covers a release without the
+    platform's asset;
+  * the `WithCredentials` comment;
+  * `doc.go`'s Credentials paragraph;
+  * the extending guide, "Plug in a credential": the fixed headers, and
+    the per-run environment fallback.
+* **Files beyond the PLAN's list:** `selfupdate/e2e_github_test.go`, for
+  the helper above.
+* **Checks:**
+  * `make pre-add-check` on the 12 Go files: "12 file(s) clean";
+  * the full apidiff report against `v1.10.0`: only "Ignoring internal
+    package …";
+  * markdownlint: clean;
+  * `make gate` on `b3022cb` with P2's changes: all 14 steps `rc=0`,
+    `overall=0`; apicheck "compatible with v1.10.0"; links "331 links in
+    49 files, 0 broken"; ids "14 files, 16 deny-list rules, 0 findings".

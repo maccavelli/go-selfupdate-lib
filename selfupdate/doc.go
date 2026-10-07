@@ -86,8 +86,11 @@
 // GitHubOptions.Token, then GitHubOptions.Credentials, then GH_TOKEN and
 // GITHUB_TOKEN supply the API credential. ChainCredentials and EnvCredential
 // compose providers; a credential is asked for lazily, sent only to the API
-// origin, and stripped from any redirect to another origin. A
-// CredentialObserver learns when one was accepted.
+// origin, and never carried by a redirect to another origin, which keeps
+// only the source's fixed headers. An environment token the source falls
+// back to because the provider declined holds for that run only: the next
+// run asks the provider again. A CredentialObserver learns when one was
+// accepted.
 //
 // # Integrity
 //

@@ -1,6 +1,7 @@
 package selfupdate
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -57,10 +58,14 @@ type credentialState struct {
 	has          bool
 	cred         Credential
 	fromProvider bool
-	anonRun      *runMark // the run that resolved anonymity
-	retried      bool
-	retriedRun   *runMark // the run that used the one retry
-	accepted     bool
+	// perRun marks an environment token the source fell back to because the
+	// provider declined: it holds for the run that resolved it only, so a
+	// later run asks the provider again (0015-MADR A2).
+	perRun     bool
+	anonRun    *runMark // the run that resolved anonymity, or a perRun token
+	retried    bool
+	retriedRun *runMark // the run that used the one retry
+	accepted   bool
 	// inflight is closed when a resolution in progress ends. The provider
 	// runs with no lock held, so a request waiting for it can honour its
 	// own context (0010-MADR A7).
@@ -222,17 +227,26 @@ func (s *GitHubSource) checkRedirect(req *http.Request, via []*http.Request) err
 		return fmt.Errorf("selfupdate: refusing redirect to a non-https location")
 	}
 	if !sameOrigin(req.URL, s.apiBase) {
-		req.Header.Del("Authorization")
-		// A provider's own header is scrubbed too: a credential goes only
-		// to the origin it was requested for (0004-MADR G10).
-		s.cred.mu.Lock()
-		header := s.cred.cred.Header
-		s.cred.mu.Unlock()
-		if header != "" {
-			req.Header.Del(header)
+		// Another origin gets only the source's fixed headers. A credential
+		// goes only to the origin it was requested for (0004-MADR G10),
+		// whichever header it was sent in, even one the source's credential
+		// has since moved from (0015-MADR A3).
+		for k := range req.Header {
+			if !forwardedHeaders[http.CanonicalHeaderKey(k)] {
+				req.Header.Del(k)
+			}
 		}
 	}
 	return nil
+}
+
+// forwardedHeaders are the headers a request keeps on a hop to another
+// origin: the ones newRequest sets that carry no credential.
+var forwardedHeaders = map[string]bool{
+	"Accept":               true,
+	"Accept-Encoding":      true,
+	"User-Agent":           true,
+	"X-Github-Api-Version": true,
 }
 
 func sameOrigin(u, base *url.URL) bool {
@@ -561,6 +575,12 @@ func (s *GitHubSource) newRequest(ctx context.Context, method, rawURL, accept st
 	req.Header.Set("Accept", accept)
 	req.Header.Set("X-GitHub-Api-Version", gitHubAPIVersion)
 	req.Header.Set("User-Agent", s.userAgent)
+	if accept == gitHubAcceptAsset {
+		// An asset is read as published. Asking for no encoding also stops
+		// the transport from decoding one a CDN applies anyway, so the size
+		// and digest checks see the published bytes (0015-MADR A6).
+		req.Header.Set("Accept-Encoding", "identity")
+	}
 	if cred != nil && sameOrigin(req.URL, s.apiBase) {
 		if cred.Header == "" {
 			req.Header.Set("Authorization", "Bearer "+string(cred.Value))
@@ -647,8 +667,9 @@ func drainClose(resp *http.Response) {
 // WithCredentials implements CredentialedSource. The copy shares the
 // repository, API base, user agent, explicit and environment tokens,
 // observer and limits. Its provider is p (none when p is nil), its
-// credential state is new, and its client is its own copy, so redirect
-// scrubbing reads the copy's credential.
+// credential state is new, and its client is its own copy. A redirect to
+// another origin carries only Accept, Accept-Encoding, User-Agent and
+// X-GitHub-Api-Version, so no credential follows it.
 func (s *GitHubSource) WithCredentials(p CredentialProvider) ReleaseSource {
 	client := *s.client
 	c := &GitHubSource{
@@ -678,7 +699,7 @@ func (s *GitHubSource) credential(ctx context.Context) (*Credential, error) {
 	mark := runMarkOf(ctx)
 	for {
 		s.cred.mu.Lock()
-		if s.cred.resolved && (s.cred.has || s.cred.anonRun == mark) {
+		if s.cred.resolved && ((s.cred.has && !s.cred.perRun) || s.cred.anonRun == mark) {
 			has, c := s.cred.has, s.cred.cred
 			s.cred.mu.Unlock()
 			if !has {
@@ -706,6 +727,7 @@ func (s *GitHubSource) credential(ctx context.Context) (*Credential, error) {
 		close(done)
 		if err == nil {
 			s.cred.resolved, s.cred.has, s.cred.cred, s.cred.fromProvider = true, has, c, fromProvider
+			s.cred.perRun = has && !fromProvider && !s.explicit && s.provider != nil
 			s.cred.anonRun = mark
 		}
 		s.cred.mu.Unlock()
@@ -787,7 +809,7 @@ func (s *GitHubSource) origin() *url.URL {
 
 // mapStatus maps a non-2xx response; every caller has filtered 2xx.
 func (s *GitHubSource) mapStatus(resp *http.Response, body []byte) error {
-	if resp.StatusCode == http.StatusTooManyRequests || rateLimitedForbidden(resp) {
+	if resp.StatusCode == http.StatusTooManyRequests || rateLimitedForbidden(resp, body) {
 		return parseRateLimit(resp, s.now)
 	}
 	diag := sanitizeDiagnostic(string(body), s.limits.ErrorBody)
@@ -798,14 +820,17 @@ func (s *GitHubSource) mapStatus(resp *http.Response, body []byte) error {
 // time.Duration.
 const maxRetryAfterSeconds = math.MaxInt64 / int64(time.Second)
 
-func rateLimitedForbidden(resp *http.Response) bool {
+// rateLimitedForbidden reports a 403 that is a rate limit: one with
+// Retry-After, with no requests remaining, or whose body names a secondary
+// rate limit, which GitHub may send without either header (0015-MADR A4).
+func rateLimitedForbidden(resp *http.Response, body []byte) bool {
 	if resp.StatusCode != http.StatusForbidden {
 		return false
 	}
-	if resp.Header.Get("Retry-After") != "" {
+	if resp.Header.Get("Retry-After") != "" || resp.Header.Get("X-RateLimit-Remaining") == "0" {
 		return true
 	}
-	return resp.Header.Get("X-RateLimit-Remaining") == "0"
+	return bytes.Contains(bytes.ToLower(body), []byte("secondary rate limit"))
 }
 
 func parseRateLimit(resp *http.Response, now func() time.Time) error {
