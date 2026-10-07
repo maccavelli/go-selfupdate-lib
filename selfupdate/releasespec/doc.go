@@ -1,7 +1,8 @@
 // Package releasespec reads a program's release spec, the
 // selfupdate-release.json file that describes its products, platforms,
-// packaging, extra assets and prerelease channels in one place
-// (docs/decisions/0013-MADR-build-and-stage-release-workflow.md §2, §3).
+// packaging, extra assets, prerelease channels and generated installers in
+// one place (docs/decisions/0013-MADR-build-and-stage-release-workflow.md
+// §2, §3; docs/decisions/0014-MADR-shared-installer-templates.md §2).
 //
 // The program embeds the file and configures its updater from it:
 //

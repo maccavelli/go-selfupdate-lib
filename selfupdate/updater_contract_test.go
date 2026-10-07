@@ -313,7 +313,9 @@ func TestRunValidatesSelectedAssets(t *testing.T) {
 			req := applyReq()
 			req.CheckOnly = true
 			res, err := u.Run(context.Background(), req)
-			if err == nil || errors.Is(err, ErrUpdateAvailable) || res.Checked {
+			// A failed check still says it was a check: Checked echoes the
+			// request (0015-MADR C6; 0015-PLAN deviation D2).
+			if err == nil || errors.Is(err, ErrUpdateAvailable) || !res.Checked {
 				t.Fatalf("res=%+v err=%v", res, err)
 			}
 		})
@@ -603,4 +605,25 @@ func TestRunPendingBackupAbsolutePath(t *testing.T) {
 		}
 	}
 	t.Fatal("no complete event")
+}
+
+// TestDiscoveryFailureResultNamesRun: a run that fails in discovery still
+// returns the product, the running version and what was asked (a check, a
+// dry run), as the events and an early failure do
+// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md C6).
+func TestDiscoveryFailureResultNamesRun(t *testing.T) {
+	for _, req := range []Request{
+		{Product: "demo", CurrentVersion: "v1.0.0", CurrentBuild: ReleaseBuild, CheckOnly: true},
+		{Product: "demo", CurrentVersion: "v1.0.0", CurrentBuild: ReleaseBuild, DryRun: true},
+	} {
+		env := newContractEnv(t)
+		env.src.err = errors.New("fixture: the API is down")
+		res, err := env.build(t).Run(context.Background(), req)
+		if err == nil {
+			t.Fatal("a failed discovery returned no error")
+		}
+		if res.Product != "demo" || res.CurrentVersion != "v1.0.0" || res.Checked != req.CheckOnly || res.DryRun != req.DryRun {
+			t.Fatalf("Product=%q CurrentVersion=%q Checked=%t DryRun=%t; want the run named", res.Product, res.CurrentVersion, res.Checked, res.DryRun)
+		}
+	}
 }

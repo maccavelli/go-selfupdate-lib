@@ -41,7 +41,11 @@ type lineResult struct {
 // answer is a decline. A cancelled Confirm returns the context error; a line
 // typed afterwards answers the next Confirm on the same confirmer.
 func NewTerminalConfirmer(in *os.File, out io.Writer) Confirmer {
-	c := &terminalConfirmer{out: out}
+	c := &terminalConfirmer{}
+	// A nil pointer behind the interface is nil (0015-MADR C7).
+	if !isNil(out) {
+		c.out = out
+	}
 	// A nil *os.File must not become a non-nil io.Reader.
 	if in != nil {
 		c.in = in
@@ -65,7 +69,11 @@ func NewTerminalConfirmer(in *os.File, out io.Writer) Confirmer {
 // a line typed after a cancelled Confirm answers the next one, exactly as
 // NewTerminalConfirmer does (0004-MADR G6).
 func NewPromptConfirmer(in io.Reader, out io.Writer, interactive bool) Confirmer {
-	c := &terminalConfirmer{out: out}
+	c := &terminalConfirmer{}
+	// A nil pointer behind the interface is nil (0015-MADR C7).
+	if !isNil(out) {
+		c.out = out
+	}
 	if !isNil(in) {
 		c.in = in
 	}

@@ -152,7 +152,9 @@ func (u *Updater) execRun(ctx context.Context, req Request, r *run) (Result, err
 	return r.execute(ctx, req)
 }
 
-// checker is a Checker over the run's source.
+// checker is a Checker over the run's source, which checks the selection
+// against the run's Unpacker (0015-MADR C4).
 func (u *run) checker() *Checker {
-	return &Checker{source: u.source, versions: u.versions, assets: u.assets, limits: u.limits}
+	return &Checker{source: u.source, versions: u.versions, assets: u.assets, limits: u.limits,
+		unpacker: u.unpacker, fromUpdater: true}
 }

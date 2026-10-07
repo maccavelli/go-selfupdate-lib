@@ -29,6 +29,10 @@ type Checker struct {
 	versions VersionPolicy
 	assets   AssetSelector
 	limits   Limits
+	// unpacker and fromUpdater: a Checker an Updater made checks the
+	// selection against the Updater's Unpacker, as Run does (0015-MADR C4).
+	unpacker    Unpacker
+	fromUpdater bool
 }
 
 // CheckRequest is one availability question.
@@ -91,9 +95,11 @@ func NewChecker(cfg CheckerConfig) (*Checker, error) {
 }
 
 // Checker returns a Checker that shares the Updater's source, version
-// policy, asset selector and limits.
+// policy, asset selector, unpacker and limits: it fails a selection the
+// Updater's Unpacker cannot handle, as Run does.
 func (u *Updater) Checker() *Checker {
-	return &Checker{source: u.source, versions: u.versions, assets: u.assets, limits: u.limits}
+	return &Checker{source: u.source, versions: u.versions, assets: u.assets, limits: u.limits,
+		unpacker: u.unpacker, fromUpdater: true}
 }
 
 // Check reports whether an update is available. Unlike Run with CheckOnly,
@@ -189,7 +195,28 @@ func (c *Checker) discover(ctx context.Context, req Request) (Release, Selection
 	if err != nil {
 		return Release{}, Selection{}, OperationNone, err
 	}
+	// A selector and an unpacker that disagree fail here, before any asset
+	// is downloaded, on a check too (0012-MADR §2), and so in an Updater's
+	// Checker as in its Run (0015-MADR C4).
+	if c.fromUpdater {
+		if err := c.matchUnpacker(sel); err != nil {
+			return Release{}, Selection{}, OperationNone, err
+		}
+	}
 	return rel, sel, op, nil
+}
+
+// matchUnpacker fails a selection the configured Unpacker cannot handle: an
+// archive with no unpacker, or an unpacker with a selection that is not an
+// archive.
+func (c *Checker) matchUnpacker(sel Selection) error {
+	switch {
+	case sel.Packed && c.unpacker == nil:
+		return fmt.Errorf("selfupdate: asset %q is an archive and no Unpacker is configured", sanitizeText(sel.Binary.Name))
+	case !sel.Packed && c.unpacker != nil:
+		return fmt.Errorf("selfupdate: an Unpacker is configured, but asset %q is not marked as an archive", sanitizeText(sel.Binary.Name))
+	}
+	return nil
 }
 
 // checkChannel applies a ChannelPolicy's checks to a release, on every

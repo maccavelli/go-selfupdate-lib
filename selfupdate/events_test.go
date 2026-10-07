@@ -1,6 +1,7 @@
 package selfupdate
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -415,5 +416,25 @@ func TestResultDocumentCoversEveryField(t *testing.T) {
 		if doc.Field(i).IsZero() {
 			t.Errorf("Document leaves ResultDocument.%s unset", doc.Type().Field(i).Name)
 		}
+	}
+}
+
+// TestTypedNilWriters: a writer that is a nil pointer behind a non-nil
+// interface is refused as a nil one is: an error, never a panic
+// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md C7).
+func TestTypedNilWriters(t *testing.T) {
+	var w *bytes.Buffer
+	ev := Event{Kind: EventSelected, Product: "demo"}
+	for name, r := range map[string]Reporter{"text": NewTextReporter(w), "json": NewJSONReporter(w)} {
+		if err := r.Report(context.Background(), ev); err == nil || !strings.Contains(err.Error(), "writer is nil") {
+			t.Errorf("%s reporter: err = %v, want the nil writer refused", name, err)
+		}
+	}
+	c := NewPromptConfirmer(strings.NewReader("y\n"), w, true)
+	if _, err := c.Confirm(context.Background(), Prompt{Product: "demo"}); err == nil || !strings.Contains(err.Error(), "output is nil") {
+		t.Errorf("prompt confirmer: err = %v, want the nil output refused", err)
+	}
+	if _, err := NewTerminalConfirmer(nil, w).Confirm(context.Background(), Prompt{Product: "demo"}); err == nil {
+		t.Error("terminal confirmer with no input and a nil output: no error")
 	}
 }

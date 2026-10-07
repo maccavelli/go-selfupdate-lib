@@ -100,7 +100,8 @@ func inStream(ctx context.Context) bool {
 }
 
 // NewGitHubSource validates options, clones the supplied client, and resolves
-// the token once. It never mutates the caller's client or URL.
+// the token once. It never mutates the caller's client or URL. The clone's
+// CheckRedirect is the source's own; the caller's is never called.
 func NewGitHubSource(opts GitHubOptions) (*GitHubSource, error) {
 	if opts.Client == nil {
 		return nil, fmt.Errorf("selfupdate: github client is required")

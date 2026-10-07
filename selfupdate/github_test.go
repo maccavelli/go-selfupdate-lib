@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -475,5 +476,45 @@ func TestGitHubIgnoresBrowserDownloadURL(t *testing.T) {
 	defer rc.Close()
 	if sawBrowser {
 		t.Fatal("fetched metadata-provided browser URL")
+	}
+}
+
+// TestNewGitHubSourceReplacesCheckRedirect: the source's copy of the client
+// follows redirects by its own rules; the caller's CheckRedirect is never
+// called, and the caller's client is not changed
+// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md A9).
+func TestNewGitHubSourceReplacesCheckRedirect(t *testing.T) {
+	noEnv(t, nil)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/moved" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		http.Redirect(w, r, "/moved", http.StatusFound)
+	}))
+	t.Cleanup(srv.Close)
+	base, err := url.Parse(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	client := srv.Client()
+	mine := func(*http.Request, []*http.Request) error { called = true; return nil }
+	client.CheckRedirect = mine
+	src, err := NewGitHubSource(GitHubOptions{
+		Repository: Repository{Owner: "maccavelli", Name: "demo"}, Client: client, APIBaseURL: base,
+		UserAgent: "demo/v1.0.0", Limits: testGitHubLimits(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := src.Latest(context.Background()); err == nil {
+		t.Fatal("the redirect to a 404 succeeded")
+	}
+	if called {
+		t.Fatal("the caller's CheckRedirect was called")
+	}
+	if client.CheckRedirect == nil || reflect.ValueOf(client.CheckRedirect).Pointer() != reflect.ValueOf(mine).Pointer() {
+		t.Fatal("the caller's client was changed")
 	}
 }

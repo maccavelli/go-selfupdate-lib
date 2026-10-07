@@ -2815,3 +2815,100 @@ approved it: "proceed". The PLAN as approved is commit `47f0f97`.
   * `make gate` on `2a3d7b6` with P3's changes: all 14 steps `rc=0`,
     `overall=0`; apicheck "compatible with v1.10.0"; links "331 links in
     49 files, 0 broken"; ids "15 files, 16 deny-list rules, 0 findings".
+* Committed by the owner as `dc2469c`.
+
+### Deviation D2 (2026-10-07): an existing test pinned C6's defect
+
+* **Found** in P4, once C6 was in: `TestRunValidatesSelectedAssets`
+  (`updater_contract_test.go:317`) required a failed `--check` run to
+  return `Checked == false`. C6 sets `Checked` from the request, as the
+  field's doc says ("true when the run was check-only"). The MADR cites
+  `"checked":false` on a `--check` run as the defect. The PLAN did not name
+  this test.
+* **Options put to the owner:**
+  1. update the assertion to `Checked == true` (recommended);
+  2. narrow C6 to leave `Checked` false, keeping part of the defect.
+* **Decision:** the owner chose "Update the assertion". The test still
+  requires the error, and no `ErrUpdateAvailable`; only the `Checked` term
+  flips, with a comment citing this deviation.
+
+### Phase P4: the API and the command surface (2026-10-07)
+
+* **Red,** on the unfixed code:
+  * **C1:** `TestResultObjectExitCodeMatchesExit`: "failing Report: result
+    object exit_code 0 error ""; the process exits 1". Its first run
+    failed on the test's own rule, not the code: an available update exits
+    10 with an error text, so the rule became "error set exactly when the
+    exit code is not 0".
+  * **C2:** `TestCommandEarlyFailureReachesReport`: "Report calls=0" for
+    all four early failures; under `--json` the object lacked the
+    `Report` error.
+  * **C4:** `TestCheckerAgreesOnUnpacker`, both subtests: "Checker().Check:
+    available=true err=<nil>". The PLAN extended
+    `TestCheckerAgreesWithRunCheck`; a separate test over `newPackEnv`
+    keeps that table to discovery.
+  * **C6:** `TestDiscoveryFailureResultNamesRun`: "Product="" CurrentVersion=""
+    Checked=false DryRun=false".
+  * **C7:** `TestTypedNilWriters`: "panic: runtime error: invalid memory
+    address or nil pointer dereference"; `TestOptionsRefused` "typed-nil
+    stderr": a panic.
+  * **Pins, passing as planned:** A9 `TestNewGitHubSourceReplacesCheckRedirect`;
+    G10 `ExampleNewUnpacker`.
+* **Fix:**
+  * **C1** (`cli/run.go`): the warnings, then `HandOff.Report`, then the
+    last line; a new `joinLate` keeps 0010 C3's rule (under
+    `ErrUpdateAvailable` the late error alone decides).
+  * **C2** (`cli/command.go`): `Options.report` calls `HandOff.Report`
+    first and joins its error.
+  * **C4:**
+    * `Checker` gains `unpacker` and `fromUpdater`, set by
+      `Updater.Checker()` and `run.checker()`;
+    * `matchUnpacker` moved from `run` to `Checker`, and runs at the end of
+      `discover`;
+    * `Run`'s own call went.
+  * **C6** (`updater.go`): `base` (product, running version, `Checked`,
+    `DryRun`) replaces `Result{}` on the six failures after
+    `validateRequest`. A script made the edit and asserted each place.
+  * **C7:**
+    * `NewTextReporter`, `NewJSONReporter`, `NewTerminalConfirmer` and
+      `NewPromptConfirmer` turn a typed-nil writer into nil, with the
+      package's `isNil`;
+    * `cli` has `isNilWriter` for `Options.check`, `Command` and
+      `report`.
+  * **Docs, A9, G5, G6:**
+    * A9: `GitHubOptions.Client` and `NewGitHubSource`;
+    * G5: `EventInstalling` names `InstallSession.Install`;
+    * G6: `doc.go`'s Integrity paragraph (verifiers see the asset as
+      published; `New` refuses `NewImageVerifier` beside an Unpacker), and
+      `releasespec/doc.go` names the installers and 0014-MADR §2.
+  * **G10:** `ExampleNewUnpacker` selects from a release and prints
+    `relay-linux-amd64.tar.gz true true`, with its `Output` check.
+  * **cli docs:** `cli/doc.go` (late write and Report failures come before
+    the object), `HandOff.Report`, and `Command`'s comment.
+* **Goldens,** rule 8: `go test ./selfupdate/cli -run
+  'TestGolden|TestCommandGolden' -count=1 -update` changed exactly two
+  files, one line each. In `failed.json.stdout` and
+  `contradiction.json.stdout`, the result object's `"product":""` became
+  `"demo"`, `"current_version":""` became `"v1.0.0"`, and
+  `"checked":false` became `true`. Nothing else changed.
+* **Green:** every package of `./selfupdate/...` passes.
+* **Plants,** eight, each caught:
+
+  | Plant | Fails |
+  | :--- | :--- |
+  | the result object written before the late errors | `TestResultObjectExitCodeMatchesExit` |
+  | an early failure skips `Report` | `TestCommandEarlyFailureReachesReport` |
+  | `discover` skips the unpacker match | `TestCheckerAgreesOnUnpacker`, both |
+  | a discovery failure returns `Result{}` | `TestDiscoveryFailureResultNamesRun` |
+  | `NewJSONReporter` keeps a typed nil | `TestTypedNilWriters` |
+  | `cli`'s `isNilWriter` sees only nil | `TestOptionsRefused` |
+  | the caller's `CheckRedirect` kept | `TestNewGitHubSourceReplacesCheckRedirect`: "the caller's CheckRedirect was called" |
+  | the archive selection not packed | `ExampleNewUnpacker` |
+
+* **Checks:**
+  * `make pre-add-check` on the 20 Go files: "20 file(s) clean";
+  * the full apidiff report against `v1.10.0`: only "Ignoring internal
+    package …";
+  * `make gate` on `dc2469c` with P4's changes: all 14 steps `rc=0`,
+    `overall=0`; apicheck "compatible with v1.10.0"; links "331 links in
+    49 files, 0 broken"; ids "23 files, 16 deny-list rules, 0 findings".

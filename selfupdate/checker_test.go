@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Tests for docs/decisions/0004-PLAN-v1-1-0-core-api.md Step 3.
@@ -208,5 +209,42 @@ func TestUpdaterChecker(t *testing.T) {
 	}
 	if len(env.src.calls) == 0 || env.src.calls[0] != "Latest" {
 		t.Fatalf("the updater's source was not used: %v", env.src.calls)
+	}
+}
+
+// TestCheckerAgreesOnUnpacker: a selector and an unpacker that disagree fail
+// Run --check before any download; the Updater's Checker, Check and
+// CheckCached alike, fails the same way, and never reports an update Run
+// would refuse to install
+// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md C4).
+func TestCheckerAgreesOnUnpacker(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		edit func(*packEnv)
+		want string
+	}{
+		{"an archive with no unpacker", func(e *packEnv) { e.cfg.Unpacker = nil }, "no Unpacker is configured"},
+		{"an unpacker with a bare binary", func(e *packEnv) { e.cfg.Assets = packSelector{name: e.name} }, "not marked as an archive"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			env := newPackEnv(t, []byte("program"))
+			tc.edit(env)
+			u, err := New(env.cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, rerr := u.Run(context.Background(), Request{Product: "demo", CurrentVersion: "v1.0.0", CurrentBuild: ReleaseBuild, CheckOnly: true})
+			if rerr == nil || !strings.Contains(rerr.Error(), tc.want) {
+				t.Fatalf("Run --check = %v, want %q", rerr, tc.want)
+			}
+			cr := CheckRequest{Product: "demo", CurrentVersion: "v1.0.0", CurrentBuild: ReleaseBuild}
+			avail, cerr := u.Checker().Check(context.Background(), cr)
+			if cerr == nil || !strings.Contains(cerr.Error(), tc.want) {
+				t.Fatalf("Checker().Check: available=%t err=%v; want %q", avail.Available, cerr, tc.want)
+			}
+			if _, err := u.Checker().CheckCached(context.Background(), cr, &memStore{}, time.Hour); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Checker().CheckCached = %v, want %q", err, tc.want)
+			}
+		})
 	}
 }

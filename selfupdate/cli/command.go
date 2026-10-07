@@ -17,14 +17,15 @@ import (
 //
 //   - -h or --help writes Help(product) to o.Stderr and returns 0.
 //   - A usage error, a refused request or a failed newUpdater is reported
-//     like a failed run: under --json (as parsed so far) one result object on
-//     o.Stdout, then Exit's line on o.Stderr. It returns 1.
+//     like a failed run: o.HandOff.Report, when set; under --json (as parsed
+//     so far) one result object on o.Stdout; then Exit's line on o.Stderr. It
+//     returns 1.
 //
 // o.JSON is set from the parsed flags; the caller's value is ignored. A nil
 // o.Stderr leaves nothing to report on, so Command returns 1 at once.
 func Command(ctx context.Context, args []string, product string, id buildinfo.Info,
 	newUpdater func() (*selfupdate.Updater, error), o Options) int {
-	if o.Stderr == nil {
+	if isNilWriter(o.Stderr) {
 		return 1
 	}
 	var f Flags
@@ -59,10 +60,17 @@ func Command(ctx context.Context, args []string, product string, id buildinfo.In
 	return Exit(o.Stderr, res, err)
 }
 
-// report ends an invocation that failed before Run, as a failed run ends.
+// report ends an invocation that failed before Run, as a failed run ends:
+// HandOff.Report first, which in a detached run writes the result file the
+// agent waits for (0015-MADR C2), then the result object or the summary.
 func (o Options) report(product string, id buildinfo.Info, err error) int {
 	res := selfupdate.Result{Product: product, CurrentVersion: id.Current()}
-	if o.JSON && o.Stdout != nil {
+	if o.HandOff.Report != nil {
+		if rerr := o.HandOff.Report(res, err); rerr != nil {
+			err = errors.Join(err, rerr)
+		}
+	}
+	if o.JSON && !isNilWriter(o.Stdout) {
 		if werr := writeResult(o.Stdout, res, err); werr != nil {
 			err = errors.Join(err, werr)
 		}

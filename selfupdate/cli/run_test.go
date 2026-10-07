@@ -325,6 +325,10 @@ func TestOptionsRefused(t *testing.T) {
 		{"nil stderr", u, Options{}},
 		{"json without stdout", u, Options{Stderr: &bytes.Buffer{}, JSON: true}},
 		{"negative timeout", u, Options{Stderr: &bytes.Buffer{}, Timeout: -1}},
+		// A nil pointer behind the interface is refused as nil is, rather
+		// than panicking later (0015-MADR C7).
+		{"typed-nil stderr", u, Options{Stderr: (*bytes.Buffer)(nil)}},
+		{"typed-nil stdout with JSON", u, Options{Stderr: &bytes.Buffer{}, Stdout: (*bytes.Buffer)(nil), JSON: true}},
 	} {
 		if _, err := Run(context.Background(), tc.u, selfupdate.Request{}, tc.o); err == nil || !strings.HasPrefix(err.Error(), "cli: ") {
 			t.Errorf("%s: err %v", tc.name, err)
@@ -494,4 +498,61 @@ func TestStdioOptions(t *testing.T) {
 	if o.JSON || o.Confirmer != nil || o.Timeout != 0 || o.Signals != nil {
 		t.Fatalf("options %+v, want the defaults", o)
 	}
+}
+
+// lastResult is the exit_code and error of the last JSON line on stdout.
+func lastResult(t *testing.T, stdout string) (code int, errText string) {
+	t.Helper()
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+	var line struct {
+		Kind     string `json:"kind"`
+		ExitCode int    `json:"exit_code"`
+		Error    string `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &line); err != nil || line.Kind != "result" {
+		t.Fatalf("last line %q is not a result object: %v", lines[len(lines)-1], err)
+	}
+	return line.ExitCode, line.Error
+}
+
+// TestResultObjectExitCodeMatchesExit: under --json the result object
+// carries the run's exit code. Writing the warnings, and HandOff.Report,
+// come before it, so a failure in either is in the object too, and the
+// object never says 0 while the process exits 1
+// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md C1).
+func TestResultObjectExitCodeMatchesExit(t *testing.T) {
+	check := func(t *testing.T, name, stdout string, exit int) {
+		t.Helper()
+		code, errText := lastResult(t, stdout)
+		if code != exit || (exit != 0) != (errText != "") {
+			t.Fatalf("%s: result object exit_code %d error %q; the process exits %d", name, code, errText, exit)
+		}
+	}
+	for _, sc := range scenarios {
+		out := sc.run(t, true)
+		check(t, sc.name, out.stdout, out.code)
+	}
+	failingReport := scenario{latest: "v1.1.0", id: releaseID, flags: Flags{Yes: true}, handOff: HandOff{
+		Report: func(selfupdate.Result, error) error { return errors.New("result file: read-only") },
+	}}
+	out := failingReport.run(t, true)
+	if out.code != 1 {
+		t.Fatalf("a failing Report: exit %d, want 1", out.code)
+	}
+	check(t, "failing Report", out.stdout, out.code)
+
+	src, tg := scenario{latest: "v1.1.0"}.fixture(t, "demo")
+	u, err := buildUpdaterClosing(src, tg, errors.New("unlock failed"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	stderr := &failOn{marker: "warning:"}
+	req := selfupdate.Request{Product: "demo", CurrentVersion: "v1.0.0", CurrentBuild: selfupdate.ReleaseBuild, Yes: true}
+	res, err := Run(context.Background(), u, req, Options{Stdout: &stdout, Stderr: stderr, JSON: true, Signals: []os.Signal{}})
+	code := Exit(stderr, res, err)
+	if code != 1 {
+		t.Fatalf("a failing warning write: exit %d, want 1", code)
+	}
+	check(t, "failing warning write", stdout.String(), code)
 }

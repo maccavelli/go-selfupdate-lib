@@ -53,5 +53,14 @@ func ExampleNewUnpacker() {
 	cfg := selfupdate.Config{Assets: sel, Unpacker: unp}
 	// Source, Versions, Installer, Reporter, Confirmer and Limits are set
 	// as for any update, then selfupdate.New(cfg).
-	_ = cfg
+	rel := selfupdate.Release{Tag: "v1.2.3", Assets: []selfupdate.Asset{
+		{Name: "relay-linux-amd64.tar.gz"}, {Name: "SHA256SUMS"},
+	}}
+	got, err := cfg.Assets.Select(rel, "relay", platforms[0])
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Println(got.Binary.Name, got.Packed, cfg.Unpacker != nil)
+	// Output: relay-linux-amd64.tar.gz true true
 }

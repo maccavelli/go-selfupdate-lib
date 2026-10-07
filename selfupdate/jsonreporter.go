@@ -32,6 +32,10 @@ type jsonEvent struct {
 // sanitizes them. Unlike NewTextReporter it reports EventProgress
 // (0004-MADR §3, "Structured output").
 func NewJSONReporter(w io.Writer) Reporter {
+	// A nil pointer behind the interface is nil (0015-MADR C7).
+	if isNil(w) {
+		w = nil
+	}
 	return jsonReporter{w: w}
 }
 

@@ -15,7 +15,9 @@
 // binary is replaced, is a warning, not a failure: the exit status stays 0,
 // stderr gets one "warning: …" line for each in either mode, and under
 // --json the result object's "result" carries them as its "warnings" array
-// (schema_version 2).
+// (schema_version 2). Failing to write those lines, and a failing
+// HandOff.Report, do fail the run; both come before the result object, so
+// its "exit_code" is always the process's.
 //
 // A program with the standard flag package calls Command once:
 //

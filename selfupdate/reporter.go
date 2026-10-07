@@ -17,6 +17,10 @@ type textReporter struct {
 // writes one line per event, and skips EventProgress (0004-MADR amendment
 // A8).
 func NewTextReporter(w io.Writer) Reporter {
+	// A nil pointer behind the interface is nil (0015-MADR C7).
+	if isNil(w) {
+		w = nil
+	}
 	return textReporter{w: w}
 }
 

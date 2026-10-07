@@ -187,7 +187,10 @@ type GitHubOptions struct {
 	// Repository is the GitHub owner/name pair.
 	Repository Repository
 	// Client is required. NewGitHubSource clones it and never mutates the
-	// caller's value.
+	// caller's value. The clone follows redirects by the source's own
+	// rules: at most 10 hops, HTTPS only (plain http only between loopback
+	// hosts), and no credential to another origin. Client.CheckRedirect is
+	// never called.
 	Client *http.Client
 	// APIBaseURL is the GitHub API origin. Nil means https://api.github.com.
 	APIBaseURL *url.URL
@@ -603,7 +606,7 @@ const (
 	EventVerified
 	// EventTransforming is emitted before an authorized transform.
 	EventTransforming
-	// EventInstalling is emitted immediately before Installer.Install.
+	// EventInstalling is emitted immediately before InstallSession.Install.
 	EventInstalling
 	// EventComplete is emitted after a healthy committed installation, and
 	// at the end of a dry run, whose Detail is "dry-run". It is the run's

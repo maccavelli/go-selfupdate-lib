@@ -172,3 +172,47 @@ func TestCommandOverridesJSON(t *testing.T) {
 		t.Fatalf("the caller's JSON was kept: stdout %q", stdout.String())
 	}
 }
+
+// TestCommandEarlyFailureReachesReport: an invocation that fails before Run
+// still calls HandOff.Report, once, with its error: in a detached run that
+// is what writes the result file the agent waits for. Its error joins the
+// run's, in the result object too. Help is no run, and is not reported
+// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md C2).
+func TestCommandEarlyFailureReachesReport(t *testing.T) {
+	notBuilt := func() (*selfupdate.Updater, error) { return nil, errors.New("config unreadable") }
+	for _, tc := range []struct {
+		name       string
+		args       []string
+		newUpdater func() (*selfupdate.Updater, error)
+	}{
+		{"newUpdater fails", []string{"--yes"}, notBuilt},
+		{"newUpdater returns nil", []string{"--yes"}, func() (*selfupdate.Updater, error) { return nil, nil }},
+		{"a positional argument", []string{"--yes", "extra"}, notBuilt},
+		{"--check and --yes", []string{"--check", "--yes"}, notBuilt},
+	} {
+		calls := 0
+		var got error
+		o := Options{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}, HandOff: HandOff{
+			Report: func(_ selfupdate.Result, err error) error { calls++; got = err; return nil },
+		}}
+		if code := Command(context.Background(), tc.args, "demo", releaseID, tc.newUpdater, o); code != 1 || calls != 1 || got == nil {
+			t.Errorf("%s: exit %d, Report calls=%d with %v; want exit 1 and one call with the error", tc.name, code, calls, got)
+		}
+	}
+	var stdout bytes.Buffer
+	code := Command(context.Background(), []string{"--json", "--yes"}, "demo", releaseID, notBuilt,
+		Options{Stdout: &stdout, Stderr: &bytes.Buffer{}, HandOff: HandOff{
+			Report: func(selfupdate.Result, error) error { return errors.New("result file: read-only") },
+		}})
+	if code != 1 || !strings.Contains(stdout.String(), "config unreadable") || !strings.Contains(stdout.String(), "result file: read-only") {
+		t.Errorf("a failing Report under --json: exit %d, stdout %q; want both errors in the object", code, stdout.String())
+	}
+	calls := 0
+	Command(context.Background(), []string{"-h"}, "demo", releaseID, notBuilt,
+		Options{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}, HandOff: HandOff{
+			Report: func(selfupdate.Result, error) error { calls++; return nil },
+		}})
+	if calls != 0 {
+		t.Errorf("help reported %d time(s)", calls)
+	}
+}

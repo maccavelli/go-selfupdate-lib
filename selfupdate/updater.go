@@ -136,34 +136,32 @@ func (u *run) execute(ctx context.Context, req Request) (res Result, err error) 
 			Target: res.TargetVersion, Asset: res.AssetName, Detail: failureClass(err),
 		})
 	}()
+	// A failed run still names itself: the product, the running version,
+	// and what was asked (0015-MADR C6).
+	base := Result{Product: req.Product, CurrentVersion: req.CurrentVersion, Checked: req.CheckOnly, DryRun: req.DryRun}
 	if err := validateRequest(req, u.versions); err != nil {
 		if validateProduct(req.Product) != nil {
 			// An invalid product name is not safe to put in the prefix.
 			return Result{}, err
 		}
-		return Result{}, wrapRun(req, err)
+		return base, wrapRun(req, err)
 	}
 	req.Platform = normalizePlatform(req.Platform)
 	if err := u.report(ctx, Event{Kind: EventResolvingTarget, Product: req.Product, Current: req.CurrentVersion}); err != nil {
-		return Result{}, wrapRun(req, err)
+		return base, wrapRun(req, err)
 	}
 	target, err := u.installer.ResolveTarget(ctx)
 	if err != nil {
-		return Result{}, wrapRun(req, err)
+		return base, wrapRun(req, err)
 	}
 	if err := u.report(ctx, Event{Kind: EventFetchingRelease, Product: req.Product, Current: req.CurrentVersion, Target: req.TargetVersion}); err != nil {
-		return Result{}, wrapRun(req, err)
+		return base, wrapRun(req, err)
 	}
 	// Discovery is shared with Checker.Check, so Run and Check cannot
 	// disagree (0004-MADR G3).
 	rel, sel, op, err := u.checker().discover(ctx, req)
 	if err != nil {
-		return Result{}, wrapRun(req, err)
-	}
-	// A selector and an unpacker that disagree fail here, before any asset
-	// is downloaded, and on a check too (0012-MADR §2).
-	if err := u.matchUnpacker(sel); err != nil {
-		return Result{}, wrapRun(req, err)
+		return base, wrapRun(req, err)
 	}
 	result := Result{
 		Product:        req.Product,
@@ -182,7 +180,7 @@ func (u *run) execute(ctx context.Context, req Request) (res Result, err error) 
 		selected.Detail = "local build: apply requires --force"
 	}
 	if err := u.report(ctx, selected); err != nil {
-		return Result{}, wrapRun(req, err)
+		return base, wrapRun(req, err)
 	}
 	if req.CheckOnly {
 		result.Checked = true
@@ -409,19 +407,6 @@ func (u *run) apply(ctx context.Context, req Request, result Result, target Targ
 		Target: rel.Tag, Asset: sel.Binary.Name, Detail: detail,
 	})
 	return u.warn(ctx, req, resultOut, rel, sel, instErr, closeErr, repErr), nil
-}
-
-// matchUnpacker fails a selection the configured Unpacker cannot handle: an
-// archive with no unpacker, or an unpacker with a selection that is not an
-// archive.
-func (u *run) matchUnpacker(sel Selection) error {
-	switch {
-	case sel.Packed && u.unpacker == nil:
-		return fmt.Errorf("selfupdate: asset %q is an archive and no Unpacker is configured", sanitizeText(sel.Binary.Name))
-	case !sel.Packed && u.unpacker != nil:
-		return fmt.Errorf("selfupdate: an Unpacker is configured, but asset %q is not marked as an archive", sanitizeText(sel.Binary.Name))
-	}
-	return nil
 }
 
 // unpack has the Unpacker write the program from the archive at archive

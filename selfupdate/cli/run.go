@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"reflect"
 	"strings"
 	"syscall"
 	"time"
@@ -59,8 +60,9 @@ type HandOff struct {
 	// Stderr, or under JSON a result object with "handed_off", and exit
 	// 0. Its error fails the run.
 	Detach func(ctx context.Context, req selfupdate.Request) (handedOff bool, detail string, err error)
-	// Report runs after every update that ran here, with its outcome. Its
-	// error fails the run.
+	// Report runs after every update that ran here, with its outcome, and
+	// after an invocation Command ended before Run, with its error. It runs
+	// before the result object, and its error fails the run.
 	Report func(res selfupdate.Result, err error) error
 }
 
@@ -86,14 +88,28 @@ func (o Options) check(u *selfupdate.Updater) error {
 	switch {
 	case u == nil:
 		return errors.New("cli: updater is nil")
-	case o.Stderr == nil:
+	case isNilWriter(o.Stderr):
 		return errors.New("cli: Options.Stderr is nil")
-	case o.JSON && o.Stdout == nil:
+	case o.JSON && isNilWriter(o.Stdout):
 		return errors.New("cli: Options.Stdout is nil with JSON set")
 	case o.Timeout < 0:
 		return errors.New("cli: Options.Timeout is negative")
 	}
 	return nil
+}
+
+// isNilWriter reports a nil writer, including a nil pointer behind the
+// interface, which would panic on its first write (0015-MADR C7).
+func isNilWriter(w io.Writer) bool {
+	if w == nil {
+		return true
+	}
+	v := reflect.ValueOf(w)
+	switch v.Kind() {
+	case reflect.Pointer, reflect.Map, reflect.Slice, reflect.Func, reflect.Chan, reflect.Interface:
+		return v.IsNil()
+	}
+	return false
 }
 
 // Run runs req on u with the canonical streams: events and prompts on
@@ -140,20 +156,28 @@ func Run(ctx context.Context, u *selfupdate.Updater, req selfupdate.Request, o O
 		conf = selfupdate.NewPromptConfirmer(o.Stdin, o.Stderr, o.Interactive)
 	}
 	res, err := u.RunWith(ctx, req, selfupdate.WithReporter(rep), selfupdate.WithConfirmer(conf))
-	werr := errors.Join(o.warn(res), o.finish(res, err))
+	// The warnings and HandOff.Report come before the last line, so the
+	// result object carries every error that decides the exit code
+	// (0015-MADR C1).
+	late := o.warn(res)
 	if o.HandOff.Report != nil {
-		werr = errors.Join(werr, o.HandOff.Report(res, errors.Join(err, werr)))
+		late = errors.Join(late, o.HandOff.Report(res, joinLate(err, late)))
 	}
-	if werr != nil {
-		// An update nobody was told about is not "update available": the
-		// write error alone decides, so the exit code is 1 and Exit
-		// reports it (0010-MADR C3).
-		if errors.Is(err, selfupdate.ErrUpdateAvailable) {
-			return res, werr
-		}
-		return res, errors.Join(err, werr)
+	err = joinLate(err, late)
+	return res, joinLate(err, o.finish(res, err))
+}
+
+// joinLate adds an error that arrived after the run to the run's. An update
+// nobody was told about is not "update available": the late error alone
+// decides, so the exit code is 1 and Exit reports it (0010-MADR C3).
+func joinLate(err, late error) error {
+	switch {
+	case late == nil:
+		return err
+	case errors.Is(err, selfupdate.ErrUpdateAvailable):
+		return late
 	}
-	return res, err
+	return errors.Join(err, late)
 }
 
 // warn writes "warning: <text>" to Stderr for each of the run's warnings,

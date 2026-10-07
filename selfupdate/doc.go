@@ -99,9 +99,11 @@
 // entry. It does not prove publisher signature authenticity, and no
 // publisher signature is verified by default. Config.ManifestVerifiers run
 // on the downloaded SHA256SUMS before any binary byte is fetched; that is the
-// hook for a signature over the manifest. Config.Verifiers run on the staged
-// binary after the integrity check, and NewImageVerifier checks that it is an
-// executable for the selected platform.
+// hook for a signature over the manifest. Config.Verifiers run on the asset
+// as published, after the integrity check: the binary, or the archive when
+// Config.Unpacker is set. NewImageVerifier checks that the binary is an
+// executable for the selected platform; New refuses it beside an Unpacker,
+// which checks the program it extracts itself.
 //
 // # Probes
 //
