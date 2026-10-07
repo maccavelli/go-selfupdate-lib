@@ -36,6 +36,28 @@ func check(ctx context.Context, dir, productsJSON, platformsJSON string) ([]stri
 	if err := json.Unmarshal([]byte(platformsJSON), &platforms); err != nil {
 		return nil, usagef("-platforms-json: %v", err)
 	}
+	// The client's selector, over the packed platforms: it must choose
+	// each archive by the name it is staged under (0015-MADR E5).
+	var packed []selfupdate.Platform
+	formats := map[selfupdate.Platform]archive.Format{}
+	for _, pp := range platforms {
+		if pp.Format != "" {
+			p := selfupdate.Platform{OS: pp.OS, Arch: pp.Arch}
+			packed = append(packed, p)
+			formats[p] = pp.Format
+		}
+	}
+	var sel selfupdate.AssetSelector
+	if len(packed) > 0 {
+		var err error
+		sel, err = archive.NewSelector(archive.SelectorOptions{
+			Platforms: packed,
+			Format:    func(p selfupdate.Platform) archive.Format { return formats[p] },
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
 	var checked []string
 	for _, prod := range products {
 		for _, pp := range platforms {
@@ -46,6 +68,10 @@ func check(ctx context.Context, dir, productsJSON, platformsJSON string) ([]stri
 			name, err := archive.FleetName(prod, "", p, pp.Format)
 			if err != nil {
 				return nil, err
+			}
+			rel := selfupdate.Release{Assets: []selfupdate.Asset{{Name: name}, {Name: manifestName}}}
+			if _, err := sel.Select(rel, prod, p); err != nil {
+				return nil, fmt.Errorf("%s: the client's selector refuses it: %w", name, err)
 			}
 			path := filepath.Join(dir, name)
 			if pp.Format == archive.TarGz || pp.Format == archive.Gz {
@@ -101,6 +127,10 @@ func wholeGzip(path string) error {
 // maxGzipOverhead is what a release archive may expand to beyond its
 // program: tar's headers and padding.
 const maxGzipOverhead = 8 << 20
+
+// manifestName is the checksum asset the client's selector requires beside
+// each archive, as stage writes it.
+const manifestName = "SHA256SUMS"
 
 func runCheck(ctx context.Context, args []string, stdout io.Writer) error {
 	f := newFlags("check")

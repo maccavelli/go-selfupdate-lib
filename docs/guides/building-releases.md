@@ -58,7 +58,9 @@ cannot live at the repository root unless that package does.
 - **`platforms`:** GOOS and GOARCH pairs. Each must be a target of your
   Go toolchain.
 - **`packaging`:** `binary` (the default) ships
-  `<product>-<os>-<arch>[.exe]`; `archive` ships archives (step 7).
+  `<product>-<os>-<arch>[.exe]`; `archive` ships archives (step 7). Under
+  `archive`, each archive's name must be at most 128 characters, and a
+  tar.gz program's name at most 100.
 - **`extras`:** further assets, such as an SBOM. `{tag}` in a name is
   replaced by the release tag. With `path`, the file comes from your
   repository; without it, from an artifact you upload (step 6).
@@ -243,7 +245,11 @@ archives or all binaries.
 - The build workflow unpacks each with the library's own unpacker and
   compares the program byte for byte. The publish workflow unpacks each
   again before it creates the release, so a release the client would
-  refuse is never published.
+  refuse is never published. Since `v1.10.1` it also runs the client's
+  archive selector on each archive's name, and `releasespec.Parse`
+  refuses a spec whose composed names the selector, or a tar.gz header,
+  could not hold: an archive name over 128 characters, or a tar.gz
+  program name over 100.
 - Your program's `spec.AssetSelector()` and `spec.Unpacker()` already
   select and extract them; see
   [Ship an archive](extending-selfupdate.md#ship-an-archive) for what the

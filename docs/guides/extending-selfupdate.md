@@ -223,6 +223,13 @@ binary. Why it works as it does is in
     (case-insensitively), links, devices and sparse files, too many
     entries, more than `Limits.Executable` bytes, overlapping zip entries,
     and more than one program.
+  - Since `v1.10.1` it also refuses: a name with a byte outside
+    printable ASCII, or an element ending in a dot or a space, which
+    APFS, NTFS or Win32 would make another name; a zip entry whose local
+    header disagrees with its central-directory record, or that carries
+    an Info-ZIP Unicode Path field; a zip directory attribute on a name
+    without a trailing `/`, and a directory entry that holds data; a tar
+    regular file whose name ends in `/`; and an encrypted zip entry.
   - It then checks that the program is an executable for the platform.
   - Every refusal is an `ErrIntegrity`.
 - **Publishing:** since `v1.9.0`, this repository's workflows build,
@@ -296,7 +303,9 @@ when `runtime.GOOS` is `"darwin"`.
   - **`Identifier` is required.** Without it, `codesign` names the
     signature after the staging file, `.relay`, not after your program.
   - After signing, the signer verifies the signature and requires that
-    identifier, and `Requirement` too when you set it.
+    identifier, and `Requirement` too when you set it. Since `v1.10.1`
+    each is checked in its own `codesign --verify` run, so a
+    `Requirement` cannot undo the identifier check.
   - Signing with a certificate needs the identity in your keychains, and
     is expected to need Xcode or the Command Line Tools.
   - `Runtime` adds the hardened runtime. `Timestamp` asks Apple's timestamp

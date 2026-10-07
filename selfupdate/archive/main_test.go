@@ -5,7 +5,9 @@ import (
 	"archive/zip"
 	"bytes"
 	"compress/gzip"
+	"encoding/binary"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"os"
 	"os/exec"
@@ -233,6 +235,52 @@ func paxSparseTarGz(t testing.TB) []byte {
 	raw.Write(data)
 	raw.Write(make([]byte, 1024))
 	return gzipBytes(t, raw.Bytes())
+}
+
+// slashRegTarGz is a tar.gz whose one entry is a regular file (type 0)
+// named name, a name that ends in "/" (0015-MADR E3).
+func slashRegTarGz(t testing.TB, name string, body []byte) []byte {
+	t.Helper()
+	raw := append(tarBlock(name, '0', int64(len(body))), padBlock(append([]byte(nil), body...))...)
+	return gzipBytes(t, append(raw, make([]byte, 1024)...))
+}
+
+// localNameZip is a zip of one entry, named central in the central
+// directory and local, of the same length, in its local header
+// (0015-MADR E1).
+func localNameZip(t testing.TB, central, local string, body []byte) []byte {
+	t.Helper()
+	if len(central) != len(local) {
+		t.Fatalf("%q and %q differ in length", central, local)
+	}
+	b := zipBytes(t, zfile(central, body))
+	if string(b[:4]) != "PK\x03\x04" || string(b[30:30+len(central)]) != central {
+		t.Fatal("the local header was not found")
+	}
+	copy(b[30:], local)
+	return b
+}
+
+// unicodePathExtra is an Info-ZIP Unicode Path extra field (0x7075) that
+// names the entry u, for a header named name (0015-MADR E1).
+func unicodePathExtra(name, u string) []byte {
+	b := binary.LittleEndian.AppendUint16(nil, 0x7075)
+	b = binary.LittleEndian.AppendUint16(b, uint16(5+len(u))) //nolint:gosec // a test's short name
+	b = append(b, 1)
+	b = binary.LittleEndian.AppendUint32(b, crc32.ChecksumIEEE([]byte(name)))
+	return append(b, u...)
+}
+
+// renamedZip is zipBytes with from, which must occur exactly twice (the
+// local header and the central record), renamed to to, of the same
+// length: a name the zip writer would not write with that data.
+func renamedZip(t testing.TB, from, to string, es ...zipEntry) []byte {
+	t.Helper()
+	b := zipBytes(t, es...)
+	if len(from) != len(to) || bytes.Count(b, []byte(from)) != 2 {
+		t.Fatalf("%q is not in the zip exactly twice, or %q differs in length", from, to)
+	}
+	return bytes.ReplaceAll(b, []byte(from), []byte(to))
 }
 
 // gnuSparseTarGz is a tar.gz whose one entry has the GNU sparse type.

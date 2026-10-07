@@ -15,6 +15,11 @@ const (
 	maxPlatforms = 32
 	maxExtras    = 32
 	maxList      = 16 // tags and identity_args, each
+	// maxTarName is a USTAR entry name's length, as pack writes the
+	// program, with no directory.
+	maxTarName = 100
+	// maxAssetName is the archive selector's asset-name length.
+	maxAssetName = 128
 )
 
 var (
@@ -47,6 +52,9 @@ func (s Spec) Validate() error {
 		return err
 	}
 	if err := s.validatePlatforms(); err != nil {
+		return err
+	}
+	if err := s.validateArchiveNames(); err != nil {
 		return err
 	}
 	if err := s.validateInstaller(); err != nil {
@@ -161,6 +169,40 @@ func (s Spec) validatePlatforms() error {
 		case archive.TarGz, archive.Zip, archive.Gz:
 		default:
 			return fmt.Errorf("%s.format: %q is not %q, %q or %q", at, p.Format, archive.TarGz, archive.Zip, archive.Gz)
+		}
+	}
+	return nil
+}
+
+// validateArchiveNames checks, under archive packaging, that the client's
+// archive selector accepts every composed asset name, and that a tar.gz
+// program's name fits the USTAR header pack writes (0015-MADR E5).
+func (s Spec) validateArchiveNames() error {
+	if s.Packaging != PackagingArchive {
+		return nil
+	}
+	for i, prod := range s.Products {
+		at := fmt.Sprintf("releasespec: products[%d]", i)
+		for _, p := range s.Platforms {
+			t := p.Target()
+			name, err := s.AssetName(prod.Name, t)
+			if err != nil {
+				return err
+			}
+			if !assetNameRe.MatchString(name) {
+				return fmt.Errorf("%s: the asset name %q is %d characters; the archive selector accepts at most %d",
+					at, name, len(name), maxAssetName)
+			}
+			if f, _ := s.FormatFor(t); f != archive.TarGz {
+				continue
+			}
+			prog := prod.Name
+			if t.OS == "windows" {
+				prog += ".exe"
+			}
+			if len(prog) > maxTarName {
+				return fmt.Errorf("%s: %q is %d characters; a tar.gz entry name holds at most %d", at, prog, len(prog), maxTarName)
+			}
 		}
 	}
 	return nil

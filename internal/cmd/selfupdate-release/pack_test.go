@@ -227,6 +227,21 @@ func TestCheck(t *testing.T) {
 			}
 		})
 	}
+	// A name the archive selector refuses: 120 characters plus the
+	// platform and ".zip" is over 128 (0015-MADR E5).
+	t.Run("a name the client's selector refuses", func(t *testing.T) {
+		dir := t.TempDir()
+		long := strings.Repeat("r", 120)
+		asset, _ := archive.FleetName(long, "", host, archive.Zip)
+		if err := os.WriteFile(filepath.Join(dir, asset), packed(t, archive.Zip, programName(long, host), prog), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		platforms := `[{"os":"` + host.OS + `","arch":"` + host.Arch + `","format":"zip"}]`
+		_, err := check(context.Background(), dir, `["`+long+`"]`, platforms)
+		if err == nil || !strings.Contains(err.Error(), "the client's selector refuses it") {
+			t.Fatalf("check: %v; want the selector's refusal", err)
+		}
+	})
 	t.Run("a raw release", func(t *testing.T) {
 		checked, err := check(context.Background(), t.TempDir(), `["relay"]`, `[{"os":"linux","arch":"amd64"}]`)
 		if err != nil || len(checked) != 0 {

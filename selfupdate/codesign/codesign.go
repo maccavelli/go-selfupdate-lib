@@ -45,8 +45,10 @@ type SignOptions struct {
 	// Timestamp asks Apple's timestamp server for a secure timestamp. False
 	// passes --timestamp=none, so an update never needs that server.
 	Timestamp bool
-	// Requirement, when set, is checked after signing, in addition to the
-	// identifier, as with codesign -R. It has no leading "=".
+	// Requirement, when set, is checked after signing, as with codesign
+	// -R, in its own run after the identifier's: it is never joined to
+	// the identifier, so its text cannot undo that check. It has no
+	// leading "=".
 	Requirement string
 	// Codesign is the tool's absolute path. Empty means /usr/bin/codesign.
 	Codesign string
@@ -171,11 +173,14 @@ func signerFor(o SignOptions, goos string) (selfupdate.Transformer, error) {
 	return &signer{tool: t, o: o}, nil
 }
 
-// requirement is the identifier, and the configured requirement when set.
-func (s *signer) requirement() string {
-	r := `identifier "` + s.o.Identifier + `"`
+// requirements are what the new signature must meet, each checked in its
+// own codesign run: the identifier, then the configured requirement when
+// set. Joined into one, a requirement such as `anchor apple) or (always`
+// would cancel the identifier (0015-MADR E6).
+func (s *signer) requirements() []string {
+	r := []string{`identifier "` + s.o.Identifier + `"`}
 	if s.o.Requirement != "" {
-		r += " and (" + s.o.Requirement + ")"
+		r = append(r, s.o.Requirement)
 	}
 	return r
 }
@@ -204,19 +209,22 @@ func (s *signer) Transform(ctx context.Context, req selfupdate.TransformRequest)
 	if out.ExitCode != 0 {
 		return fmt.Errorf("selfupdate: codesign: signing failed (exit %d): %s", out.ExitCode, detail(out))
 	}
-	out, err = s.run(ctx, verifyArgs(s.requirement(), req.Path)...)
-	if err != nil {
-		return err
+	for _, r := range s.requirements() {
+		out, err = s.run(ctx, verifyArgs(r, req.Path)...)
+		if err != nil {
+			return err
+		}
+		switch out.ExitCode {
+		case 0:
+			continue
+		case 1:
+			return fmt.Errorf("selfupdate: codesign: the new signature is not valid (exit 1): %s", detail(out))
+		case 3:
+			return fmt.Errorf("selfupdate: codesign: the new signature does not meet %s (exit 3): %s", r, detail(out))
+		}
+		return fmt.Errorf("selfupdate: codesign: verifying failed (exit %d): %s", out.ExitCode, detail(out))
 	}
-	switch out.ExitCode {
-	case 0:
-		return nil
-	case 1:
-		return fmt.Errorf("selfupdate: codesign: the new signature is not valid (exit 1): %s", detail(out))
-	case 3:
-		return fmt.Errorf("selfupdate: codesign: the new signature does not meet %s (exit 3): %s", s.requirement(), detail(out))
-	}
-	return fmt.Errorf("selfupdate: codesign: verifying failed (exit %d): %s", out.ExitCode, detail(out))
+	return nil
 }
 
 type checker struct {

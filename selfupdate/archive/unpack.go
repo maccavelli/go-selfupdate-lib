@@ -8,6 +8,7 @@ import (
 	"cmp"
 	"compress/gzip"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -28,6 +29,18 @@ const defaultMaxEntries = 4096
 // headerAllowance is what a tar.gz stream may hold beyond its entries'
 // contents: headers, PAX records and padding (0012-PLAN U3 step 3).
 const headerAllowance = 8 << 20
+
+// The zip format's fixed values this package checks (APPNOTE.TXT 4.3.7,
+// 4.4.4, 4.6.1).
+const (
+	// localHeaderLen is a local file header's length before its name.
+	localHeaderLen = 30
+	// encryptedFlags are the general-purpose flags for an encrypted entry:
+	// encrypted, strong encryption, and a masked local header.
+	encryptedFlags = 0x2041
+	// unicodePathTag is Info-ZIP's Unicode Path extra field.
+	unicodePathTag = 0x7075
+)
 
 // UnpackOptions configure NewUnpacker.
 type UnpackOptions struct {
@@ -206,6 +219,9 @@ func (e *entries) add(name string, size int64) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if err := checkPortable(name, clean); err != nil {
+		return "", err
+	}
 	key := strings.ToLower(clean)
 	if e.seen[key] {
 		return "", refuse("entry %q repeats a name, or differs from another only in case", name)
@@ -232,6 +248,25 @@ func checkName(name string) (string, error) {
 		return "", refuse("entry name %q is not safe", name)
 	}
 	return clean, nil
+}
+
+// checkPortable refuses a name that a file system could make another's:
+// a byte outside printable ASCII, which APFS and NTFS may fold (U+017F ſ
+// to s), and an element ending in a dot or a space, which Win32 strips.
+// With both refused, strings.ToLower is the folding those file systems
+// apply (0015-MADR E2).
+func checkPortable(name, clean string) error {
+	for i := range len(name) {
+		if name[i] < 0x20 || name[i] > 0x7e {
+			return refuse("entry name %q is not printable ASCII", name)
+		}
+	}
+	for _, el := range strings.Split(clean, "/") {
+		if el != "." && el != ".." && (strings.HasSuffix(el, ".") || strings.HasSuffix(el, " ")) {
+			return refuse("entry name %q has an element ending in a dot or a space", name)
+		}
+	}
+	return nil
 }
 
 // capReader fails once more than n bytes have been read.
@@ -294,6 +329,10 @@ func (u *unpacker) extractTarGz(ctx context.Context, r io.Reader, w io.Writer, i
 		case tar.TypeDir:
 			continue
 		case tar.TypeReg, '\x00':
+			// bsdtar makes a directory of it (0015-MADR E3).
+			if strings.HasSuffix(hdr.Name, "/") {
+				return refuse("regular file %q is named as a directory", hdr.Name)
+			}
 		default:
 			return refuse("entry %q is not a regular file or a directory (type %q)", hdr.Name, hdr.Typeflag)
 		}
@@ -325,8 +364,30 @@ func (u *unpacker) extractTarGz(ctx context.Context, r io.Reader, w io.Writer, i
 
 type span struct{ start, end int64 }
 
+// headerRecorder is the io.ReaderAt the zip reader reads through. It
+// records the last read, so the offset of the local header that
+// zip.File.DataOffset reads, which archive/zip does not export, is known
+// (0015-MADR E1).
+type headerRecorder struct {
+	r   io.ReaderAt
+	off int64
+	n   int
+}
+
+func (h *headerRecorder) ReadAt(p []byte, off int64) (int, error) {
+	h.off, h.n = off, len(p)
+	return h.r.ReadAt(p, off)
+}
+
+// local is one zip entry with its local header's offset and its data's.
+type local struct {
+	zf        *zip.File
+	hdr, data int64
+}
+
 func (u *unpacker) extractZip(ctx context.Context, ra io.ReaderAt, size int64, w io.Writer, isProgram func(string) bool, limit int64) error {
-	zr, err := zip.NewReader(ra, size)
+	rec := &headerRecorder{r: ra}
+	zr, err := zip.NewReader(rec, size)
 	if err != nil {
 		return refuse("zip: %v", err)
 	}
@@ -335,6 +396,7 @@ func (u *unpacker) extractZip(ctx context.Context, ra io.ReaderAt, size int64, w
 	}
 	seen := newEntries(u.maxEntries, limit)
 	var spans []span
+	var locals []local
 	var program *zip.File
 	for _, zf := range zr.File {
 		usize, ok := toInt64(zf.UncompressedSize64)
@@ -349,13 +411,29 @@ func (u *unpacker) extractZip(ctx context.Context, ra io.ReaderAt, size int64, w
 		if !mode.IsDir() && !mode.IsRegular() {
 			return refuse("entry %q is not a regular file or a directory (mode %v)", zf.Name, mode)
 		}
+		// Info-ZIP's unzip extracts an entry by its name, whatever its
+		// attributes say (0015-MADR E3).
+		if mode.IsDir() != strings.HasSuffix(zf.Name, "/") {
+			return refuse("entry %q: its directory attribute does not match its name", zf.Name)
+		}
+		if mode.IsDir() && (zf.UncompressedSize64 > 0 || zf.CompressedSize64 > 0) {
+			return refuse("directory %q holds data", zf.Name)
+		}
+		if zf.Flags&encryptedFlags != 0 {
+			return refuse("entry %q is encrypted (flags %#04x)", zf.Name, zf.Flags)
+		}
 		if zf.Method != zip.Store && zf.Method != zip.Deflate {
 			return refuse("entry %q uses compression method %d", zf.Name, zf.Method)
 		}
+		rec.n = 0
 		off, err := zf.DataOffset()
 		if err != nil {
 			return refuse("entry %q: %v", zf.Name, err)
 		}
+		if rec.n != localHeaderLen {
+			return refuse("entry %q: its local header could not be located", zf.Name)
+		}
+		locals = append(locals, local{zf, rec.off, off})
 		csize, ok := toInt64(zf.CompressedSize64)
 		if !ok || off < 0 || csize > size || off > size-csize {
 			return refuse("entry %q's data lies outside the archive", zf.Name)
@@ -376,6 +454,11 @@ func (u *unpacker) extractZip(ctx context.Context, ra io.ReaderAt, size int64, w
 			return refuse("two entries' data overlap")
 		}
 	}
+	for _, l := range locals {
+		if err := checkLocal(ra, l.zf, l.hdr, l.data); err != nil {
+			return err
+		}
+	}
 	if program == nil {
 		return refuse("the archive holds no program")
 	}
@@ -388,6 +471,63 @@ func (u *unpacker) extractZip(ctx context.Context, ra io.ReaderAt, size int64, w
 	}
 	_, err = copyProgram(w, rc, limit)
 	return errors.Join(err, rc.Close())
+}
+
+// checkLocal requires an entry's local header, at hdr, to agree with its
+// central-directory record: the signature, no encryption, the method, the
+// name, and the lengths that put its data at data. Go reads the central
+// record; bsdtar and Info-ZIP read the local header, so an archive they
+// would read differently is refused (0015-MADR E1, E4).
+func checkLocal(ra io.ReaderAt, zf *zip.File, hdr, data int64) error {
+	var b [localHeaderLen]byte
+	if _, err := ra.ReadAt(b[:], hdr); err != nil {
+		return refuse("entry %q: reading its local header: %v", zf.Name, err)
+	}
+	if string(b[:4]) != "PK\x03\x04" {
+		return refuse("entry %q: its local header has no signature", zf.Name)
+	}
+	if flags := binary.LittleEndian.Uint16(b[6:]); flags&encryptedFlags != 0 {
+		return refuse("entry %q is encrypted (local flags %#04x)", zf.Name, flags)
+	}
+	if m := binary.LittleEndian.Uint16(b[8:]); m != zf.Method {
+		return refuse("entry %q: its local header names compression method %d, not %d", zf.Name, m, zf.Method)
+	}
+	n, m := int64(binary.LittleEndian.Uint16(b[26:])), int64(binary.LittleEndian.Uint16(b[28:]))
+	if hdr+localHeaderLen+n+m != data {
+		return refuse("entry %q: its local header does not end where its data starts", zf.Name)
+	}
+	rest := make([]byte, n+m)
+	if _, err := ra.ReadAt(rest, hdr+localHeaderLen); err != nil {
+		return refuse("entry %q: reading its local header: %v", zf.Name, err)
+	}
+	if string(rest[:n]) != zf.Name {
+		return refuse("entry %q: its local header names %q", zf.Name, rest[:n])
+	}
+	if err := checkExtra(zf.Name, zf.Extra); err != nil {
+		return err
+	}
+	return checkExtra(zf.Name, rest[n:])
+}
+
+// checkExtra walks an extra field's [tag][size][data] records. It refuses
+// one that runs past the field, and Info-ZIP's Unicode Path field, which
+// bsdtar and Info-ZIP use as the entry's name in place of the header's
+// (0015-MADR E1).
+func checkExtra(name string, b []byte) error {
+	for len(b) > 0 {
+		if len(b) < 4 {
+			return refuse("entry %q: its extra field overruns", name)
+		}
+		tag, size := binary.LittleEndian.Uint16(b), int(binary.LittleEndian.Uint16(b[2:]))
+		if 4+size > len(b) {
+			return refuse("entry %q: its extra field overruns", name)
+		}
+		if tag == unicodePathTag {
+			return refuse("entry %q has an Info-ZIP Unicode Path field", name)
+		}
+		b = b[4+size:]
+	}
+	return nil
 }
 
 // toInt64 converts a zip size, failing on one no file could have.

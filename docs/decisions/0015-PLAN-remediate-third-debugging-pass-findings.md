@@ -3092,3 +3092,94 @@ approved it: "proceed". The PLAN as approved is commit `47f0f97`.
     49 files, 0 broken"; ids "31 files, 16 deny-list rules, 0 findings".
     Its first run failed `ids` on `TestCommandShape`'s fixture home,
     fixed as above.
+
+### Phase P6: archives, the spec and codesign (2026-10-07)
+
+* **Red,** on the unfixed code:
+  * **E1–E4:** `TestUnpackRefuses`, fourteen new cases, each "Unpack =
+    <nil>": "local header names another file", "Info-ZIP Unicode Path";
+    "long s", "trailing dot" and "trailing space", each for tar and zip;
+    "zip FAT directory attribute with data", "zip directory mode with
+    data", "tar regular file named as a directory", "zip directory with
+    data"; "zip encrypted" and "zip strong encryption".
+  * **E5:** `TestParseRefuses` "archive name 139 characters", "archive
+    name 129 characters" and "tar.gz program 101 characters": "Parse
+    accepted …"; `TestCheck` "a name the client's selector refuses":
+    "check: <nil>".
+  * **E6:** `TestSignerArguments` "every option" and
+    `TestSignerRequirementIsSeparate`: two calls, the second
+    `-R=identifier "com.example.relay" and (anchor apple) or (always)`;
+    `TestSignerErrors` "requirement's own run unmet": "Transform = <nil>".
+* **Fix:**
+  * **E1, E4** (`archive/unpack.go`): `headerRecorder` wraps the
+    `io.ReaderAt` given to `zip.NewReader`; after each `DataOffset`, a
+    last read of other than 30 bytes is refused. After the overlap check,
+    `checkLocal` requires the signature, no encryption flag (`0x2041`),
+    the method, the lengths, and the name; `checkExtra` walks the central
+    and the local extra fields, refusing an overrun (a trailing 1–3 bytes
+    included) and tag `0x7075`. The central check refuses
+    `Flags&0x2041`: "entry %q is encrypted (flags %#04x)", which prints
+    `0x0001`.
+  * **E2:** `checkPortable`, called by `entries.add` after `checkName`.
+  * **E3:** zip, the directory attribute must match a trailing `/`, and a
+    directory holds no data; tar, a regular entry named with a trailing
+    `/` is refused.
+  * **E5** (`releasespec/validate.go`): `validateArchiveNames`, after
+    `validatePlatforms`, matches each composed name against the
+    selector's own rule (`assetNameRe`, the same expression), and caps a
+    tar.gz program at 100 characters. `check` builds `archive.NewSelector`
+    over the packed platforms and selects each archive from a release
+    holding its name and `SHA256SUMS`; `check.go` gains `manifestName`.
+  * **E6** (`codesign/codesign.go`): `requirements()` replaces
+    `requirement()`; `Transform` verifies each in its own run, and an
+    exit 3 names the requirement it ran.
+* **Test helpers** (`archive/main_test.go`): `localNameZip`,
+  `unicodePathExtra`, `slashRegTarGz`, as planned, and `renamedZip`, not
+  planned: the zip writer will not write data under a name ending in `/`,
+  so the "directory with data" entry is written as `docsX` and renamed.
+  `spec_test.go` gains `archiveSpec`.
+* **Test placement:** the two accepted E5 specs (110 characters with
+  `-windows-amd64.zip`, 128 in all; 120 under binary packaging) are a
+  subtest of `TestParseAccepts`, "archive names at the limits", since
+  `TestParseRefuses` requires an error.
+* **Seeds,** in Go's corpus format, generated in a scratch copy with the
+  test helpers and small bodies (the fuzz targets skip the image check):
+  five under `archive/testdata/fuzz/FuzzUnpackZip/` (E1's two, E3's
+  three), two under `FuzzUnpackTarGz/` (the long s, the slash-named
+  regular file), and one under `releasespec/testdata/fuzz/FuzzParse/` (a
+  128-character archive name).
+* **Green:** every package passes on darwin; the archive's unpack tests
+  pass on the Windows test host (55 `TestUnpackRefuses` cases).
+* **Plants,** fifteen, each caught:
+
+  | Plant | Fails |
+  | :--- | :--- |
+  | E1: the local name not compared | "local header names another file" |
+  | E1: the Unicode Path field allowed | "Info-ZIP Unicode Path" |
+  | E1: `checkLocal` before the overlap check | "overlapping entries": "entry \"other\": its local header names \"relay\"" |
+  | E2: the ASCII check dropped | "long s", tar and zip |
+  | E2: the suffix check dropped | the four trailing dot and space cases |
+  | E3: the attribute-name rule off | both directory-attribute cases ("directory \"relay\" holds data" fires instead) |
+  | E3: a directory may hold data | "zip directory with data" |
+  | E3: a tar regular file named as a directory | its case |
+  | E4: the central encryption check off | both: the local check fires, "(local flags 0x0001)", which the pinned message rejects |
+  | E5: `validateArchiveNames` not called | the three `TestParseRefuses` rows |
+  | E5: 129 characters allowed | "archive name 129 characters" |
+  | E5: binary packaging checked too | `TestParseAccepts` "archive names at the limits" |
+  | E5: the publish check skips `Select` | `TestCheck` "a name the client's selector refuses" |
+  | E6: the requirement composed again | `TestSignerArguments`, `TestSignerRequirementIsSeparate` |
+  | E6: the requirement's run skipped | `TestSignerErrors`, `TestSignerRequirementIsSeparate` |
+
+  Three plants first failed to compile ("declared and not used"); they
+  were rewritten to keep the variable, and then caught.
+* **Real archives,** step 9, in a scratch test on this Mac: Info-ZIP Zip
+  3.0 (`zip -r`), `ditto -c -k --keepParent`, bsdtar 3.5.3 tar.gz and
+  bsdtar's zip format, each of a directory holding the program, a README
+  and a subdirectory: all four unpack to the program. `git archive` waits
+  for Q4's E8, as planned.
+* **Live:** `SELFUPDATE_REQUIRE_CODESIGN=1` runs `TestLiveSignAdHoc` and
+  `TestLiveCheckerExitCodes`, which pass; `TestLiveSignIdentity` skips
+  without a configured identity. P6 plans no live test for E6.
+* **Docs:** `archive/doc.go`; the extending guide's "Ship an archive" and
+  "Sign on macOS"; the building guide's step 1 and §7; the
+  `SignOptions.Requirement` comment.

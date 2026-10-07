@@ -2,6 +2,7 @@ package releasespec
 
 import (
 	"encoding/json"
+	"maps"
 	"os"
 	"reflect"
 	"strings"
@@ -46,6 +47,16 @@ func base() map[string]any {
 		"schema":    1,
 		"products":  []any{map[string]any{"name": "relay", "package": "."}},
 		"platforms": []any{map[string]any{"os": "linux", "arch": "amd64"}},
+	}
+}
+
+// archiveSpec is a spec under archive packaging, of one product on one
+// amd64 platform, in its default format.
+func archiveSpec(name, goos string) map[string]any {
+	return map[string]any{
+		"schema": 1, "packaging": "archive",
+		"products":  []any{map[string]any{"name": name, "package": "."}},
+		"platforms": []any{map[string]any{"os": goos, "arch": "amd64"}},
 	}
 }
 
@@ -107,6 +118,19 @@ func TestParseAccepts(t *testing.T) {
 		s := mustParse(t, readFixture(t, "archive.json"))
 		if s.Extras != nil || s.PrereleaseChannels != nil {
 			t.Fatalf("extras %#v channels %#v", s.Extras, s.PrereleaseChannels)
+		}
+	})
+	// The longest names the client accepts (0015-MADR E5): 110 characters
+	// plus "-windows-amd64.zip" is 128; binary packaging has no archive.
+	t.Run("archive names at the limits", func(t *testing.T) {
+		for _, m := range []map[string]any{
+			archiveSpec(strings.Repeat("r", 110), "windows"),
+			{"schema": 1, "products": []any{map[string]any{"name": strings.Repeat("r", 120), "package": "."}},
+				"platforms": []any{map[string]any{"os": "linux", "arch": "amd64"}}},
+		} {
+			if _, err := Parse(encode(t, m)); err != nil {
+				t.Fatal(err)
+			}
 		}
 	})
 	t.Run("no packaging is binary", func(t *testing.T) {
@@ -194,6 +218,16 @@ func TestParseRefuses(t *testing.T) {
 			m["platforms"] = []any{map[string]any{"os": "linux", "arch": "amd64", "format": "tar.xz"}}
 		}, want: "platforms[0].format: \"tar.xz\" is not"},
 		{name: "unknown packaging", edit: func(m map[string]any) { m["packaging"] = "zip" }, want: "packaging: \"zip\""},
+		// Composed archive names (0015-MADR E5).
+		{name: "archive name 139 characters", edit: func(m map[string]any) {
+			maps.Copy(m, archiveSpec(strings.Repeat("r", 120), "linux"))
+		}, want: "is 139 characters; the archive selector accepts at most 128"},
+		{name: "archive name 129 characters", edit: func(m map[string]any) {
+			maps.Copy(m, archiveSpec(strings.Repeat("r", 111), "windows"))
+		}, want: "is 129 characters; the archive selector accepts at most 128"},
+		{name: "tar.gz program 101 characters", edit: func(m map[string]any) {
+			maps.Copy(m, archiveSpec(strings.Repeat("r", 101), "linux"))
+		}, want: "is 101 characters; a tar.gz entry name holds at most 100"},
 		// extras
 		{name: "33 extras", edit: func(m map[string]any) {
 			m["extras"] = repeat(33, func(i int) any { return map[string]any{"name": "e" + string(rune('a'+i%26)) + string(rune('a'+i/26))} })

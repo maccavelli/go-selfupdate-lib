@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"hash/crc32"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -157,6 +158,19 @@ func TestUnpackRefuses(t *testing.T) {
 	zlink := zfile(prog, []byte("/bin/sh"))
 	zlink.hdr.SetMode(os.ModeSymlink | 0o777)
 	odd := zipEntry{hdr: zip.FileHeader{Name: "README", Method: 99, CompressedSize64: 1, UncompressedSize64: 1}, body: []byte("x"), raw: true}
+	// 0015-MADR E1-E4: what another tool would read differently.
+	upath := zfile(prog, hostProgram)
+	upath.hdr.Extra = unicodePathExtra(prog, "evil")
+	fatDir := zipEntry{hdr: zip.FileHeader{Name: prog, Method: zip.Deflate, ExternalAttrs: 0x10}, body: small}
+	modeDir := zfile(prog, small)
+	modeDir.hdr.SetMode(fs.ModeDir | 0o755)
+	encrypted := func(flags uint16) zipEntry {
+		n := uint64(len(hostProgram))
+		h := zip.FileHeader{Name: prog, Method: zip.Store, Flags: flags, CompressedSize64: n, UncompressedSize64: n}
+		h.SetMode(0o755)
+		return zipEntry{hdr: h, body: hostProgram, raw: true}
+	}
+	dirData := zipEntry{hdr: zip.FileHeader{Name: "docsX", Method: zip.Store}, body: small}
 	cases := []struct {
 		name  string
 		opts  UnpackOptions
@@ -199,6 +213,24 @@ func TestUnpackRefuses(t *testing.T) {
 		// The zip layout.
 		{"overlapping entries", UnpackOptions{}, "a.zip", overlapZip(t), 0, "overlap"},
 		{"unknown method", UnpackOptions{}, "a.zip", zipBytes(t, odd, zfile("relay", small)), 0, "compression method 99"},
+		// The local header and the central directory (0015-MADR E1).
+		{"local header names another file", UnpackOptions{}, "a.zip", localNameZip(t, prog, "x"+prog[1:], hostProgram), 0, "its local header names"},
+		{"Info-ZIP Unicode Path", UnpackOptions{}, "a.zip", zipBytes(t, upath), 0, "Info-ZIP Unicode Path"},
+		// Names a file system folds (0015-MADR E2).
+		{"long s", UnpackOptions{}, "a.tar.gz", tarGz(t, file("relays", small), file("relay\u017f", small), file(prog, hostProgram)), 0, "not printable ASCII"},
+		{"zip long s", UnpackOptions{}, "a.zip", zipBytes(t, zfile("relays", small), zfile("relay\u017f", small), zfile(prog, hostProgram)), 0, "not printable ASCII"},
+		{"trailing dot", UnpackOptions{}, "a.tar.gz", tarGz(t, file(prog, hostProgram), file(prog+".", small)), 0, "ending in a dot or a space"},
+		{"zip trailing dot", UnpackOptions{}, "a.zip", zipBytes(t, zfile(prog, hostProgram), zfile(prog+".", small)), 0, "ending in a dot or a space"},
+		{"trailing space", UnpackOptions{}, "a.tar.gz", tarGz(t, file(prog, hostProgram), file(prog+" ", small)), 0, "ending in a dot or a space"},
+		{"zip trailing space", UnpackOptions{}, "a.zip", zipBytes(t, zfile(prog, hostProgram), zfile(prog+" ", small)), 0, "ending in a dot or a space"},
+		// A directory is an entry named with a trailing "/" (0015-MADR E3).
+		{"zip FAT directory attribute with data", UnpackOptions{}, "a.zip", zipBytes(t, fatDir, zfile("x/"+prog, hostProgram)), 0, "directory attribute does not match"},
+		{"zip directory mode with data", UnpackOptions{}, "a.zip", zipBytes(t, modeDir, zfile("x/"+prog, hostProgram)), 0, "directory attribute does not match"},
+		{"tar regular file named as a directory", UnpackOptions{}, "a.tar.gz", slashRegTarGz(t, prog+"/", hostProgram), 0, "named as a directory"},
+		{"zip directory with data", UnpackOptions{}, "a.zip", renamedZip(t, "docsX", "docs/", dirData, zfile(prog, hostProgram)), 0, "holds data"},
+		// Encrypted entries (0015-MADR E4).
+		{"zip encrypted", UnpackOptions{}, "a.zip", zipBytes(t, encrypted(0x1)), 0, "is encrypted (flags 0x0001)"},
+		{"zip strong encryption", UnpackOptions{}, "a.zip", zipBytes(t, encrypted(0x40)), 0, "is encrypted (flags 0x0040)"},
 		// The format.
 		{"zip named tar.gz", UnpackOptions{}, "a.tar.gz", zipBytes(t, zfile("relay", small)), 0, "not gzip"},
 		{"gzip named zip", UnpackOptions{}, "a.zip", gzipBytes(t, small), 0, "not zip"},

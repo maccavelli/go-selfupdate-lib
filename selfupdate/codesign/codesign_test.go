@@ -67,18 +67,18 @@ func TestSignerArguments(t *testing.T) {
 		name string
 		o    SignOptions
 		sign []string
-		req  string
+		reqs []string
 	}{
 		{"ad-hoc", SignOptions{Identity: "-", Identifier: "com.example.relay"},
 			[]string{"--force", "--sign", "-", "--identifier", "com.example.relay", "--timestamp=none", path},
-			`identifier "com.example.relay"`},
+			[]string{`identifier "com.example.relay"`}},
 		{"every option", SignOptions{
 			Identity: "Apple Development: A (TEAMID)", Identifier: "com.example.relay", Keychain: "/k/login.keychain-db",
 			Runtime: true, Timestamp: true, Requirement: "anchor apple generic", Codesign: "/opt/bin/codesign",
 		},
 			[]string{"--force", "--sign", "Apple Development: A (TEAMID)", "--identifier", "com.example.relay",
 				"--keychain", "/k/login.keychain-db", "--options", "runtime", "--timestamp", path},
-			`identifier "com.example.relay" and (anchor apple generic)`},
+			[]string{`identifier "com.example.relay"`, "anchor apple generic"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			s, f := mustSigner(t, c.o)
@@ -89,9 +89,9 @@ func TestSignerArguments(t *testing.T) {
 			if tool == "" {
 				tool = "/usr/bin/codesign"
 			}
-			want := [][]string{
-				append([]string{tool}, c.sign...),
-				{tool, "--verify", "--strict", "-R=" + c.req, path},
+			want := [][]string{append([]string{tool}, c.sign...)}
+			for _, req := range c.reqs {
+				want = append(want, []string{tool, "--verify", "--strict", "-R=" + req, path})
 			}
 			if got := f.argv(); !slices.EqualFunc(got, want, slices.Equal) {
 				t.Fatalf("argv\n%q\nwant\n%q", got, want)
@@ -108,18 +108,21 @@ func TestSignerArguments(t *testing.T) {
 func TestSignerErrors(t *testing.T) {
 	for _, c := range []struct {
 		name    string
+		req     string
 		outputs []service.Output
 		runErr  error
 		want    string
 	}{
-		{"sign fails", []service.Output{{ExitCode: 1, Stderr: []byte("no identity found\n")}}, nil, "signing failed (exit 1): no identity found"},
-		{"invalid", []service.Output{{}, {ExitCode: 1, Stderr: []byte("invalid signature")}}, nil, "is not valid (exit 1)"},
-		{"requirement unmet", []service.Output{{}, {ExitCode: 3}}, nil, "does not meet identifier"},
-		{"bad arguments", []service.Output{{}, {ExitCode: 2}}, nil, "verifying failed (exit 2)"},
-		{"runner", nil, errors.New("cannot run"), "cannot run"},
+		{"requirement's own run unmet", "anchor apple generic", []service.Output{{}, {}, {ExitCode: 3}}, nil,
+			"does not meet anchor apple generic (exit 3)"},
+		{"sign fails", "", []service.Output{{ExitCode: 1, Stderr: []byte("no identity found\n")}}, nil, "signing failed (exit 1): no identity found"},
+		{"invalid", "", []service.Output{{}, {ExitCode: 1, Stderr: []byte("invalid signature")}}, nil, "is not valid (exit 1)"},
+		{"requirement unmet", "", []service.Output{{}, {ExitCode: 3}}, nil, "does not meet identifier"},
+		{"bad arguments", "", []service.Output{{}, {ExitCode: 2}}, nil, "verifying failed (exit 2)"},
+		{"runner", "", nil, errors.New("cannot run"), "cannot run"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			s, f := mustSigner(t, SignOptions{Identity: "-", Identifier: "com.example.relay"})
+			s, f := mustSigner(t, SignOptions{Identity: "-", Identifier: "com.example.relay", Requirement: c.req})
 			f.outputs, f.err = c.outputs, c.runErr
 			err := s.Transform(context.Background(), signReq())
 			if err == nil || !strings.Contains(err.Error(), c.want) {
@@ -129,6 +132,28 @@ func TestSignerErrors(t *testing.T) {
 				t.Fatalf("a signer error wraps ErrIntegrity: %v", err)
 			}
 		})
+	}
+}
+
+// TestSignerRequirementIsSeparate: the configured requirement is checked in
+// its own run, as written, never composed with the identifier's, so its
+// text cannot undo the identifier pin
+// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md E6).
+func TestSignerRequirementIsSeparate(t *testing.T) {
+	const path = "/opt/relay/.relay.selfupdate-1"
+	for _, req := range []string{"anchor apple) or (always", "anchor apple generic /* team */"} {
+		s, f := mustSigner(t, SignOptions{Identity: "-", Identifier: "com.example.relay", Requirement: req})
+		if err := s.Transform(context.Background(), signReq()); err != nil {
+			t.Fatal(err)
+		}
+		got := f.argv()
+		want := [][]string{
+			{"/usr/bin/codesign", "--verify", "--strict", `-R=identifier "com.example.relay"`, path},
+			{"/usr/bin/codesign", "--verify", "--strict", "-R=" + req, path},
+		}
+		if len(got) != 3 || !slices.EqualFunc(got[1:], want, slices.Equal) {
+			t.Fatalf("%s: argv\n%q\nwant the sign, then\n%q", req, got, want)
+		}
 	}
 }
 

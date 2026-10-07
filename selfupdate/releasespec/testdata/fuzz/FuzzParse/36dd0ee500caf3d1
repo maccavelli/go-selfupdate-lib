@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"schema\":1,\"packaging\":\"archive\",\"products\":[{\"name\":\"rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr\",\"package\":\".\"}],\"platforms\":[{\"os\":\"windows\",\"arch\":\"amd64\"}]}")
