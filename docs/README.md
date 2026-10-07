@@ -83,7 +83,7 @@ name, and the files they cite moved with the rename
 | know what may be imported here, and what never may | [0001-MADR, §3](decisions/0001-MADR-scaffold-shared-go-library.md#3-toolchain-and-dependencies) |
 | know why the gates were never taught to pass on an empty module | [0001-MADR, §6](decisions/0001-MADR-scaffold-shared-go-library.md#6-gates-are-not-taught-to-pass-on-nothing) |
 | see what the debugging pass found, and how each finding is fixed | [0003-MADR](decisions/0003-MADR-remediate-debugging-pass-findings.md) |
-| see where `selfupdate` is going: API growth, TUI support, the canonical CLI | [0004-MADR](decisions/0004-MADR-evolve-selfupdate-api-and-tui-support.md) |
+| see where `selfupdate` is going: API growth, TUI support, the canonical CLI, and what is still open | [0004-MADR, amendment P3](decisions/0004-MADR-evolve-selfupdate-api-and-tui-support.md#p3-2026-10-07-phase-4-is-built-the-open-work-in-one-place) |
 | know why releases are not signed, and how signing would be done | [0004-REPORT](reports/0004-REPORT-release-signing-research.md) |
 | know how this repository's tooling differs from `go-llmprovider-sdk`'s | [0001-MADR, §5](decisions/0001-MADR-scaffold-shared-go-library.md#5-deliberate-differences-from-go-llmprovider-sdk) |
 | see how the scaffold's checks were proven | [0001-PLAN, execution record](decisions/0001-PLAN-scaffold-shared-go-library.md#execution-record) |

@@ -1122,3 +1122,18 @@ new packages.
 * V6: CI is green on `main` and on `v1.7.0`.
 
 This PLAN is `complete`.
+
+### Deviation D8 (2026-10-07): the rollback's live test was dropped
+
+* **Found** by the third debugging pass
+  ([0015-MADR-remediate-third-debugging-pass-findings.md](0015-MADR-remediate-third-debugging-pass-findings.md),
+  G3). The MADR's Confirmation promises that, in the handoff live test, "a
+  second run with a failing health check reports the rollback in its
+  result". V4 above asks only for a successful handoff, and the execution
+  record shows no such run, and no entry that dropped it. The result had
+  no field to report it.
+* **Decided:** 0011-MADR amendment A6 restates the item, and adds
+  `Result.RolledBack` (result schema 3) in `v1.11.0`.
+  [0015-PLAN-remediate-third-debugging-pass-findings.md](0015-PLAN-remediate-third-debugging-pass-findings.md)
+  Phase Q1 builds it, with `TestLiveHandOffHealthFailureReportsRollback`
+  in each backend. This PLAN stays `complete`; the work is 0015-PLAN's.

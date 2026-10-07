@@ -749,6 +749,31 @@ at a PLAN stop, deviation D7 of
     verified: a definition naming another file is still an error, unless
     `Options.RewritePath`.
 
+### A6 (2026-10-07): the rollback is reported in the result
+
+*Status: accepted (2026-10-07). The owner chose the recommended answer to
+question 15 of
+[0015-MADR-remediate-third-debugging-pass-findings.md](0015-MADR-remediate-third-debugging-pass-findings.md)
+(finding G3). Its plan is
+[0015-PLAN-remediate-third-debugging-pass-findings.md](0015-PLAN-remediate-third-debugging-pass-findings.md),
+Phases R2 and Q1.*
+
+* **Found.** Confirmation promises that, in the handoff live test, "a
+  second run with a failing health check reports the rollback in its
+  result". No such test exists. The PLAN's V4 dropped the item with no
+  deviation entry. Neither `Result` nor `ResultDocument` has a field that
+  could report it: only `InstallResult.RolledBack` and the
+  `EventRolledBack` event say so.
+* **Decided.**
+  * `Result.RolledBack`, and `ResultDocument`'s `rolled_back`, report
+    that the previous binary was restored after the new one was
+    installed. The result document becomes schema 3, in `v1.11.0`.
+  * The Confirmation item stands, restated: in each backend's live tests,
+    `TestLiveHandOffHealthFailureReportsRollback` hands off an update
+    whose new binary fails its health check. The handoff result has exit
+    code 1, `applied` false and `rolled_back` true, and the service runs
+    the previous binary afterwards.
+
 ## More Information
 
 ### Probe evidence

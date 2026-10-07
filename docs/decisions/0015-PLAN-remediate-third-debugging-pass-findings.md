@@ -2416,3 +2416,42 @@ approved it: "proceed". The PLAN as approved is commit `47f0f97`.
 
   From here on, the phase procedure uses `make gate` and
   `scripts/plant-copy.sh`.
+* Committed by the owner as `fdc5a89`.
+
+### Phase R2: roadmap and record amendments (2026-10-07)
+
+* **0004-MADR, `### P3 (2026-10-07): Phase 4 is built; the open work in
+  one place`,** after P2:
+  * the Phase 4 table (0011 `v1.7.0`, 0012 `v1.8.0`, 0013 `v1.9.0`, 0014
+    `v1.10.0`), superseding P2's "none of it is built" bullet without
+    editing P2;
+  * §1's rows as built: `cli`, `archive`, `codesign`, `service`, and the
+    new `releasespec` and the internal release tool. Each dependency was
+    read from `.golangci.yml`'s depguard allow-list;
+  * the open-work table, eleven rows, each with its record and line.
+    Every line was checked against the file after the edits. The 0011
+    "replace before stop" citation moved from `:884` to `:909` when A6
+    was inserted above it, and was corrected.
+
+  The items 0012 §8 and 0013 §10 list that later releases built (archives
+  through the publish workflow, `v1.9.0`; the installer templates,
+  `v1.10.0`) are marked done, and §6's prerelease channels point to 0005.
+* **`docs/README.md`:** the "see where `selfupdate` is going" row reads
+  "…, and what is still open", and links to P3's anchor. The link check
+  resolved the anchor.
+* **0011-MADR `### A6 (2026-10-07): the rollback is reported in the
+  result`,** after A5. **0011-PLAN `### Deviation D8 (2026-10-07)`** goes
+  at the end of its record, after "This PLAN is `complete`", rather than
+  after D7, so the record keeps its order. The PLAN stays `complete`.
+* **0010-MADR:** a dated, italic annotation on the "Every `Example` has an
+  output check" bullet (`:187`) names the three Examples that cannot have
+  one, and `ExampleNewUnpacker`, which gains its check in P4.
+* **Checks:**
+  * `check-docs.sh --links` on the five changed records: 131 links, 0
+    broken;
+  * `--ids`: 0 findings;
+  * markdownlint on `docs/README.md`: 0 issues;
+  * `make gate` on `fdc5a89` with R2's changes: all 14 steps `rc=0`,
+    `overall=0`. apicheck "compatible with v1.10.0"; fuzz clean; vuln "No
+    vulnerabilities found."; links "330 links in 49 files, 0 broken"; ids
+    "6 files, 16 deny-list rules, 0 findings".

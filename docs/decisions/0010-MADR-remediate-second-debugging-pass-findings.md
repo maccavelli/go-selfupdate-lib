@@ -185,6 +185,12 @@ archive extractor fits too, but nothing schedules it.
   blocks exists.
 * **The CLI's flag rules,** stdout kept empty without `--json`, and
   `buildinfo`'s release rule. Every `Example` has an output check.
+  *(2026-10-07, 0015-MADR G10: all but four. `ExampleHandOff`,
+  `ExampleNewSigner` and `ExampleNewChecker` cannot have one by design:
+  they exit the process or depend on the OS. `ExampleNewUnpacker` gains
+  its check in
+  [0015-PLAN-remediate-third-debugging-pass-findings.md](0015-PLAN-remediate-third-debugging-pass-findings.md)
+  P4.)*
 * **Windows files** vet and test-compile with cgo off.
 * **The release workflow:**
   * every `${{ }}` reaches `run:` only through `env:`;

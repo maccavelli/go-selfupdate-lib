@@ -1095,6 +1095,73 @@ PLAN names it.
 * **No other decision changes.** §6's deferred items (`verify/signednote`,
   `verify/ghattest`, `gitlab`, `httpmanifest`) keep their own records.
 
+### P3 (2026-10-07): Phase 4 is built; the open work in one place
+
+*Status: accepted (2026-10-07). The owner chose the recommended answers of
+[0015-MADR-remediate-third-debugging-pass-findings.md](0015-MADR-remediate-third-debugging-pass-findings.md)
+(finding G1). Its plan is
+[0015-PLAN-remediate-third-debugging-pass-findings.md](0015-PLAN-remediate-third-debugging-pass-findings.md),
+Phase R2.*
+
+**Found.** The third debugging pass (0015-MADR, G1) found three gaps in
+this record:
+
+* P2 still says "the rest of Phase 4 stays planned, and none of it is
+  built" (`:1091`), and Phase 4 has shipped;
+* §1's target-shape table (`:251-264`) misdescribes `archive`, `cli` and
+  `codesign`, and omits two packages;
+* the work still open is listed only inside single records.
+
+**Decided.**
+
+* **Phase 4 is built,** each piece under its own record:
+
+  | §7 item | Record | Release |
+  | :--- | :--- | :--- |
+  | `selfupdate/service`: `PollHealthy`, `ExecReconciler`, and the systemd, launchd and SCM lifecycles | [0011-MADR-reference-service-lifecycles.md](0011-MADR-reference-service-lifecycles.md) | `v1.7.0` |
+  | `selfupdate/codesign`, and `selfupdate/archive` (P2) | [0012-MADR-archive-assets-and-macos-codesign.md](0012-MADR-archive-assets-and-macos-codesign.md) | `v1.8.0` |
+  | the build-and-stage workflow, its spec and `selfupdate/releasespec` | [0013-MADR-build-and-stage-release-workflow.md](0013-MADR-build-and-stage-release-workflow.md) | `v1.9.0` |
+  | the installer templates | [0014-MADR-shared-installer-templates.md](0014-MADR-shared-installer-templates.md) | `v1.10.0` |
+
+  P2's bullet "The rest of Phase 4 stays planned, and none of it is built"
+  is superseded by this table. P2's text is left as written.
+* **§1's table, as built.** §1 is left as written; where it differs, these
+  rows hold:
+
+  | Package | Purpose | Dependencies |
+  | :--- | :--- | :--- |
+  | `selfupdate/cli` | §5's command surface, exit codes, `--json`, and the service handoff hook | stdlib, `x/term`, `selfupdate`, `buildinfo` |
+  | `selfupdate/archive` | the tar.gz, zip and gz selector, and an `Unpacker` that the core's extract stage runs, not a transformer | stdlib, `selfupdate` |
+  | `selfupdate/codesign` | `NewSigner` (a transformer) and `NewChecker` (a prober), running `/usr/bin/codesign` through `service.Runner` | stdlib, `selfupdate`, `selfupdate/service` |
+  | `selfupdate/service/...` | its own record, 0011 | stdlib, `selfupdate`, `selfupdate/service`; `x/sys/windows` for `service` and the SCM |
+  | `selfupdate/releasespec` | the release spec a program embeds and the build workflow reads (0013) | stdlib, `selfupdate`, `selfupdate/archive` |
+  | `internal/cmd/selfupdate-release` | the build workflow's tool, built from source, never released (0013) | stdlib, this module |
+
+* **The open work, in one place.** Each item keeps the record that
+  describes it; none is scheduled.
+
+  | Item | Where it is described |
+  | :--- | :--- |
+  | Releases that are not immutable: the §6 record, and with it the `selfupdate/gitlab` and `selfupdate/httpmanifest` sources | this record, §6 (`:765-773`) and §1 (`:262-263`) |
+  | `selfupdate/verify/signednote`, the signed-note release statement | this record, §1 (`:260`) and "Release signing" (`:788-830`); [0004-REPORT-release-signing-research.md](../reports/0004-REPORT-release-signing-research.md) |
+  | `selfupdate/verify/ghattest`, the runtime attestation check | this record, §6 (`:784-786`) |
+  | `go-tui-lib/updatetea`, the Bubble Tea adapter | this record, §4 (`:636`) and §1 (`:264`); a record in go-tui-lib |
+  | Replacing the binary before stopping the service | 0011-MADR, Related (`:909-912`) |
+  | A D-Bus systemd backend | 0011-MADR, Consequences (`:536-537`) and option B (`:579`) |
+  | xz, zstd and bzip2 archives; several programs from one archive; app bundles; notarization, `spctl` and quarantine; pure-Go signature checks | 0012-MADR §8 (`:670-697`) |
+  | macOS signing or notarization in CI; an attestation from the build workflow; GoReleaser names in the fleet; files beside the program in an archive; hosts other than GitHub | 0013-MADR §10 (`:664-680`) |
+  | Package managers; signing the installers; system-wide installs; completion, MCP registration and service setup in the templates | 0014-MADR §7 (`:454-466`) |
+  | Moving each program onto the build workflow and the installers | 0013-MADR §10, 0014-MADR §7: each repository's own records |
+  | Unreferenced local entries in a zip; a crash between `Apply` and `Commit`; `:` in archive entry names; `queue: max` on the publish workflow's concurrency | 0015-PLAN, Out of scope |
+
+  Two items that 0012 §8 and 0013 §10 list are done:
+  * publishing archives through the publish workflow, done in `v1.9.0`
+    (0013);
+  * the installer templates, done in `v1.10.0` (0014).
+
+  §6's prerelease channels were built under
+  [0005-MADR-opt-in-prerelease-channels.md](0005-MADR-opt-in-prerelease-channels.md).
+
 ## More Information
 
 ### Owner decisions (2026-09-30)
