@@ -45,6 +45,7 @@ name, and the files they cite moved with the rename
 | 0013 | PLAN | [Implement the build-and-stage release workflow: `selfupdate/releasespec`, the internal release tool, `build-selfupdate-release.yml`, and archive releases through the publish workflow (`v1.9.0`)](decisions/0013-PLAN-build-and-stage-release-workflow.md) | complete |
 | 0014 | MADR | [Generate each program's `install.sh` and `install.ps1` from its release spec in the build workflow, from one tested template each](decisions/0014-MADR-shared-installer-templates.md) | accepted |
 | 0014 | PLAN | [Implement the shared installer templates: the spec's `installer` field, `install.sh` and `install.ps1` rendered and staged by the build workflow, and their tests (`v1.10.0`)](decisions/0014-PLAN-shared-installer-templates.md) | complete |
+| 0015 | MADR | [Fix the third debugging pass's findings: a v1.10.1 of contract-preserving fixes, record and tooling fixes on main, and a v1.11.0 for the contracts the owner decides](decisions/0015-MADR-remediate-third-debugging-pass-findings.md) | proposed |
 
 ## I want to…
 
