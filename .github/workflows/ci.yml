@@ -216,6 +216,18 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: ./scripts/go-precheck_test.sh
+      # The full gate's own test, the document checker and the plant helper,
+      # and the link check over every tracked Markdown file. The identifier
+      # check needs the owner's deny list, which CI does not hold
+      # (docs/decisions/0015-PLAN-remediate-third-debugging-pass-findings.md R1).
+      - name: Verify the gate and document tools
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          ./scripts/gate_test.sh
+          ./scripts/check-docs_test.sh
+          ./scripts/plant-copy_test.sh
+          git ls-files -z '*.md' | xargs -0 ./scripts/check-docs.sh --links
       # The workflow checker parses YAML with PyYAML, which the runner image
       # does not ship; it is installed hash-pinned into a venv. Like the
       # release fixtures above it runs on Linux: its verdict depends on the

@@ -60,6 +60,12 @@ Associated MADR: [0010-MADR-remediate-second-debugging-pass-findings.md](0010-MA
 5. **Windows.** P3, P4 and P5 also pass on the Windows test host, because
    they change install paths.
 
+*(2026-10-07)* The session tools these records cite are now in the
+repository: `gate.sh` as `scripts/gate.sh` (`make gate`), `doccheck.py` as
+`scripts/check-docs.sh`, and `plantcopy.py` as `scripts/plant-copy.sh`
+([0015-PLAN-remediate-third-debugging-pass-findings.md](0015-PLAN-remediate-third-debugging-pass-findings.md)
+R1).
+
 ## Implementation Steps
 
 ### Phase P1: integrity

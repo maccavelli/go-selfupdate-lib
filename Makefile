@@ -9,7 +9,7 @@ GOVULNCHECK   ?= $(or $(wildcard $(GOBIN)/govulncheck),$(wildcard $(GOPATH_BIN)/
 GOTESTSUM     ?= $(or $(wildcard $(GOBIN)/gotestsum),$(wildcard $(GOPATH_BIN)/gotestsum),$(shell command -v gotestsum 2>/dev/null))
 FLEET_LINT_CFG := .golangci.yml
 
-.PHONY: all help test test-sum fmt vet lint tidy vuln apicheck fuzz pre-add-check
+.PHONY: all help test test-sum fmt vet lint tidy vuln apicheck fuzz pre-add-check gate
 
 all: help
 
@@ -82,6 +82,12 @@ fuzz: ## Fuzzes every selfupdate, archive and releasespec fuzz target for FUZZTI
 FILES ?=
 pre-add-check: ## Runs the pre-add checks (gofmt, golangci-lint, vet, test, govulncheck)
 	@./scripts/go-precheck.sh $(FILES)
+
+# Every check a commit needs, one line per step, each step's exit status
+# captured before its output is read; GATE_OUT, GATE_SKIP and FUZZTIME are
+# passed through (docs/decisions/0015-PLAN-remediate-third-debugging-pass-findings.md R1).
+gate: ## Runs the full pre-commit gate (scripts/gate.sh)
+	@./scripts/gate.sh
 
 help: ## Displays this help message
 	@echo "Usage: make [target]"

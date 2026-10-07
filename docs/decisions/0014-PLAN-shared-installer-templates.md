@@ -70,6 +70,12 @@ In addition:
 * **Hosts:** the Linux and Windows test hosts run I3's and I4's tests as
   well as CI.
 
+*(2026-10-07)* The session tools these records cite are now in the
+repository: `gate.sh` as `scripts/gate.sh` (`make gate`), `doccheck.py` as
+`scripts/check-docs.sh`, and `plantcopy.py` as `scripts/plant-copy.sh`
+([0015-PLAN-remediate-third-debugging-pass-findings.md](0015-PLAN-remediate-third-debugging-pass-findings.md)
+R1).
+
 ## Implementation Steps
 
 ### Phase I0: records

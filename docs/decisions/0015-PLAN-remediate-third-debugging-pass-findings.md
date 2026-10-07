@@ -2331,3 +2331,88 @@ approved it: "proceed". The PLAN as approved is commit `47f0f97`.
 
     The run covered R1's uncommitted files as well; R1's own record cites
     its own run.
+* Committed on the owner's ask ("Commit to main then proceed") as
+  `cdc5ebc`.
+
+### Phase R1: the gate in the repository (2026-10-07)
+
+* **Red,** before the scripts existed:
+  * `gate_test.sh`: `cp: …/scripts/gate.sh: No such file or directory`,
+    exit 1;
+  * `check-docs_test.sh`: "0 passed, 11 failed";
+  * `plant-copy_test.sh`: "2 passed, 8 failed". The two that passed check
+    only that nothing was changed.
+* **Written:**
+  * `scripts/gate.sh`, 14 steps;
+  * `scripts/check-docs.sh`, `--links` and `--ids [--ids-optional]`;
+  * `scripts/plant-copy.sh`;
+  * their three tests, as the PLAN's R1 steps 1–4 describe.
+
+  Differences from the steps as written:
+  * **`GATE_SKIP`:** the gate reports a skipped step as `<step> skipped`;
+  * **step functions:** shellcheck's SC2329 (functions it sees no call
+    of) is disabled once at the file's head, since the steps run through
+    `step "$@"`;
+  * **tool checks:** the `ids` step also checks for `sort`;
+  * **test stubs:** the tests write their stub scripts with quoted
+    heredocs, as `go-precheck_test.sh` does, which keeps shellcheck clean
+    (SC2016);
+  * **the gate test's PATH:** links to the real tools the gate needs
+    (`bash sh env git dirname basename mkdir mktemp tail cut cat rm
+    sort`) and the stubs, nothing else, so a missing tool is truly
+    missing.
+* **Green:**
+  * `gate_test.sh`: 10 passed;
+  * `check-docs_test.sh`: 11 passed;
+  * `plant-copy_test.sh`: 10 passed;
+  * shellcheck 0.11.0 on `scripts/*.sh`: clean;
+  * `dash -n` on the three tests: clean.
+* **Plants,** each in a scratch copy, each caught:
+
+  | Plant | Test | First failure |
+  | :--- | :--- | :--- |
+  | gate: `[ "$rc" -eq 0 ] \|\| overall=1` → `true` | `gate_test.sh` (5 failed) | `FAIL lint: rc=0` |
+  | gate: `ROOT=$HOME` | `gate_test.sh` (4 failed) | `FAIL all green: rc=1` |
+  | check-docs: slug keeps case | `check-docs_test.sh` (1 failed) | `a.md:7: missing anchor: b.md#the-heading` |
+  | check-docs: home path in any case | `check-docs_test.sh` (2 failed) | `clean.md:2: home directory path` |
+  | check-docs: prints the match | `check-docs_test.sh` (1 failed) | the fixture's identifier printed |
+  | plant-copy: `if n != 1:` → `if n == 0:` | `plant-copy_test.sh` (1 failed) | `FAIL twice: rc=0` |
+
+* **Other files:**
+  * `Makefile`: `gate` in `.PHONY`, and its target;
+  * `ci.yml`: the step "Verify the gate and document tools";
+  * `AGENTS.md`: a `make gate` paragraph in "Pre-add checks";
+  * `docs/architecture.md`: the three scripts in the tree, a `make gate`
+    and a `plant-copy.sh` bullet in Tooling, and the CI step;
+  * `docs/README.md`: a "run every check before a commit" row;
+  * the dated note in the rules of the 0010-PLAN-v1-5-1, 0010-PLAN-v1-6-0,
+    0011, 0012, 0013 and 0014 PLANs, inserted by a script that asserted
+    each place. 0013's note adds the `simulate_build.sh` sentence.
+* **Checks:**
+  * actionlint v1.7.12: clean;
+  * `check-workflows.sh --rule expressions|permissions|pins` on `ci.yml`:
+    ok;
+  * markdownlint-cli2 0.23.2: 0 issues;
+  * `check-docs.sh --links` on the changed Markdown: 106 links, 0 broken;
+  * `check-docs.sh --ids` on the changed and new files: 0 findings;
+  * `--links` over every tracked Markdown file: 308 links in 49 files, 0
+    broken. The session checker counted 305 at `d6a570f`; the new one
+    also reads `#fragment`-only and fenced-code boundaries its own way.
+  * **`make gate`,** on `cdc5ebc` with R1's changes, every step `rc=0`,
+    `overall=0`:
+    * gofmt "clean"; lint "0 issues."; vet; race; shuffle; tidy;
+    * apicheck "compatible with v1.10.0"; fuzz, all nine targets clean;
+      vuln "No vulnerabilities found.";
+    * scripts "all script tests passed", including the three new ones;
+      shellcheck; crossvet "cross go vet clean";
+    * links "317 links in 49 files, 0 broken"; ids "18 files, 16 deny-list
+      rules, 0 findings".
+
+    The first gate run, before P0, is deviation D1's.
+* **Acceptance:**
+  * `make gate` ends `overall=0`, and each test's plants fail it;
+  * the link check over every tracked Markdown file finds nothing;
+  * CI's new step runs on the next push.
+
+  From here on, the phase procedure uses `make gate` and
+  `scripts/plant-copy.sh`.

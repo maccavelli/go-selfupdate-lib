@@ -49,6 +49,12 @@ The v1.5.1 PLAN's rules apply, with two differences:
 * Each phase updates the godoc, `docs/guides/extending-selfupdate.md`, and
   `docs/architecture.md`, wherever they describe the behaviour it changes.
 
+*(2026-10-07)* The session tools these records cite are now in the
+repository: `gate.sh` as `scripts/gate.sh` (`make gate`), `doccheck.py` as
+`scripts/check-docs.sh`, and `plantcopy.py` as `scripts/plant-copy.sh`
+([0015-PLAN-remediate-third-debugging-pass-findings.md](0015-PLAN-remediate-third-debugging-pass-findings.md)
+R1).
+
 ## Implementation Steps
 
 ### Phase S1: what `CheckCached` caches (Q1)

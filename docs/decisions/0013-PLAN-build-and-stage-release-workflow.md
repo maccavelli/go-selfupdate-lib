@@ -96,6 +96,13 @@ In addition:
 * **The Windows test host** runs B2's tests, for `.exe` names, zip and PE
   images, and a Linux host runs them for ELF.
 
+*(2026-10-07)* The session tools these records cite are now in the
+repository: `gate.sh` as `scripts/gate.sh` (`make gate`), `doccheck.py` as
+`scripts/check-docs.sh`, and `plantcopy.py` as `scripts/plant-copy.sh`
+([0015-PLAN-remediate-third-debugging-pass-findings.md](0015-PLAN-remediate-third-debugging-pass-findings.md)
+R1). `simulate_build.sh` is not: CI's `release-rehearsal` jobs, which call
+the build workflow by its local path, are its reproducible equivalent.
+
 ## Implementation Steps
 
 ### Phase B0: records

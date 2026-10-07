@@ -74,6 +74,12 @@ In addition:
   live run, kept under `testdata/`.
 * The Windows test host runs V1, V4 and V5.
 
+*(2026-10-07)* The session tools these records cite are now in the
+repository: `gate.sh` as `scripts/gate.sh` (`make gate`), `doccheck.py` as
+`scripts/check-docs.sh`, and `plantcopy.py` as `scripts/plant-copy.sh`
+([0015-PLAN-remediate-third-debugging-pass-findings.md](0015-PLAN-remediate-third-debugging-pass-findings.md)
+R1).
+
 ## Implementation Steps
 
 ### Phase V0: records

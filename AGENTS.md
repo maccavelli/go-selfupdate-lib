@@ -163,6 +163,19 @@ is no `git add` hook on every host; do not rely on one.
 
 `make lint` and `make vuln` must be clean before a release-shaped change.
 
+`make gate` (`scripts/gate.sh`) runs every check a commit needs, one line
+per step: gofmt, lint, vet, race, shuffle, tidy, apicheck, fuzz, vuln, the
+script tests, shellcheck, cross-target vet, the link check and the
+identifier check. It ends `overall=0` when every step passed. Each step's
+output is kept in `GATE_OUT` (a new temporary directory by default);
+`GATE_SKIP=fuzz,vuln` skips named steps, and a record must say so. The
+identifier step runs `scripts/check-docs.sh --ids` on the changed files,
+with the pre-push guard's deny list (`DISCLOSURE_DENY`, or
+`~/.config/git/disclosure-deny`). To see a new test fail without dirtying
+the tree, `scripts/plant-copy.sh FILE OLD NEW` makes a scratch copy with one
+planted break
+(`docs/decisions/0015-PLAN-remediate-third-debugging-pass-findings.md` R1).
+
 Cross-target commands set `CGO_ENABLED=0` explicitly: a host `go env` may
 set `CGO_ENABLED=1`, and cgo cannot cross-compile to another OS here.
 

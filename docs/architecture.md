@@ -38,6 +38,12 @@ Makefile                    development targets (below)
                             builds, checks, packs and stages from a spec
   publish-selfupdate-release.yml   reusable release workflow (workflow_call)
 scripts/
+  gate.sh                   the full pre-commit gate, one line per step
+                            (make gate)
+  check-docs.sh             link and anchor check, and the identifier
+                            check against the pre-push guard's deny list
+  plant-copy.sh             copies the tree with one planted break, so a
+                            new test is seen to fail outside the tree
   go-precheck.sh            the pre-add check
   verify-selfupdate-release.sh     validates a staged release set
   selfupdate_manifest.py    the verifier's SHA256SUMS parser, as a module;
@@ -394,6 +400,19 @@ interpolated into shell.
   in the module that owns it (a nested module, such as the release tool's
   fixture, with `go -C`), and `govulncheck ./...`. `make pre-add-check` runs it, and so does the
   machine-wide agent gate before an agent `git commit` that stages Go files.
+- **`make gate`** runs `scripts/gate.sh`, every check a commit needs, in
+  order: `gofmt`, `make lint`, `go vet`, `go test -race`, `go test
+  -shuffle=on -count=2`, `go mod tidy -diff`, `make apicheck`, `make fuzz`,
+  `make vuln`, every script test, `shellcheck`, the cross-target `go vet`,
+  the link check over every tracked Markdown file, and the identifier check
+  on the changed files. Each step's output goes to `GATE_OUT`, and it prints
+  one `<step> rc=<N>` line; `GATE_SKIP` skips named steps. Records cite it
+  in place of the session gate the 0010–0014 PLANs ran
+  ([0015-PLAN](decisions/0015-PLAN-remediate-third-debugging-pass-findings.md)
+  R1).
+- **`scripts/plant-copy.sh FILE OLD NEW`** copies the tracked and untracked
+  files with one planted break, for a new test to be seen failing outside
+  the tree.
 - **`.golangci.yml`** enables `revive`'s `exported`, `package-comments` and
   `var-naming` rules in place of `golint`. Test files are exempt from
   `errcheck`, `gosec`, `unparam`, `revive`, `gocritic` and `goconst`.
@@ -421,7 +440,8 @@ interpolated into shell.
     fixture test; the release tag rule's test; the workflow checker, with
     every rule on both reusable workflows and `expressions`,
     `permissions` and `pins` on `ci.yml`, its test, and the workflow shape
-    test.
+    test; the full gate's test, the document checker's and the plant
+    helper's, and the link check over every tracked Markdown file.
   - **The release rehearsal:** two calls of `build-selfupdate-release.yml`
     by its local path on the release tool's fixture, one of raw binaries
     and one of archives, each with its identity runs on the five runners;
