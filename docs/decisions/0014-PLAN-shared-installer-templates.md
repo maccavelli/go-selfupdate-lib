@@ -627,6 +627,67 @@ helpers, and a CI job.
   `ci.yml`); `workflow-shape_test.sh`; `gate.sh`; `make pre-add-check` on
   the changed Go files.
 
+### Phase I5: CI and the rehearsal (2026-10-06)
+
+* **The fixture** asks for installers: both fixture specs gain
+  `"installer"` with one `after_install` hook, `relay mark-installed`.
+  The fixture program's new `mark-installed` writes its identity to
+  `relay.installed` beside itself; `TestFixtureMarksInstalled` runs the
+  built program and compares the file with `relay version`. The live
+  rehearsal of I7 runs the hook through the real one-liners.
+* **`scripts/check-installers.sh`** lints installer files: shellcheck
+  (`-s sh`) and `dash -n` on `.sh`, PowerShell's parser and
+  PSScriptAnalyzer (warnings and errors) on `.ps1`, through `pwsh` or
+  `$PWSH`. With `--staged DIR --repository R --tag T` it first checks a
+  staged set: both installers present, rendered for `R` and `T`, and not
+  in `SHA256SUMS`. Exit 1 for a finding, 2 for a usage error or a missing
+  tool. `scripts/check-installers_test.sh` (17 cases) uses the templates'
+  sample values as a staged set and a stub `pwsh` for the analyzer's three
+  outcomes.
+* **`ci.yml`:**
+  * the Linux lint step runs the test, then the script on both
+    templates, with shellcheck 0.11.0 and the runner's pwsh and
+    PSScriptAnalyzer (I4 step 3's PSScriptAnalyzer lands here);
+  * `release-rehearsal-check` gains "Check the staged installers": the
+    script with `--staged` on the raw and the archive sets, for
+    `github.repository` and the build's stamp (the tag, or
+    `rehearsal-<sha12>` off a tag). A rehearsal's stamp is not a release
+    tag, so the installers are checked as rendered and not run; I7 runs
+    them;
+  * the I3 container job is already in place.
+* **`workflow-shape_test.sh`:** `stage` in the build workflow passes
+  `-repository "$REPOSITORY"`, with `REPOSITORY` from
+  `github.repository`.
+* **A local rehearsal** (a scratch script running the workflow's
+  sequence with the built tool on a committed copy of the fixture,
+  laid out as in this repository): for each fixture spec, `plan` lists
+  `install.sh` and `install.ps1` among the extras, `stage` writes them,
+  the publish verifier passes ("verify-selfupdate-release: ok", "ok
+  (packed)"), and the installer check is clean. With `installer` removed
+  from the spec the check fails: "staging has no install.sh", "staging
+  has no install.ps1".
+* **The real analyzer,** through the script on the Windows test host:
+  "check-installers: clean" for the template and for the `install.ps1`
+  each fixture spec stages.
+* **Plants,** each in a scratch copy:
+
+  | Plant | Caught by |
+  | :--- | :--- |
+  | a shellcheck finding in the template (`$*` unquoted in `say`) | the CI lint command: `install.sh: shellcheck` |
+  | the fixture spec without `installer` | the rehearsal's installer check (local rehearsal): `has no install.sh`, `has no install.ps1` |
+  | `-repository` dropped from `stage` in the build workflow | `workflow-shape_test.sh`: `FAIL stage renders the installers for the calling repository` |
+  | a PSScriptAnalyzer finding (an unused variable) | the script on the Windows test host: `PSUseDeclaredVarsMoreThanAssignments`, exit 1 |
+  | the staged TAG check removed | `check-installers_test.sh`: "another tag" |
+  | the `SHA256SUMS` check removed | "an installer listed in SHA256SUMS": `exit 0, want 1` |
+  | a missing analyzer taken as a finding | "no PSScriptAnalyzer": `exit 1, want 2` |
+  | an absent `install.ps1` not noticed | "a staged set without install.ps1": `exit 0, want 1` |
+  | the fixture's marker misnamed | `TestFixtureMarksInstalled`: no `relay.installed` |
+* **Checks:** shellcheck on `scripts/*.sh`; actionlint 1.7.12;
+  `check-workflows.sh` (all, and `expressions`, `permissions` and `pins`
+  on `ci.yml`); `workflow-shape_test.sh`; `gate.sh`; `make
+  pre-add-check` on `build_test.go`; `go vet` and `gofmt` on the fixture
+  module.
+
 ### Deviations
 
 * **D1 (2026-10-06), I2: arguments the installers embed.**

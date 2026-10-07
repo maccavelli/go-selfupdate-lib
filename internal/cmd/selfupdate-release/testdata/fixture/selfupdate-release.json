@@ -13,5 +13,10 @@
   "packaging": "binary",
   "extras": [
     {"name": "relay-notes-{tag}.txt", "path": "internal/cmd/selfupdate-release/testdata/fixture/notes.txt"}
-  ]
+  ],
+  "installer": {
+    "hooks": [
+      {"when": "after_install", "product": "relay", "args": ["mark-installed"]}
+    ]
+  }
 }

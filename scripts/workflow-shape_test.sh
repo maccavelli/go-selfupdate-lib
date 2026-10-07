@@ -106,6 +106,12 @@ stage = index(build, "Check, pack and stage")
 verified = index(build, "Verify the staged release")
 upload = index(build, "Upload the staged release")
 check(0 <= stage < verified < upload, "the publish verifier runs on the staged set before it is uploaded")
+# The installers are rendered for the calling repository
+# (docs/decisions/0014-PLAN-shared-installer-templates.md I5).
+staging = build[stage] if stage >= 0 else {}
+check('-repository "$REPOSITORY"' in staging.get("run", "")
+      and staging.get("env", {}).get("REPOSITORY") == "${{ github.repository }}",
+      "stage renders the installers for the calling repository (-repository from github.repository)")
 check(verified >= 0 and "verify-selfupdate-release.sh" in build[verified].get("run", ""), "that step runs the publish verifier")
 check(identity.get("needs") == "build", "the identity job needs the build job")
 check(any("identity" in st.get("run", "") and "-want-version" in st.get("run", "") for st in identity.get("steps", [])),

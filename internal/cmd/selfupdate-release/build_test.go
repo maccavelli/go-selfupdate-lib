@@ -151,3 +151,36 @@ func TestBuildWithTags(t *testing.T) {
 		t.Fatalf("stage, with the tags the spec names: %v", err)
 	}
 }
+
+// TestFixtureMarksInstalled runs the fixture's after_install hook, as the
+// release spec names it (docs/decisions/0014-PLAN-shared-installer-templates.md
+// I5): it must write its identity to relay.installed beside itself.
+func TestFixtureMarksInstalled(t *testing.T) {
+	b := sharedBuild(t)
+	data, err := os.ReadFile(filepath.Join(b.bin, selfupdate.ExactAssetName("relay", host)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	exe := filepath.Join(dir, "relay")
+	if host.OS == goosWindows {
+		exe += ".exe"
+	}
+	if err := os.WriteFile(exe, data, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	want, err := exec.Command(exe, "version").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command(exe, "mark-installed").CombinedOutput(); err != nil {
+		t.Fatalf("relay mark-installed: %v\n%s", err, out)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "relay.installed"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(want), fixtureTag+" (release)") || string(got) != string(want) {
+		t.Fatalf("relay.installed holds %q, want %q", got, want)
+	}
+}

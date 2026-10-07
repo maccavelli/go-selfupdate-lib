@@ -179,6 +179,12 @@ jobs:
           export PATH="$RUNNER_TEMP/shellcheck-${SHELLCHECK_VERSION}:$PATH"
           shellcheck --version
           shellcheck scripts/*.sh
+          # The installer templates: shellcheck and dash -n, and
+          # PSScriptAnalyzer under the runner's pwsh
+          # (docs/decisions/0014-PLAN-shared-installer-templates.md I5).
+          ./scripts/check-installers_test.sh
+          ./scripts/check-installers.sh internal/cmd/selfupdate-release/installer/install.sh \
+            internal/cmd/selfupdate-release/installer/install.ps1
           npx --yes markdownlint-cli2@0.23.2
           go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
       # The reusable release workflow's own tests
@@ -338,3 +344,27 @@ jobs:
           test "$(cat "$out")" = "$(printf 'packed=false\npacked=true')"
           go run ./internal/cmd/selfupdate-release check -dir "$RUNNER_TEMP/archive" \
             -products-json "$ARC_PRODUCTS" -platforms-json "$ARC_PLATFORMS"
+      # Both staged sets carry the installers the fixture spec asks for,
+      # rendered for this repository and the build's stamp, out of
+      # SHA256SUMS, and lint clean as rendered. A rehearsal's stamp is no
+      # release tag, so they are not run here; the live rehearsal runs them
+      # (docs/decisions/0014-PLAN-shared-installer-templates.md I5, I7).
+      - name: Check the staged installers
+        shell: bash
+        env:
+          TAG: ${{ needs.release-rehearsal.outputs.tag }}
+          SHELLCHECK_VERSION: v0.11.0
+          SHELLCHECK_SHA256: 8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
+        run: |
+          set -euo pipefail
+          archive="shellcheck-${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
+          curl -fsSL -o "$RUNNER_TEMP/$archive" \
+            "https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/${archive}"
+          echo "${SHELLCHECK_SHA256}  $RUNNER_TEMP/$archive" | sha256sum -c -
+          tar -xJf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP"
+          export PATH="$RUNNER_TEMP/shellcheck-${SHELLCHECK_VERSION}:$PATH"
+          stamp="${TAG:-rehearsal-${GITHUB_SHA:0:12}}"
+          for set in binary archive; do
+            ./scripts/check-installers.sh --staged "$RUNNER_TEMP/$set" \
+              --repository "$GITHUB_REPOSITORY" --tag "$stamp"
+          done

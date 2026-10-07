@@ -10,5 +10,10 @@
     {"os": "windows", "arch": "amd64"},
     {"os": "windows", "arch": "arm64"}
   ],
-  "packaging": "archive"
+  "packaging": "archive",
+  "installer": {
+    "hooks": [
+      {"when": "after_install", "product": "relay", "args": ["mark-installed"]}
+    ]
+  }
 }
