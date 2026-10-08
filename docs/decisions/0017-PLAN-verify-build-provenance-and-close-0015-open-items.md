@@ -487,6 +487,13 @@ The same for `v1.11.1` (P3) and `v1.12.0` (Q3); `vX` is the release.
    | `'if localDD != (l.zf.Flags&0x8 != 0) {'` | `'if false {'` | `zip descriptor flag` |
    | the N4 comparison `!=` | `==` | `zip central directory slack` (and every accept row) |
 
+   *Deviation D1 (2026-10-08): the second plant survived against `zip
+   hidden entry in a gap`. A row, `zip hidden entry between entries`, was
+   added for the in-loop check, and a plant on the end check (`if at !=
+   cdOff {`) runs against the gap row. The Info-ZIP case runs in
+   `tiling_test.go`, as `TestOtherWritersTile`, not in
+   `TestUnpackAccepts`.*
+
 6. **Docs:** `archive/doc.go:11-19` adds:
    * zip local entries that do not tile the file: a gap, prepended or
      trailing data, or a data descriptor that disagrees with its central
@@ -1261,3 +1268,86 @@ amendment A1.
   * `scripts/check-docs.sh` on the four files: "122 links in 4 files, 0
     broken", "0 findings";
   * markdownlint: "0 issues".
+
+### Deviation D1 (2026-10-08): P1's gap plant, and where the Info-ZIP case runs
+
+* **Found:**
+  * **The plan's plant for the in-loop gap check survived.** It changed
+    `if l.hdr > at {` to `if false && l.hdr > at {`, run against
+    `zip hidden entry in a gap`. `hiddenGapZip` puts the hidden entry
+    after the last named entry, so the end check, `if at != cdOff {`,
+    refuses it with the same "unreferenced bytes" message, and the
+    in-loop check is never reached.
+  * **`TestUnpackAccepts` runs the image check,** so an Info-ZIP fixture
+    there would have to hold a real executable for the host, a 1–2 MB
+    constant.
+* **Resolutions offered:**
+  1. a row, `zip hidden entry between entries`, whose hidden entry lies
+     between two named entries, with a plant on each check (recommended);
+  2. the plan's row only, which leaves the in-loop check unproven.
+
+  And for the Info-ZIP case:
+  1. a small Info-ZIP zip run through `extract`, which applies every zip
+     check but the image check (recommended);
+  2. a zip built at test time with the `zip` tool, skipped where there
+     is none.
+* **Decision:** the owner chose both recommended resolutions.
+* **Added to P1:**
+  * `hiddenBetweenZip` in `main_test.go`, and its row in
+    `TestUnpackRefuses`;
+  * `TestOtherWritersTile` in `tiling_test.go`, with the 412-byte zip
+    Info-ZIP's zip 3.0 wrote with `-X` (`hello.txt`, `docs/`,
+    `docs/readme`, `relay`), as a hex constant.
+* **Signatures:** the helpers take the program's bytes and the hidden
+  bytes as arguments, for example `hiddenGapZip(tb, good, evil)`, so the
+  fuzz seeds stay small.
+
+### Phase P1: zip entries tile the file (2026-10-08)
+
+* **Fix (`unpack.go`):**
+  * `directoryBounds`, `descriptorLen` and `checkTiling` from the
+    prototype, with the `*zip.Reader` parameter;
+  * N4's check, that the central records' lengths sum to the directory's
+    size, with the constant `centralRecordLen = 46`;
+  * the call after the `checkLocal` loop.
+
+  No import was added.
+* **Red,** on `v1.11.0`'s `unpack.go`: the eight planned refusal rows
+  each failed, `unpack_test.go:280: Unpack = <nil>, want "<message>"`,
+  for:
+  * `unreferenced bytes`;
+  * `does not end where its end record begins`;
+  * `data follows the end of the central directory`;
+  * `does not match its central record`;
+  * `reads two ways`;
+  * `disagree on a data descriptor`;
+  * `disagrees with the end record`;
+  * `do not fill the central directory`.
+
+  D1's row failed the same way, "Unpack = <nil>, want "unreferenced
+  bytes"", in a copy with the tiling call off. `tiling_test.go` failed to
+  build: `undefined: directoryBounds`, `undefined: descriptorLen`. The
+  three new accept rows passed (pins).
+* **Green:** `go test -count=1 ./selfupdate/archive/
+  ./internal/cmd/selfupdate-release/ ./selfupdate/releasespec/` passed.
+  The release tool's round trip unpacks every archive it builds, so it
+  also passed on pack's output.
+* **Plants,** each in a scratch copy:
+
+  | Plant | Result |
+  | :--- | :--- |
+  | the tiling call off | failed all nine zip rows; first: `Unpack = <nil>, want "unreferenced bytes"` |
+  | the in-loop gap check off | the plan's run survived (D1). Against `zip hidden entry between entries`, it fails: `Unpack = <nil>, want "unreferenced bytes"` |
+  | the end check (`if at != cdOff {`) off | failed `zip hidden entry in a gap`: `Unpack = <nil>, want "unreferenced bytes"` |
+  | the two-ways check off | failed `zip descriptor two ways`: `Unpack = <nil>, want "reads two ways"` |
+  | the descriptor-flag check off | failed `zip descriptor flag`: the archive was refused as `unreferenced bytes [1117538, 1117554) …` instead |
+  | N4's comparison flipped | failed `zip central directory slack`: `Unpack = <nil>, want "do not fill the central directory"` |
+
+* **Fuzz:** `FuzzUnpackZip` for 60 s, with the two new seeds: 9,253,495
+  executions, no failure. No corpus file was written to the tree.
+* **Docs:** `archive/doc.go` names the rule, citing 0017-MADR 2B.
+* **Checks:**
+  * `make gate`: every step `rc=0`, `overall=0`; apicheck "compatible
+    with v1.11.0";
+  * `make pre-add-check` on the six files: "6 file(s) clean (gofmt,
+    golangci-lint, go vet, go test, govulncheck)".

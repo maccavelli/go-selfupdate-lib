@@ -16,7 +16,14 @@
 // encrypted entries
 // (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md
 // E1-E4). A PAX global header, such as git archive writes, is skipped,
-// unless it sets an entry's path, link, size or sparse map (E8).
+// unless it sets an entry's path, link, size or sparse map (E8). A zip's
+// records must account for every byte of it: no bytes before its first
+// entry, between entries or after its end record, no slack in its central
+// directory, and each data descriptor reading one way only, as its
+// central record says, so that a streaming reader, such as macOS's ditto
+// or Java's ZipInputStream, sees the entries archive/zip does
+// (docs/decisions/0017-MADR-verify-build-provenance-and-close-0015-open-items.md
+// 2B).
 //
 // The package uses only the standard library and compiles on every OS.
 // This module's release workflows build and publish archives from a

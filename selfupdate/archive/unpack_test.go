@@ -94,6 +94,10 @@ func TestUnpackAccepts(t *testing.T) {
 		{"zip, .exe on windows", UnpackOptions{}, "relay-windows-amd64.zip",
 			zipBytes(t, zfile("relay.exe", windowsProgram), zfile("relay", readme)), windows, windowsProgram},
 		{"gz", UnpackOptions{}, "relay-x.gz", gzipBytes(t, hostProgram), hostPlatform, hostProgram},
+		// Zips that tile their file (0017-MADR 2B).
+		{"zip with a comment", UnpackOptions{}, "relay-x.zip", commentZip(t, "release v1.2.3", zfile(prog, hostProgram)), hostPlatform, hostProgram},
+		{"zip stored without a descriptor", UnpackOptions{}, "relay-x.zip", zipBytes(t, storedRaw(prog, hostProgram)), hostPlatform, hostProgram},
+		{"zip with a directory", UnpackOptions{}, "relay-x.zip", zipBytes(t, zdir("docs/"), zfile("docs/x.md", readme), zfile(prog, hostProgram)), hostPlatform, hostProgram},
 		// git archive's global header, with the commit as a comment
 		// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md E8).
 		{"tar.gz with a PAX global header", UnpackOptions{}, "relay-x.tar.gz",
@@ -220,6 +224,17 @@ func TestUnpackRefuses(t *testing.T) {
 		// The local header and the central directory (0015-MADR E1).
 		{"local header names another file", UnpackOptions{}, "a.zip", localNameZip(t, prog, "x"+prog[1:], hostProgram), 0, "its local header names"},
 		{"Info-ZIP Unicode Path", UnpackOptions{}, "a.zip", zipBytes(t, upath), 0, "Info-ZIP Unicode Path"},
+		// Bytes no central record names, and records that disagree on where
+		// an entry ends (0017-MADR 2B).
+		{"zip hidden entry in a gap", UnpackOptions{}, "a.zip", hiddenGapZip(t, hostProgram, small), 0, "unreferenced bytes"},
+		{"zip hidden entry between entries", UnpackOptions{}, "a.zip", hiddenBetweenZip(t, hostProgram, small), 0, "unreferenced bytes"},
+		{"zip prepended entry", UnpackOptions{}, "a.zip", hiddenPrefixZip(t, hostProgram, small), 0, "does not end where its end record begins"},
+		{"zip trailing bytes", UnpackOptions{}, "a.zip", trailingZip(t, hostProgram), 0, "data follows the end of the central directory"},
+		{"zip descriptor CRC", UnpackOptions{}, "a.zip", badDescriptorZip(t, hostProgram), 0, "does not match its central record"},
+		{"zip descriptor two ways", UnpackOptions{}, "a.zip", twoWayDescriptorZip(hostProgram), 0, "reads two ways"},
+		{"zip descriptor flag", UnpackOptions{}, "a.zip", clearedFlagZip(t, hostProgram), 0, "disagree on a data descriptor"},
+		{"zip64 record disagrees", UnpackOptions{}, "a.zip", zip64DisagreeZip(t, hostProgram), 0, "disagrees with the end record"},
+		{"zip central directory slack", UnpackOptions{}, "a.zip", slackZip(t, hostProgram), 0, "do not fill the central directory"},
 		// Names a file system folds (0015-MADR E2).
 		{"long s", UnpackOptions{}, "a.tar.gz", tarGz(t, file("relays", small), file("relay\u017f", small), file(prog, hostProgram)), 0, "not printable ASCII"},
 		{"zip long s", UnpackOptions{}, "a.zip", zipBytes(t, zfile("relays", small), zfile("relay\u017f", small), zfile(prog, hostProgram)), 0, "not printable ASCII"},

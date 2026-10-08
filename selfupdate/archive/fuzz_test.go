@@ -51,6 +51,9 @@ func FuzzUnpackZip(f *testing.F) {
 	f.Add(zipBytes(f, zfile("README", small), zfile("x/relay", small)))
 	f.Add(zipBytes(f, zfile("relay", small), zfile("relay", small)))
 	f.Add(zipBytes(f, zfile("re\x00lay", small)))
+	// A local entry no central record names (0017-MADR 2B).
+	f.Add(hiddenGapZip(f, small, []byte("evil")))
+	f.Add(hiddenPrefixZip(f, small, []byte("evil")))
 	f.Fuzz(func(t *testing.T, data []byte) { fuzzExtract(t, Zip, data) })
 }
 

@@ -489,6 +489,9 @@ func (u *unpacker) extractZip(ctx context.Context, ra io.ReaderAt, size int64, w
 			return err
 		}
 	}
+	if err := checkTiling(ra, size, zr, locals); err != nil {
+		return err
+	}
 	if program == nil {
 		return refuse("the archive holds no program")
 	}
@@ -556,6 +559,195 @@ func checkExtra(name string, b []byte) error {
 			return refuse("entry %q has an Info-ZIP Unicode Path field", name)
 		}
 		b = b[4+size:]
+	}
+	return nil
+}
+
+// The zip format's end records (APPNOTE.TXT 4.3.14-4.3.16, 4.3.9).
+const (
+	eocdLen        = 22
+	zip64LocLen    = 20
+	zip64EndMinLen = 56
+	// centralRecordLen is a central directory record's fixed part.
+	centralRecordLen = 46
+	// eocdSearch is how far from the end archive/zip looks for the end
+	// record (reader.go readDirectoryEnd).
+	eocdSearch = 65 * 1024
+)
+
+// directoryBounds finds the end record the way archive/zip does, the last
+// "PK\x05\x06" in the file's last 65 KiB, and returns the central
+// directory's offset and size. It refuses a comment that does not end at
+// the end of the file, and a central directory that does not end where the
+// end record (or the zip64 end record) begins: prepended data, which
+// archive/zip reads past as baseOffset, or data after the directory.
+func directoryBounds(ra io.ReaderAt, size int64) (cdOff, cdSize int64, err error) {
+	le := binary.LittleEndian
+	n := min(size, eocdSearch)
+	buf := make([]byte, n)
+	if _, err := ra.ReadAt(buf, size-n); err != nil && !errors.Is(err, io.EOF) {
+		return 0, 0, refuse("reading the end of the central directory: %v", err)
+	}
+	i := -1
+	if len(buf) >= eocdLen {
+		i = bytes.LastIndex(buf[:len(buf)-eocdLen+4], []byte("PK\x05\x06"))
+	}
+	if i < 0 {
+		return 0, 0, refuse("no end of central directory")
+	}
+	eocd := size - n + int64(i)
+	if eocd+eocdLen+int64(le.Uint16(buf[i+20:])) != size {
+		return 0, 0, refuse("data follows the end of the central directory")
+	}
+	records, cdSize32, cdOff32 := le.Uint16(buf[i+10:]), le.Uint32(buf[i+12:]), le.Uint32(buf[i+16:])
+	end, cdSize, cdOff := eocd, int64(cdSize32), int64(cdOff32)
+	// A zip64 locator: archive/zip reads it only when a 32-bit field is
+	// saturated; Python's zipfile and Info-ZIP whenever it is there. So,
+	// when it is there, its record must end at the locator and agree with
+	// every field that is not saturated.
+	var loc [zip64LocLen]byte
+	if eocd >= zip64LocLen {
+		if _, err := ra.ReadAt(loc[:], eocd-zip64LocLen); err != nil {
+			return 0, 0, refuse("reading the zip64 locator: %v", err)
+		}
+	}
+	if string(loc[:4]) == "PK\x06\x07" {
+		p, ok := toInt64(le.Uint64(loc[8:]))
+		if !ok || le.Uint32(loc[4:]) != 0 || le.Uint32(loc[16:]) != 1 || p > eocd-zip64LocLen-zip64EndMinLen {
+			return 0, 0, refuse("the zip64 locator is not valid")
+		}
+		var rec [zip64EndMinLen]byte
+		if _, err := ra.ReadAt(rec[:], p); err != nil {
+			return 0, 0, refuse("reading the zip64 end record: %v", err)
+		}
+		recLen, ok := toInt64(le.Uint64(rec[4:]))
+		if string(rec[:4]) != "PK\x06\x06" || !ok || recLen > eocd || p+12+recLen != eocd-zip64LocLen {
+			return 0, 0, refuse("the zip64 end record does not end at its locator")
+		}
+		records64, size64, off64 := le.Uint64(rec[32:]), le.Uint64(rec[40:]), le.Uint64(rec[48:])
+		if (records != 0xffff && uint64(records) != records64) ||
+			(cdSize32 != 0xffffffff && uint64(cdSize32) != size64) ||
+			(cdOff32 != 0xffffffff && uint64(cdOff32) != off64) {
+			return 0, 0, refuse("the zip64 end record disagrees with the end record")
+		}
+		var ok1, ok2 bool
+		cdSize, ok1 = toInt64(size64)
+		cdOff, ok2 = toInt64(off64)
+		if !ok1 || !ok2 {
+			return 0, 0, refuse("the zip64 end record is not valid")
+		}
+		end = p
+	}
+	if cdOff > end || cdSize != end-cdOff {
+		return 0, 0, refuse("the central directory does not end where its end record begins (prepended or trailing data)")
+	}
+	return cdOff, cdSize, nil
+}
+
+// descriptorLen is the length of the data descriptor at off, after zf's
+// data: 12 or 20 bytes, each optionally after the signature "PK\x07\x08".
+// Exactly one of the four readings must hold the central record's CRC and
+// sizes; the bytes read stop at limit, the central directory.
+func descriptorLen(ra io.ReaderAt, zf *zip.File, off, limit int64) (int64, error) {
+	le := binary.LittleEndian
+	var b [24]byte
+	n := int(min(int64(len(b)), max(limit-off, 0)))
+	if _, err := ra.ReadAt(b[:n], off); err != nil && !errors.Is(err, io.EOF) {
+		return 0, refuse("entry %q: reading its data descriptor: %v", zf.Name, err)
+	}
+	var found int64
+	for _, w := range []struct {
+		sig  bool
+		wide bool
+	}{{false, false}, {true, false}, {false, true}, {true, true}} {
+		l := 12
+		if w.wide {
+			l = 20
+		}
+		d := b[:]
+		if w.sig {
+			l += 4
+			if string(b[:4]) != "PK\x07\x08" {
+				continue
+			}
+			d = b[4:]
+		}
+		if l > n || le.Uint32(d) != zf.CRC32 {
+			continue
+		}
+		var c, u uint64
+		if w.wide {
+			c, u = le.Uint64(d[4:]), le.Uint64(d[12:])
+		} else {
+			c, u = uint64(le.Uint32(d[4:])), uint64(le.Uint32(d[8:]))
+		}
+		if c != zf.CompressedSize64 || u != zf.UncompressedSize64 {
+			continue
+		}
+		if found != 0 {
+			return 0, refuse("entry %q: its data descriptor reads two ways", zf.Name)
+		}
+		found = int64(l)
+	}
+	if found == 0 {
+		return 0, refuse("entry %q: its data descriptor does not match its central record", zf.Name)
+	}
+	return found, nil
+}
+
+// checkTiling requires the central records to fill the central directory,
+// and the local entries, each from its local header to the end of its data
+// and data descriptor, to tile [0, cdOff) with no gap and no overlap: every
+// byte of the archive belongs to a record, so a streaming reader (bsdtar,
+// ditto, ZipInputStream) sees the entries archive/zip does
+// (docs/decisions/0017-MADR-verify-build-provenance-and-close-0015-open-items.md
+// 2B).
+func checkTiling(ra io.ReaderAt, size int64, zr *zip.Reader, locals []local) error {
+	cdOff, cdSize, err := directoryBounds(ra, size)
+	if err != nil {
+		return err
+	}
+	// archive/zip reads central records by count, so bytes after them, which
+	// the end record's size counts, would go unread (0017-PLAN N4).
+	var records int64
+	for _, zf := range zr.File {
+		records += centralRecordLen + int64(len(zf.Name)+len(zf.Extra)+len(zf.Comment))
+	}
+	if records != cdSize {
+		return refuse("the central records do not fill the central directory (%d of %d bytes)", records, cdSize)
+	}
+	locals = slices.SortedFunc(slices.Values(locals), func(a, b local) int { return cmp.Compare(a.hdr, b.hdr) })
+	var at int64
+	for _, l := range locals {
+		if l.hdr < at {
+			return refuse("two entries overlap")
+		}
+		if l.hdr > at {
+			return refuse("unreferenced bytes [%d, %d) before the central directory", at, l.hdr)
+		}
+		var flags [2]byte
+		if _, err := ra.ReadAt(flags[:], l.hdr+6); err != nil {
+			return refuse("entry %q: reading its local header: %v", l.zf.Name, err)
+		}
+		localDD := binary.LittleEndian.Uint16(flags[:])&0x8 != 0
+		if localDD != (l.zf.Flags&0x8 != 0) {
+			return refuse("entry %q: its local header and central record disagree on a data descriptor", l.zf.Name)
+		}
+		csize, ok := toInt64(l.zf.CompressedSize64)
+		if !ok || l.data > cdOff || csize > cdOff-l.data {
+			return refuse("entry %q runs into the central directory", l.zf.Name)
+		}
+		at = l.data + csize
+		if localDD {
+			dl, err := descriptorLen(ra, l.zf, at, cdOff)
+			if err != nil {
+				return err
+			}
+			at += dl
+		}
+	}
+	if at != cdOff {
+		return refuse("unreferenced bytes [%d, %d) before the central directory", at, cdOff)
 	}
 	return nil
 }
