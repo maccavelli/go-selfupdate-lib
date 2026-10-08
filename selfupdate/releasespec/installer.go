@@ -28,7 +28,8 @@ const (
 )
 
 // Installer asks the build workflow to generate install.sh and install.ps1
-// for the release. Present, even empty, it turns them on.
+// for the release. Present, even empty, it turns them on; null is refused,
+// not read as absent (0015-MADR E7).
 type Installer struct {
 	// Name names the Windows install folder,
 	// %LOCALAPPDATA%\Programs\<Name>, and the default environment prefix.

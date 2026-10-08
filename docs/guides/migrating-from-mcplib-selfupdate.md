@@ -637,7 +637,8 @@ stages exactly what `v1.9.0` staged. Why, and how, is in
   `releasespec.Parse` reads the spec it embeds, and the build workflow's
   pin, so that it renders the installers. `v1.9.0` refuses a spec with
   `installer` as an unknown field, in your program and in the workflow.
-  Until `v1.11.0`, the build workflow does not check this.
+  Until `v1.11.0`, the build workflow does not check this; since then its
+  plan step refuses a module whose requirement is too old for the spec.
 
 ### From v1.10.0 to v1.10.1
 

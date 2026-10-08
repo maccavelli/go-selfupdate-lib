@@ -94,6 +94,10 @@ func TestUnpackAccepts(t *testing.T) {
 		{"zip, .exe on windows", UnpackOptions{}, "relay-windows-amd64.zip",
 			zipBytes(t, zfile("relay.exe", windowsProgram), zfile("relay", readme)), windows, windowsProgram},
 		{"gz", UnpackOptions{}, "relay-x.gz", gzipBytes(t, hostProgram), hostPlatform, hostProgram},
+		// git archive's global header, with the commit as a comment
+		// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md E8).
+		{"tar.gz with a PAX global header", UnpackOptions{}, "relay-x.tar.gz",
+			paxGlobalTarGz(t, map[string]string{"comment": "0123456789abcdef"}, prog, hostProgram), hostPlatform, hostProgram},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -231,6 +235,11 @@ func TestUnpackRefuses(t *testing.T) {
 		// Encrypted entries (0015-MADR E4).
 		{"zip encrypted", UnpackOptions{}, "a.zip", zipBytes(t, encrypted(0x1)), 0, "is encrypted (flags 0x0001)"},
 		{"zip strong encryption", UnpackOptions{}, "a.zip", zipBytes(t, encrypted(0x40)), 0, "is encrypted (flags 0x0040)"},
+		// A PAX global header that changes how entries read (0015-MADR E8).
+		{"PAX global path", UnpackOptions{}, "a.tar.gz", paxGlobalTarGz(t, map[string]string{"path": "evil"}, prog, hostProgram), 0, "a PAX global header sets \"path\""},
+		{"PAX global linkpath", UnpackOptions{}, "a.tar.gz", paxGlobalTarGz(t, map[string]string{"linkpath": "/bin/sh"}, prog, hostProgram), 0, "a PAX global header sets \"linkpath\""},
+		{"PAX global header counts as an entry", UnpackOptions{MaxEntries: 1}, "a.tar.gz", paxGlobalTarGz(t, map[string]string{"comment": "x"}, prog, hostProgram), 0, "more than 1 entries"},
+		{"PAX global size", UnpackOptions{}, "a.tar.gz", paxGlobalTarGz(t, map[string]string{"size": "1"}, prog, hostProgram), 0, "a PAX global header sets \"size\""},
 		// The format.
 		{"zip named tar.gz", UnpackOptions{}, "a.tar.gz", zipBytes(t, zfile("relay", small)), 0, "not gzip"},
 		{"gzip named zip", UnpackOptions{}, "a.zip", gzipBytes(t, small), 0, "not zip"},

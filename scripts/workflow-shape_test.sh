@@ -122,6 +122,12 @@ check('-repository "$REPOSITORY"' in staging.get("run", "")
       and staging.get("env", {}).get("REPOSITORY") == "${{ github.repository }}",
       "stage renders the installers for the calling repository (-repository from github.repository)")
 check(verified >= 0 and "verify-selfupdate-release.sh" in build[verified].get("run", ""), "that step runs the publish verifier")
+# The plan checks the module's library version against the spec
+# (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md F3).
+planned = build[index(build, "Plan")] if index(build, "Plan") >= 0 else {}
+check('-module-dir "src/$MODULE_DIR"' in planned.get("run", "")
+      and planned.get("env", {}).get("MODULE_DIR") == "${{ inputs.module-dir }}",
+      "the plan step passes the module directory")
 check(identity.get("needs") == "build", "the identity job needs the build job")
 check(any("identity" in st.get("run", "") and "-want-version" in st.get("run", "") for st in identity.get("steps", [])),
       "the identity job runs the tool's identity check")

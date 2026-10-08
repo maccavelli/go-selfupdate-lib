@@ -71,6 +71,8 @@ type planResult struct {
 	IdentityMatrix []identityLeg
 	ToolTargets    []string
 	Rows           []planRow
+	// Notes are lines the summary shows after the table.
+	Notes []string
 }
 
 // planRow is one product on one platform, for the summary.
@@ -206,12 +208,16 @@ func (r planResult) summary() string {
 	for _, row := range r.Rows {
 		fmt.Fprintf(&b, "| %s | %s | `%s` | %s |\n", row.Product, row.Platform, row.Asset, row.Identity)
 	}
+	for _, n := range r.Notes {
+		fmt.Fprintf(&b, "\n%s\n", n)
+	}
 	return b.String() + "\n"
 }
 
-func runPlan(_ context.Context, args []string, stdout io.Writer) error {
+func runPlan(ctx context.Context, args []string, stdout io.Writer) error {
 	f := newFlags("plan")
 	spec := f.str("spec", true)
+	moduleDir := f.str("module-dir", true)
 	refType := f.str("ref-type", true)
 	refName := f.str("ref-name", true)
 	sha := f.str("sha", true)
@@ -225,6 +231,21 @@ func runPlan(_ context.Context, args []string, stdout io.Writer) error {
 	r, err := plan(planInput{SpecPath: *spec, RefType: *refType, RefName: *refName, SHA: *sha, RunAttempt: *attempt, ArtifactName: *artifact})
 	if err != nil {
 		return err
+	}
+	s, err := loadSpec(*spec)
+	if err != nil {
+		return err
+	}
+	g, err := newGoTool()
+	if err != nil {
+		return err
+	}
+	note, err := checkLibraryFloor(ctx, g, *moduleDir, s)
+	if err != nil {
+		return err
+	}
+	if note != "" {
+		r.Notes = append(r.Notes, note)
 	}
 	outs, err := r.outputs()
 	if err != nil {

@@ -307,7 +307,10 @@ job, on `ubuntu-24.04`:
 2. sets up the source module's Go, cache off, and builds the tool;
 3. `plan`: reads the spec, picks a release (on a tag) or a rehearsal, and
    writes the publish inputs, the artifact name and the identity matrix;
-   on a tag, `check-release-tag.sh` with the spec's channels;
+   checks that the module at `module-dir` requires a release of this
+   library that reads every field the spec uses (`-module-dir`), skipping
+   a directory `replace` with a summary note; on a tag,
+   `check-release-tag.sh` with the spec's channels;
 4. `build`: per product and platform, requires `buildinfo` among the
    package's dependencies, then builds with the fixed recipe
    (`CGO_ENABLED=0`, `-trimpath`, `-buildvcs=true`, `-s -w` and the

@@ -18,7 +18,8 @@
 //
 // The file must sit in the directory of the package that embeds it, since
 // an embed pattern cannot reach a parent directory. Parse refuses unknown
-// fields, trailing data and a schema other than SchemaVersion.
+// fields, trailing data, a schema other than SchemaVersion, and null for
+// any value: leave a field out instead.
 //
 // The package imports the standard library, selfupdate and
 // selfupdate/archive only.

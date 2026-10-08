@@ -239,6 +239,9 @@ binary. Why it works as it does is in
     an Info-ZIP Unicode Path field; a zip directory attribute on a name
     without a trailing `/`, and a directory entry that holds data; a tar
     regular file whose name ends in `/`; and an encrypted zip entry.
+  - Since `v1.11.0`, a tar.gz from `git archive` unpacks: its PAX global
+    header is skipped, and counts as an entry. One that sets `path`,
+    `linkpath`, `size` or a sparse map is refused.
   - It then checks that the program is an executable for the platform.
   - Every refusal is an `ErrIntegrity`.
 - **Publishing:** since `v1.9.0`, this repository's workflows build,

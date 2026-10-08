@@ -124,6 +124,7 @@ jobs:
         shell: bash
         env:
           SPEC_PATH: ${{ inputs.spec-path }}
+          MODULE_DIR: ${{ inputs.module-dir }}
           ARTIFACT_NAME: ${{ inputs.artifact-name }}
           REF_TYPE: ${{ github.ref_type }}
           REF_NAME: ${{ github.ref_name }}
@@ -131,8 +132,11 @@ jobs:
           RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
           set -euo pipefail
+          # -module-dir: the module must require a release that reads the
+          # spec (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md F3).
           "$RUNNER_TEMP/tool/selfupdate-release" plan \
             -spec "src/$SPEC_PATH" \
+            -module-dir "src/$MODULE_DIR" \
             -ref-type "$REF_TYPE" \
             -ref-name "$REF_NAME" \
             -sha "$SHA" \

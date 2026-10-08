@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"math"
 	"os"
 	"path"
@@ -234,6 +235,29 @@ func (e *entries) add(name string, size int64) (string, error) {
 	return clean, nil
 }
 
+// skip counts an entry that is not extracted, such as a PAX global header,
+// toward the entry limit (0015-MADR E8).
+func (e *entries) skip() error {
+	e.count++
+	if e.count > e.max {
+		return refuse("more than %d entries", e.max)
+	}
+	return nil
+}
+
+// globalHeader checks a PAX global header, such as the one git archive
+// writes with the commit as a comment. One that sets an entry's path, link,
+// size or sparse map would change how another tool reads every entry, and
+// is refused; any other is skipped, and counts as an entry (0015-MADR E8).
+func globalHeader(hdr *tar.Header, seen *entries) error {
+	for _, k := range slices.Sorted(maps.Keys(hdr.PAXRecords)) {
+		if k == "path" || k == "linkpath" || k == "size" || strings.HasPrefix(k, "GNU.sparse.") {
+			return refuse("a PAX global header sets %q", k)
+		}
+	}
+	return seen.skip()
+}
+
 // checkName refuses a name that is empty, absolute, holds "..", a
 // backslash or a NUL, or is not local on this OS, whatever GODEBUG says
 // (0012-MADR §4). It returns the name cleaned.
@@ -320,6 +344,12 @@ func (u *unpacker) extractTarGz(ctx context.Context, r io.Reader, w io.Writer, i
 		}
 		if err != nil {
 			return refuse("tar: %v", err)
+		}
+		if hdr.Typeflag == tar.TypeXGlobalHeader {
+			if err := globalHeader(hdr, seen); err != nil {
+				return err
+			}
+			continue
 		}
 		clean, err := seen.add(hdr.Name, hdr.Size)
 		if err != nil {

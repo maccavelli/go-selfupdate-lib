@@ -6,7 +6,7 @@
 //
 // Usage:
 //
-//	selfupdate-release plan     -spec FILE -ref-type TYPE -ref-name NAME -sha SHA -run-attempt N [-artifact-name NAME] [-github-output FILE] [-summary FILE]
+//	selfupdate-release plan     -spec FILE -module-dir DIR -ref-type TYPE -ref-name NAME -sha SHA -run-attempt N [-artifact-name NAME] [-github-output FILE] [-summary FILE]
 //	selfupdate-release build    -spec FILE -module-dir DIR -stamp-version V -stamp-kind K -out DIR
 //	selfupdate-release stage    -spec FILE -module-dir DIR -src DIR -bin DIR -out DIR -sha SHA -stamp-version V [-tag TAG] [-extras-dir DIR] [-repository OWNER/NAME] [-summary FILE]
 //	selfupdate-release check    -dir DIR -products-json JSON -platforms-json JSON

@@ -22,7 +22,7 @@ import (
 // installerSpec is a spec with installers for the given platforms.
 func installerSpec(t *testing.T, platforms []map[string]string, installer map[string]any) releasespec.Spec {
 	t.Helper()
-	data, err := json.Marshal(map[string]any{
+	m := map[string]any{
 		"schema": 1,
 		"products": []any{
 			map[string]any{"name": "relay", "package": "./cmd/relay", "identity_args": []string{"version"}},
@@ -30,8 +30,13 @@ func installerSpec(t *testing.T, platforms []map[string]string, installer map[st
 		},
 		"platforms":           platforms,
 		"prerelease_channels": []string{"rc"},
-		"installer":           installer,
-	})
+	}
+	// No installer is a missing field, not null, which Parse refuses
+	// (0015-MADR E7).
+	if installer != nil {
+		m["installer"] = installer
+	}
+	data, err := json.Marshal(m)
 	if err != nil {
 		t.Fatal(err)
 	}

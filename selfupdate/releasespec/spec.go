@@ -154,15 +154,22 @@ func (s *Spec) normalize() {
 // checkKeys walks the JSON and refuses a duplicate key, or a key that is
 // not lowercase letters and underscores. encoding/json matches keys
 // case-insensitively and keeps the last of two, so either would otherwise
-// pass silently.
+// pass silently. It refuses null too, which encoding/json reads as an
+// absent field: "installer": null is not "installer": {} (0015-MADR E7).
 func checkKeys(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.UseNumber()
-	var walk func() error
-	walk = func() error {
+	var walk func(key string) error
+	walk = func(key string) error {
 		tok, err := dec.Token()
 		if err != nil {
 			return fmt.Errorf("releasespec: %w", err)
+		}
+		if tok == nil {
+			if key == "" {
+				return errors.New("releasespec: null is not allowed")
+			}
+			return fmt.Errorf("releasespec: %q: null is not allowed; leave the field out", key)
 		}
 		switch tok {
 		case json.Delim('{'):
@@ -180,14 +187,14 @@ func checkKeys(data []byte) error {
 					return fmt.Errorf("releasespec: duplicate key %q", key)
 				}
 				seen[key] = true
-				if err := walk(); err != nil {
+				if err := walk(key); err != nil {
 					return err
 				}
 			}
 			_, err = dec.Token()
 		case json.Delim('['):
 			for dec.More() {
-				if err := walk(); err != nil {
+				if err := walk(key); err != nil {
 					return err
 				}
 			}
@@ -198,7 +205,7 @@ func checkKeys(data []byte) error {
 		}
 		return nil
 	}
-	return walk()
+	return walk("")
 }
 
 // Product returns the product named name, or an error naming the products

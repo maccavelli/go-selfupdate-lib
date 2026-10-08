@@ -15,7 +15,8 @@
 // field, a directory that is not named as one or that holds data, and
 // encrypted entries
 // (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md
-// E1-E4).
+// E1-E4). A PAX global header, such as git archive writes, is skipped,
+// unless it sets an entry's path, link, size or sparse map (E8).
 //
 // The package uses only the standard library and compiles on every OS.
 // This module's release workflows build and publish archives from a

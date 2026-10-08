@@ -158,7 +158,7 @@ func TestParseRefuses(t *testing.T) {
 		{name: "two values", raw: valid + valid, want: "data after the spec"},
 		{name: "too large", raw: valid + strings.Repeat(" ", MaxSize), want: "more than 65536"},
 		{name: "not JSON", raw: "{", want: "releasespec: "},
-		{name: "null", raw: "null", want: "schema: 0 is not supported"},
+		{name: "null", raw: "null", want: "releasespec: null is not allowed"},
 		// schema
 		{name: "schema 0", edit: func(m map[string]any) { m["schema"] = 0 }, want: "schema: 0 is not supported"},
 		{name: "schema 2", edit: func(m map[string]any) { m["schema"] = 2 }, want: "schema: 2 is not supported"},
@@ -218,6 +218,15 @@ func TestParseRefuses(t *testing.T) {
 			m["platforms"] = []any{map[string]any{"os": "linux", "arch": "amd64", "format": "tar.xz"}}
 		}, want: "platforms[0].format: \"tar.xz\" is not"},
 		{name: "unknown packaging", edit: func(m map[string]any) { m["packaging"] = "zip" }, want: "packaging: \"zip\""},
+		// An explicit null is not an absent field (0015-MADR E7).
+		{name: "installer null", edit: func(m map[string]any) { m["installer"] = nil }, want: `"installer": null is not allowed`},
+		{name: "extras null", edit: func(m map[string]any) { m["extras"] = nil }, want: `"extras": null is not allowed`},
+		{name: "packaging null", edit: func(m map[string]any) { m["packaging"] = nil }, want: `"packaging": null is not allowed`},
+		{name: "channels null", edit: func(m map[string]any) { m["prerelease_channels"] = nil }, want: `"prerelease_channels": null is not allowed`},
+		{name: "tags null", edit: func(m map[string]any) { product(m)["tags"] = nil }, want: `"tags": null is not allowed`},
+		{name: "identity_args null", edit: func(m map[string]any) { product(m)["identity_args"] = nil }, want: `"identity_args": null is not allowed`},
+		{name: "installer.name null", edit: func(m map[string]any) { m["installer"] = map[string]any{"name": nil} }, want: `"name": null is not allowed`},
+		{name: "null in a list", edit: func(m map[string]any) { m["platforms"] = []any{nil} }, want: `"platforms": null is not allowed`},
 		// Composed archive names (0015-MADR E5).
 		{name: "archive name 139 characters", edit: func(m map[string]any) {
 			maps.Copy(m, archiveSpec(strings.Repeat("r", 120), "linux"))

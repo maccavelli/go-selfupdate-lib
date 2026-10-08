@@ -7,8 +7,12 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/maccavelli/go-selfupdate-lib/selfupdate/releasespec"
 )
 
 const testSHA = "0123456789abcdef0123456789abcdef01234567"
@@ -154,8 +158,8 @@ func TestRunPlanWritesOutputs(t *testing.T) {
 	dir := t.TempDir()
 	ghOut, summary := filepath.Join(dir, "out"), filepath.Join(dir, "summary")
 	var stdout, stderr bytes.Buffer
-	code := run(context.Background(), []string{"plan", "-spec", planSpec(t), "-ref-type", "tag", "-ref-name", "v1.4.0",
-		"-sha", testSHA, "-run-attempt", "1", "-github-output", ghOut, "-summary", summary}, &stdout, &stderr)
+	code := run(context.Background(), []string{"plan", "-spec", planSpec(t), "-module-dir", libModule(t, "example.com/relay", "require "+libraryPath+" v1.10.0"),
+		"-ref-type", "tag", "-ref-name", "v1.4.0", "-sha", testSHA, "-run-attempt", "1", "-github-output", ghOut, "-summary", summary}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("exit %d: %s", code, stderr.String())
 	}
@@ -186,11 +190,11 @@ func TestRunExitCodes(t *testing.T) {
 	}{
 		{"no subcommand", nil, 2, "usage: selfupdate-release"},
 		{"unknown subcommand", []string{"publish"}, 2, `unknown subcommand "publish"`},
-		{"a missing flag", []string{"plan", "-spec", "x"}, 2, "-ref-type is required"},
+		{"a missing flag", []string{"plan", "-spec", "x"}, 2, "-module-dir is required"},
 		{"an unknown flag", []string{"check", "-nope"}, 2, "flag provided but not defined"},
 		{"an extra argument", []string{"check", "-dir", "d", "-products-json", "[]", "-platforms-json", "[]", "extra"}, 2, `unexpected argument "extra"`},
-		{"a failed check", []string{"plan", "-spec", filepath.Join(t.TempDir(), "missing.json"), "-ref-type", "tag", "-ref-name", "v1.0.0",
-			"-sha", testSHA, "-run-attempt", "1"}, 1, "selfupdate-release plan:"},
+		{"a failed check", []string{"plan", "-spec", filepath.Join(t.TempDir(), "missing.json"), "-module-dir", t.TempDir(),
+			"-ref-type", "tag", "-ref-name", "v1.0.0", "-sha", testSHA, "-run-attempt", "1"}, 1, "selfupdate-release plan:"},
 		{"a usage error from a subcommand", []string{"build", "-spec", "s", "-module-dir", ".", "-stamp-version", "v1", "-stamp-kind", "beta", "-out", "o"}, 2, "-stamp-kind"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -199,5 +203,105 @@ func TestRunExitCodes(t *testing.T) {
 				t.Fatalf("exit %d, stderr %q; want %d, %q", code, stderr.String(), tc.code, tc.want)
 			}
 		})
+	}
+}
+
+// libModule is a new module directory: path, and the go.mod lines after
+// its go line.
+func libModule(t *testing.T, path string, lines ...string) string {
+	t.Helper()
+	dir := t.TempDir()
+	body := "module " + path + "\n\ngo 1.27.1\n\n" + strings.Join(lines, "\n") + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// TestPlanRefusesAnOldLibrary: a spec with a field this library's older
+// releases refuse needs a module that requires one that reads it; a
+// program built against an older one could not parse the spec it embeds
+// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md F3).
+func TestPlanRefusesAnOldLibrary(t *testing.T) {
+	g, err := newGoTool()
+	if err != nil {
+		t.Fatal(err)
+	}
+	installer := releasespec.Spec{Installer: &releasespec.Installer{}}
+	req := func(v string) string { return "require " + libraryPath + " " + v }
+	for _, c := range []struct {
+		name string
+		spec releasespec.Spec
+		dir  string
+		want string // empty: accepted
+		note bool
+	}{
+		{"v1.9.0 with installer", installer, libModule(t, "example.com/relay", req("v1.9.0")),
+			`module example.com/relay requires go-selfupdate-lib v1.9.0; this spec's "installer" needs v1.10.0 or later`, false},
+		{"v1.10.0", installer, libModule(t, "example.com/relay", req("v1.10.0")), "", false},
+		{"v1.9.0 without installer", releasespec.Spec{}, libModule(t, "example.com/relay", req("v1.9.0")), "", false},
+		{"a pseudo-version above v1.10.0", installer, libModule(t, "example.com/relay", req("v1.10.1-0.20261008000000-0123456789ab")), "", false},
+		{"v1.10.0-rc.1", installer, libModule(t, "example.com/relay", req("v1.10.0-rc.1")), "requires go-selfupdate-lib v1.10.0-rc.1", false},
+		{"a directory replace", installer, libModule(t, "example.com/relay", req("v0.0.0"), "replace "+libraryPath+" => ../lib"), "", true},
+		{"a module replace at v1.9.0", installer, libModule(t, "example.com/relay", req("v1.11.0"), "replace "+libraryPath+" => example.com/fork v1.9.0"),
+			"requires go-selfupdate-lib v1.9.0", false},
+		{"the library itself", installer, libModule(t, libraryPath), "", false},
+		{"no requirement", installer, libModule(t, "example.com/relay"), "does not require " + libraryPath, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			note, err := checkLibraryFloor(context.Background(), g, c.dir, c.spec)
+			switch {
+			case c.want == "" && err != nil:
+				t.Fatalf("refused: %v", err)
+			case c.want != "" && (err == nil || !strings.Contains(err.Error(), c.want)):
+				t.Fatalf("err = %v; want %q", err, c.want)
+			case (note != "") != c.note:
+				t.Fatalf("note %q; want one %t", note, c.note)
+			}
+		})
+	}
+}
+
+// v190SpecPaths are the JSON paths of v1.9.0's Spec, from its source
+// (git show v1.9.0:selfupdate/releasespec/spec.go).
+var v190SpecPaths = []string{
+	"schema", "products", "products.name", "products.package", "products.tags", "products.identity_args",
+	"platforms", "platforms.os", "platforms.arch", "platforms.format", "packaging",
+	"extras", "extras.name", "extras.path", "prerelease_channels",
+}
+
+// jsonPaths lists a struct type's JSON field paths, into nested structs,
+// pointers to them and slices of them.
+func jsonPaths(t reflect.Type, prefix string) []string {
+	for t.Kind() == reflect.Pointer || t.Kind() == reflect.Slice {
+		t = t.Elem()
+	}
+	if t.Kind() != reflect.Struct {
+		return nil
+	}
+	var out []string
+	for i := range t.NumField() {
+		name, _, _ := strings.Cut(t.Field(i).Tag.Get("json"), ",")
+		if name == "" || name == "-" {
+			continue
+		}
+		path := prefix + name
+		out = append(out, path)
+		out = append(out, jsonPaths(t.Field(i).Type, path+".")...)
+	}
+	return out
+}
+
+// TestSpecFloorsCoverEveryField: every field v1.9.0's Spec lacks has a
+// floor, so a spec using it is checked against the module's requirement
+// (0015-MADR F3).
+func TestSpecFloorsCoverEveryField(t *testing.T) {
+	for _, p := range jsonPaths(reflect.TypeFor[releasespec.Spec](), "") {
+		if slices.Contains(v190SpecPaths, p) {
+			continue
+		}
+		if !slices.ContainsFunc(specFloors, func(f specFloor) bool { return p == f.field || strings.HasPrefix(p, f.field+".") }) {
+			t.Errorf("%s is not in v1.9.0's Spec and has no floor", p)
+		}
 	}
 }

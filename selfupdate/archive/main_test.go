@@ -9,10 +9,12 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"testing"
 
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
@@ -281,6 +283,24 @@ func renamedZip(t testing.TB, from, to string, es ...zipEntry) []byte {
 		t.Fatalf("%q is not in the zip exactly twice, or %q differs in length", from, to)
 	}
 	return bytes.ReplaceAll(b, []byte(from), []byte(to))
+}
+
+// paxGlobalTarGz is a tar.gz that opens with a PAX global header holding
+// records, as git archive's does, then holds the program as name
+// (0015-MADR E8).
+func paxGlobalTarGz(t testing.TB, records map[string]string, name string, body []byte) []byte {
+	t.Helper()
+	var pax string
+	for _, k := range slices.Sorted(maps.Keys(records)) {
+		pax += paxRecord(k, records[k])
+	}
+	var raw bytes.Buffer
+	raw.Write(tarBlock("pax_global_header", 'g', int64(len(pax))))
+	raw.Write(padBlock([]byte(pax)))
+	raw.Write(tarBlock(name, '0', int64(len(body))))
+	raw.Write(padBlock(append([]byte(nil), body...)))
+	raw.Write(make([]byte, 1024))
+	return gzipBytes(t, raw.Bytes())
 }
 
 // gnuSparseTarGz is a tar.gz whose one entry has the GNU sparse type.

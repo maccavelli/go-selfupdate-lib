@@ -70,8 +70,8 @@ cannot live at the repository root unless that package does.
 - **`installer`:** present, even empty, it adds `install.sh` and
   `install.ps1` to every release; see step 12.
 
-Unknown fields, a misspelled key and a duplicate key are errors, so a typo
-fails loudly. `releasespec.Parse`'s errors name the field, such as
+Unknown fields, a misspelled key, a duplicate key and `null` are errors,
+so a typo fails loudly: leave a field out rather than set it to `null`. `releasespec.Parse`'s errors name the field, such as
 `releasespec: products[0].name: "-relay" must match …`.
 
 ## 2. Embed it, and configure the updater from it
@@ -185,7 +185,11 @@ jobs:
   raise its token beyond what the calling workflow grants, so grant at
   least that.
 - **`module-dir`** names the Go module when it is not the repository root.
-  The Go version is that module's `go` line.
+  The Go version is that module's `go` line. Since `v1.11.0` the plan
+  step also checks that module's requirement of this library: a spec
+  that uses a field an older release refuses, such as `installer`
+  (`v1.10.0`), needs a module that requires a release that reads it. A
+  `replace` with a directory is not checked, and the job summary says so.
 - **`artifact-name`** overrides the staged artifact's name. Set it when one
   run calls the build workflow twice.
 - **One publish at a time:** the publish job runs in the concurrency group
@@ -304,6 +308,8 @@ CGO_ENABLED=0 GOOS=<os> GOARCH=<arch> GOFLAGS=-mod=readonly GOTOOLCHAIN=local GO
 | `releasespec: extras[…].name: "install.sh" is already an installer's name` | the spec has `installer` and still lists a hand-written installer; delete the extra |
 | `releasespec: …args[…]: "…" must match …, as the installers embed it` | a hook argument or `identity_args` entry with a space, quote or `$`; with `installer`, both keep to `[A-Za-z0-9._:=/,+@%-]` |
 | `releasespec: installer.env_prefix: the prefix made from …; set installer.env_prefix` | the repository's name makes no valid variable prefix, such as one that starts with a digit |
+| `releasespec: "…": null is not allowed; leave the field out` | a field set to `null`, which the spec does not read as absent |
+| `module … requires go-selfupdate-lib …; this spec's "installer" needs v1.10.0 or later …` | your program's `go.mod` requires a release that cannot parse the spec it embeds; move it to the version the workflow is pinned to |
 
 ## 10. Verify an attestation
 
@@ -341,7 +347,8 @@ repository and tag. They are extras: published and attested with the
 release, and not listed in `SHA256SUMS`.
 
 Your program's module must require the version the workflow is pinned
-to, at least `v1.10.0`: an older `releasespec.Parse` refuses the spec's
+to, at least `v1.10.0`, and since `v1.11.0` the plan step refuses an
+older one: an older `releasespec.Parse` refuses the spec's
 `installer` field, and the shipped program cannot update itself. Move
 `go.mod` and both pins together.
 

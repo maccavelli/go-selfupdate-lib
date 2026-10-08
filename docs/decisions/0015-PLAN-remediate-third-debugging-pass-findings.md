@@ -3699,3 +3699,77 @@ No API change; `make apicheck` reports `v1.10.1` compatible with
 * **Docs:** `StopDependents`, `Stop` and `Start` (SCM); `ReconcileResult`
   and `Result.Warnings`; `doc.go`; the extending guide's "Read JSON
   output" and "Run as a service".
+
+### Phase Q4: the spec, archive and tooling contracts (2026-10-08)
+
+* **Red,** on the unfixed code:
+  * **E7:** `TestParseRefuses`, the eight `null` rows: "Parse accepted
+    …", and "null in a list" failed on the platform's empty `os` instead;
+    the root row: "schema: 0 is not supported".
+  * **E8:** `TestUnpackAccepts` "tar.gz with a PAX global header": "entry
+    \"pax_global_header\" is not a regular file or a directory (type
+    'g')"; the three refusal rows got the same error, not "a PAX global
+    header sets …".
+  * **F3,** with stub declarations in a scratch copy:
+    `TestRunPlanWritesOutputs`: "flag provided but not defined:
+    -module-dir"; `TestPlanRefusesAnOldLibrary`: the five refusals
+    accepted and no note for the directory replace;
+    `TestSpecFloorsCoverEveryField`: "installer is not in v1.9.0's Spec
+    and has no floor", and each of its fields.
+* **Fix:**
+  * **E7** (`releasespec/spec.go`): `checkKeys`'s walk takes the key and
+    refuses a `nil` token: `releasespec: "<key>": null is not allowed;
+    leave the field out`, and at the root `releasespec: null is not
+    allowed`; a list element names the list's key.
+  * **E8** (`archive/unpack.go`): `globalHeader` refuses a
+    `TypeXGlobalHeader` whose records hold `path`, `linkpath`, `size` or a
+    `GNU.sparse.` key; any other is skipped through `entries.skip`, which
+    counts it toward `MaxEntries`.
+  * **F3:** `floor.go` (new, beside `plan.go`): `libraryPath`,
+    `specFloors` with `installer` → `v1.10.0`, `checkLibraryFloor`
+    reading `go mod edit -json` through `goTool`, and a standard-library
+    semver precedence. `runPlan` requires `-module-dir`, and puts the
+    directory-replace note under the summary's table (`planResult.Notes`).
+    The build workflow's Plan step passes `-module-dir "src/$MODULE_DIR"`;
+    `main.go`'s usage line names the flag.
+* **Test edits** (planned): the root `null` row; `installer_test.go`'s
+  `hook` helper sends `[]` for no arguments; `render_test.go`'s
+  `installerSpec` leaves out a nil installer. Not planned: the run tests in
+  `plan_test.go` pass `-module-dir`, and "a missing flag" now names it,
+  since it is registered after `-spec`.
+* **Tests beyond the plan:** `TestUnpackRefuses` "PAX global header counts
+  as an entry" (`MaxEntries` 1), for `entries.skip`.
+* **Seeds:** `{"…","installer":null}` for `FuzzParse`; two for
+  `FuzzUnpackTarGz` (a global header with a comment, and one setting
+  `path`).
+* **Real archive:** in a scratch test, `git archive --format=tar.gz` (git
+  2.56.0) of a repository holding the program and a README unpacks to the
+  program.
+* **The fixture rehearsal:** `selfupdate-release plan` with CI's fixture
+  module, which replaces the library with a directory, exits 0 and notes
+  it in the summary.
+* **Plants,** each caught:
+
+  | Plant | Fails |
+  | :--- | :--- |
+  | E7: `tok == nil && false` | `TestParseRefuses`, every `null` row |
+  | E8: the global header not skipped | `TestUnpackAccepts` |
+  | E8: an empty key list | `TestUnpackRefuses`, the three PAX rows |
+  | E8: not counted | "PAX global header counts as an entry" |
+  | F3: the `installer` row deleted | `TestPlanRefusesAnOldLibrary`, `TestSpecFloorsCoverEveryField` |
+  | F3: the comparison flipped | `TestPlanRefusesAnOldLibrary` |
+
+* **Workflow:** `workflow-shape_test.sh` asserts the flag and its `env`,
+  and fails on the workflow before the change; `check-workflows.sh` and
+  actionlint 1.7.12 are clean.
+* **Acceptance:** the full apidiff report against `v1.10.1` is Q3's,
+  unchanged: Q4 adds no API.
+* **Docs:** `Installer`'s comment and `releasespec/doc.go`;
+  `archive/doc.go`; the extending guide's "Ship an archive"; the building
+  guide's step 1, step 4 (`module-dir`), step 12 and §9's table; the
+  migration guide's §10; `docs/architecture.md`, the `plan` step.
+* **Checks:** `make fuzz FUZZTIME=60s`: all nine targets clean; `make
+  pre-add-check` on the 14 Go files: clean, after `gocritic` refused a
+  single-case `switch` in `semverCompare`; `make gate` on `91797fa` with
+  Q4's changes: all 14 steps `rc=0`, `overall=0`. CI's `release-rehearsal`
+  jobs run with the new flag once pushed.

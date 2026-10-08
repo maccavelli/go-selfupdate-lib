@@ -37,7 +37,8 @@ func TestInstallerAccepted(t *testing.T) {
 
 func TestInstallerRefused(t *testing.T) {
 	hook := func(when, product string, args ...any) map[string]any {
-		return map[string]any{"when": when, "product": product, "args": args}
+		// An empty list, not null, which Parse refuses (0015-MADR E7).
+		return map[string]any{"when": when, "product": product, "args": append([]any{}, args...)}
 	}
 	cases := []struct {
 		name      string
