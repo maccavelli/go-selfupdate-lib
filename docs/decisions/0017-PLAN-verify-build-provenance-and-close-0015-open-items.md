@@ -1351,3 +1351,41 @@ amendment A1.
     with v1.11.0";
   * `make pre-add-check` on the six files: "6 file(s) clean (gofmt,
     golangci-lint, go vet, go test, govulncheck)".
+
+### Phase P2: names Windows reserves, on every host (2026-10-08)
+
+* **Fix (`unpack.go`):**
+  * `windowsFolded` (`<>:"|?*`) and `windowsReserved` (N5): CON, PRN, AUX,
+    NUL, CONIN$, CONOUT$, and COM or LPT with one digit, 0–9, before the
+    first dot, with trailing spaces trimmed, in any case;
+  * `checkPortable`'s element loop refuses either, "has an element Windows
+    reserves";
+  * `NewUnpacker` refuses a `Member` that `checkPortable` refuses (N6);
+  * the comments on `checkPortable` and `UnpackOptions.Member`.
+* **Red,** on P1's code (macOS):
+  * the five refusal rows each failed with `unpack_test.go:293: Unpack =
+    <nil>, want "an element Windows reserves"`: `zip colon beside the
+    program`, `tar aux.txt`, `tar x?y`, `zip com1.log in a folder`, and
+    `tar CONOUT$`;
+  * `TestNewUnpackerRefuses` failed with `unpack_test.go:68: {Member:a:b
+    MaxEntries:0} accepted`, and the same for `bin/aux.txt`, `x?y` and
+    `relay.`;
+  * `names_test.go` failed to build: `undefined: windowsReserved`;
+  * `names Windows allows` passed (pin).
+* **Green:** `go test -count=1 ./selfupdate/archive/
+  ./internal/cmd/selfupdate-release/ ./selfupdate/releasespec/` passed.
+* **Plants,** each in a scratch copy:
+
+  | Plant | First failing line |
+  | :--- | :--- |
+  | the element check `if false {` | `unpack_test.go:293: Unpack = <nil>, want "an element Windows reserves"`, all five rows |
+  | AUX dropped from the device list | `names_test.go:17: "aux" is not reserved`; also `tar aux.txt` |
+  | the Member check dropped | `unpack_test.go:68: {Member:a:b MaxEntries:0} accepted` |
+  | digit 0 dropped | `names_test.go:17: "com0" is not reserved` |
+
+* **Docs:** `archive/doc.go` names the characters and the devices,
+  citing 0017-MADR 4C.
+* **Checks:**
+  * `make gate`: every step `rc=0`, `overall=0`; apicheck "compatible
+    with v1.11.0";
+  * `make pre-add-check` on the four Go files: "4 file(s) clean".

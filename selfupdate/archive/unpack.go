@@ -49,6 +49,10 @@ type UnpackOptions struct {
 	// "relay_1.2.3/bin/relay". Empty means the one regular file whose base
 	// name is the product (plus ".exe" on windows), at the top level or
 	// one directory down. A .gz asset has no members, and ignores it.
+	// NewUnpacker refuses a Member no entry could be named: one that is not
+	// a clean relative path, or that checkPortable would refuse
+	// (docs/decisions/0017-PLAN-verify-build-provenance-and-close-0015-open-items.md
+	// N6).
 	Member string
 	// MaxEntries bounds the entries an archive may hold. Zero means 4096.
 	MaxEntries int
@@ -65,7 +69,7 @@ type unpacker struct {
 // limits, and checks the program's executable image for the platform. Its
 // refusals wrap selfupdate.ErrIntegrity (0012-MADR §4).
 func NewUnpacker(o UnpackOptions) (selfupdate.Unpacker, error) {
-	if o.Member != "" && !fs.ValidPath(o.Member) {
+	if o.Member != "" && (!fs.ValidPath(o.Member) || checkPortable(o.Member, o.Member) != nil) {
 		return nil, fmt.Errorf("selfupdate: archive: invalid member path %q", o.Member)
 	}
 	if o.MaxEntries < 0 {
@@ -278,7 +282,9 @@ func checkName(name string) (string, error) {
 // a byte outside printable ASCII, which APFS and NTFS may fold (U+017F ſ
 // to s), and an element ending in a dot or a space, which Win32 strips.
 // With both refused, strings.ToLower is the folding those file systems
-// apply (0015-MADR E2).
+// apply (0015-MADR E2). It also refuses, on every host, an element Windows
+// reserves: one holding a character Win32 refuses and Windows extractors
+// rewrite to "_", or naming a device (0017-MADR 4C).
 func checkPortable(name, clean string) error {
 	for i := range len(name) {
 		if name[i] < 0x20 || name[i] > 0x7e {
@@ -289,8 +295,32 @@ func checkPortable(name, clean string) error {
 		if el != "." && el != ".." && (strings.HasSuffix(el, ".") || strings.HasSuffix(el, " ")) {
 			return refuse("entry name %q has an element ending in a dot or a space", name)
 		}
+		if strings.ContainsAny(el, windowsFolded) || windowsReserved(el) {
+			return refuse("entry name %q has an element Windows reserves", name)
+		}
 	}
 	return nil
+}
+
+// windowsFolded are the printable ASCII characters Win32 refuses in a name,
+// and that Windows extractors (tar.exe, .NET) rewrite to "_".
+const windowsFolded = `<>:"|?*`
+
+// windowsReserved reports whether a path element names a Windows device:
+// its name before the first dot, with trailing spaces trimmed as Go's
+// isReservedName trims them, is CON, PRN, AUX, NUL, CONIN$, CONOUT$, or
+// COM or LPT and one digit, whatever its case
+// (docs/decisions/0017-PLAN-verify-build-provenance-and-close-0015-open-items.md
+// N5).
+func windowsReserved(el string) bool {
+	stem, _, _ := strings.Cut(el, ".")
+	stem = strings.TrimRight(stem, " ")
+	switch strings.ToUpper(stem) {
+	case "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$":
+		return true
+	}
+	return len(stem) == 4 && (strings.EqualFold(stem[:3], "COM") || strings.EqualFold(stem[:3], "LPT")) &&
+		'0' <= stem[3] && stem[3] <= '9'
 }
 
 // capReader fails once more than n bytes have been read.

@@ -23,7 +23,10 @@
 // central record says, so that a streaming reader, such as macOS's ditto
 // or Java's ZipInputStream, sees the entries archive/zip does
 // (docs/decisions/0017-MADR-verify-build-provenance-and-close-0015-open-items.md
-// 2B).
+// 2B). On every host, not only on Windows, it refuses a name whose element
+// holds one of < > : " | ? *, which Win32 refuses and Windows extractors
+// rewrite to "_", or names a device: CON, PRN, AUX, NUL, CONIN$, CONOUT$,
+// COM0-COM9 or LPT0-LPT9, before its first dot and in any case (4C).
 //
 // The package uses only the standard library and compiles on every OS.
 // This module's release workflows build and publish archives from a

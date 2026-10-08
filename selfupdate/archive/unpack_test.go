@@ -61,6 +61,8 @@ func mustUnpacker(t *testing.T, o UnpackOptions) selfupdate.Unpacker {
 func TestNewUnpackerRefuses(t *testing.T) {
 	for _, o := range []UnpackOptions{
 		{Member: "/abs/relay"}, {Member: "../relay"}, {Member: "a/"}, {Member: "a//relay"}, {MaxEntries: -1},
+		// A Member the unpacker would refuse as an entry name (0017-PLAN N6).
+		{Member: "a:b"}, {Member: "bin/aux.txt"}, {Member: "x?y"}, {Member: "relay."},
 	} {
 		if _, err := NewUnpacker(o); err == nil {
 			t.Errorf("%+v accepted", o)
@@ -94,6 +96,10 @@ func TestUnpackAccepts(t *testing.T) {
 		{"zip, .exe on windows", UnpackOptions{}, "relay-windows-amd64.zip",
 			zipBytes(t, zfile("relay.exe", windowsProgram), zfile("relay", readme)), windows, windowsProgram},
 		{"gz", UnpackOptions{}, "relay-x.gz", gzipBytes(t, hostProgram), hostPlatform, hostProgram},
+		// Names Windows allows (0017-MADR 4C).
+		{"names Windows allows", UnpackOptions{}, "relay-x.tar.gz",
+			tarGz(t, file("relay_1.2.3", readme), file("a b/readme", readme), file("auxiliary", readme), file("com10", readme), file(prog, hostProgram)),
+			hostPlatform, hostProgram},
 		// Zips that tile their file (0017-MADR 2B).
 		{"zip with a comment", UnpackOptions{}, "relay-x.zip", commentZip(t, "release v1.2.3", zfile(prog, hostProgram)), hostPlatform, hostProgram},
 		{"zip stored without a descriptor", UnpackOptions{}, "relay-x.zip", zipBytes(t, storedRaw(prog, hostProgram)), hostPlatform, hostProgram},
@@ -242,6 +248,12 @@ func TestUnpackRefuses(t *testing.T) {
 		{"zip trailing dot", UnpackOptions{}, "a.zip", zipBytes(t, zfile(prog, hostProgram), zfile(prog+".", small)), 0, "ending in a dot or a space"},
 		{"trailing space", UnpackOptions{}, "a.tar.gz", tarGz(t, file(prog, hostProgram), file(prog+" ", small)), 0, "ending in a dot or a space"},
 		{"zip trailing space", UnpackOptions{}, "a.zip", zipBytes(t, zfile(prog, hostProgram), zfile(prog+" ", small)), 0, "ending in a dot or a space"},
+		// Names Windows reserves, refused on every host (0017-MADR 4C).
+		{"zip colon beside the program", UnpackOptions{}, "a.zip", zipBytes(t, zfile(prog, hostProgram), zfile("my:tool", small)), 0, "an element Windows reserves"},
+		{"tar aux.txt", UnpackOptions{}, "a.tar.gz", tarGz(t, file(prog, hostProgram), file("aux.txt", small)), 0, "an element Windows reserves"},
+		{"tar x?y", UnpackOptions{}, "a.tar.gz", tarGz(t, file(prog, hostProgram), file("x?y", small)), 0, "an element Windows reserves"},
+		{"zip com1.log in a folder", UnpackOptions{}, "a.zip", zipBytes(t, zfile(prog, hostProgram), zfile("logs/com1.log", small)), 0, "an element Windows reserves"},
+		{"tar CONOUT$", UnpackOptions{}, "a.tar.gz", tarGz(t, file(prog, hostProgram), file("CONOUT$", small)), 0, "an element Windows reserves"},
 		// A directory is an entry named with a trailing "/" (0015-MADR E3).
 		{"zip FAT directory attribute with data", UnpackOptions{}, "a.zip", zipBytes(t, fatDir, zfile("x/"+prog, hostProgram)), 0, "directory attribute does not match"},
 		{"zip directory mode with data", UnpackOptions{}, "a.zip", zipBytes(t, modeDir, zfile("x/"+prog, hostProgram)), 0, "directory attribute does not match"},
