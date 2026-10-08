@@ -1429,3 +1429,46 @@ changes no API: `make apicheck` reports it compatible with `v1.11.0`.
   * an element holding one of `< > : " | ? *`, or naming a device (CON,
     PRN, AUX, NUL, CONIN$, CONOUT$, COM0–COM9, LPT0–LPT9);
   * `UnpackOptions.Member` follows the same rules.
+
+### Deviation D2 (2026-10-08): two of P2's rows fail on Windows
+
+* **Found:** CI run 37843209554, on the pushed `476be2a`,
+  `validate (windows-2025)`:
+
+  ```text
+  --- FAIL: TestUnpackRefuses/zip_colon_beside_the_program
+      unpack_test.go:293: Unpack = selfupdate: archive: entry name "my:tool" is not safe: selfupdate: integrity check failed, want "an element Windows reserves"
+  --- FAIL: TestUnpackRefuses/tar_CONOUT$
+      unpack_test.go:293: Unpack = selfupdate: archive: entry name "CONOUT$" is not safe: selfupdate: integrity check failed, want "an element Windows reserves"
+  ```
+
+  On Windows, `checkName`'s `filepath.IsLocal` refuses a `:` and a device
+  name before `checkPortable` sees the entry. The refusal and its
+  `ErrIntegrity` are the same on every host; the message is not. P2 ran
+  its tests on macOS only. P2's Red step said this ("On Windows, Go's
+  `IsLocal` already refuses most of them"), but the rows did not allow
+  for it.
+* **Resolutions offered:**
+  1. the two rows expect `is not safe` on Windows and `an element Windows
+     reserves` elsewhere, both still requiring `ErrIntegrity`
+     (recommended);
+  2. run the Windows-name check before `IsLocal`, so every host gives one
+     message: more churn, in P2's code.
+* **Decision:** the owner chose resolution 1.
+* **The fix:** `TestUnpackRefuses` gains `isLocalRefuses`, which is
+  "is not safe" when `runtime.GOOS` is `windows`, and the two rows use
+  it.
+* **Checks:**
+  * on the Windows test host, with `TMP` and `TEMP` at an 8.3 path, `go
+    test -count=1 -v ./selfupdate/archive/` gave `pass=165 fail=0`, the
+    five name rows among them;
+  * on this Mac, `go test ./selfupdate/archive/` passed;
+  * `make pre-add-check` on the file was clean, and `make gate` ended
+    `overall=0`.
+* **The `v1.11.1` release commit** is the commit with this fix, not
+  `476be2a`.
+* **Not part of 0017:** the same CI workflow failed on `6dcdd8a` (run
+  37812059468), in `TestWaitHopExit` (`selfupdate/service`): "the child
+  waited 75 ms, its parent still running false; want at least 200 ms,
+  and gone". The owner asked for it to become a phase of this PLAN
+  (Q0), by an amendment approved before work on it starts.

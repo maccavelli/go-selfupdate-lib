@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -162,6 +163,14 @@ func lyingZip(t *testing.T) []byte {
 // ErrIntegrity, and none is accepted.
 func TestUnpackRefuses(t *testing.T) {
 	small := []byte("small")
+	// On Windows, checkName's filepath.IsLocal refuses a ':' and a device
+	// name before checkPortable sees them; elsewhere checkPortable does
+	// (docs/decisions/0017-PLAN-verify-build-provenance-and-close-0015-open-items.md
+	// deviation D2).
+	isLocalRefuses := "an element Windows reserves"
+	if runtime.GOOS == "windows" {
+		isLocalRefuses = "is not safe"
+	}
 	mib := make([]byte, 1<<20)
 	link := func(name string, typ byte) tarEntry {
 		return tarEntry{tar.Header{Name: name, Typeflag: typ, Linkname: "/bin/sh", Mode: 0o755}, nil}
@@ -249,11 +258,11 @@ func TestUnpackRefuses(t *testing.T) {
 		{"trailing space", UnpackOptions{}, "a.tar.gz", tarGz(t, file(prog, hostProgram), file(prog+" ", small)), 0, "ending in a dot or a space"},
 		{"zip trailing space", UnpackOptions{}, "a.zip", zipBytes(t, zfile(prog, hostProgram), zfile(prog+" ", small)), 0, "ending in a dot or a space"},
 		// Names Windows reserves, refused on every host (0017-MADR 4C).
-		{"zip colon beside the program", UnpackOptions{}, "a.zip", zipBytes(t, zfile(prog, hostProgram), zfile("my:tool", small)), 0, "an element Windows reserves"},
+		{"zip colon beside the program", UnpackOptions{}, "a.zip", zipBytes(t, zfile(prog, hostProgram), zfile("my:tool", small)), 0, isLocalRefuses},
 		{"tar aux.txt", UnpackOptions{}, "a.tar.gz", tarGz(t, file(prog, hostProgram), file("aux.txt", small)), 0, "an element Windows reserves"},
 		{"tar x?y", UnpackOptions{}, "a.tar.gz", tarGz(t, file(prog, hostProgram), file("x?y", small)), 0, "an element Windows reserves"},
 		{"zip com1.log in a folder", UnpackOptions{}, "a.zip", zipBytes(t, zfile(prog, hostProgram), zfile("logs/com1.log", small)), 0, "an element Windows reserves"},
-		{"tar CONOUT$", UnpackOptions{}, "a.tar.gz", tarGz(t, file(prog, hostProgram), file("CONOUT$", small)), 0, "an element Windows reserves"},
+		{"tar CONOUT$", UnpackOptions{}, "a.tar.gz", tarGz(t, file(prog, hostProgram), file("CONOUT$", small)), 0, isLocalRefuses},
 		// A directory is an entry named with a trailing "/" (0015-MADR E3).
 		{"zip FAT directory attribute with data", UnpackOptions{}, "a.zip", zipBytes(t, fatDir, zfile("x/"+prog, hostProgram)), 0, "directory attribute does not match"},
 		{"zip directory mode with data", UnpackOptions{}, "a.zip", zipBytes(t, modeDir, zfile("x/"+prog, hostProgram)), 0, "directory attribute does not match"},
