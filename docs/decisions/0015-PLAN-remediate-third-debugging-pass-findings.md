@@ -4001,8 +4001,8 @@ All 64 IDs appear. A10 is the MADR's amendment A2.
     four `go list` checks outside the `v1.10.1` section.
   * Kept: each section's statements about its own release, the `v1.10.1`
     section's `go get` line and check among them.
-* **Step 7,** the live installer rehearsal, was not asked for, and was not
-  run.
+* **Step 7,** the live installer rehearsal, was run after the closing, on
+  the owner's ask; see its record below.
 
 ### Verification, at closing (2026-10-08)
 
@@ -4034,3 +4034,88 @@ All 64 IDs appear. A10 is the MADR's amendment A2.
 * The owner chose "Complete, exceptions recorded": V1–V10 hold, V6 and
   V10 with the two exceptions above. This PLAN is `complete`, and its row
   in `docs/README.md` follows. The MADR stays `accepted`.
+
+### Deviation D9 (2026-10-08): the rehearsal's tag names
+
+* **Found** in step 7, on the first tag push to the throwaway repository:
+  `v0.0.1` was refused, "GH013: Repository rule violations found for
+  refs/tags/v0.0.1 … Cannot create ref due to creations being
+  restricted". The repository has no rulesets, its own or inherited, for
+  branches, tags or pushes; the owner confirmed it has no rules; the
+  agent's token has admin on it. A probe tag, `probe-1`, pushed at once,
+  and was deleted. 0014's rehearsal had published immutable releases
+  `v0.0.1` to `v0.0.3` in a repository of the same name, deleted on
+  2026-10-07. The inference, not found in GitHub's documentation: a
+  deleted repository's immutable release tags stay reserved under its
+  name. `v0.1.1` then pushed, which fits it.
+* **Resolutions offered to the owner:**
+  1. tags `v0.1.1`, `v0.1.2` (raw) and `v0.1.3` (archives), every check
+     as planned (recommended);
+  2. a new repository name, keeping `v0.0.1` to `v0.0.3`: one more
+     manual step, and a fresh branch run;
+  3. not running the rehearsal.
+* **Decision:** the owner chose "New tag numbers". A future rehearsal
+  takes tags or a name that no earlier rehearsal published.
+
+### Release procedure step 7: the `v1.11.0` live rehearsal (2026-10-08)
+
+On the owner's ask ("run the live installer rehearsal"), after the
+closing, as 0014-PLAN I7 step 3 did, with Deviation D9's tags.
+
+* **The repository:** a throwaway public repository, created by the owner
+  with `gh repo create`, immutable releases turned on with
+  `PUT /repos/{owner}/{repo}/immutable-releases`; read back as
+  `"enabled":true`. The agent's token has no `delete_repo` scope, so the
+  owner removes it.
+* **The program:** 0014's, requiring `v1.11.0` from `proxy.golang.org`:
+  `rehearsal`, with `identity_args: ["version"]`, a `spec` command
+  ("installers: [install.sh install.ps1]") and a `mark-installed`
+  command; and `rehearsalctl`, with no identity command. Five platforms;
+  `"installer"` with an `after_install` hook, `rehearsal mark-installed`.
+  One change: the hook reads its standard input to the end and writes
+  the byte count beside its identity in `rehearsal.installed`, so a hook
+  that took the rest of a piped installer (F2) would show it. The caller
+  is the building guide's, both workflows pinned to `a0612da`, on a
+  `feature/rehearsal` branch.
+* **Runs,** each green: the branch push, a rehearsal with five identity
+  legs and `release` skipped, its plan step run with `-module-dir` (F3);
+  `v0.1.1` and `v0.1.2`, raw, and `v0.1.3`, archives (tar.gz and zip),
+  7 of 7 jobs each. Each release is immutable, with `install.sh`,
+  `install.ps1`, ten assets and `SHA256SUMS`; `v0.1.2` became latest,
+  then `v0.1.3`.
+* **On the development Mac and the Linux test host,** with `HOME` a
+  scratch directory, so neither host's own `~/.local/bin` was touched;
+  the same result on both:
+
+  | One-liner | Exit | Result |
+  | :--- | :--- | :--- |
+  | `curl -fsSL …/releases/latest/download/install.sh \| sh` | 0 | both products at `v0.1.3 (release) 18a3181a9ce7`, from tar.gz; the hook ran; `rehearsal.installed` holds that identity and "stdin 0 bytes" |
+  | the same, `-s -- --version v0.1.1` | 1 | "release v0.1.1 has no rehearsal-<os>-<arch>.tar.gz; its own installer is …/releases/download/v0.1.1/install.sh" |
+  | `…/download/v0.1.2/install.sh \| sh -s -- --version v0.1.1` | 0 | `v0.1.1 (release) 4bee52c35b3b`; `rehearsal.prev` reports `v0.1.3` |
+  | `…/download/v0.1.1/install.sh \| sh` | 0 | `v0.1.1` again, the hook's marker rewritten |
+  | the latest, `--product rehearsal --product rehearsal` (F1) | 0 | `rehearsal` installed once, at `v0.1.3`; `rehearsalctl` left at `v0.1.1` |
+  | the latest, `--dir rel --no-hooks`, from a scratch working directory (F5) | 0 | installed into `<scratch>/cwd/rel`, absolute in the messages; runs from `/` |
+  | the latest, `--uninstall` | 0 | both binaries and their `.prev` removed; "configuration, if any, is left in place"; the hook's marker stays |
+
+  Every hook run recorded "stdin 0 bytes". On the Mac, with its own
+  `HOME`, so `gh` was logged in, the latest one-liner with
+  `--verify-attestation --dir <scratch> --no-hooks` exited 0, installing
+  `v0.1.3`.
+* **On the Windows test host,** under Windows PowerShell 5.1.26100 and
+  PowerShell 7.6.6, with `LOCALAPPDATA` a scratch folder and the real
+  user PATH, its raw value and kind saved first:
+
+  | Form | Result, both PowerShells |
+  | :--- | :--- |
+  | `irm …/latest/download/install.ps1 \| iex` | both products at `v0.1.3 (release) 18a3181a9ce7`, from zip; the hook ran, "stdin 0 bytes"; "added … to your user PATH"; the user PATH has the folder, still `REG_SZ` |
+  | `& ([scriptblock]::Create((irm …/latest/…))) -Version v0.1.1` | "release v0.1.1 has no rehearsal-windows-amd64.zip; its own installer is …/download/v0.1.1/install.ps1", then the error `install failed (exit 1)`, the session kept |
+  | `& ([scriptblock]::Create((irm …/download/v0.1.2/install.ps1))) -Version v0.1.1` | `v0.1.1 (release) 4bee52c35b3b`; `rehearsal.exe.prev` and `rehearsalctl.exe.prev` kept |
+  | the latest, `-Product rehearsal, rehearsal` (F1) | `rehearsal.exe` installed once, at `v0.1.3`; `rehearsalctl.exe` left at `v0.1.1` |
+  | the latest, `-InstallDir rel -NoPathUpdate -NoHooks`, from a scratch working directory (F5) | installed into `<scratch>\cwd\rel`, absolute in the messages; the user PATH not changed |
+  | the latest, `-Uninstall` | both binaries removed, and the folder off the user PATH |
+
+  After each run the user PATH was byte for byte as before ("user PATH
+  as before: True"), so the saved copy was not needed. Under PowerShell
+  7 the refusal's message reached the log after the next step's header:
+  the ssh session's interleaving of the two streams, not the installer.
+* **Removal:** the owner deletes the repository.
