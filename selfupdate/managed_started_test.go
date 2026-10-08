@@ -3,6 +3,8 @@ package selfupdate
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -69,5 +71,47 @@ func TestRunReportsServiceStarted(t *testing.T) {
 		if !strings.Contains(string(b), want) {
 			t.Fatalf("enabled %t: document %s", enabled, b)
 		}
+	}
+}
+
+// TestRunReportsRolledBack: a managed update whose new binary fails its
+// health check is rolled back, and the result says so, as the event does
+// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md G3).
+func TestRunReportsRolledBack(t *testing.T) {
+	_, exe := withTempHome(t)
+	inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := NewManagedInstaller(inner, &fakeLife{installed: true, running: true, healthErr: errors.New("unhealthy")}, &fakeRec{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rel, bodies, plats := probeRelease(t)
+	sel, err := NewExactAssetSelector(plats)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep := &recReporter{}
+	u, err := New(Config{Source: &scriptSource{rel: rel, bodies: bodies}, Versions: NewStrictVersionPolicy(), Assets: sel,
+		Installer: m, Reporter: rep, Confirmer: &recConfirmer{}, Limits: DefaultLimits()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := applyReq()
+	req.Yes = true
+	res, err := u.Run(context.Background(), req)
+	if !errors.Is(err, ErrManagedInstall) || res.Applied || !res.RolledBack {
+		t.Fatalf("Run = %+v, %v; want a rollback reported", res, err)
+	}
+	b, err := json.Marshal(res.Document())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"rolled_back":true`) {
+		t.Fatalf("document %s", b)
+	}
+	if !slices.ContainsFunc(rep.events, func(ev Event) bool { return ev.Kind == EventRolledBack }) {
+		t.Fatalf("events %v lack EventRolledBack", rep.events)
 	}
 }

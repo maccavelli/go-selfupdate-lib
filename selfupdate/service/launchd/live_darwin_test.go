@@ -121,7 +121,7 @@ func runLiveUpdate() (selfupdate.Result, error) {
 	installed, err := managedInstall(j, os.Getenv("FAKE_TARGET"), os.Getenv("FAKE_NEW"))
 	return selfupdate.Result{
 		Product: "demo", Applied: installed.Applied, ServiceInstalled: installed.ServiceInstalled,
-		ServiceStarted: installed.ServiceStarted,
+		ServiceStarted: installed.ServiceStarted, RolledBack: installed.RolledBack,
 	}, err
 }
 
@@ -531,5 +531,42 @@ func TestLiveHandOff(t *testing.T) {
 	}
 	if entries, _ := filepath.Glob(filepath.Join(e.dir, "handoff", "handoff-*.env")); len(entries) != 0 {
 		t.Fatalf("the environment file was left: %v", entries)
+	}
+}
+
+// TestLiveHandOffHealthFailureReportsRollback: the handed-off build exits
+// at once, so the detached run's health check fails. Its result reports
+// the rollback, and the job runs the previous build afterwards
+// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md G3).
+func TestLiveHandOffHealthFailureReportsRollback(t *testing.T) {
+	requireLive(t)
+	e := newLiveJob(t)
+	waitRunning(t, e)
+	if err := os.WriteFile(filepath.Join(e.dir, "new"), []byte("#!/bin/sh\nexit 3\n"), 0o755); err != nil { //nolint:gosec // an executable fixture
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(e.dir, "trigger"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	result := service.DefaultResultPath(e.target)
+	for deadline := time.Now().Add(150 * time.Second); ; time.Sleep(200 * time.Millisecond) {
+		if msg, err := os.ReadFile(filepath.Join(e.dir, "inside-error")); err == nil { //nolint:gosec // the live test's own file
+			t.Fatalf("inside the job: %s", msg)
+		}
+		if r, err := service.ReadHandOffResult(result); err == nil {
+			if r.ExitCode != 1 || r.Result.Applied || !r.Result.RolledBack {
+				t.Fatalf("handoff result %+v; want exit 1, not applied, rolled back", r)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no handoff result within 150 s\n%s", e.dump())
+		}
+	}
+	if pid := waitRunning(t, e); pid <= 0 {
+		t.Fatal("after the rollback the job is not running")
+	}
+	if got := signedAs(t, e.target); got != "selfupdate.live.old" {
+		t.Fatalf("the job's binary is signed as %q, not the previous build", got)
 	}
 }

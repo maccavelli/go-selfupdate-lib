@@ -171,6 +171,14 @@ type Result struct {
 	// Warnings lists the errors that arrived after EventComplete. None of
 	// them failed the run.
 	Warnings Warnings
+	// RolledBack reports that the previous binary was restored after the
+	// new one was installed, as InstallResult.RolledBack does
+	// (0015-MADR G3).
+	RolledBack bool
+	// ProbesSkipped reports that a dry run for a platform other than the
+	// running one did not run Config.Probes: this host cannot run that
+	// platform's binary (0015-MADR C9).
+	ProbesSkipped bool
 }
 
 // Repository is a GitHub owner/name pair.
@@ -813,7 +821,8 @@ type Config struct {
 }
 
 // Updater is the coordinator. Unexported collaborator fields are populated
-// by New and are immutable afterwards.
+// by New and are immutable afterwards. One that New did not make, such as
+// a zero value, returns ErrNotConstructed.
 type Updater struct {
 	source      ReleaseSource
 	versions    VersionPolicy

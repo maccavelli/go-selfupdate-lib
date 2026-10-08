@@ -130,6 +130,7 @@ func runLiveUpdate() (selfupdate.Result, error) {
 	return selfupdate.Result{
 		Product: "demo", Applied: installed.Applied, ServiceInstalled: installed.ServiceInstalled,
 		ServiceWasRunning: installed.ServiceWasRunning, ServiceStarted: installed.ServiceStarted,
+		RolledBack: installed.RolledBack,
 	}, err
 }
 

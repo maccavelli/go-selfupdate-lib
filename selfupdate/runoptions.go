@@ -131,6 +131,9 @@ func (u *Updater) newRun(s runScope) (*run, error) {
 // only. It shares Run's guard: one run at a time per Updater. An invalid
 // option fails before anything else, and nothing is reported for it.
 func (u *Updater) RunWith(ctx context.Context, req Request, opts ...RunOption) (Result, error) {
+	if !u.constructed() {
+		return Result{}, ErrNotConstructed
+	}
 	s, err := scope(opts)
 	if err != nil {
 		return Result{}, err
@@ -140,6 +143,12 @@ func (u *Updater) RunWith(ctx context.Context, req Request, opts ...RunOption) (
 		return Result{}, err
 	}
 	return u.execRun(ctx, req, r)
+}
+
+// constructed reports whether New made u: a nil or zero Updater has no
+// collaborators (0015-MADR C8).
+func (u *Updater) constructed() bool {
+	return u != nil && u.source != nil && u.versions != nil && u.assets != nil && u.installer != nil
 }
 
 // execRun runs r under the Updater's one-run-at-a-time guard. RunWith and

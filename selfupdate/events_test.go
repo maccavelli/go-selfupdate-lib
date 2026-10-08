@@ -164,6 +164,7 @@ func TestFailureClass(t *testing.T) {
 		ErrForceRequired:                             "force-required",
 		ErrLatestOlder:                               "latest-older",
 		ErrMutableRelease:                            "mutable-release",
+		ErrNoRelease:                                 "no-release",
 		&RateLimitError{StatusCode: 429}:             "rate-limited",
 		ErrUnsupportedPlatform:                       "unsupported-platform",
 		ErrConcurrentUpdate:                          "concurrent-update",
@@ -366,10 +367,10 @@ func TestResultDocumentJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `{"schema_version":2,"product":"demo","current_version":"v1.0.0","target_version":"v1.1.0",` +
+	want := `{"schema_version":3,"product":"demo","current_version":"v1.0.0","target_version":"v1.1.0",` +
 		`"release_url":"https://example.invalid/r","asset_name":"demo-linux-amd64","operation":"upgrade",` +
 		`"checked":false,"applied":true,"declined":false,"dry_run":false,"release_digest":"aa","installed_digest":"bb",` +
-		`"service_installed":false,"service_was_running":false,"service_started":false}`
+		`"service_installed":false,"service_was_running":false,"service_started":false,"rolled_back":false,"probes_skipped":false}`
 	if string(got) != want {
 		t.Fatalf("document:\n%s\nwant:\n%s", got, want)
 	}
@@ -380,9 +381,9 @@ func TestResultDocumentJSON(t *testing.T) {
 	if got, err = json.Marshal(res.Document()); err != nil {
 		t.Fatal(err)
 	}
-	want = `{"schema_version":2,"product":"demo","current_version":"v1.0.0","operation":"upgrade",` +
+	want = `{"schema_version":3,"product":"demo","current_version":"v1.0.0","operation":"upgrade",` +
 		`"checked":false,"applied":true,"declined":false,"dry_run":true,` +
-		`"service_installed":false,"service_was_running":false,"service_started":false,"previous":"/opt/demo/.demo.previous"}`
+		`"service_installed":false,"service_was_running":false,"service_started":false,"previous":"/opt/demo/.demo.previous","rolled_back":false,"probes_skipped":false}`
 	if string(got) != want {
 		t.Fatalf("document:\n%s\nwant:\n%s", got, want)
 	}

@@ -168,6 +168,9 @@ func (s *Stream) prepare(u *Updater, opts []RunOption) (*run, error) {
 	if u == nil {
 		return nil, fmt.Errorf("selfupdate: updater is nil")
 	}
+	if !u.constructed() {
+		return nil, ErrNotConstructed
+	}
 	sc, err := scope(opts)
 	if err != nil {
 		return nil, err
@@ -262,8 +265,12 @@ func (s *Stream) All(ctx context.Context) iter.Seq[Interaction] {
 
 // Cancel cancels the run. The run still finishes through its usual
 // recovery, and Finished is still delivered. It may be called any number
-// of times, from any goroutine.
+// of times, from any goroutine. On a Stream that Start did not return it
+// does nothing (0015-MADR C8).
 func (s *Stream) Cancel() {
+	if s == nil || s.cancel == nil {
+		return
+	}
 	s.cancel()
 }
 

@@ -14,8 +14,10 @@
 // An error after the run did its work, such as a failed unlock once the
 // binary is replaced, is a warning, not a failure: the exit status stays 0,
 // stderr gets one "warning: …" line for each in either mode, and under
-// --json the result object's "result" carries them as its "warnings" array
-// (schema_version 2). Failing to write those lines, and a failing
+// --json the result object's "result" carries them as its "warnings" array.
+// The result is schema_version 3: "rolled_back" says the previous binary
+// was restored after the new one was installed, and "probes_skipped" that a
+// dry run for another platform did not run the probes. Failing to write those lines, and a failing
 // HandOff.Report, do fail the run; both come before the result object, so
 // its "exit_code" is always the process's.
 //
@@ -34,5 +36,7 @@
 // started inside the service, such as by an agent the service spawned,
 // runs detached from it instead of stopping the service under itself:
 // the command prints "update handed off: <detail>" and exits 0, and the
-// detached run reports to a file (package selfupdate/service).
+// detached run reports to a file (package selfupdate/service). It hands
+// off only an update it would install, and the detached run cannot ask:
+// inside the service, an update without --yes is refused.
 package cli

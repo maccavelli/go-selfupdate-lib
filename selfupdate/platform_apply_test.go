@@ -101,3 +101,29 @@ func TestApplyRunningPlatformNamed(t *testing.T) {
 		t.Fatalf("res = %+v, err = %v", res, err)
 	}
 }
+
+// TestDryRunForeignPlatformSkipsProbes: a dry run for another platform
+// cannot run that platform's binary here, so the probes are skipped and the
+// result says so; for the running platform they run
+// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md C9).
+func TestDryRunForeignPlatformSkipsProbes(t *testing.T) {
+	for _, foreign := range []bool{true, false} {
+		plat := Platform{OS: runtime.GOOS, Arch: runtime.GOARCH}
+		if foreign {
+			plat = foreignPlatform()
+		}
+		_, u := platformEnv(t, plat)
+		ran := 0
+		u.probes = []Prober{ProberFunc(func(context.Context, ProbeRequest) error {
+			ran++
+			return nil
+		})}
+		req := applyReq()
+		req.DryRun = true
+		req.Platform = plat
+		res, err := u.Run(context.Background(), req)
+		if err != nil || !res.DryRun || res.ProbesSkipped != foreign || (ran == 0) != foreign {
+			t.Fatalf("foreign %t: res = %+v, err = %v, probes ran %d", foreign, res, err, ran)
+		}
+	}
+}

@@ -45,8 +45,10 @@
 // downloads no asset body. Checker.CheckCached keeps the answer in a
 // CheckStore, such as NewFileCheckStore, so a program that starts often asks
 // the network at most once per interval and backs off after a rate limit.
-// It keeps ErrLatestOlder, ErrUnsupportedPlatform and ErrMutableRelease too,
-// as the record's CheckOutcome.
+// It keeps ErrLatestOlder, ErrUnsupportedPlatform, ErrMutableRelease and
+// ErrNoRelease too, as the record's CheckOutcome. An Updater or a Checker
+// its constructor did not make, such as a zero value, returns
+// ErrNotConstructed.
 //
 // # Channels
 //

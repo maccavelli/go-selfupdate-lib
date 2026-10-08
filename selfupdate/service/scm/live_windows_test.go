@@ -200,7 +200,7 @@ func runLiveUpdate() (selfupdate.Result, error) {
 	installed, err := managedInstall(s, cfg.Target, cfg.New)
 	return selfupdate.Result{
 		Product: "demo", Applied: installed.Applied, ServiceInstalled: installed.ServiceInstalled,
-		ServiceStarted: installed.ServiceStarted,
+		ServiceStarted: installed.ServiceStarted, RolledBack: installed.RolledBack,
 	}, err
 }
 

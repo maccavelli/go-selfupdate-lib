@@ -334,7 +334,7 @@ func (u *run) apply(ctx context.Context, req Request, result Result, target Targ
 			return resultOut, wrapRun(req, err)
 		}
 	}
-	if err = u.runProbes(ctx, req, rel, stagedPath); err != nil {
+	if resultOut.ProbesSkipped, err = u.stagedProbes(ctx, req, rel, stagedPath); err != nil {
 		return resultOut, wrapRun(req, err)
 	}
 	if req.DryRun {
@@ -367,6 +367,7 @@ func (u *run) apply(ctx context.Context, req Request, result Result, target Targ
 	resultOut.ServiceStarted = installed.ServiceStarted
 	resultOut.PendingBackup = installed.PendingBackup
 	resultOut.Previous = installed.Previous
+	resultOut.RolledBack = installed.RolledBack
 	if installed.RolledBack {
 		u.reportOutcome(ctx, Event{Kind: EventRolledBack, Product: req.Product, Target: rel.Tag, Asset: sel.Binary.Name})
 	}
@@ -462,6 +463,16 @@ func retainedPath(target Target, p string) string {
 	return filepath.Join(target.Dir, p)
 }
 
+// stagedProbes runs Config.Probes on the staging file, except in a dry run
+// for another platform: this host cannot run that platform's binary, so
+// the probes are skipped and it reports so (0015-MADR C9).
+func (u *Updater) stagedProbes(ctx context.Context, req Request, rel Release, stagedPath string) (skipped bool, err error) {
+	if req.DryRun && req.Platform != runningPlatform() && len(u.probes) > 0 {
+		return true, nil
+	}
+	return false, u.runProbes(ctx, req, rel, stagedPath)
+}
+
 // runProbes runs Config.Probes on the staging file, first making it
 // runnable: CreateTemp creates it 0600 (0004-MADR G9).
 func (u *Updater) runProbes(ctx context.Context, req Request, rel Release, stagedPath string) error {
@@ -529,6 +540,7 @@ var failureClasses = []struct {
 	{ErrForceRequired, "force-required"},
 	{ErrLatestOlder, "latest-older"},
 	{ErrMutableRelease, "mutable-release"},
+	{ErrNoRelease, "no-release"},
 	{ErrRateLimited, "rate-limited"},
 	{ErrUnsupportedPlatform, "unsupported-platform"},
 	{ErrConcurrentUpdate, "concurrent-update"},

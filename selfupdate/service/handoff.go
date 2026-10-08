@@ -145,9 +145,21 @@ func DefaultResultPath(executable string) string {
 
 // HandOffFunc returns the cli.HandOff Detach hook for d and spec: it hands
 // off when this process is inside the service, and its detail names the
-// handoff and its result file.
+// handoff and its result file. The detached run cannot ask for
+// confirmation, so inside the service a request without Yes is refused
+// with ErrConfirmationRequired (0015-MADR C3).
 func HandOffFunc(d Detacher, spec HandOff) func(context.Context, selfupdate.Request) (bool, string, error) {
-	return func(ctx context.Context, _ selfupdate.Request) (bool, string, error) {
+	return func(ctx context.Context, req selfupdate.Request) (bool, string, error) {
+		if !req.Yes && d != nil && os.Getenv(EnvHandOff) == "" {
+			inside, err := d.Inside(ctx)
+			if err != nil {
+				return false, "", fmt.Errorf("selfupdate: service: cannot tell whether this process runs inside the service: %w", err)
+			}
+			if inside {
+				return false, "", fmt.Errorf("selfupdate: service: an update from inside the service runs detached and cannot ask; pass --yes: %w",
+					selfupdate.ErrConfirmationRequired)
+			}
+		}
 		det, handedOff, err := HandOffIfInside(ctx, d, spec)
 		if err != nil || !handedOff {
 			return false, "", err

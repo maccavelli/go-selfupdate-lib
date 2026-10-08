@@ -316,7 +316,7 @@ func ExampleResult_Document() {
 		return
 	}
 	fmt.Println(string(out))
-	// Output: {"schema_version":2,"product":"demo","current_version":"v1.0.0","target_version":"v1.1.0","asset_name":"demo-linux-amd64","operation":"upgrade","checked":false,"applied":false,"declined":false,"dry_run":true,"service_installed":false,"service_was_running":false,"service_started":false}
+	// Output: {"schema_version":3,"product":"demo","current_version":"v1.0.0","target_version":"v1.1.0","asset_name":"demo-linux-amd64","operation":"upgrade","checked":false,"applied":false,"declined":false,"dry_run":true,"service_installed":false,"service_was_running":false,"service_started":false,"rolled_back":false,"probes_skipped":false}
 }
 
 // exampleUpdater updates a stand-in binary in a temporary directory from

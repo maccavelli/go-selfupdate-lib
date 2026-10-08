@@ -30,6 +30,9 @@ const (
 	CheckUnsupportedPlatform
 	// CheckMutableRelease means the check failed with ErrMutableRelease.
 	CheckMutableRelease
+	// CheckNoRelease means the check failed with ErrNoRelease: the
+	// repository has no such release yet (0015-MADR A1).
+	CheckNoRelease
 )
 
 // checkOutcomes pairs each failed outcome with its error, and with the
@@ -43,6 +46,7 @@ var checkOutcomes = []struct {
 	{CheckLatestOlder, ErrLatestOlder, "latest-older"},
 	{CheckUnsupportedPlatform, ErrUnsupportedPlatform, "unsupported-platform"},
 	{CheckMutableRelease, ErrMutableRelease, "mutable-release"},
+	{CheckNoRelease, ErrNoRelease, "no-release"},
 }
 
 // String implements fmt.Stringer. A known outcome's name is stable, and
@@ -130,8 +134,8 @@ var (
 // never prompts and never applies anything.
 //
 // An answer is a success, or one of the errors the same question gets again
-// until a release changes: ErrLatestOlder, ErrUnsupportedPlatform and
-// ErrMutableRelease. Each is saved with its CheckOutcome and served for
+// until a release changes: ErrLatestOlder, ErrUnsupportedPlatform,
+// ErrMutableRelease and ErrNoRelease. Each is saved with its CheckOutcome and served for
 // maxAge; a cached one returns an error that matches its sentinel. Any other
 // error is returned and not saved, so the next call checks again.
 //
@@ -143,6 +147,9 @@ var (
 // Whatever the error, a returned record with a non-zero CheckedAt holds a
 // real answer as of CheckedAt, and its Outcome says which.
 func (c *Checker) CheckCached(ctx context.Context, cr CheckRequest, store CheckStore, maxAge time.Duration) (CheckRecord, error) {
+	if !c.constructed() {
+		return CheckRecord{}, ErrNotConstructed
+	}
 	if isNil(store) {
 		return CheckRecord{}, fmt.Errorf("selfupdate: check store is required")
 	}

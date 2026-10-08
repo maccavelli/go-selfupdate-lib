@@ -3,9 +3,12 @@ package selfupdate
 import (
 	"context"
 	"errors"
+	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -126,6 +129,7 @@ func TestCheckOutcomeNames(t *testing.T) {
 		{CheckLatestOlder, "latest-older", ErrLatestOlder},
 		{CheckUnsupportedPlatform, "unsupported-platform", ErrUnsupportedPlatform},
 		{CheckMutableRelease, "mutable-release", ErrMutableRelease},
+		{CheckNoRelease, "no-release", ErrNoRelease},
 		{CheckOutcome(200), "CheckOutcome(200)", nil},
 	} {
 		// errors.Is with a nil target reports whether the error is nil.
@@ -192,5 +196,35 @@ func TestFileCheckStoreOlderSchemaIsMiss(t *testing.T) {
 	c, src, req, _ := cacheEnv(t)
 	if _, err := c.CheckCached(context.Background(), req, s, time.Hour); err != nil || networkCalls(src) != 1 {
 		t.Fatalf("CheckCached over an older record: err = %v, calls = %v", err, src.calls)
+	}
+}
+
+// TestCheckCachedNoRelease: a repository with no such release gets the
+// same answer until one is published, so it is cached for maxAge: three
+// checks make one request
+// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md A1).
+func TestCheckCachedNoRelease(t *testing.T) {
+	var hits atomic.Int32
+	env := newGitHubEnv(t, func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		http.NotFound(w, r)
+	}, "")
+	sel, err := NewExactAssetSelector([]Platform{{OS: runtime.GOOS, Arch: runtime.GOARCH}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := NewChecker(CheckerConfig{Source: env.src, Versions: NewStrictVersionPolicy(), Assets: sel, Limits: DefaultLimits()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := &memStore{}
+	req := CheckRequest{Product: "demo", CurrentVersion: "v1.0.0", CurrentBuild: ReleaseBuild}
+	for i := range 3 {
+		if _, err := c.CheckCached(context.Background(), req, store, time.Hour); !errors.Is(err, ErrNoRelease) {
+			t.Fatalf("call %d: err = %v, want ErrNoRelease", i, err)
+		}
+	}
+	if n := hits.Load(); n != 1 || len(store.saves) != 1 || store.rec.Outcome != CheckNoRelease {
+		t.Fatalf("requests %d, saves %d, outcome %v; want 1, 1, no-release", n, len(store.saves), store.rec.Outcome)
 	}
 }

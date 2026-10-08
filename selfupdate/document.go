@@ -1,8 +1,9 @@
 package selfupdate
 
 // resultDocumentSchema is the schema_version of ResultDocument. Version 2
-// adds service_started and warnings (0010-PLAN-v1-6-0 S2 and S3).
-const resultDocumentSchema = 2
+// adds service_started and warnings (0010-PLAN-v1-6-0 S2 and S3); version 3
+// adds rolled_back and probes_skipped (0015-MADR G3, C9).
+const resultDocumentSchema = 3
 
 // ResultDocument is the JSON form of a Result, with stable snake_case keys
 // and Operation as a string. The enums keep their own JSON encoding; this
@@ -27,6 +28,8 @@ type ResultDocument struct {
 	PendingBackup     string   `json:"pending_backup,omitempty"`
 	Previous          string   `json:"previous,omitempty"`
 	Warnings          Warnings `json:"warnings,omitempty"`
+	RolledBack        bool     `json:"rolled_back"`
+	ProbesSkipped     bool     `json:"probes_skipped"`
 }
 
 // Document returns the JSON form of r. It has no side effects.
@@ -51,5 +54,7 @@ func (r Result) Document() ResultDocument {
 		PendingBackup:     r.PendingBackup,
 		Previous:          r.Previous,
 		Warnings:          r.Warnings,
+		RolledBack:        r.RolledBack,
+		ProbesSkipped:     r.ProbesSkipped,
 	}
 }

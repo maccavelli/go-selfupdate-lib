@@ -109,9 +109,15 @@ func TestHandOffFunc(t *testing.T) {
 	t.Setenv(EnvHandOff, "")
 	result := filepath.Join(t.TempDir(), "x")
 	f := HandOffFunc(&fakeDetacher{inside: true}, HandOff{ID: "abc", ResultPath: result})
-	handed, detail, err := f(context.Background(), selfupdate.Request{})
+	handed, detail, err := f(context.Background(), selfupdate.Request{Yes: true})
 	if err != nil || !handed || detail != "abc (fake); result in "+result {
 		t.Fatalf("handed %t, detail %q, err %v", handed, detail, err)
+	}
+	// Inside, without --yes: the detached run could not ask
+	// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md C3).
+	handed, _, err = f(context.Background(), selfupdate.Request{})
+	if handed || !errors.Is(err, selfupdate.ErrConfirmationRequired) || !strings.Contains(err.Error(), "pass --yes") {
+		t.Fatalf("inside without --yes: handed %t, err %v", handed, err)
 	}
 	handed, detail, err = HandOffFunc(&fakeDetacher{}, HandOff{})(context.Background(), selfupdate.Request{})
 	if err != nil || handed || detail != "" {

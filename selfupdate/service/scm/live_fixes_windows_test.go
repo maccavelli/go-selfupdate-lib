@@ -7,10 +7,14 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"golang.org/x/sys/windows/svc/mgr"
+
+	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
 )
 
 // The live test for docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md
@@ -87,4 +91,44 @@ func TestLiveUnquotedPathWithSpace(t *testing.T) {
 		t.Fatalf("Start from the rewritten command line: %v", err)
 	}
 	waitReady(t, cfg, pid)
+}
+
+// TestLiveHandOffHealthFailureReportsRollback: the handed-off build is not
+// a service program, so the detached run's start fails. Its result reports
+// the rollback, and the service runs the previous build afterwards
+// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md G3).
+func TestLiveHandOffHealthFailureReportsRollback(t *testing.T) {
+	cfg := newLiveService(t)
+	before := waitReady(t, cfg, 0)
+	whoami, err := os.ReadFile(filepath.Join(os.Getenv("SystemRoot"), "System32", "whoami.exe"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cfg.New, whoami, 0o755); err != nil { //nolint:gosec // an executable fixture
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cfg.Dir, "trigger"), nil, 0o644); err != nil { //nolint:gosec // read by the service
+		t.Fatal(err)
+	}
+	result := service.DefaultResultPath(cfg.Target)
+	for deadline := time.Now().Add(150 * time.Second); ; time.Sleep(200 * time.Millisecond) {
+		for _, name := range []string{"inside-error", "service-error"} {
+			if msg, err := os.ReadFile(filepath.Join(cfg.Dir, name)); err == nil { //nolint:gosec // the live test's own file
+				t.Fatalf("%s: %s", name, msg)
+			}
+		}
+		if r, err := service.ReadHandOffResult(result); err == nil {
+			if r.ExitCode != 1 || r.Result.Applied || !r.Result.RolledBack {
+				t.Fatalf("handoff result %+v; want exit 1, not applied, rolled back", r)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("no handoff result within 150 s")
+		}
+	}
+	waitReady(t, cfg, before)
+	if got, err := os.ReadFile(cfg.Target); err != nil || !strings.HasSuffix(string(got), "\nold build\n") { //nolint:gosec // the live test's own file
+		t.Fatalf("the service's binary is not the previous build: %v", err)
+	}
 }

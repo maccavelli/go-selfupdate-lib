@@ -23,7 +23,8 @@ type CheckerConfig struct {
 
 // Checker answers "is there an update?" without resolving, locking or
 // touching a target, prompting, reporting, or downloading an asset body. It
-// holds no mutable state and is safe for concurrent use.
+// holds no mutable state and is safe for concurrent use. One that
+// NewChecker or Updater.Checker did not make returns ErrNotConstructed.
 type Checker struct {
 	source   ReleaseSource
 	versions VersionPolicy
@@ -107,11 +108,20 @@ func (u *Updater) Checker() *Checker {
 // it reports availability as a value rather than as ErrUpdateAvailable. A
 // latest release older than the running one is ErrLatestOlder, as in Run.
 func (c *Checker) Check(ctx context.Context, cr CheckRequest) (Availability, error) {
+	if !c.constructed() {
+		return Availability{}, ErrNotConstructed
+	}
 	req, err := c.prepare(cr)
 	if err != nil {
 		return Availability{}, err
 	}
 	return c.checkPrepared(withRunMark(ctx), req)
+}
+
+// constructed reports whether NewChecker or Updater.Checker made c: a nil
+// or zero Checker has no source (0015-MADR C8).
+func (c *Checker) constructed() bool {
+	return c != nil && c.source != nil && c.versions != nil && c.assets != nil
 }
 
 // prepare validates a CheckRequest as a check-only Request and normalizes

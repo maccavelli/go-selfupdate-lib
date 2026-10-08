@@ -13,6 +13,10 @@ var (
 	ErrUpdateAvailable = errors.New("selfupdate: update available")
 	// ErrConfirmationRequired is returned when apply needs a TTY or --yes.
 	ErrConfirmationRequired = errors.New("selfupdate: confirmation required")
+	// ErrNotConstructed is returned by an Updater or a Checker that its
+	// constructor did not make, such as a zero value or a nil pointer
+	// (0015-MADR C8).
+	ErrNotConstructed = errors.New("selfupdate: not constructed by its constructor")
 	// ErrConcurrentUpdate is returned when another update holds the target
 	// lock, an overlapping Run is already in progress on the same Updater,
 	// or the target, or its directory, was replaced during the update.
@@ -30,6 +34,10 @@ var (
 	// ErrMutableRelease is returned when selected release metadata is not
 	// immutable.
 	ErrMutableRelease = errors.New("selfupdate: release is not immutable")
+	// ErrNoRelease is returned when the release asked for does not exist:
+	// a repository with no stable release yet, or a tag never published
+	// (0015-MADR A1).
+	ErrNoRelease = errors.New("selfupdate: no such release")
 	// ErrRateLimited is the sentinel unwrapped by RateLimitError.
 	ErrRateLimited = errors.New("selfupdate: rate limited")
 	// ErrForceRequired is returned when applying over a local build without

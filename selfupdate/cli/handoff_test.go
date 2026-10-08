@@ -10,6 +10,7 @@ import (
 
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/selfupdatetest"
+	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
 )
 
 // Tests for docs/decisions/0011-PLAN-reference-service-lifecycles.md V5
@@ -46,6 +47,47 @@ func TestHandOffOnlyForApply(t *testing.T) {
 		if c.want && (out.code != 0 || !out.res.Applied) {
 			t.Fatalf("%s: exit %d, %+v", c.name, out.code, out.res)
 		}
+	}
+}
+
+// insideDetacher is a service.Detacher for a process inside the service;
+// it records whether Detach was called.
+type insideDetacher struct{ called bool }
+
+func (*insideDetacher) Inside(context.Context) (bool, error) { return true, nil }
+
+func (d *insideDetacher) Detach(context.Context, service.HandOff) (service.Detached, error) {
+	d.called = true
+	return service.Detached{ID: "abc", Where: "fake"}, nil
+}
+
+// TestHandOffNeedsYes: an update from inside the service runs detached,
+// where nobody can answer a prompt, so without --yes it is refused, even
+// when this run could ask
+// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md C3).
+func TestHandOffNeedsYes(t *testing.T) {
+	t.Setenv(service.EnvHandOff, "")
+	d := &insideDetacher{}
+	out := scenario{latest: "v1.1.0", id: releaseID, stdin: "y\n", interactive: true, handOff: HandOff{
+		Detach: service.HandOffFunc(d, service.HandOff{ID: "abc", ResultPath: t.TempDir() + "/result"}),
+	}}.run(t, false)
+	if d.called || out.code != 1 || !errors.Is(out.err, selfupdate.ErrConfirmationRequired) || out.res.Applied {
+		t.Fatalf("Detach called=%t exit=%d err=%v applied=%t; want a refusal", d.called, out.code, out.err, out.res.Applied)
+	}
+}
+
+// TestHandOffOnlyWhenUpdateFound: with nothing to install there is
+// nothing to hand off; the run reports "up to date" here (0015-MADR C3).
+func TestHandOffOnlyWhenUpdateFound(t *testing.T) {
+	called := false
+	out := scenario{latest: "v1.0.0", id: releaseID, flags: Flags{Yes: true}, handOff: HandOff{
+		Detach: func(context.Context, selfupdate.Request) (bool, string, error) {
+			called = true
+			return true, "abc", nil
+		},
+	}}.run(t, false)
+	if called || out.code != 0 || !strings.Contains(out.stderr, "up to date") {
+		t.Fatalf("Detach called=%t exit=%d stderr %q", called, out.code, out.stderr)
 	}
 }
 

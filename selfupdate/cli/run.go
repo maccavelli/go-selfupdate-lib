@@ -55,8 +55,9 @@ type Options struct {
 // (0011-MADR §9). service.HandOffFunc builds Detach for a backend, and
 // service.ReportFunc builds Report.
 type HandOff struct {
-	// Detach runs before an apply, never a check or a dry run. When it
-	// hands off, the run ends at once: "update handed off: <detail>" on
+	// Detach runs before an apply that would install, never a check, a
+	// dry run, or a run with nothing to install. When it hands off, the
+	// run ends at once: "update handed off: <detail>" on
 	// Stderr, or under JSON a result object with "handed_off", and exit
 	// 0. Its error fails the run.
 	Detach func(ctx context.Context, req selfupdate.Request) (handedOff bool, detail string, err error)
@@ -136,7 +137,7 @@ func Run(ctx context.Context, u *selfupdate.Updater, req selfupdate.Request, o O
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	if d := o.HandOff.Detach; d != nil && !req.CheckOnly && !req.DryRun {
+	if d := o.HandOff.Detach; d != nil && !req.CheckOnly && !req.DryRun && wouldInstall(ctx, u, req) {
 		res := selfupdate.Result{Product: req.Product, CurrentVersion: req.CurrentVersion}
 		handed, detail, err := d(ctx, req)
 		if err != nil {
@@ -165,6 +166,21 @@ func Run(ctx context.Context, u *selfupdate.Updater, req selfupdate.Request, o O
 	}
 	err = joinLate(err, late)
 	return res, joinLate(err, o.finish(res, err))
+}
+
+// wouldInstall reports whether req would install a release: there is
+// nothing to hand off for a run that is up to date, or that needs --force
+// it lacks. A check that fails gives false; the run that follows reports
+// its error (0015-MADR C3).
+func wouldInstall(ctx context.Context, u *selfupdate.Updater, req selfupdate.Request) bool {
+	av, err := u.Checker().Check(ctx, selfupdate.CheckRequest{
+		Product: req.Product, CurrentVersion: req.CurrentVersion, CurrentBuild: req.CurrentBuild,
+		TargetVersion: req.TargetVersion, Platform: req.Platform, Channel: req.Channel,
+	})
+	if err != nil || av.ForceRequired && !req.Force {
+		return false
+	}
+	return av.Available || req.Force
 }
 
 // joinLate adds an error that arrived after the run to the run's. An update

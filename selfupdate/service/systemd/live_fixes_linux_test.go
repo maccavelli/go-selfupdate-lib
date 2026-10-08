@@ -3,6 +3,7 @@
 package systemd
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -122,5 +123,47 @@ func TestLiveMissingDependency(t *testing.T) {
 	err = u.Start(ctx, "demo")
 	if err == nil || errors.Is(err, service.ErrNotInstalled) {
 		t.Fatalf("Start = %v; want a failure that is not ErrNotInstalled", err)
+	}
+}
+
+// TestLiveHandOffHealthFailureReportsRollback: the handed-off build exits
+// at once, so the detached run's health check fails. Its result reports
+// the rollback, and the unit runs the previous binary afterwards
+// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md G3).
+func TestLiveHandOffHealthFailureReportsRollback(t *testing.T) {
+	scope := requireLive(t)
+	e := newLiveUnit(t, scope)
+	old, err := os.ReadFile(e.target) //nolint:gosec // the live test's own file
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(e.dir, "new"), []byte("#!/bin/sh\nexit 3\n"), 0o755); err != nil { //nolint:gosec // an executable fixture
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(e.dir, "trigger"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	result := service.DefaultResultPath(e.target)
+	for deadline := time.Now().Add(120 * time.Second); ; time.Sleep(200 * time.Millisecond) {
+		if msg, err := os.ReadFile(filepath.Join(e.dir, "inside-error")); err == nil { //nolint:gosec // the live test's own file
+			t.Fatalf("inside the unit: %s", msg)
+		}
+		if r, err := service.ReadHandOffResult(result); err == nil {
+			if r.ExitCode != 1 || r.Result.Applied || !r.Result.RolledBack {
+				t.Fatalf("handoff result %+v; want exit 1, not applied, rolled back", r)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("no handoff result within 120 s")
+		}
+	}
+	for deadline := time.Now().Add(30 * time.Second); e.show(t, "ActiveState") != "active"; time.Sleep(200 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("after the rollback the unit is %s", e.show(t, "ActiveState"))
+		}
+	}
+	if got, err := os.ReadFile(e.target); err != nil || !bytes.Equal(got, old) { //nolint:gosec // the live test's own file
+		t.Fatalf("the unit's binary is not the previous one: %v", err)
 	}
 }

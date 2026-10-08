@@ -32,9 +32,12 @@ Since `v1.6.0` the cache keeps the errors the same question would get again:
 record's `Outcome` names which one, and for `maxAge` a cached one returns an
 error that matches its sentinel with `errors.Is`, with no network call. A
 program that ran on a newer build than any release, or on a platform with
-no asset, no longer asks GitHub on every start. Any other error is not
-saved. A record written before `v1.6.0` loads as a miss, which costs one
-check.
+no asset, no longer asks GitHub on every start. Since `v1.11.0` it keeps
+`ErrNoRelease` too: a repository with no stable release yet, or a tag never
+published, which GitHub answers with a 404. Any other error is not saved.
+A record written before `v1.6.0` loads as a miss, which costs one check.
+An Updater or a Checker that its constructor did not make, such as a zero
+value, returns `ErrNotConstructed` instead of panicking.
 
 - `ExampleNewChecker`, `ExampleChecker_CheckCached`
 - `selfupdate/checker_test.go`, `selfupdate/checkcache_test.go`,
@@ -94,8 +97,11 @@ a per-run choice, and a workflow input.
 `NewJSONReporter` writes one JSON object per event (JSON Lines), with the keys
 `kind`, `product`, `current`, `target`, `asset`, `bytes`, `total` and
 `detail`, in that order. `Result.Document` is the stable JSON form of the
-final `Result`. Its `schema_version` is 2 since `v1.6.0`, which added
-`service_started`, and `warnings` when there are any.
+final `Result`. Its `schema_version` is 3 since `v1.11.0`, which added
+`rolled_back` (the previous binary was restored after the new one was
+installed) and `probes_skipped` (a dry run for another platform did not run
+the probes); 2 since `v1.6.0`, which added `service_started`, and `warnings`
+when there are any.
 
 A run that goes on past selection has one terminal event: `complete`,
 `failed` or `declined`. A check that succeeds, and a run that finds the
@@ -490,18 +496,23 @@ func main() {
   beside the binary, with `service.ReadHandOffResult`, or as JSON:
 
   ```json
-  {"schema_version":1,"id":"3f2a…","started_at":"…","finished_at":"…","exit_code":0,"result":{"schema_version":2,"applied":true,"service_started":true}}
+  {"schema_version":1,"id":"3f2a…","started_at":"…","finished_at":"…","exit_code":0,"result":{"schema_version":3,"applied":true,"service_started":true,"rolled_back":false}}
   ```
 
   `exit_code` is the update's, `error` its message when it failed, and
-  `result` the `--json` result document. The service never hands off the
-  check: `--check` and `--dry-run` run in place.
+  `result` the `--json` result document; since `v1.11.0` its
+  `rolled_back` says the new binary failed its health check and the
+  previous one runs. The service never hands off the check: `--check` and
+  `--dry-run` run in place, and since `v1.11.0` neither does a run with
+  nothing to install.
 - **Call `service.ReportFunc` first in `main`,** or `LoadHandOffEnv` if the
   program reads its environment before that. In a detached run it applies
   the private environment file the launchd handoff writes, and on Windows
   it completes the start, which goes through a short-lived hop.
 - **The detached run cannot prompt,** so the update must have `--yes`, as
-  an agent's does.
+  an agent's does. Since `v1.11.0`, an update from inside the service
+  without it is refused with `ErrConfirmationRequired` (exit 1), even when
+  this run could ask.
 - **Per platform:**
   - **systemd:** a transient unit, `<unit>-selfupdate-<id>.service`,
     started by `systemd-run`, needs systemd 236 or later. System scope

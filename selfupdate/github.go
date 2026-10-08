@@ -322,7 +322,13 @@ func (s *GitHubSource) getRelease(ctx context.Context, rawURL string) (rel Relea
 		if rerr != nil {
 			return Release{}, rerr
 		}
-		return Release{}, s.mapStatus(resp, errBody)
+		statusErr := s.mapStatus(resp, errBody)
+		if resp.StatusCode == http.StatusNotFound {
+			// No stable release yet, or no such tag: the same answer until
+			// one is published, so CheckCached may cache it (0015-MADR A1).
+			return Release{}, fmt.Errorf("%w: %w", ErrNoRelease, statusErr)
+		}
+		return Release{}, statusErr
 	}
 	body, err := readBounded(resp.Body, s.limits.ReleaseJSON)
 	if err != nil {

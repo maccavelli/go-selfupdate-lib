@@ -518,3 +518,20 @@ func TestNewGitHubSourceReplacesCheckRedirect(t *testing.T) {
 		t.Fatal("the caller's client was changed")
 	}
 }
+
+// TestLatestNotFoundIsNoRelease: a 404 for the latest release, as a
+// repository with no stable release gets, or for a tag, is ErrNoRelease,
+// and keeps the status in its message
+// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md A1).
+func TestLatestNotFoundIsNoRelease(t *testing.T) {
+	env := newGitHubEnv(t, func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) }, "")
+	ctx := context.Background()
+	for name, get := range map[string]func() (Release, error){
+		"latest": func() (Release, error) { return env.src.Latest(ctx) },
+		"tag":    func() (Release, error) { return env.src.ByTag(ctx, "v9.9.9") },
+	} {
+		if _, err := get(); !errors.Is(err, ErrNoRelease) || !strings.Contains(err.Error(), "github http 404") {
+			t.Errorf("%s: err = %v; want ErrNoRelease with the status", name, err)
+		}
+	}
+}

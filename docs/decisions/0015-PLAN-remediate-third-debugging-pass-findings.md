@@ -3503,3 +3503,88 @@ No API change; `make apicheck` reports `v1.10.1` compatible with
     lines.
 * **Step 7,** the live installer rehearsal, was not asked for, and was not
   run.
+
+### Phase Q1: the API and the command-surface contracts (2026-10-08)
+
+* **Red,** on the unfixed code:
+  * **C3:** `TestHandOffNeedsYes`: "Detach called=true exit=0 err=<nil>";
+    `TestHandOffOnlyWhenUpdateFound`: "Detach called=true exit=0 stderr
+    \"update handed off: abc\""; `TestHandOffFunc`: "inside without
+    --yes: handed true, err <nil>".
+  * **C8:** `TestZeroValues`: "panic: runtime error: invalid memory
+    address or nil pointer dereference", with `ErrNotConstructed` declared
+    and nothing checking it.
+  * **C9, G3:** the build fails on `res.RolledBack` and
+    `res.ProbesSkipped`. With the fields declared and unset:
+    `TestRunReportsRolledBack` and `TestDryRunForeignPlatformSkipsProbes`
+    fail on the result, and `TestResultDocumentCoversEveryField` on "19
+    fields, want Result's 20 plus schema_version".
+  * **A1's 404:** with `ErrNoRelease` and `CheckNoRelease` declared and no
+    wrap: `TestLatestNotFoundIsNoRelease`: "selfupdate: github http 404:
+    …", both legs; `TestCheckCachedNoRelease`: "github http 404 …, want
+    ErrNoRelease".
+* **Fix:**
+  * **C3:** `HandOffFunc` uses its request: inside the service, outside a
+    handoff, a request without `Yes` is refused with
+    `ErrConfirmationRequired` ("pass --yes"). `cli.Run` calls `Detach`
+    only when `wouldInstall`, a `Checker().Check` on the request's
+    fields, says the run would install; that is one more request to the
+    source before a handed-off apply.
+  * **C8:** `ErrNotConstructed`; `Updater.constructed` and
+    `Checker.constructed`, checked by `RunWith` (so `Run`),
+    `Stream.prepare`, `Check` and `CheckCached`; `Stream.Cancel` returns
+    on a nil receiver or one with no cancel. `Start(nil, …)` keeps its
+    "selfupdate: updater is nil", which `TestStartInvalid` pins; the plan
+    tests `Start` on a zero `Updater` only.
+  * **C9, G3:** `Result.RolledBack` and `Result.ProbesSkipped`; the
+    `ResultDocument` keys `rolled_back` and `probes_skipped`, with no
+    `omitempty`; schema 3. `RolledBack` is copied from the install result.
+    `stagedProbes` skips the probes in a dry run for a platform other than
+    the running one; the decision is a helper, not inline in `apply`,
+    because `gocognit` refused `(*run).apply` at 51.
+  * **A1's 404:** `ErrNoRelease`; `getRelease` wraps it for a 404,
+    keeping the status error; `CheckNoRelease`, "no-release", after
+    `CheckMutableRelease`; the failure class "no-release".
+* **Test edits** (planned): the schema number and the two keys in
+  `events_test.go`, `warnings_test.go` (whose suffix check now ends with
+  the two keys) and `example_test.go`; `TestHandOffFunc` passes `Yes`;
+  `TestCheckOutcomeNames` and the failure-class table gain the row.
+* **Goldens,** rule 8: `go test ./selfupdate/cli -run
+  'TestGolden|TestCommandGolden' -count=1 -update` changed exactly the 13
+  `*.json.stdout` files, and a script confirmed each change is only
+  `"schema_version":2` to 3 and the result document's two new keys.
+* **Live,** `TestLiveHandOffHealthFailureReportsRollback`, in
+  `launchd/live_darwin_test.go`, `systemd/live_fixes_linux_test.go` and
+  `scm/live_fixes_windows_test.go`, the last two beside P5's live tests:
+  the handed-off build exits at once (a shell script; on Windows
+  `whoami.exe`), and the handoff result has exit 1, not applied, rolled
+  back; the service runs the previous build afterwards. Each backend's
+  `runLiveUpdate` copies `RolledBack`. Passed on this Mac, on the Linux
+  test host at system and user scope, and on the Windows test host, with
+  every other live test. With the copy dropped from `runLiveUpdate`, each
+  of the three fails.
+* **Plants,** eight, each caught:
+
+  | Plant | Fails |
+  | :--- | :--- |
+  | C3: `wouldInstall` dropped | `TestHandOffOnlyWhenUpdateFound` |
+  | C3: the `--yes` branch dropped | `TestHandOffFunc`; `TestHandOffNeedsYes` |
+  | C8: the `Stream.prepare` check dropped | `TestZeroValues`: a panic in `Start`'s goroutine, which ends the test binary with no `--- FAIL` line |
+  | C8: the `Cancel` guard dropped | `TestZeroValues` |
+  | G3: the `RolledBack` copy dropped | `TestRunReportsRolledBack` |
+  | C9: the platform condition dropped | `TestDryRunForeignPlatformSkipsProbes` |
+  | A1: the 404 wrap dropped | `TestLatestNotFoundIsNoRelease`, `TestCheckCachedNoRelease` |
+
+* **Acceptance:** the full apidiff report against `v1.10.1` lists exactly
+  the seven planned additions (`CheckNoRelease`, `ErrNoRelease`,
+  `ErrNotConstructed`, and `RolledBack` and `ProbesSkipped` on `Result`
+  and on `ResultDocument`); `make apicheck`: "compatible with v1.10.1".
+* **Checks:** `make pre-add-check` on the 28 Go files: clean; `make gate`
+  on `5e9652f` with Q1's changes: all 14 steps `rc=0`, `overall=0`; links
+  "342 links in 49 files, 0 broken"; ids "42 files, 16 deny-list rules, 0
+  findings". Its first run failed `lint` on `gocognit`, fixed as above.
+* **Docs:** `cli/doc.go` (schema 3; the handoff's conditions);
+  `HandOff.Detach`'s comment; `doc.go`; `CheckCached`'s list; the
+  `Updater` and `Checker` comments; `Stream.Cancel`; the extending guide's
+  "Show an update banner", "Read JSON output" and "Updating from inside
+  the service".
