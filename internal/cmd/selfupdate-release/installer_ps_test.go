@@ -332,8 +332,30 @@ func (c *psCase) place(name string, data []byte) {
 	if err := os.MkdirAll(c.dir, 0o755); err != nil {
 		c.t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(c.dir, name), data, 0o755); err != nil {
+	if err := writeSettled(filepath.Join(c.dir, name), data, 0o755); err != nil {
 		c.t.Fatal(err)
+	}
+}
+
+// Windows refuses a write to an image that is still mapped, as a program
+// the installer just ran as a hook can be for a moment after it exits.
+const (
+	errSharingViolation syscall.Errno = 32   // ERROR_SHARING_VIOLATION
+	errUserMappedFile   syscall.Errno = 1224 // ERROR_USER_MAPPED_FILE
+)
+
+// writeSettled is os.WriteFile, retried every 100 ms for up to 2 s, the
+// installer's own Clear-SettledFile bound, while the file is still mapped
+// or open (docs/decisions/0015-PLAN-remediate-third-debugging-pass-findings.md
+// Q6).
+func writeSettled(path string, data []byte, mode os.FileMode) error {
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		err := os.WriteFile(path, data, mode)
+		if err == nil || !errors.Is(err, errUserMappedFile) && !errors.Is(err, errSharingViolation) || time.Now().After(deadline) {
+			return err
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 }
 

@@ -3817,3 +3817,77 @@ apidiff report adds `ErrNotConstructed`, `ErrNoRelease`, `CheckNoRelease`,
 * E8: `git archive` tarballs unpack; a PAX global header is skipped.
 * F3: the build workflow checks the module's library version against the
   spec.
+
+### Deviation D8 (2026-10-08): the Windows installer test's flake
+
+* **Found** in P8 (Deviation D7's "found alongside"), and asked to be
+  fixed by the owner on 2026-10-08. `TestInstallPs1/*/before_install runs
+  the installed copy, and only that` (0014's) fails now and then on the
+  Windows test host under an 8.3 `TEMP`, as on GitHub's runners: 5 of 60
+  runs at `4d0e38b`, 4 of 60 at `0589232`. Every failure is the test's
+  `c.place("relay.exe", …)` (`installer_ps_test.go`), which rewrites
+  `relay.exe` right after a run whose `after_install` hook ran that
+  binary: "The requested operation cannot be performed on a file with a
+  user-mapped section open" (`ERROR_USER_MAPPED_FILE`, 1224), once "The
+  process cannot access the file because it is being used by another
+  process" (`ERROR_SHARING_VIOLATION`, 32). The hook's process has exited
+  when the installer returns, but Windows can keep its image mapped a
+  moment longer, through process teardown or a scan. The installer itself
+  replaces by rename, and `Clear-SettledFile` already waits 2 s for the
+  same reason; only the test writes over the file in place.
+* **Resolutions offered to the owner:**
+  1. `psCase.place` retries a write that fails with 1224 or 32, every
+     100 ms for up to 2 s, the installer's own bound, and fails as before
+     after that (recommended);
+  2. rename the file aside before writing: leaves extra files that the
+     cases' `expectFiles` would have to allow;
+  3. wait for the hook's process: the harness cannot see its PID.
+* **Decision:** the owner chose "Retry in place", approving Phase Q6.
+
+### Phase Q6: the Windows installer test's flake (D8)
+
+**Files:** `internal/cmd/selfupdate-release/installer_ps_test.go`, this
+PLAN.
+
+1. **Fix:** `psCase.place` writes through a new `writeSettled(path, data,
+   mode)` that retries `os.WriteFile` while it fails with
+   `windows.ERROR_USER_MAPPED_FILE` or `windows.ERROR_SHARING_VIOLATION`,
+   every 100 ms, for up to 2 s, then returns the last error. Any other
+   error fails at once.
+2. **Evidence,** on the Windows test host with `TMP` and `TEMP` at an 8.3
+   path (P8's `win_run_short.sh`):
+   * before: the case at `-count=15`, as P8 recorded it (5 of 60 at
+     `4d0e38b`, 4 of 60 at `0589232`), and once more at `aef5082`;
+   * after: the case at `-count=30` (120 runs), with no failure; and the
+     whole `TestInstallPs1` once, under Windows PowerShell 5.1 and
+     PowerShell 7.
+3. **Plant:** `writeSettled` without the retry, in a scratch copy, at
+   `-count=30`: it fails again (a flake's plant shows its rate, not a
+   certainty; the run is recorded either way).
+4. **Checks:** `make pre-add-check` on the file, cross-vet for Windows,
+   `make gate`.
+5. **Acceptance:** CI's `validate (windows-2025)` passes on the pushed
+   commit.
+
+### Phase Q6: the Windows installer test's flake (2026-10-08)
+
+* **Before,** on the Windows test host with `TMP` and `TEMP` at an 8.3
+  path, the case 60 times at `aef5082`: 6 failed, all at
+  `installer_ps_test.go:655`, "The requested operation cannot be performed
+  on a file with a user-mapped section open" (4 under Windows PowerShell
+  5.1's file form, 2 under its scriptblock form). P8 had 5 of 60 at
+  `4d0e38b` and 4 of 60 at `0589232`.
+* **Fix:** `psCase.place` writes through `writeSettled`, which retries
+  `os.WriteFile` while it fails with `ERROR_USER_MAPPED_FILE` (1224) or
+  `ERROR_SHARING_VIOLATION` (32), every 100 ms for up to 2 s, then returns
+  the last error; any other error at once. The two errnos are local
+  `syscall.Errno` constants, so the test needs no new import.
+* **After,** the same host and `TEMP`: the case 120 times (`-count=30`),
+  no failure; `TestInstallPs1` in full, 190 passed, 0 failed.
+* **Plant:** `writeSettled` returning the first error, in a scratch copy,
+  120 runs: 7 failed (6 under Windows PowerShell's file form, 1 under its
+  scriptblock form).
+* **Checks:** `make pre-add-check` on the file: clean; Windows cross-vet
+  and lint: clean; `make gate` on `aef5082` with Q6's change: all 14
+  steps `rc=0`, `overall=0`.
+* **Not yet done:** CI's `validate (windows-2025)` on the pushed commit.
