@@ -340,6 +340,12 @@ a commit after `v1.5.1`, pinned to the tag's own commit.)*
   applies only when they give none, or one already past: the clock-skew
   case A4 found. The one-hour cap stays. The existing test is unchanged.
   Step P2.8 is annotated.
+* **Note (2026-10-08):** "the later of reset and Retry-After" changed in
+  `v1.11.0`: the reset counts only when no requests remain, so a
+  secondary limit's `Retry-After` is not stretched to the primary window's
+  reset
+  ([0015-PLAN-remediate-third-debugging-pass-findings.md](0015-PLAN-remediate-third-debugging-pass-findings.md),
+  Phase Q2, A5).
 
 **Checks:**
 

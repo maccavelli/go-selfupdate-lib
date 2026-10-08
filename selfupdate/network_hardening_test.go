@@ -52,6 +52,12 @@ func TestNotBeforeClamped(t *testing.T) {
 		"reset in the past": {&RateLimitError{StatusCode: 403, Reset: cacheNow.Add(-2 * time.Minute)}, time.Minute},
 		"no headers":        {&RateLimitError{StatusCode: 429}, time.Minute},
 		"retry-after 10m":   {&RateLimitError{StatusCode: 429, RetryAfter: 10 * time.Minute}, 10 * time.Minute},
+		// A secondary limit with quota left waits its Retry-After, not the
+		// primary window's reset; an exhausted quota waits for the reset
+		// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md A5).
+		"retry-after, quota left": {&RateLimitError{StatusCode: 403, RetryAfter: time.Minute, Remaining: 5,
+			Reset: cacheNow.Add(50 * time.Minute)}, time.Minute},
+		"quota spent, reset in 30m": {&RateLimitError{StatusCode: 403, Reset: cacheNow.Add(30 * time.Minute)}, 30 * time.Minute},
 	} {
 		if got := notBefore(cacheNow, tc.rl).Sub(cacheNow); got != tc.want {
 			t.Errorf("%s: deferred %v, want %v", name, got, tc.want)

@@ -3588,3 +3588,44 @@ No API change; `make apicheck` reports `v1.10.1` compatible with
   `Updater` and `Checker` comments; `Stream.Cancel`; the extending guide's
   "Show an update banner", "Read JSON output" and "Updating from inside
   the service".
+
+### Phase Q2: the install and network contracts (2026-10-08)
+
+* **Red,** on the unfixed code:
+  * **A5:** `TestNotBeforeClamped` "retry-after, quota left": "deferred
+    50m0s, want 1m0s". Its second new row, "quota spent, reset in 30m",
+    passes before and after, as a pin.
+  * **B5:** `TestKeepPreviousClearsSpecialBits`: "mode=urwxr-xr-x" for
+    setuid and "mode=grwxr-xr-x" for setgid.
+* **Fix:**
+  * **A5** (`checkcache.go`): `notBefore` starts from the reset only when
+    `Remaining` is 0; `Retry-After` alone sets a secondary limit's
+    deferral.
+  * **B5** (`session.go`): `clearSpecialBits(path)`, `Lstat` then
+    `osChmod` to the permissions and the sticky bit. `commitLocked` calls
+    it on the backup before it becomes `.previous`; on failure the backup
+    is removed and the error is "keep previous: …". `retainLocked` calls
+    it on the kept backup, as advisory: that backup is the only copy of
+    the previous binary, and stays even if the chmod fails.
+* **Tests beyond the plan:** `TestKeptBackupClearsSpecialBits`
+  (`modebits_unix_test.go`) covers the `retainLocked` call, which the
+  planned test does not reach: a setuid target, a failed restore, and the
+  kept backup without setuid. With that call removed it fails: "kept
+  backup .demo.selfupdate-kept-… mode urwxr-xr-x".
+* **Green:** `./selfupdate` passes on darwin.
+* **Plants,** each caught:
+
+  | Plant | Fails |
+  | :--- | :--- |
+  | A5: `nb := rl.Reset` again | `TestNotBeforeClamped` "retry-after, quota left" |
+  | B5: the chmod skipped | `TestKeepPreviousClearsSpecialBits`, `TestKeptBackupClearsSpecialBits` |
+
+* **Acceptance:** the full apidiff report against `v1.10.1` lists only
+  Q1's seven additions; Q2 adds nothing. `make apicheck`: "compatible
+  with v1.10.1".
+* **Checks:** `make pre-add-check` on the five Go files: clean; `make
+  gate` on `23f22e1` with Q2's changes: all 14 steps `rc=0`, `overall=0`.
+* **Docs:** `notBefore`'s and `CheckCached`'s comments; the
+  `AllowSpecialModeBits` and `KeepPrevious` comments;
+  `docs/architecture.md`'s mode-bits item; a dated note under
+  0010-PLAN-v1-5-1's deviation D1.

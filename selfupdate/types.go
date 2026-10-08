@@ -421,7 +421,10 @@ type TargetPolicy struct {
 	// AllowSpecialModeBits permits replacing a target with the setuid or
 	// setgid bit set, and carries those bits to the new binary. Without it
 	// such a target is refused, so an update never silently grants or drops
-	// privileges. The sticky bit is always carried over (0010-MADR Q6).
+	// privileges. The sticky bit is always carried over (0010-MADR Q6). A
+	// previous binary kept beside the target, by KeepPrevious or after a
+	// failed restore, loses setuid and setgid; a restore must set them
+	// again (0015-MADR B5).
 	AllowSpecialModeBits bool
 }
 
@@ -582,7 +585,7 @@ type InstallOptions struct {
 	PostInstall Prober
 	// KeepPrevious keeps the previous binary at .<base>.previous beside
 	// the target at commit, replacing an older one, instead of removing
-	// it (0004-MADR G11).
+	// it (0004-MADR G11). It keeps no setuid or setgid bit (0015-MADR B5).
 	KeepPrevious bool
 }
 

@@ -275,7 +275,8 @@ docs/
   - refuses a setuid or setgid target unless
     `TargetPolicy.AllowSpecialModeBits` allows it, and gives the new binary
     the old one's mode, sticky bit included, and on Unix its owner and
-    group where permitted;
+    group where permitted; a previous binary kept beside the target loses
+    setuid and setgid;
   - starts a managed service after the update only when it was running, or
     an `EnabledLifecycle` reports it configured to start, and recovery
     restarts only what was running or what the update started; a stop

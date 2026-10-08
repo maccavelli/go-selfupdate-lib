@@ -206,6 +206,11 @@ func (s *installSession) commitLocked(ctx context.Context, applied applyResult) 
 		return pending, "", err
 	}
 	previous = previousPath(s.target)
+	if err := clearSpecialBits(applied.backup); err != nil {
+		// A privileged copy must not stay at a predictable path: the
+		// backup goes (0015-MADR B5).
+		return "", "", errors.Join(fmt.Errorf("selfupdate: keep previous: %w", err), os.Remove(applied.backup))
+	}
 	if err := replacePath(withRetryBudget(ctx, s.lockTimeout), applied.backup, previous); err != nil {
 		// A .previous a running image holds cannot be replaced: on Windows
 		// the new backup goes on the cleanup receipt instead, and the
@@ -417,7 +422,26 @@ func (s *installSession) retainLocked(backup string) string {
 		return backup
 	}
 	advisory(syncRootFn(s.root))
-	return filepath.Join(filepath.Dir(backup), kept)
+	path := filepath.Join(filepath.Dir(backup), kept)
+	// The only copy of the previous binary is kept, without setuid or
+	// setgid; a restore must set them again (0015-MADR B5).
+	advisory(clearSpecialBits(path))
+	return path
+}
+
+// clearSpecialBits drops setuid and setgid from a copy of the previous
+// binary, keeping its permissions and the sticky bit, so the copy an
+// update replaced is not left privileged (0015-MADR B5).
+func clearSpecialBits(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	mode := info.Mode()
+	if mode&(os.ModeSetuid|os.ModeSetgid) == 0 {
+		return nil
+	}
+	return osChmod(path, mode.Perm()|mode&os.ModeSticky)
 }
 
 // backupOf is a's backup as it is now: a session of this package renames a

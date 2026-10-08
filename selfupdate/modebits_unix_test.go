@@ -4,7 +4,9 @@ package selfupdate
 
 import (
 	"context"
+	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -75,5 +77,87 @@ func TestStickyBitCarriedOver(t *testing.T) {
 	}
 	if info.Mode()&os.ModeSticky == 0 || info.Mode().Perm() != 0o755 || readString(t, exe) != "new-bytes" {
 		t.Fatalf("new binary mode %v", info.Mode())
+	}
+}
+
+// TestKeepPreviousClearsSpecialBits: the previous binary kept beside the
+// target loses setuid and setgid, so the copy an update replaced is not
+// left privileged at a predictable path; the new binary keeps its bit
+// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md B5).
+func TestKeepPreviousClearsSpecialBits(t *testing.T) {
+	for _, bit := range []os.FileMode{os.ModeSetuid, os.ModeSetgid} {
+		t.Run(bit.String(), func(t *testing.T) {
+			_, exe := withTempHome(t)
+			chmodOrSkip(t, exe, bit|0o755)
+			inst, err := NewStandaloneInstaller(InstallOptions{
+				TargetPolicy: TargetPolicy{ExecutablePath: exe, AllowSpecialModeBits: true},
+				KeepPrevious: true,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			target, err := inst.ResolveTarget(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			sess, err := inst.Begin(context.Background(), target)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = sess.Close() }()
+			res, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: stageNew(t, sess)}})
+			if err != nil || res.Previous == "" {
+				t.Fatalf("Install = %+v, %v", res, err)
+			}
+			prev, err := os.Stat(res.Previous)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if prev.Mode()&(os.ModeSetuid|os.ModeSetgid) != 0 || prev.Mode().Perm() != 0o755 {
+				t.Fatalf("previous=%s mode=%v; want no setuid or setgid", res.Previous, prev.Mode())
+			}
+			cur, err := os.Stat(exe)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cur.Mode()&bit == 0 {
+				t.Fatalf("the new binary lost %v: %v", bit, cur.Mode())
+			}
+		})
+	}
+}
+
+// TestKeptBackupClearsSpecialBits: a backup kept because restoring it
+// failed, the only copy of the previous binary, loses setuid too
+// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md B5).
+func TestKeptBackupClearsSpecialBits(t *testing.T) {
+	_, exe := withTempHome(t)
+	chmodOrSkip(t, exe, os.ModeSetuid|0o755)
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe, AllowSpecialModeBits: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := inst.ResolveTarget(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := inst.Begin(context.Background(), target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = sess.Close() }()
+	staged := stageNew(t, sess)
+	setSeam(t, &syncDirFn, func(string) error { return errors.New("injected directory sync failure") })
+	failRestore(t)
+	res, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: staged}})
+	if err == nil || res.Applied || res.Backup == "" {
+		t.Fatalf("Install = %+v, %v; want a kept backup", res, err)
+	}
+	info, err := os.Lstat(res.Backup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode()&(os.ModeSetuid|os.ModeSetgid) != 0 || info.Mode().Perm() != 0o755 {
+		t.Fatalf("kept backup %s mode %v; want no setuid", filepath.Base(res.Backup), info.Mode())
 	}
 }

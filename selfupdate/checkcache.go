@@ -135,14 +135,15 @@ var (
 //
 // An answer is a success, or one of the errors the same question gets again
 // until a release changes: ErrLatestOlder, ErrUnsupportedPlatform,
-// ErrMutableRelease and ErrNoRelease. Each is saved with its CheckOutcome and served for
-// maxAge; a cached one returns an error that matches its sentinel. Any other
-// error is returned and not saved, so the next call checks again.
+// ErrMutableRelease and ErrNoRelease. Each is saved with its CheckOutcome
+// and served for maxAge; a cached one returns an error that matches its
+// sentinel. Any other error is returned and not saved, so the next call
+// checks again.
 //
 // While a saved NotBefore is in the future it returns the saved record and
 // ErrCheckDeferred without touching the network. A rate-limited check saves
-// a NotBefore taken from the error's Reset and RetryAfter, or one minute
-// ahead when the response gave neither.
+// a NotBefore taken from the error's RetryAfter, and its Reset when no
+// requests remain, or one minute ahead when the response gave neither.
 //
 // Whatever the error, a returned record with a non-zero CheckedAt holds a
 // real answer as of CheckedAt, and its Outcome says which.
@@ -224,14 +225,19 @@ const (
 	maxCheckDeferral = time.Hour
 )
 
-// notBefore is the later of the rate limit's reset and now plus its
-// Retry-After, capped at maxCheckDeferral from now. When the headers give
+// notBefore is the later of the rate limit's reset, when no requests
+// remain, and now plus its Retry-After, capped at maxCheckDeferral from
+// now. A secondary limit with quota left waits its Retry-After, not the
+// primary window's reset (0015-MADR A5). When the headers give
 // no time in the future (none at all, or a reset already past, from a
 // clock ahead of the server's) it is minCheckDeferral from now. A time the
 // server gives that is sooner than the minimum is honoured
 // (0010-PLAN-v1-5-1, deviation D1).
 func notBefore(now time.Time, rl *RateLimitError) time.Time {
-	nb := rl.Reset
+	var nb time.Time
+	if rl.Remaining == 0 {
+		nb = rl.Reset
+	}
 	if rl.RetryAfter > 0 {
 		if ra := now.Add(rl.RetryAfter); ra.After(nb) {
 			nb = ra
