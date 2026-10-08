@@ -160,7 +160,9 @@ type Result struct {
 	// binary is live and restoring the previous one failed; the backup is
 	// the only copy of the previous binary, and the caller must restore or
 	// remove it. That backup is .<base>.selfupdate-kept-<n> beside the
-	// target, a name no later session removes.
+	// target, a name no later session removes. A backup an interrupted
+	// update left is kept under the same name by the next session, which no
+	// Result reports: StandaloneInstaller.KeptBackups lists both.
 	PendingBackup string
 	// DryRun echoes Request.DryRun: the release was checked and nothing
 	// was installed.
@@ -467,7 +469,8 @@ type InstallResult struct {
 	// Backup is the retained rollback path before commit cleanup. With
 	// Applied false it is the only copy of the previous binary, because
 	// restoring it failed: the standalone and managed installers keep it as
-	// .<base>.selfupdate-kept-<n>, which no later session removes.
+	// .<base>.selfupdate-kept-<n>, which no later session removes, and
+	// which StandaloneInstaller.KeptBackups lists.
 	Backup string
 	// Applied is true when replacement committed healthily.
 	Applied bool

@@ -1562,3 +1562,98 @@ tests. Step 3, the tag, waits for the owner's ask.
   * `make pre-add-check` on the two files: clean;
   * `make gate`: every step `rc=0`, `overall=0`; apicheck "compatible
     with v1.11.0", as `v1.11.1` is not tagged yet.
+
+### Deviation D3 (2026-10-08): an existing test injected every root sync
+
+* **Found:** `TestInstallReportsRestoreAfterSyncFailure/rolled back in
+  the locked directory, unsynced` (`install_hardening_test.go`) makes
+  every `syncRootFn` call fail, to exercise a rollback whose sync fails.
+  With Q1's journal, the first root sync is the journal's, before the
+  rename. The install then stopped there ("write the journal: injected
+  root sync failure"), and the rollback the test checks never happened:
+  `RolledBack=false Backup=""`.
+* **Resolutions offered:**
+  1. the test lets the first root sync, the journal's, through and fails
+     the later ones, as its sibling subtest counts `syncDirFn` calls; its
+     assertions are unchanged (recommended);
+  2. the journal syncs through a separate seam.
+* **Decision:** the owner chose resolution 1. Production keeps the plan's
+  behaviour: a directory that cannot be synced stops the update before
+  the rename.
+
+### Phase Q1: the interrupted-update journal and `KeptBackups` (2026-10-08)
+
+* **Fix:**
+  * `filedigest.go`: `fileSHA256` and `rootFileSHA256` moved from
+    `cleanup_windows.go`, unchanged, with the imports only they used.
+  * `journal.go`:
+    * `pendingJournal` (schema 1, phase `applying`);
+    * `writeJournal`: temp, fsync, rename, then the directory sync, whose
+      error is returned;
+    * `removeJournal`;
+    * `recoverJournal`: the plan's eight rules, in order;
+    * the seams `writeJournalFn` and `keptRenameFn`;
+    * `errJournalPending`.
+  * `journal_windows.go` and `journal_other.go`: `restrictJournal`
+    (Windows: `restrictToCurrentUser`) and `journalReparse` (Windows:
+    `isReparsePoint`).
+  * `replace_unix.go` and `replace_windows.go`: `replaceTarget` takes
+    `beforeRename`, called after `backupFile`. Unix now hashes the target
+    first, as Windows did.
+  * `session.go`:
+    * `replaceLocked(ctx, req, product)` refuses a pending journal (N9),
+      and writes the journal through `beforeRename`;
+    * `finishJournalLocked` runs at each place the plan names;
+    * `beginSession` calls `recoverJournal` before the sweep.
+  * `leftovers.go`: `isLeftover` matches the journal's temporary file.
+  * `standalone.go`: `KeptBackup` and `KeptBackups`.
+  * `managed.go`: `(*ManagedInstaller).KeptBackups` delegates, or returns
+    "the inner installer does not list kept backups".
+  * Comments: `CleanupPending`, `Result.PendingBackup`,
+    `InstallResult.Backup`, `doc.go`'s Installers section.
+* **Red,** on `v1.11.1`'s code:
+  * `TestInterruptedApplyKeepsBackup`, written first without
+    `KeptBackups`: all four subtests failed with `want one
+    .demo.selfupdate-kept-<n> holding old-bytes, found []`;
+  * `TestIsLeftover` failed with `isLeftover(".demo.selfupdate.pending-tmp-123")
+    = false, want true`;
+  * the other new tests use the new identifiers, and do not build there.
+* **Green:**
+  * `go test -count=1 ./selfupdate/...` passed on this Mac;
+  * on the Windows test host, with an 8.3 `TEMP`, `go test -count=1 -v
+    ./selfupdate/` gave 797 passed and one failure, a test bug:
+    `TestApplyRefusesPendingJournal` compared the error with the short
+    path, while the journal is named by the resolved one. Fixed to match
+    the journal's name;
+  * then `TestApplyRefusesPendingJournal` and
+    `TestWindowsInterruptedApplyRunningImage`, `-count=30`: `pass=60
+    fail=0`.
+* **Test fixes found while greening, not in the code:**
+  * the kept paths are compared by file identity, since the target's
+    directory resolves through symlinks (`/var` → `/private/var` on
+    macOS);
+  * `TestJournalDuringInstall` reads the backup inside the probe, before
+    the commit removes it;
+  * `TestJournalRecoveryRules` was split into helpers for `gocognit`
+    (66 > 50).
+* **Plants,** each in a scratch copy:
+
+  | Plant | First failing line |
+  | :--- | :--- |
+  | the `recoverJournal` call removed | `journal_test.go:130: want one .demo.selfupdate-kept-<n> holding old-bytes, found []` |
+  | the journal's rename skipped | `journal_test.go:226: the journal: open …/.demo.selfupdate.pending: no such file or directory` |
+  | `KeptBackups`' digits check dropped | `keptbackups_test.go:70: KeptBackups = [… ".demo.selfupdate-kept-5.exe:1" ".demo.selfupdate-kept-x:1"]` |
+  | the taken kept name not checked | `journal_test.go:437: … kept 1 (want 2)` |
+  | the pending-journal refusal off (N9) | `journal_test.go:302: err = <nil>; want the pending journal named` |
+
+  The digits plant was first written as `if !ok {`, which did not
+  compile (`digits` unused); it was rewritten as `if !ok || digits == ""
+  {` and run again.
+* **API:** the full apidiff report against `v1.11.0`, since `v1.11.1` is
+  not tagged yet, lists only:
+  * `(*ManagedInstaller).KeptBackups: added`;
+  * `(*StandaloneInstaller).KeptBackups: added`;
+  * `KeptBackup: added`.
+* **Checks:**
+  * `make pre-add-check` on the 21 Go files: "21 file(s) clean";
+  * `make gate`: every step `rc=0`, `overall=0`.

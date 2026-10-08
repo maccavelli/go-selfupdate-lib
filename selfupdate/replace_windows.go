@@ -27,7 +27,11 @@ func replacePathOS(ctx context.Context, oldpath, newpath string) error {
 	return moveFileReplace(ctx, oldpath, newpath)
 }
 
-func replaceTarget(ctx context.Context, target Target, staging string) (applyResult, error) {
+// replaceTarget replaces target with staging, keeping a backup. When
+// beforeRename is set it runs once the backup exists and before the
+// replace, with the backup's path and the previous binary's digest; its
+// error leaves the target untouched (0017-PLAN N7).
+func replaceTarget(ctx context.Context, target Target, staging string, beforeRename func(backup, oldDigest string) error) (applyResult, error) {
 	info, err := lockedTarget(target)
 	if err != nil {
 		return applyResult{}, err
@@ -45,6 +49,11 @@ func replaceTarget(ctx context.Context, target Target, staging string) (applyRes
 	}
 	if err := backupFile(target.Path, backup); err != nil {
 		return applyResult{}, fmt.Errorf("selfupdate: backup target: %w", err)
+	}
+	if beforeRename != nil {
+		if err := beforeRename(backup, oldDigest); err != nil {
+			return applyResult{}, joinRemove(fmt.Errorf("selfupdate: write the journal: %w", err), backup)
+		}
 	}
 	if err := replacePath(ctx, staging, target.Path); err != nil {
 		return applyResult{}, joinRemove(fmt.Errorf("selfupdate: replace target: %w", err), backup)

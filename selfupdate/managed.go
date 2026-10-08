@@ -48,6 +48,21 @@ func (m *ManagedInstaller) ResolveTarget(ctx context.Context) (Target, error) {
 	return m.inner.ResolveTarget(ctx)
 }
 
+// KeptBackups lists the kept backups beside the target through the inner
+// installer, as StandaloneInstaller.KeptBackups does. An inner installer
+// without the method is an error
+// (docs/decisions/0017-PLAN-verify-build-provenance-and-close-0015-open-items.md
+// N10).
+func (m *ManagedInstaller) KeptBackups(ctx context.Context) ([]KeptBackup, error) {
+	lister, ok := m.inner.(interface {
+		KeptBackups(context.Context) ([]KeptBackup, error)
+	})
+	if !ok {
+		return nil, fmt.Errorf("selfupdate: the inner installer does not list kept backups")
+	}
+	return lister.KeptBackups(ctx)
+}
+
 // Begin implements Installer.
 func (m *ManagedInstaller) Begin(ctx context.Context, target Target) (InstallSession, error) {
 	inner, err := m.inner.Begin(ctx, target)

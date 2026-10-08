@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 )
@@ -30,11 +31,14 @@ type installSession struct {
 	// keepPrevious renames the backup to previousPath at commit instead of
 	// removing it (0004-MADR G11).
 	keepPrevious bool
+	// journal reports that this session wrote the interrupted-update
+	// journal and has not yet removed it (0017-MADR 3B).
+	journal bool
 }
 
 // previousPath is where KeepPrevious keeps the previous binary. The name
-// matches neither backupPrefix nor the lock or receipt names, so a
-// cleanup receipt can never name it.
+// matches neither backupPrefix nor the lock, receipt or journal names, so a
+// cleanup receipt or a journal can never name it.
 func previousPath(target Target) string {
 	return filepath.Join(target.Dir, "."+target.Base+".previous")
 }
@@ -153,7 +157,7 @@ func (s *installSession) Install(ctx context.Context, req InstallRequest) (Insta
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	applied, err := s.replaceLocked(ctx, req.Artifact.Path)
+	applied, err := s.replaceLocked(ctx, req, "")
 	if err != nil {
 		if errors.Is(err, errRolledBack) {
 			return InstallResult{Target: s.target.Path, RolledBack: true}, err
@@ -170,6 +174,7 @@ func (s *installSession) Install(ctx context.Context, req InstallRequest) (Insta
 			if errors.Is(rerr, errRestoredUnsynced) {
 				// The backup is back in place; only its sync failed
 				// (0015-MADR B4).
+				s.finishJournalLocked()
 				return InstallResult{Target: s.target.Path, RolledBack: true}, errors.Join(err, rerr)
 			}
 			// Not applied: the backup is the only copy of the previous
@@ -177,15 +182,20 @@ func (s *installSession) Install(ctx context.Context, req InstallRequest) (Insta
 			// (0010-MADR B8).
 			return InstallResult{Target: s.target.Path, Backup: s.retainLocked(applied.backup)}, errors.Join(err, rerr)
 		}
+		s.finishJournalLocked()
 		return InstallResult{Target: s.target.Path, RolledBack: true}, err
 	}
 	if err := s.probeInstalled(ctx, req, applied); err != nil {
 		if errors.Is(err, errRolledBack) {
+			s.finishJournalLocked()
 			return InstallResult{Target: s.target.Path, RolledBack: true}, err
 		}
 		return InstallResult{Target: s.target.Path, Backup: s.retainLocked(applied.backup)}, err
 	}
 	pending, previous, err := s.commitLocked(ctx, applied)
+	// The commit has run, whatever it returned: the backup is gone, kept
+	// as .previous, or on the cleanup receipt (0017-PLAN Q1).
+	s.finishJournalLocked()
 	return InstallResult{
 		Target:        s.target.Path,
 		Backup:        applied.backup,
@@ -233,7 +243,7 @@ func (s *installSession) Apply(ctx context.Context, req InstallRequest) (Applied
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	st := &replacement{sess: s}
-	applied, err := s.replaceLocked(ctx, req.Artifact.Path)
+	applied, err := s.replaceLocked(ctx, req, req.Product)
 	if err == nil {
 		// The directory again, now that the rename has gone into it: Install
 		// checks here too (0004-MADR R3; 0010-MADR B7).
@@ -251,9 +261,11 @@ func (s *installSession) Apply(ctx context.Context, req InstallRequest) (Applied
 			}
 			if rerr == nil || errors.Is(rerr, errRestoredUnsynced) {
 				applied = applyResult{}
+				s.finishJournalLocked()
 			}
 		} else if err = s.probeInstalled(ctx, req, applied); errors.Is(err, errRolledBack) {
 			applied = applyResult{}
+			s.finishJournalLocked()
 		}
 	}
 	if err != nil && applied.backup != "" {
@@ -294,10 +306,13 @@ func (s *installSession) probeInstalled(ctx context.Context, req InstallRequest,
 	return errors.Join(perr, errRolledBack)
 }
 
-// replaceLocked replaces the target with an owned staging file. The caller
-// holds s.mu. Staging is deregistered only once the rename has consumed it,
-// so a failure before that leaves it for Close to remove (0003-MADR B4).
-func (s *installSession) replaceLocked(ctx context.Context, path string) (applyResult, error) {
+// replaceLocked replaces the target with an owned staging file, writing the
+// interrupted-update journal before the rename; product goes into the
+// journal, for a managed install's Apply (0017-MADR 3B). The caller holds
+// s.mu. Staging is deregistered only once the rename has consumed it, so a
+// failure before that leaves it for Close to remove (0003-MADR B4).
+func (s *installSession) replaceLocked(ctx context.Context, req InstallRequest, product string) (applyResult, error) {
+	path := req.Artifact.Path
 	if s.closed {
 		return applyResult{}, fmt.Errorf("selfupdate: session is closed")
 	}
@@ -316,11 +331,55 @@ func (s *installSession) replaceLocked(ctx context.Context, path string) (applyR
 	if !info.Mode().IsRegular() {
 		return applyResult{}, fmt.Errorf("selfupdate: staging is not a regular file")
 	}
-	applied, err := replaceTarget(withRetryBudget(ctx, s.lockTimeout), s.target, path)
+	// A journal recovery could not resolve protects a backup the sweep would
+	// otherwise take: no update replaces it (0017-PLAN N9).
+	if _, err := s.root.Lstat(journalName(s.target.Base)); err == nil {
+		return applyResult{}, errJournalPending(s.target)
+	}
+	newDigest, err := stagedDigest(req.Artifact)
+	if err != nil {
+		return applyResult{}, fmt.Errorf("selfupdate: hash staging: %w", err)
+	}
+	journal := func(backup, oldDigest string) error {
+		if err := writeJournalFn(s.root, s.target, pendingJournal{
+			Schema: journalSchema, Backup: filepath.Base(backup), OldDigest: oldDigest,
+			NewDigest: newDigest, Phase: journalApplying, Product: product,
+		}); err != nil {
+			return err
+		}
+		s.journal = true
+		return nil
+	}
+	applied, err := replaceTarget(withRetryBudget(ctx, s.lockTimeout), s.target, path, journal)
 	if applied.renamed {
 		delete(s.staging, path)
 	}
+	if err != nil && applied.backup == "" {
+		// Nothing was replaced, or the replacement was undone: no backup is
+		// live, so the journal has nothing to protect.
+		s.finishJournalLocked()
+	}
 	return applied, err
+}
+
+// stagedDigest is the staged binary's SHA-256: the Updater's
+// InstalledDigest when it is one, otherwise the staging file's.
+func stagedDigest(a StagedArtifact) (string, error) {
+	if len(a.InstalledDigest) == 64 && strings.Trim(a.InstalledDigest, "0123456789abcdef") == "" {
+		return a.InstalledDigest, nil
+	}
+	return fileSHA256(a.Path)
+}
+
+// finishJournalLocked removes the journal this session wrote, once its
+// replacement is committed, rolled back, or its backup kept under a kept
+// name. The caller holds s.mu.
+func (s *installSession) finishJournalLocked() {
+	if !s.journal || s.root == nil {
+		return
+	}
+	removeJournal(s.root, s.target)
+	s.journal = false
 }
 
 // checkDir requires the target directory to be the one the session locked:
@@ -360,6 +419,7 @@ func (s *installSession) Commit(ctx context.Context, a AppliedReplacement) (Inst
 	if err = s.checkDir(); err == nil {
 		pending, previous, err = s.commitLocked(ctx, st.applied)
 		st.finished = true
+		s.finishJournalLocked()
 	}
 	return InstallResult{
 		Target:        s.target.Path,
@@ -396,6 +456,7 @@ func (s *installSession) Rollback(ctx context.Context, a AppliedReplacement) err
 	}
 	if err == nil || errors.Is(err, errRestoredUnsynced) {
 		st.finished = true
+		s.finishJournalLocked()
 		return err
 	}
 	st.applied.backup = s.retainLocked(st.applied.backup)
@@ -404,9 +465,11 @@ func (s *installSession) Rollback(ctx context.Context, a AppliedReplacement) err
 
 // retainLocked renames a backup that is the only copy of the previous
 // binary to its kept name, which no later session sweeps (0015-MADR B1),
-// and returns its path. It returns backup unchanged when there is none,
-// when the name is not a backup's, when the kept name is taken, or when the
-// rename fails. The caller holds s.mu.
+// and returns its path; the journal then has nothing left to protect. It
+// returns backup unchanged, and leaves the journal for the next session to
+// resolve (0017-MADR 3B), when there is none, when the name is not a
+// backup's, when the kept name is taken, or when the rename fails. The
+// caller holds s.mu.
 func (s *installSession) retainLocked(backup string) string {
 	if backup == "" {
 		return ""
@@ -426,6 +489,7 @@ func (s *installSession) retainLocked(backup string) string {
 	// The only copy of the previous binary is kept, without setuid or
 	// setgid; a restore must set them again (0015-MADR B5).
 	advisory(clearSpecialBits(path))
+	s.finishJournalLocked()
 	return path
 }
 
@@ -544,6 +608,9 @@ func beginSession(ctx context.Context, policy TargetPolicy, original Target, tim
 		// Under the lock, what a crashed update left behind is no one's
 		// (0010-MADR Q6).
 		keep, sweepBackups := listedBackups(original)
+		// An interrupted update's backup may be the only copy of the
+		// previous binary: it is kept before the sweep (0017-MADR 3B).
+		keep, sweepBackups = recoverJournal(original, root, keep, sweepBackups)
 		removeLeftovers(original, root, keep, sweepBackups)
 	}
 	if err := revalidateTarget(original, policy); err != nil {

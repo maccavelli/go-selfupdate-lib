@@ -11,7 +11,8 @@ import (
 // session, under the target's lock, removes it: no other update of this
 // target can be running, so nothing else owns such a file. A backup an
 // update reported as the only copy of the previous binary is renamed to
-// keptName first, and is not a leftover (0015-MADR B1).
+// keptName first, and is not a leftover (0015-MADR B1); so is the backup an
+// interrupted update's journal names, before the sweep (0017-MADR 3B).
 
 // leftoverRemove is (*os.Root).Remove, replaced in tests.
 var leftoverRemove = (*os.Root).Remove
@@ -25,6 +26,11 @@ func isLeftover(base, name string) bool {
 	// The Windows cleanup receipt's temporary file, before its rename
 	// (0015-MADR B8).
 	if digits, ok := strings.CutPrefix(name, "."+base+".selfupdate.cleanup-tmp-"); ok {
+		return allDigits(digits)
+	}
+	// The journal's temporary file, before its rename. The journal itself,
+	// .<base>.selfupdate.pending, is not a leftover (0017-MADR 3B).
+	if digits, ok := strings.CutPrefix(name, journalTmpPrefix(base)); ok {
 		return allDigits(digits)
 	}
 	rest, ok := strings.CutPrefix(name, "."+base+".selfupdate-")
@@ -43,7 +49,8 @@ func isLeftover(base, name string) bool {
 }
 
 // keptName is the name a backup takes when it is the only copy of the
-// previous binary, because restoring it failed:
+// previous binary, because restoring it failed or because the update was
+// interrupted (0017-MADR 3B):
 // .<base>.selfupdate-kept-<n> for .<base>.selfupdate-bak-<n>. isLeftover
 // matches neither it nor a cleanup receipt's list, so no later session
 // removes it; the caller restores or removes it (0015-MADR B1).

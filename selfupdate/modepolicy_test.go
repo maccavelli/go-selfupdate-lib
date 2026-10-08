@@ -53,6 +53,11 @@ func TestIsLeftover(t *testing.T) {
 		// (0015-MADR B1).
 		".demo.selfupdate-kept-42":                   false,
 		".demo.selfupdate-kept-42" + stagingSuffix(): false,
+		// The journal's temporary file is one; the journal is not
+		// (0017-MADR 3B).
+		".demo.selfupdate.pending-tmp-123": true,
+		".demo.selfupdate.pending-tmp-x":   false,
+		".demo.selfupdate.pending":         false,
 	} {
 		if got := isLeftover("demo", name); got != want {
 			t.Errorf("isLeftover(%q) = %t, want %t", name, got, want)

@@ -121,7 +121,11 @@
 // InstallOptions.KeepPrevious keeps the replaced binary at .<base>.previous,
 // and StandaloneInstaller.CleanupPending, called at startup, processes what
 // an earlier update left behind, a crashed one's staging and backups
-// included. A setuid or setgid target needs
+// included. An update writes a journal, .<base>.selfupdate.pending, before
+// it replaces the target, and removes it once the replacement is committed
+// or rolled back: the backup of an update interrupted in between is kept as
+// .<base>.selfupdate-kept-<n>, not removed, and
+// StandaloneInstaller.KeptBackups lists it. A setuid or setgid target needs
 // TargetPolicy.AllowSpecialModeBits. NewManagedInstaller adds service lifecycle
 // and definition reconciliation; NewManagedInstallerFor does the same for any
 // Installer whose sessions implement TwoPhaseSession. A managed update starts

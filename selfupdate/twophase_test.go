@@ -349,6 +349,7 @@ func TestStandaloneApplyCommit(t *testing.T) {
 	if string(got) != "new-bytes" {
 		t.Fatalf("target = %q, want the new bytes", got)
 	}
+	noJournalIn(t, filepath.Dir(exe))
 }
 
 // TestSecondCommitOrRollbackRefused: a replacement is finished by one
@@ -391,6 +392,7 @@ func TestSecondCommitOrRollbackRefused(t *testing.T) {
 			if got := readString(t, exe); got != c.want {
 				t.Fatalf("target holds %q after the refused %s, want %q", got, c.second, c.want)
 			}
+			noJournalIn(t, filepath.Dir(exe))
 		})
 	}
 }

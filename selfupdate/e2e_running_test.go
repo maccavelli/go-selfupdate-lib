@@ -261,8 +261,10 @@ func (e *e2e) bytes(t *testing.T) []byte {
 	return b
 }
 
-// leftovers lists staging and backup files beside the target. The lock file
-// is not one: it stays, by design.
+// leftovers lists staging and backup files beside the target, and the
+// interrupted-update journal and its temporary file
+// (docs/decisions/0017-PLAN-verify-build-provenance-and-close-0015-open-items.md
+// Q1). The lock file is not one: it stays, by design.
 func (e *e2e) leftovers(t *testing.T) []string {
 	t.Helper()
 	entries, err := os.ReadDir(e.dir)
@@ -271,7 +273,8 @@ func (e *e2e) leftovers(t *testing.T) []string {
 	}
 	var out []string
 	for _, ent := range entries {
-		if strings.HasPrefix(ent.Name(), "."+e.base+".selfupdate-") {
+		if strings.HasPrefix(ent.Name(), "."+e.base+".selfupdate-") ||
+			strings.HasPrefix(ent.Name(), "."+e.base+".selfupdate.pending") {
 			out = append(out, ent.Name())
 		}
 	}

@@ -154,6 +154,9 @@ func TestInstallRollsBackWhenDirectoryMovesAfterRename(t *testing.T) {
 	if left := backupsIn(t, moved); len(left) != 0 {
 		t.Fatalf("backups left in the locked directory: %v", left)
 	}
+	// The journal went into the locked directory too, and is removed
+	// there, through the handle.
+	noJournalIn(t, moved)
 }
 
 // TestReplaceRestoreSurvivesCancellation: the restore after a failed

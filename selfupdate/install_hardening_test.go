@@ -351,6 +351,7 @@ func TestInstallInjectedFailures(t *testing.T) {
 			if got := readString(t, exe); got != tc.wantTarget {
 				t.Fatalf("target %q, want %q", got, tc.wantTarget)
 			}
+			noJournalIn(t, filepath.Dir(exe))
 		})
 	}
 }
@@ -507,7 +508,18 @@ func TestInstallReportsRestoreAfterSyncFailure(t *testing.T) {
 		sess, exe := standaloneSession(t)
 		path := stageNew(t, sess)
 		moved := swapAfterFirstReplace(t, filepath.Dir(exe), false)
-		setSeam(t, &syncRootFn, func(*os.Root) error { return errors.New("injected root sync failure") })
+		// The first root sync is the journal's, before the rename
+		// (docs/decisions/0017-PLAN-verify-build-provenance-and-close-0015-open-items.md
+		// Q1); the rollback's, after it, fails.
+		real := syncRootFn
+		rootSyncs := 0
+		setSeam(t, &syncRootFn, func(r *os.Root) error {
+			rootSyncs++
+			if rootSyncs == 1 {
+				return real(r)
+			}
+			return errors.New("injected root sync failure")
+		})
 		res, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: path}})
 		check(t, res, err, filepath.Join(moved, filepath.Base(exe)))
 	})
