@@ -1,6 +1,6 @@
 ---
-status: in-progress
-date: 2026-10-07
+status: complete
+date: 2026-10-08
 associated-madr: "0015-MADR-remediate-third-debugging-pass-findings.md"
 ---
 # Implement the third debugging pass's remediation: records and the gate on main, v1.10.1 of contract-preserving fixes, and v1.11.0 for the owner's contracts
@@ -3891,3 +3891,146 @@ PLAN.
   and lint: clean; `make gate` on `aef5082` with Q6's change: all 14
   steps `rc=0`, `overall=0`.
 * **Not yet done:** CI's `validate (windows-2025)` on the pushed commit.
+
+### Coverage (V1, 2026-10-08)
+
+Every finding of 0015-MADR, with its phase, its tests, its red on the
+unfixed code, and the plant that fails them. Each phase's record above
+quotes the red and the plants in full; "pin" is a test that passes on the
+unfixed code too, proved by its plant; "record" and "docs" are findings
+whose fix is a record or a document, with no test.
+
+| ID | Phase | Test | Red | Plant |
+| :--- | :--- | :--- | :--- | :--- |
+| A1 | P2; Q1 (404) | `TestCheckerAvailability`, `TestCheckCachedDeterministicErrorCached`, `TestCheckCachedOutcomeRecorded`, `TestSelectRefusals/no_archive`; `TestLatestNotFoundIsNoRelease`, `TestCheckCachedNoRelease` | "has no exact asset …, want unsupported platform"; "github http 404" | the selector's error unwrapped; the 404 wrap dropped |
+| A2 | P2 | `TestPromptAfterStartupCheckWithEnvToken` | "prompts=0 … 401" | an environment token cached for the source's life |
+| A3 | P2 | `TestRedirectKeepsOnlyFixedHeaders` | the foreign hop kept `X-Old-Key` | `X-` headers cross origins |
+| A4 | P2 | `TestGitHubSecondaryRateLimitWithoutHeaders` | "isRateLimited=false" | the body not read |
+| A5 | Q2 | `TestNotBeforeClamped` "retry-after, quota left" | "deferred 50m0s, want 1m0s" | `nb := rl.Reset` again |
+| A6 | P2 | `TestOpenAssetKeepsContentEncodedBytes` | "received 25 bytes (decoded=true)" | no identity encoding asked |
+| A7 | P2 | `TestNotBeforeClamped`, the stored cap (pin) | passes | the stored-deferral cap off |
+| A9 | P4 | `TestNewGitHubSourceReplacesCheckRedirect` (pin) | passes | the caller's `CheckRedirect` kept |
+| A10 | P0 | `TestChecksumNameFitsTheLine`, `TestManifestDifferential`, the `FuzzParseSHA256SUMS` seed | "a 4030-byte name …: err = <nil>"; "token too long" | the Go check off; the Python check off |
+| B1 | P1 | `TestKeptBackupSurvivesLaterSessions`, `TestDryRunSweepsNothing` | "no such file or directory"; "… was removed" | `retainLocked` keeps the name; a dry run sweeps |
+| B2 | P3 | `TestInstallRefusesTargetReplacedAfterBegin` | "applied=true err=<nil>" | the identity check off |
+| B3 | P1 | `TestManagedStopFailsAfterStoppingRestarts`; each backend's `TestStopFinishesAfterCancel`, `TestStopBound`; live `TestLiveStopWaitsForSlowExit` | "stops=1 starts=0 healths=0"; the backends' early returns | a failed stop ends the update; each backend's bound and wait |
+| B4 | P1 | `TestManagedRecoveryReportsRestoredBinary`, `TestInstallReportsRestoreAfterSyncFailure` | "RolledBack=false Backup=\"\"" | `recover` ignores an unsynced restore; the undo and sync errors unmarked |
+| B5 | Q2 | `TestKeepPreviousClearsSpecialBits`, `TestKeptBackupClearsSpecialBits` | "mode=urwxr-xr-x" | the chmod skipped; the kept-backup call removed |
+| B6 | P3 | `TestVersionProberHonoursRunContext` | class "error" | the run's context not checked |
+| B7 | P1 | `TestSecondCommitOrRollbackRefused` | "commit after rollback: Applied=true" | `Commit` skips the finished check |
+| B8 | P3 | `TestIsLeftover`, `TestRemoveLeftoversKeepsListed` | "cleanup-tmp-12 = false" | the temporary file not matched |
+| B9 | P3 | `TestImageVerifier` | "windows-dll …: <nil>" | the DLL bit not checked |
+| B10 | P3 | `TestResolveTargetDefaultExecutable`, `TestRawExecutablePathRelative`, `TestManagedSessionTarget` (pins) | pass | `osExecutable` not called; a relative path kept; `Target` empty |
+| C1 | P4 | `TestResultObjectExitCodeMatchesExit` | "exit_code 0 …; the process exits 1" | the object written before the late errors |
+| C2 | P4 | `TestCommandEarlyFailureReachesReport` | "Report calls=0" | an early failure skips `Report` |
+| C3 | Q1 | `TestHandOffNeedsYes`, `TestHandOffOnlyWhenUpdateFound`, `TestHandOffFunc` | "Detach called=true exit=0" | `wouldInstall` dropped; the `--yes` branch dropped |
+| C4 | P4 | `TestCheckerAgreesOnUnpacker` | "available=true err=<nil>" | `discover` skips the unpacker match |
+| C5 | R3 | `TestRunEndsAtSelected` (pin) | passes | a `complete` before the selection |
+| C6 | P4 | `TestDiscoveryFailureResultNamesRun` | "Product=\"\" … Checked=false" | a discovery failure returns `Result{}` |
+| C7 | P4 | `TestTypedNilWriters`, `TestOptionsRefused` | "nil pointer dereference" | a typed nil kept; `isNilWriter` sees only nil |
+| C8 | Q1 | `TestZeroValues` | a panic | the `Stream.prepare` check dropped (a panic); the `Cancel` guard dropped |
+| C9 | Q1 | `TestDryRunForeignPlatformSkipsProbes` | the probes ran | the platform condition dropped |
+| D2 | P5 | `TestStartBaselineIsAfterStart`; live `TestLiveStartDuringAutoRestart` | "not healthy … NRestarts=2" | the count read before the start |
+| D3 | P5 | `TestReconcileReloadsLoadedJob`, `TestReconcileRefusesRunningJob`, `TestReconcileReloadedProcessIsNew`; live `TestLiveRewriteLoadedIdleJob` | "verbs []"; the marker read `["old"]` | no reload; a running job rewritten; the reload's process as `previous` |
+| D4 | P5 | `TestReconcileVerifiesEffectiveExecStart`; live `TestLiveRewriteWithOverride` | "changed=true err=<nil>" | the check deleted |
+| D5 | P5 | `TestReconcileUnquotedPathWithSpaces`, `TestReconcileUnquotedRealFiles`; live `TestLiveUnquotedPathWithSpace` | "demo runs C:\Program" | plain `decompose`; an ambiguous line rewritten |
+| D6 | Q3 | `TestStopDependentsAreRestarted`; live `TestLiveStopDependentsRestarted` | "started [\"demo\"]" | the record skipped |
+| D7 | P5 | `TestEnabled`, `TestEnabledRefusesUnreadablePlist`, `TestEnabledRealPlutil`, `TestEnabledRealPlutilUnreadable`; live `TestLiveRunAtLoadInteger` | "RunAtLoad integer: enabled true" | an unreadable plist not enabled; an integer counts |
+| D8 | P5 | `TestDetachKeepsOtherUnitsEnvFile` | "removed demo.service's env file" | one directory for every unit |
+| D10 | Q3 | `TestPollOptionsValidate`, each backend's `TestNewRefuses` | "a settle as long as the timeout: <nil>" | each constructor's call dropped; launchd's settle not raised |
+| D11 | P5 | `TestCommandErrors`; live `TestLiveMissingDependency` | "not installed: … missing-dep" | any "not found" is `ErrNotInstalled` |
+| E1 | P6 | `TestUnpackRefuses` (local header, Unicode Path) | "Unpack = <nil>" | the name compare off; 0x7075 allowed; `checkLocal` before the overlap check |
+| E2 | P6 | `TestUnpackRefuses` (long s, trailing dot and space) | "Unpack = <nil>" | the ASCII loop dropped; the suffix test dropped |
+| E3 | P6 | `TestUnpackRefuses` (four directory cases) | "Unpack = <nil>" | each rule off |
+| E4 | P6 | `TestUnpackRefuses` (encrypted) | "Unpack = <nil>" | the central check off |
+| E5 | P6 | `TestParseRefuses`, `TestParseAccepts`, `TestCheck` | "Parse accepted"; "check: <nil>" | the call removed; 129 allowed; binary checked too; `Select` skipped |
+| E6 | P6 | `TestSignerRequirementIsSeparate`, `TestSignerArguments`, `TestSignerErrors` | a composed `-R=`; two calls | the composition restored; the run skipped |
+| E7 | Q4 | `TestParseRefuses` (`null` rows) | "Parse accepted" | `tok == nil && false` |
+| E8 | Q4 | `TestUnpackAccepts`, `TestUnpackRefuses` (PAX rows) | "not a regular file or a directory (type 'g')" | no skip; an empty key list; not counted |
+| F1 | P7 | sh and ps "a repeated --product/-Product installs it once" | "exit 1 … mv: … relay.new" | the repeat guard dropped (sh, ps); an empty `--product` allowed |
+| F2 | P7 | "an identity command that reads stdin …", "a hook that reads stdin …" | exit 0; one hook logged | either `</dev/null` removed |
+| F3 | R3 (docs); Q4 | `TestPlanRefusesAnOldLibrary`, `TestSpecFloorsCoverEveryField`, `workflow-shape_test.sh` | "flag provided but not defined: -module-dir" | the `installer` row deleted; the comparison flipped |
+| F4 | R3 (docs); P7 | `workflow-shape_test.sh` | "FAIL the immutability timeout names the setting" | the phrase dropped |
+| F5 | P7 | sh "a relative --dir …", ps "a relative -InstallDir …" | "installed rel/relayctl" | the resolve dropped (sh, ps) |
+| F6 | P7 | `TestInstallShHashToolsEscapes` | "SHA-256 \<hash> does not match" | `shasum` given the name |
+| F7 | P7 | sh and ps: a newline in the tag, an empty product, a stale `.prev`, a directory at the target; sh: a FIFO hook | each case's exit or files | each rule off (sh, ps) |
+| F8 | P7 | `release-latest-flag_test.sh` legacy cases | rc 1, "is not vX.Y.Z" | the fallback skipped; `min` for `max` |
+| F9 | P7 | `workflow-shape_test.sh` | "FAIL one publish runs at a time" | `cancel-in-progress: true` |
+| G1 | R2 | record: 0004-MADR P3's open-work table | — | — |
+| G2 | R1 | `gate_test.sh`, `check-docs_test.sh`, `plant-copy_test.sh` | the scripts did not exist | R1's six plants |
+| G3 | R2 (record); Q1 | `TestRunReportsRolledBack`; live `TestLiveHandOffHealthFailureReportsRollback` | the build failed on `RolledBack` | the copy dropped (unit and live) |
+| G4 | Q3 | `TestExecReconcilerSurfacesWarnings`, `TestRunReportsReconcileWarnings` | "warnings []" | the join dropped; the receipt's warnings not copied |
+| G5 | P4 | docs (`EventInstalling`'s comment) | — | — |
+| G6 | P4 | docs (the package and `releasespec` docs) | — | — |
+| G7 | P7 | `TestUsageListsEveryFlag` | "stage: -repository is not in the usage line" | removed again |
+| G8 | R3 | docs (`docs/architecture.md`) | — | — |
+| G9 | R3 | docs (`docs/architecture.md`) | — | — |
+| G10 | R2 (record); P4 | `ExampleNewUnpacker` (pin) | passes | the selection not packed |
+
+All 64 IDs appear. A10 is the MADR's amendment A2.
+
+### Phase Q5: the `v1.11.0` release (2026-10-08)
+
+* **The release commit** is `a0612daab7ce70eec370a4b2cd55fc72ab8bf6e7`,
+  Phase Q6's, which followed `aef5082`.
+* **Step 1:** CI run 37789692988 on `main` at `a0612da`: every job
+  passed, `validate (windows-2025)` included, and both rehearsals ran the
+  plan step with `-module-dir`.
+* **Step 2:** the live tests are Q1's and Q3's, recorded in their phases.
+* **Step 3,** on the owner's ask ("Tag v1.11.0"):
+  `scripts/check-release-tag.sh v1.11.0` exited 0; `git tag -a v1.11.0 -m
+  v1.11.0 a0612da`; the disclosure guard over the tag exited 0; `git push
+  origin v1.11.0`.
+* **Step 4:** `git ls-remote origin 'refs/tags/v1.11.0^{}'` gives
+  `a0612daab7ce70eec370a4b2cd55fc72ab8bf6e7`. The tag's CI run,
+  37792039015, passed all 17 jobs; all ten identity legs print `v1.11.0
+  (release) a0612daab7ce`.
+* **Step 6:** the proxy gives `v1.11.0`, `Time` `2026-10-08T14:01:42Z`,
+  `Origin.Hash` the release commit; `@latest` resolves to `v1.11.0`.
+* **Step 5, the pin commit,** `<40-hex> # v1.11.0` for every pin:
+  * `README.md`: the current release, the `go get` line, the publish
+    example's pin;
+  * `docs/architecture.md`: the current release and its commit;
+  * the building guide: "the examples below pin `v1.11.0`'s", the build
+    and publish pins in step 4, the extras example's build pin, and the
+    `ls-remote` example;
+  * the migration guide: §2's current release; the six `go get` lines
+    outside the `v1.10.1` section; §3's pin, its `ls-remote` example, and
+    the sentence that `v1.11.0` changes nothing in the publish workflow
+    (`git diff v1.10.1 v1.11.0` of it is empty); §5's `go.mod` step; the
+    four `go list` checks outside the `v1.10.1` section.
+  * Kept: each section's statements about its own release, the `v1.10.1`
+    section's `go get` line and check among them.
+* **Step 7,** the live installer rehearsal, was not asked for, and was not
+  run.
+
+### Verification, at closing (2026-10-08)
+
+* **V1:** the Coverage table above lists all 64 IDs.
+* **V2:** every plant listed in the phase records was applied in a scratch
+  copy and made its test fail, the Stream plant of Q1 by a panic.
+* **V3:** P8's full report against `v1.10.0` printed only "Ignoring
+  internal package …".
+* **V4:** the report against `v1.10.1` lists exactly Q1's seven and Q3's
+  two additions.
+* **V5:** `git diff v1.10.0 -- go.mod go.sum .golangci.yml` is empty, and
+  `go mod tidy -diff` is clean.
+* **V6:** `make gate` ended `overall=0` at every phase from R1 on, with
+  two recorded exceptions on the way: R1's first run (Deviation D1, which
+  became P0), and the run on P6's pushed commit `6b7db9b`, whose lint
+  failure became Deviation D5.
+* **V7:** the live tests of P1, P5, Q1 and Q3 passed on the test hosts
+  before their track's tag, and CI's three legs passed on both tags.
+* **V8:** the installer tests passed under sh, dash, bash and BusyBox, and
+  under Windows PowerShell 5.1 and PowerShell 7 in the three forms.
+* **V9:** the gate's `links` step covers every tracked Markdown file (343
+  links in 49 files, 0 broken), and `ids` every changed file.
+* **V10:** CI is green on `main` at each phase's last commit and on both
+  tags. Two commits between were red, each fixed by the next: `6b7db9b`
+  (lint, Deviation D5) and `dbf19ef` (the 8.3 temp path, Deviation D7).
+
+### Closing (2026-10-08)
+
+* The owner chose "Complete, exceptions recorded": V1–V10 hold, V6 and
+  V10 with the two exceptions above. This PLAN is `complete`, and its row
+  in `docs/README.md` follows. The MADR stays `accepted`.
