@@ -1163,6 +1163,19 @@ its corrections to this record, copied here as the PLAN states them.
 
 The "Not verified" section's first item is answered by correction 3.
 
+### A2 (2026-10-08): a flaky Windows test, fixed in this plan
+
+*Status: accepted (2026-10-08), with
+[0017-PLAN-verify-build-provenance-and-close-0015-open-items.md](0017-PLAN-verify-build-provenance-and-close-0015-open-items.md)
+Phase Q0.* CI's `windows-2025` leg failed on `6dcdd8a` in
+`TestWaitHopExit` (`selfupdate/service`), a test from 0011-MADR amendment
+A4. Its stand-in hop counts 300 ms from starting the child, so a child
+that starts slowly waits less than the test's 200 ms floor, though
+`waitHopExit` did what it should. The owner chose, on 2026-10-08, to fix
+it as a phase of this plan: the child signals that it is about to wait,
+and the stand-in counts from that signal. Only the test helper changes;
+no decision of this record changes.
+
 ## More Information
 
 ### Related records

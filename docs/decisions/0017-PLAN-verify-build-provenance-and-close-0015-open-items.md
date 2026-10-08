@@ -42,6 +42,7 @@ numbers are at `70ad0be`. Bare Go file names are in `selfupdate/`;
 | P1 | `v1.11.1` | 2B: zip entries tile the file | `archive/` |
 | P2 | `v1.11.1` | 4C: names Windows reserves, on every host | `archive/` |
 | P3 | `v1.11.1` | the release commit, then the release procedure | documentation, then the tag and pins |
+| Q0 | `v1.12.0` | none: `TestWaitHopExit`'s start-up race, found in this track's CI (amendment, 2026-10-08) | `selfupdate/service/` tests |
 | Q1 | `v1.12.0` | 3B: the interrupted-update journal and `KeptBackups` | `selfupdate/` |
 | Q2 | `v1.12.0` | 1B: `selfupdate/verify/ghattest` | new package, depguard, scope docs |
 | Q3 | `v1.12.0` | the release commit, then the release procedure | documentation, then the tag and pins |
@@ -227,6 +228,7 @@ set.
 
 | Phase | Test | Where |
 | :--- | :--- | :--- |
+| Q0 | `TestWaitHopExit`, 50 runs | the Windows test host, with `TMP` and `TEMP` at an 8.3 path |
 | Q1 | `TestWindowsInterruptedApplyRunningImage` | CI's `windows-2025` leg (it is an ordinary Windows test), and the Windows test host with `TMP` and `TEMP` at an 8.3 path, 30 runs |
 | Q2 | `TestLiveVerify` with `SELFUPDATE_REQUIRE_GHATTEST=1` | this Mac, with `gh` logged in; the Windows test host, with its `gh` |
 
@@ -619,6 +621,55 @@ The same for `v1.11.1` (P3) and `v1.12.0` (Q3); `vX` is the release.
    record.
 5. **Then the Release procedure,** as `vX = v1.11.1`, with the pin commit
    as its own commit.
+
+### Phase Q0: `TestWaitHopExit`'s start-up race (amendment, 2026-10-08)
+
+*Added on 2026-10-08, at the owner's choice ("New 0017 phase"), after CI
+run 37812059468 failed on `6dcdd8a`; see Deviation D2's last bullet.
+Approved on 2026-10-08: "You may push to main then proceed".*
+
+**Files:**
+* `selfupdate/service/main_test.go`
+* `selfupdate/service/handoffhop_test.go`
+
+1. **The cause** (`main_test.go:59-81`, `handoffhop_test.go:74-99`):
+   * the stand-in hop, `hopparent`, starts `hopchild`, then sleeps 300 ms
+     from that moment and exits;
+   * `hopchild` times its `waitHopExit` from its own start, and the test
+     requires at least 200 ms.
+
+   So any start-up delay of the child is taken from the time it can
+   wait. On `windows-2025` the child started about 225 ms late: "the
+   child waited 75 ms, its parent still running false; want at least
+   200 ms, and gone". The code under test, `waitHopExit`
+   (`hopwait_windows.go:14-24`, `hopwait_unix.go:15-19`), did its job: it
+   waited until the parent was gone.
+2. **Fix, in the helper only:**
+   * `hopchild` writes `FAKE_OUT + ".waiting"` just before it starts
+     timing and calls `waitHopExit`;
+   * `hopparent` waits for that file with `waitForFile` (30 s; it exits
+     6 if the file never appears), then sleeps 300 ms and exits.
+
+   The child's measured wait is then the parent's 300 ms less the time
+   the parent takes to notice the file: one `waitForFile` poll, 20 ms.
+   The test keeps its 200 ms floor and its "gone" check. No production
+   file changes.
+3. **The comment** on `TestWaitHopExit` says the parent lives 300 ms
+   after the child is ready to wait.
+4. **Red,** with a slow-start plant: `scripts/plant-copy.sh` on
+   `main_test.go` inserts `time.Sleep(250 * time.Millisecond)` at the
+   top of `hopchild`.
+   * In a copy of the code before the fix, `TestWaitHopExit` must fail,
+     as CI did ("waited <100 ms").
+   * In a copy of the fixed code, the same plant must pass.
+5. **Plant:** with the fix, removing `hopchild`'s `waitHopExit(parent,
+   5*time.Second)` call must fail the test: it waited 0 ms, and its
+   parent was still running.
+6. **Run:** `go test -count=20 -run '^TestWaitHopExit$'
+   ./selfupdate/service/` on this Mac. Then `win_pkg.sh`'s equivalent on
+   the Windows test host, with an 8.3 `TEMP`: `-count=50`, 0 failures.
+   Then CI's three legs.
+7. **API:** none; no production file changes.
 
 ### Phase Q1: the interrupted-update journal and `KeptBackups` (3B)
 
@@ -1472,3 +1523,42 @@ changes no API: `make apicheck` reports it compatible with `v1.11.0`.
   waited 75 ms, its parent still running false; want at least 200 ms,
   and gone". The owner asked for it to become a phase of this PLAN
   (Q0), by an amendment approved before work on it starts.
+
+### `v1.11.1`, release procedure step 1 (2026-10-08)
+
+On the owner's ask ("You may push to main then proceed"), `main` was
+pushed at `50eafb6`, the release commit. CI run 37848111118 passed all 17
+jobs, `validate (windows-2025)` among them. Step 2: track 2 has no live
+tests. Step 3, the tag, waits for the owner's ask.
+
+### Phase Q0: `TestWaitHopExit`'s start-up race (2026-10-08)
+
+* **Approval:** the owner approved the amendment ("You may push to main
+  then proceed"): MADR amendment A2 reads accepted.
+* **Red:**
+  * a slow-start plant, `time.Sleep(250 * time.Millisecond)` at the top
+    of `hopchild`, in a copy of the code before the fix:
+    `handoffhop_test.go:97: the child waited 44 ms, its parent still
+    running false; want at least 200 ms, and gone`, the failure CI saw on
+    `6dcdd8a`.
+* **Fix** (`main_test.go`):
+  * `hopchild` writes `FAKE_OUT + ".waiting"` before it starts timing and
+    calls `waitHopExit`;
+  * `hopparent` waits for that file (`waitForFile`; exit 6 if it never
+    appears), then sleeps 300 ms.
+
+  The comment on `TestWaitHopExit` says so. No production file changed.
+* **Green:**
+  * `go test -count=20 -run '^TestWaitHopExit$' ./selfupdate/service/`
+    passed on this Mac;
+  * on the Windows test host, with an 8.3 `TEMP`, `-count=50` gave
+    `pass=50 fail=0`.
+* **Plants,** each in a scratch copy:
+  * the same slow-start plant, on the fixed helper, passes;
+  * `hopchild`'s `waitHopExit` call removed fails with
+    `handoffhop_test.go:100: the child waited 0 ms, its parent still
+    running true; want at least 200 ms, and gone`.
+* **Checks:**
+  * `make pre-add-check` on the two files: clean;
+  * `make gate`: every step `rc=0`, `overall=0`; apicheck "compatible
+    with v1.11.0", as `v1.11.1` is not tagged yet.

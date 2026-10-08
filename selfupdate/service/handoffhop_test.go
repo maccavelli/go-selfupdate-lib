@@ -72,7 +72,10 @@ func TestHandOffHopIdleWithoutMarker(t *testing.T) {
 }
 
 // TestWaitHopExit: the real run waits for a hop that has not exited yet,
-// here one that lives 300 ms after starting it.
+// here one that lives 300 ms after the run says it is waiting, however
+// long the run took to start
+// (docs/decisions/0017-PLAN-verify-build-provenance-and-close-0015-open-items.md
+// Q0).
 func TestWaitHopExit(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "child")
 	exe, err := os.Executable()

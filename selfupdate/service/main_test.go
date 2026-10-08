@@ -58,7 +58,10 @@ func fakeTool(mode string) int {
 		return 0
 	case "hopparent":
 		// A stand-in hop that lives on: start a "hopchild" with FAKE_OUT,
-		// then exit 300 ms later.
+		// and exit 300 ms after the child says it is waiting, so a child
+		// that starts slowly still has the whole 300 ms to wait
+		// (docs/decisions/0017-PLAN-verify-build-provenance-and-close-0015-open-items.md
+		// Q0).
 		exe, err := os.Executable()
 		if err != nil {
 			return 3
@@ -68,12 +71,20 @@ func fakeTool(mode string) int {
 		if err := cmd.Start(); err != nil {
 			return 4
 		}
+		if !waitForFile(os.Getenv("FAKE_OUT") + ".waiting") {
+			return 6
+		}
 		time.Sleep(300 * time.Millisecond)
 		return 0
 	case "hopchild":
 		// Wait for the parent as the real run waits for the hop, and
-		// write "<ms waited> <parent still running>" to FAKE_OUT.
-		out, parent, start := os.Getenv("FAKE_OUT"), os.Getppid(), time.Now()
+		// write "<ms waited> <parent still running>" to FAKE_OUT. The
+		// ".waiting" file tells the parent the wait has begun.
+		out, parent := os.Getenv("FAKE_OUT"), os.Getppid()
+		if err := os.WriteFile(out+".waiting", nil, 0o600); err != nil {
+			return 7
+		}
+		start := time.Now()
 		waitHopExit(parent, 5*time.Second)
 		body := strconv.FormatInt(time.Since(start).Milliseconds(), 10) + " " + strconv.FormatBool(processRunning(parent) && os.Getppid() == parent)
 		_ = os.WriteFile(out+".tmp", []byte(body), 0o600)
