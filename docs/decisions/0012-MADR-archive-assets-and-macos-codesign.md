@@ -890,6 +890,32 @@ publisher wants it.
 * Bad, because adding the stage later re-opens the ordering of
   `Verifier`s, transforms and events after consumers depend on it.
 
+## Amendments
+
+### A1 (2026-10-07): §4's further refusals, and §5's requirement in its own run
+
+*Status: accepted (2026-10-07). The findings and their fixes are in
+[0015-MADR-remediate-third-debugging-pass-findings.md](0015-MADR-remediate-third-debugging-pass-findings.md) (E1–E4, E6); they were built in [0015-PLAN-remediate-third-debugging-pass-findings.md](0015-PLAN-remediate-third-debugging-pass-findings.md), Phase P6, and ship in
+`v1.10.1`.*
+
+* **§4, what another tool would read differently** (E1–E4). The unpacker
+  also refuses:
+  * a zip entry whose local header disagrees with its central-directory
+    record (signature, method, name, lengths), and an Info-ZIP Unicode
+    Path extra field (0x7075), which bsdtar and Info-ZIP use in place of
+    the header's name;
+  * a name with a byte outside printable ASCII, or an element ending in a
+    dot or a space, which APFS, NTFS or Win32 would fold into another
+    name; with both refused, the "differs only in case" rule is exact;
+  * a zip directory attribute on a name without a trailing `/`, a zip
+    directory entry that holds data, and a tar regular file whose name
+    ends in `/`;
+  * an encrypted zip entry (flags `0x2041`), in either header.
+* **§5, the requirement** (E6): `SignOptions.Requirement` is checked in a
+  `codesign --verify` run of its own, after the identifier's, never
+  joined to it: a requirement such as `anchor apple) or (always` could
+  otherwise cancel the identifier pin.
+
 ## More Information
 
 ### Probe evidence

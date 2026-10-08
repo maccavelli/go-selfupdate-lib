@@ -637,6 +637,54 @@ stages exactly what `v1.9.0` staged. Why, and how, is in
   `installer` as an unknown field, in your program and in the workflow.
   Until `v1.11.0`, the build workflow does not check this.
 
+### From v1.10.0 to v1.10.1
+
+```bash
+go get github.com/maccavelli/go-selfupdate-lib@v1.10.1
+```
+
+`v1.10.1` fixes the third debugging pass's findings and changes no API:
+`make apicheck` reports it compatible with `v1.10.0`. What changed, and
+why, is in
+[0015-MADR](../decisions/0015-MADR-remediate-third-debugging-pass-findings.md).
+
+**Behaviour changes:**
+
+- **A backup the run could not restore** is kept as
+  `.<base>.selfupdate-kept-<n>`, and no later session's sweep removes it;
+  restore or remove it yourself, as `Result.PendingBackup` says. A dry
+  run sweeps nothing.
+- **A second `Commit` or `Rollback`** of one replacement is refused.
+- **A target replaced during the update,** by a package manager or with a
+  symlink, fails the install with `ErrConcurrentUpdate` instead of being
+  overwritten.
+- **A release without the platform's asset** fails as
+  `unsupported-platform`, and `CheckCached` caches the answer.
+- **A stop that fails after the service stopped,** such as a wait that
+  timed out, starts the service again. The stop waits by the service
+  manager's own kill bound, whatever your context does.
+- **The archive unpacker** also refuses names outside printable ASCII or
+  with an element ending in a dot or a space, a zip local header that
+  disagrees with its central record, an Info-ZIP Unicode Path field, a
+  directory that is not named as one or that holds data, and encrypted
+  zip entries. `releasespec.Parse` refuses, under archive packaging, an
+  archive name over 128 characters and a tar.gz program name over 100.
+- **A codesign `Requirement`** is checked in its own `codesign --verify`
+  run, after the identifier's.
+- **The generated installers:** a product named twice installs once; an
+  empty `--product` is refused; hooks and identity commands run with no
+  standard input; a relative install folder is made absolute; checksums
+  verify in a folder whose name holds `\`; a `--version` holding a newline
+  is refused; a failed identity check restores only what this run moved
+  aside; and a directory where a program goes is refused.
+- **The publish workflow** runs one publish at a time per repository
+  (group `go-selfupdate-lib-publish-<owner>/<repo>`), names the immutable
+  releases setting when it times out, and accepts a repository whose
+  current latest release is not `vX.Y.Z`.
+
+**Check:** `go list -m github.com/maccavelli/go-selfupdate-lib` gives
+`v1.10.1`.
+
 ### Check
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.

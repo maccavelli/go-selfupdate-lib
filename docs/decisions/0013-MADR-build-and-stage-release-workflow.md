@@ -871,6 +871,21 @@ The owner answered:
   runs binaries natively only for the identity check, where it adds
   something.
 
+## Amendments
+
+### A1 (2026-10-07): §2's archive-name limits
+
+*Status: accepted (2026-10-07). The finding and its fix are in [0015-MADR-remediate-third-debugging-pass-findings.md](0015-MADR-remediate-third-debugging-pass-findings.md)
+(E5); they were built in [0015-PLAN-remediate-third-debugging-pass-findings.md](0015-PLAN-remediate-third-debugging-pass-findings.md), Phase P6, and ship in `v1.10.1`.*
+
+* **§2:** under `"packaging": "archive"`, `Validate` refuses a spec whose
+  composed asset name the client's archive selector would refuse (over
+  128 characters), and a tar.gz program name over 100 characters, which
+  the USTAR header `pack` writes cannot hold.
+* **§8:** the publish workflow's archive check also selects each staged
+  archive with the client's own selector, so a release the client could
+  not select is never published.
+
 ## More Information
 
 ### Probe evidence

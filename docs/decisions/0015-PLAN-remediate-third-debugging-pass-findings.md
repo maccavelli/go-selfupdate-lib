@@ -3354,3 +3354,76 @@ approved it: "proceed". The PLAN as approved is commit `47f0f97`.
   "compatible with v1.10.0"; ids "13 files, 16 deny-list rules, 0
   findings". Its first run failed `lint` on `renderWith`, then in the
   harness, which moved (Test placement above).
+
+### Phase P8: the `v1.10.1` release commit (2026-10-07)
+
+* **Migration guide:** `### From v1.10.0 to v1.10.1`, inside §10 before
+  its `### Check`, with the `go get` line, the API statement, nine
+  behaviour bullets and the `go list -m` check.
+* **Record amendments:**
+  [0011-MADR-reference-service-lifecycles.md](0011-MADR-reference-service-lifecycles.md)
+  `### A7`;
+  [0012-MADR-archive-assets-and-macos-codesign.md](0012-MADR-archive-assets-and-macos-codesign.md)
+  and
+  [0013-MADR-build-and-stage-release-workflow.md](0013-MADR-build-and-stage-release-workflow.md),
+  each a new `## Amendments` with `### A1`.
+* **Not yet done** (release procedure steps 1–7): CI on the pushed release
+  commit, the tag, the tag's CI, the pin commit and the proxy check. Each
+  waits for the owner: the push, and the tag on an explicit ask.
+* **Checks:** markdownlint on the migration guide, 0 issues; `check-docs.sh`
+  on the five files: "64 links in 5 files, 0 broken", "5 files, 16
+  deny-list rules, 0 findings". Records and a guide only: no code.
+
+### Release notes for v1.10.1 (2026-10-07)
+
+No API change; `make apicheck` reports `v1.10.1` compatible with
+`v1.10.0`. In the migration guide's order, then the rest:
+
+* B1: a backup the run could not restore is kept as
+  `.<base>.selfupdate-kept-<n>`, which no sweep removes; a dry run sweeps
+  nothing.
+* B7: a second `Commit` or `Rollback` of one replacement is refused.
+* B2: a target replaced during the update fails with
+  `ErrConcurrentUpdate` instead of being overwritten.
+* A1: a release without the platform's asset fails as
+  `unsupported-platform`, and is cached.
+* B3: a stop that fails after the service stopped starts it again; the
+  stop wait runs to the service manager's kill bound.
+* E1–E4: the unpacker refuses zip header disagreements, Unicode Path
+  fields, non-portable names, mis-named directories and encrypted entries.
+* E5: archive names over 128 characters, and tar.gz program names over
+  100, are refused by the spec, and the publish check selects each archive
+  with the client's selector.
+* E6: a codesign requirement is verified in its own run.
+* F1, F2, F5–F7: the installers count a repeated product once, run hooks
+  and identity commands without stdin, resolve a relative folder, hash
+  from stdin, refuse a newline in a tag and an empty product, keep a stale
+  `.prev`, and refuse a directory at a target.
+* F4, F8, F9: the publish workflow names the immutable-releases setting
+  on timeout, accepts a legacy latest release, and runs one publish at a
+  time per repository.
+* D2, D3, D4, D5, D7, D8, D11: systemd's restart baseline after the start,
+  launchd's reload of a loaded idle job, systemd's effective `ExecStart`
+  check, the SCM's unquoted paths, launchd's `RunAtLoad` types, per-unit
+  handoff files, and systemd's missing-dependency errors.
+* B4: managed recovery reports `RolledBack` when the old binary is back.
+* B6: a probe ended by the run's context wraps the context's error.
+* B8: the Windows receipt's temporary file is a leftover.
+* B9: a DLL is not an executable image.
+* B10: the default and relative target paths and `managedSession.Target`
+  are tested.
+* A2: a token from the environment is re-read per run.
+* A3: a redirect scrubs the header the request carries.
+* A4: a secondary rate limit without a reset time backs off.
+* A6: asset downloads ask for no content encoding.
+* A7: the check cache's capped `NotBefore` has a test.
+* A10: a manifest name longer than 4029 bytes is refused by both
+  parsers.
+* C1: under `--json`, the result object is written after the late
+  errors, so its exit code matches the process's.
+* C2: a handoff run that fails early still writes its result.
+* C4: `Checker` refuses what `Run` refuses.
+* C6: a run that fails in discovery names its product, version and mode.
+* C7: a typed-nil writer is treated as nil, not a later panic.
+* A9, G5, G6, G10: godoc and examples corrected.
+* G7: `selfupdate-release stage`'s usage line lists `-repository`.

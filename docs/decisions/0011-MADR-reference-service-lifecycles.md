@@ -774,6 +774,44 @@ Phases R2 and Q1.*
     code 1, `applied` false and `rolled_back` true, and the service runs
     the previous binary afterwards.
 
+### A7 (2026-10-07): the third debugging pass's service fixes
+
+*Status: accepted (2026-10-07). The findings and their fixes are in
+[0015-MADR-remediate-third-debugging-pass-findings.md](0015-MADR-remediate-third-debugging-pass-findings.md); they were built in [0015-PLAN-remediate-third-debugging-pass-findings.md](0015-PLAN-remediate-third-debugging-pass-findings.md), Phases P1 and P5, and ship in
+`v1.10.1`.*
+
+* **§7, systemd:** the restart count `WaitHealthy` compares against is
+  read after `systemctl start` returns, with the `InvocationID` read
+  before it. A start issued while the unit waits out `RestartSec` is
+  counted as a restart, so a count read before it read a healthy start as
+  one (D2; 0015-MADR A3 has the probes on systemd 255 and 259).
+* **§7, the stop wait (B3, N8):** once the stop is issued, the wait runs
+  to the service manager's own kill bound, whatever the caller's context
+  does: the longer of `Poll.Timeout` and launchd's `ExitTimeOut` (5 s
+  when unset) or systemd's `TimeoutStopUSec`, plus 30 s. A stop that fails
+  after the service stopped makes the managed installer start it again.
+* **§5, launchd (D3):** launchd keeps the definition it loaded. A rewrite
+  of a job that is loaded but not running reloads it (`bootout`, the stop
+  wait, `bootstrap`), and `Start` does not take the process that reload
+  started for the one before the update; a job that is running is
+  refused. `Restore` does the same.
+* **A2's layout, amended (D8):** the handoff's environment file is
+  `<dir>/<unit>/handoff-<id>.env`, both directories of mode 0700, and a
+  handoff removes only its own unit's earlier files, so two units'
+  handoffs no longer remove each other's.
+* **§5, systemd (D4):** after the reload, the unit's effective
+  `ExecStart` must name the new binary; a drop-in that loads later and
+  sets it again is an error, returned with the receipt, so recovery
+  removes this package's drop-in.
+* **SCM (D5):** an unquoted command line whose path holds a space is read
+  as `CreateProcess` reads it; a rewrite refuses one whose reading depends
+  on which files exist.
+* **§7, launchd `Enabled` (D7):** `RunAtLoad` counts only as `<true/>`;
+  launchd does not run a job at load for an integer. A plist `plutil`
+  cannot read is an error.
+* **systemd errors (D11):** "not found" makes `ErrNotInstalled` only when
+  systemd names this unit.
+
 ## More Information
 
 ### Probe evidence
