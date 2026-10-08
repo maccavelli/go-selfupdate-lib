@@ -47,6 +47,7 @@ name, and the files they cite moved with the rename
 | 0014 | PLAN | [Implement the shared installer templates: the spec's `installer` field, `install.sh` and `install.ps1` rendered and staged by the build workflow, and their tests (`v1.10.0`)](decisions/0014-PLAN-shared-installer-templates.md) | complete |
 | 0015 | MADR | [Fix the third debugging pass's findings: a v1.10.1 of contract-preserving fixes, record and tooling fixes on main, and a v1.11.0 for the contracts the owner decides](decisions/0015-MADR-remediate-third-debugging-pass-findings.md) | accepted |
 | 0015 | PLAN | [Implement the third debugging pass's remediation: records and the gate on main, v1.10.1 of contract-preserving fixes, and v1.11.0 for the owner's contracts](decisions/0015-PLAN-remediate-third-debugging-pass-findings.md) | complete |
+| 0016 | REPORT | [The pre-add check passes a file gofmt cannot read](reports/0016-REPORT-precheck-gofmt-errors.md) | — |
 
 ## I want to…
 
