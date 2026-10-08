@@ -126,7 +126,7 @@
         }
 
         function Test-ReleaseTag([string]$Value) {
-            if ($Value -cnotmatch '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-([a-z][a-z0-9]{0,15})\.(0|[1-9][0-9]*))?$') {
+            if ($Value -cnotmatch '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-([a-z][a-z0-9]{0,15})\.(0|[1-9][0-9]*))?\z') {
                 Invoke-Fail 1 "$Value is not a release tag (vMAJOR.MINOR.PATCH)"
             }
             if ($Matches[5] -and $Channels -cnotcontains $Matches[5]) {
@@ -264,7 +264,7 @@ public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wP
             foreach ($hook in $Hooks) {
                 if ($hook.When -cne $When -or $Selected -cnotcontains $hook.Product) { continue }
                 $exe = Join-Path $Dir ($hook.Product + '.exe')
-                if (-not (Test-Path -LiteralPath $exe)) { continue }
+                if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { continue }
                 $hookArgs = $hook.Args
                 Write-Line "running $($hook.Product) $($hookArgs -join ' ')"
                 $ErrorActionPreference = 'Continue'
@@ -318,13 +318,22 @@ public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wP
             $dir = $InstallDir
             if (-not $dir) { $dir = Get-EnvSetting 'INSTALL_DIR' }
             if (-not $dir) { $dir = Join-Path $env:LOCALAPPDATA "Programs\$InstallerName" }
+            # Against $PWD, as cmdlets resolve it; .NET calls would use the
+            # process's directory, and PATH would get a relative entry.
+            $prov = $null
+            $drv = $null
+            $dir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($dir, [ref]$prov, [ref]$drv)
+            if ($prov.Name -cne 'FileSystem') { Invoke-Fail 1 "$dir is not a folder on a file system drive" }
             $skipPath = $NoPathUpdate -or ((Get-EnvSetting 'NO_PATH_UPDATE') -eq '1')
             $skipHooks = $NoHooks -or ((Get-EnvSetting 'NO_HOOKS') -eq '1')
             $selected = @($Product)
             if ($selected.Count -eq 0) { $selected = $Products }
+            $chosen = @()
             foreach ($name in $selected) {
                 if ($Products -cnotcontains $name) { Invoke-Fail 1 "$name is not a product of this release ($($Products -join ' '))" }
+                if ($chosen -cnotcontains $name) { $chosen += $name }
             }
+            $selected = $chosen
             $base = Get-BaseUrl
 
             if ($Uninstall) {
@@ -366,10 +375,16 @@ public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wP
                 return 0
             }
 
+            foreach ($name in $selected) {
+                foreach ($path in @((Join-Path $dir "$name.exe"), (Join-Path $dir "$name.exe.prev"))) {
+                    if (Test-Path -LiteralPath $path -PathType Container) { Invoke-Fail 1 "$path is a directory; nothing was changed" }
+                }
+            }
             [void](New-Item -ItemType Directory -Force -Path $dir)
             $work = Join-Path $dir (".$InstallerName-install." + [Guid]::NewGuid().ToString('N'))
             [void](New-Item -ItemType Directory -Path $work)
             $swapped = @()
+            $hadPrevious = @()
             try {
                 $sums = Join-Path $work 'SHA256SUMS'
                 try { Get-Download "$download/SHA256SUMS" $sums } catch { Invoke-Fail 2 "download of SHA256SUMS for $want failed: $($_.Exception.Message)" }
@@ -404,6 +419,7 @@ public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wP
                             Move-Item -LiteralPath "$exe.prev" -Destination ("$exe.old-" + [Guid]::NewGuid().ToString('N')) -Force
                         }
                         Move-Item -LiteralPath $exe -Destination "$exe.prev" -Force
+                        $hadPrevious += $name
                     }
                     Move-Item -LiteralPath (Join-Path $work "$name.exe.new") -Destination $exe -Force
                     $swapped += $name
@@ -411,7 +427,8 @@ public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wP
                 if (-not (Test-Identity $dir $selected $want)) {
                     foreach ($name in $swapped) {
                         $exe = Join-Path $dir "$name.exe"
-                        if (Test-Path -LiteralPath "$exe.prev") {
+                        # A .prev an earlier run left is not this run's.
+                        if ($hadPrevious -ccontains $name) {
                             if (-not (Clear-SettledFile $exe)) {
                                 # Still held: set it aside.
                                 Move-Item -LiteralPath $exe -Destination ("$exe.bad-" + [Guid]::NewGuid().ToString('N')) -Force

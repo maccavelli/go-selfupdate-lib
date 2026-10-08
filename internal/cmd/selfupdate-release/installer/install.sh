@@ -119,14 +119,16 @@ fetch() {
 	fi
 }
 
-# hash_of FILE: the file's SHA-256, in lower-case hex.
+# hash_of FILE: the file's SHA-256, in lower-case hex. Each tool reads the
+# file from its standard input: sha256sum and shasum escape a name holding
+# a backslash, prefixing the hash with "\".
 hash_of() {
 	if command -v sha256sum >/dev/null 2>&1; then
-		sha256sum "$1" | cut -d' ' -f1 | tr 'A-F' 'a-f'
+		sha256sum <"$1" | cut -d' ' -f1 | tr 'A-F' 'a-f'
 	elif command -v shasum >/dev/null 2>&1; then
-		shasum -a 256 "$1" | cut -d' ' -f1 | tr 'A-F' 'a-f'
+		shasum -a 256 <"$1" | cut -d' ' -f1 | tr 'A-F' 'a-f'
 	elif command -v openssl >/dev/null 2>&1; then
-		openssl dgst -sha256 -r "$1" | cut -d' ' -f1 | tr 'A-F' 'a-f'
+		openssl dgst -sha256 -r <"$1" | cut -d' ' -f1 | tr 'A-F' 'a-f'
 	else
 		die 1 "sha256sum, shasum or openssl is required to verify the download"
 	fi
@@ -150,6 +152,10 @@ sum_for() {
 
 # check_tag TAG: the tag rule, and the release's prerelease channels.
 check_tag() {
+	# grep matches line by line, so a newline is refused first.
+	case $1 in
+	'' | *[!A-Za-z0-9.-]*) die 1 "$1 is not a release tag (vMAJOR.MINOR.PATCH)" ;;
+	esac
 	printf '%s\n' "$1" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[a-z][a-z0-9]{0,15}\.(0|[1-9][0-9]*))?$' ||
 		die 1 "$1 is not a release tag (vMAJOR.MINOR.PATCH)"
 	case $1 in
@@ -207,12 +213,13 @@ run_hooks() {
 		[ "$when" = "$1" ] || continue
 		selected "$prod" || continue
 		exe="$2/$prod"
-		if [ ! -x "$exe" ]; then
+		if [ ! -f "$exe" ] || [ ! -x "$exe" ]; then
 			continue
 		fi
 		say "running $prod $args"
 		# shellcheck disable=SC2086 # args is a word list on purpose.
-		if ! "$exe" $args; then
+		# Not the list's file as stdin, which the hook could read up.
+		if ! "$exe" $args </dev/null; then
 			err "$1 hook failed: $prod $args"
 			hooks_failed=1
 			[ "$1" = before_install ] && break
@@ -220,6 +227,14 @@ run_hooks() {
 	done <"$WORK/hooks"
 	set +f
 	return "$hooks_failed"
+}
+
+# in_list WORD LIST: whether WORD is one of LIST's space-separated words.
+in_list() {
+	case " $2 " in
+	*" $1 "*) return 0 ;;
+	esac
+	return 1
 }
 
 # selected PRODUCT: whether PRODUCT is among the products to install.
@@ -239,7 +254,7 @@ check_identity() {
 	while read -r prod args; do
 		selected "$prod" || continue
 		# shellcheck disable=SC2086 # args is a word list on purpose.
-		first=$("$1/$prod" $args 2>/dev/null | head -n 1) || true
+		first=$("$1/$prod" $args 2>/dev/null </dev/null | head -n 1) || true
 		case $first in
 		"$VERSION (release)" | "$VERSION (release) "????????????) ;;
 		*)
@@ -253,11 +268,11 @@ check_identity() {
 	return 0
 }
 
-# restore DIR: put back every replaced binary, and remove new ones that had
-# no predecessor.
+# restore DIR: put back every binary this run replaced, and remove new ones
+# that had no predecessor. A .prev an earlier run left is not this run's.
 restore() {
 	for prod in $SWAPPED; do
-		if [ -e "$1/$prod.prev" ]; then
+		if in_list "$prod" "$PREVIOUS"; then
 			mv -f "$1/$prod.prev" "$1/$prod"
 		else
 			rm -f "$1/$prod"
@@ -335,11 +350,19 @@ main() {
 	UNINSTALL=0
 	WORK=''
 	SWAPPED=''
+	PREVIOUS=''
 	while [ $# -gt 0 ]; do
 		case $1 in
 		--version) [ $# -ge 2 ] || die 1 "--version needs a tag"; VERSION=$2; shift 2 ;;
 		--dir) [ $# -ge 2 ] || die 1 "--dir needs a directory"; DIR=$2; shift 2 ;;
-		--product) [ $# -ge 2 ] || die 1 "--product needs a name"; SELECTED="$SELECTED $2"; shift 2 ;;
+		--product)
+			[ $# -ge 2 ] || die 1 "--product needs a name"
+			case $2 in
+			'' | *[!A-Za-z0-9._-]*) die 1 "--product needs a product name, not \"$2\"" ;;
+			esac
+			SELECTED="$SELECTED $2"
+			shift 2
+			;;
 		--verify-attestation) VERIFY_ATTESTATION=1; shift ;;
 		--no-hooks) NO_HOOKS=1; shift ;;
 		--allow-root) ALLOW_ROOT=1; shift ;;
@@ -358,12 +381,13 @@ main() {
 	if [ -z "$SELECTED" ]; then
 		SELECTED=$PRODUCTS
 	else
+		# A product named twice is installed once.
+		chosen=''
 		for prod in $SELECTED; do
-			case " $PRODUCTS " in
-			*" $prod "*) ;;
-			*) die 1 "$prod is not a product of this release ($PRODUCTS)" ;;
-			esac
+			in_list "$prod" "$PRODUCTS" || die 1 "$prod is not a product of this release ($PRODUCTS)"
+			in_list "$prod" "$chosen" || chosen="$chosen $prod"
 		done
+		SELECTED=$chosen
 	fi
 	if [ "$(id -u)" = 0 ] && [ "$ALLOW_ROOT" != 1 ]; then
 		die 1 "refusing to run as root; install into your own directory, or pass --allow-root"
@@ -393,6 +417,18 @@ main() {
 	fi
 
 	mkdir -p "$DIR"
+	# The PATH advice and every later path need DIR absolute.
+	case $DIR in
+	/*) ;;
+	*) DIR=$(CDPATH='' cd -- "$DIR" && pwd) || die 1 "cannot resolve $DIR" ;;
+	esac
+	for prod in $SELECTED; do
+		for f in "$DIR/$prod" "$DIR/$prod.prev"; do
+			if [ -d "$f" ]; then
+				die 1 "$f is a directory; nothing was changed"
+			fi
+		done
+	done
 	trap cleanup EXIT
 	trap 'cleanup; exit 130' INT
 	trap 'cleanup; exit 143' TERM
@@ -411,6 +447,7 @@ main() {
 	for prod in $SELECTED; do
 		if [ -e "$DIR/$prod" ]; then
 			mv -f "$DIR/$prod" "$DIR/$prod.prev"
+			PREVIOUS="$PREVIOUS $prod"
 		fi
 		mv -f "$WORK/$prod.new" "$DIR/$prod"
 		SWAPPED="$SWAPPED $prod"

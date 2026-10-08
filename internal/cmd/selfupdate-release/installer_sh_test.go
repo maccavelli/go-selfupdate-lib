@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
+	"github.com/maccavelli/go-selfupdate-lib/selfupdate/releasespec"
 )
 
 // Tests for docs/decisions/0014-PLAN-shared-installer-templates.md I3:
@@ -114,6 +115,7 @@ type shCase struct {
 	dir    string // ~/.local/bin
 	stubs  string
 	log    string // HOOK_LOG, where stand-ins record their runs
+	wd     string // the working directory, when set
 }
 
 func newShCase(t *testing.T, sh shell, r installReleases) *shCase {
@@ -143,6 +145,27 @@ func standIn(role, version string) []byte {
 		"echo \"" + role + " $*\" >>\"$HOOK_LOG\"\nexit \"${" + strings.ToUpper(role) + "_EXIT:-0}\"\n")
 }
 
+// renderWith is one kind's installer called name, at fixtureTag, from
+// its spec after edit (docs/decisions/0015-PLAN-remediate-third-debugging-pass-findings.md
+// P7).
+func (r installReleases) renderWith(t *testing.T, kind, name string, edit func(*releasespec.Spec)) []byte {
+	t.Helper()
+	s := r.spec(t, kind)
+	edit(&s)
+	files, err := renderInstallers(s, releaseKinds[kind], fixtureTag)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return files[name]
+}
+
+// stdinReader is standIn reading its standard input to the end first, as
+// a program that waits for input does
+// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md F2).
+func stdinReader(role, version string) []byte {
+	return append([]byte("#!/bin/sh\ncat >/dev/null\n"), bytes.TrimPrefix(standIn(role, version), []byte("#!/bin/sh\n"))...)
+}
+
 // place installs data as name in the install directory, as an earlier
 // install would have.
 func (c *shCase) place(name string, data []byte) {
@@ -159,6 +182,7 @@ func (c *shCase) command(ctx context.Context, args ...string) *exec.Cmd {
 	argv := append(append(slices.Clone(c.sh.argv[1:]), "-s", "--"), args...)
 	cmd := exec.CommandContext(ctx, c.sh.argv[0], argv...)
 	cmd.Stdin = bytes.NewReader(c.script)
+	cmd.Dir = c.wd
 	path := c.path
 	if path == "" {
 		path = c.stubs + string(os.PathListSeparator) + os.Getenv("PATH")
@@ -445,6 +469,94 @@ var shCases = []struct {
 		c.expect(c.run("--verify-attestation"), 2, c.asset("raw", "relay")+": attestation verification failed")
 		expectFiles(c.t, c.dir, map[string][]byte{"relay": old})
 	}},
+	// docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md
+	// F1, F2, F5 and F7.
+	{"a repeated --product installs it once", func(c *shCase) {
+		old := standIn("old", fixtureTag)
+		c.place("relay", old)
+		c.expect(c.run("--product", "relay", "--product", "relay"), 0, c.installed("relay"))
+		expectFiles(c.t, c.dir, map[string][]byte{"relay": c.r.program(c.t, "relay"), "relay.prev": old})
+	}},
+	{"an identity command that reads stdin hides no product", func(c *shCase) {
+		c.script = c.r.renderWith(c.t, "raw", "install.sh", func(s *releasespec.Spec) { s.Products[1].IdentityArgs = []string{"version"} })
+		c.srv.replaceAsset(c.t, rawRepo, fixtureTag, c.asset("raw", "relay"), stdinReader("new", fixtureTag))
+		c.srv.replaceAsset(c.t, rawRepo, fixtureTag, c.asset("raw", "relayctl"), standIn("new", "v9.9.9"))
+		c.expect(c.run(), 2, `relayctl reports "v9.9.9 (release)", not v1.2.3 (release)`)
+		expectFiles(c.t, c.dir, nil)
+	}},
+	{"a hook that reads stdin skips no hook", func(c *shCase) {
+		c.script = c.r.renderWith(c.t, "raw", "install.sh", func(s *releasespec.Spec) {
+			s.Installer.Hooks = append(s.Installer.Hooks, releasespec.Hook{When: "after_install", Product: "relay", Args: []string{"hook-two"}})
+		})
+		c.srv.replaceAsset(c.t, rawRepo, fixtureTag, c.asset("raw", "relay"), stdinReader("new", fixtureTag))
+		c.expect(c.run(), 0, c.installed("relay"))
+		if log := c.hookLog(); log != "new hook-after --mark=1\nnew hook-two\n" {
+			c.t.Fatalf("hook log %q, want both after_install hooks", log)
+		}
+	}},
+	{"a relative --dir is advised as an absolute PATH entry", func(c *shCase) {
+		c.wd = c.home
+		home, err := filepath.EvalSymlinks(c.home)
+		if err != nil {
+			c.t.Fatal(err)
+		}
+		abs := filepath.Join(home, "rel")
+		c.expect(c.run("--dir", "rel", "--product", "relayctl"), 0,
+			"installed "+filepath.Join(abs, "relayctl"), `export PATH="`+abs+`:$PATH"`)
+		expectFiles(c.t, abs, map[string][]byte{"relayctl": c.r.program(c.t, "relayctl")})
+	}},
+	{"a --version with a newline is refused", func(c *shCase) {
+		c.expect(c.run("--version", "v1.2.3\nv1.2.3"), 1, "is not a release tag")
+		if got := c.srv.got(); len(got) != 0 {
+			c.t.Fatalf("requested %v", got)
+		}
+		expectFiles(c.t, c.dir, nil)
+	}},
+	{"an empty --product is refused", func(c *shCase) {
+		c.expect(c.run("--product", ""), 1, `--product needs a product name, not ""`)
+		expectFiles(c.t, c.dir, nil)
+	}},
+	{"a stale .prev stays when the identity fails", func(c *shCase) {
+		stale := standIn("old", "v0.0.1")
+		c.place("relay.prev", stale)
+		c.srv.replaceAsset(c.t, rawRepo, fixtureTag, c.asset("raw", "relay"), standIn("new", "v9.9.9"))
+		c.expect(c.run(), 2, "the previous ones were restored")
+		expectFiles(c.t, c.dir, map[string][]byte{"relay.prev": stale})
+	}},
+	{"a directory at the target is refused", func(c *shCase) {
+		for _, name := range []string{"relay", "relay.prev"} {
+			target := filepath.Join(c.dir, name)
+			if err := os.MkdirAll(target, 0o755); err != nil {
+				c.t.Fatal(err)
+			}
+			c.expect(c.run(), 1, target+" is a directory; nothing was changed")
+			if info, err := os.Stat(target); err != nil || !info.IsDir() {
+				c.t.Fatalf("%s after the run: %v, %v", target, info, err)
+			}
+			if err := os.Remove(target); err != nil {
+				c.t.Fatal(err)
+			}
+		}
+		expectFiles(c.t, c.dir, nil)
+	}},
+	// A FIFO, not a directory, which the preflight refuses first
+	// (0015-PLAN deviation D6).
+	{"a hook named by something other than a regular file is skipped", func(c *shCase) {
+		if err := os.MkdirAll(c.dir, 0o755); err != nil {
+			c.t.Fatal(err)
+		}
+		fifo := filepath.Join(c.dir, "relay")
+		if err := syscall.Mkfifo(fifo, 0o644); err != nil {
+			c.t.Fatal(err)
+		}
+		if err := os.Chmod(fifo, 0o755); err != nil {
+			c.t.Fatal(err)
+		}
+		c.expect(c.run(), 0, c.installed("relay"))
+		if log := c.hookLog(); log != "" {
+			c.t.Fatalf("hook log %q", log)
+		}
+	}},
 	{"--verify-attestation needs gh, logged in", func(c *shCase) {
 		c.stub("gh", ghStub)
 		c.env = append(c.env, "GH_AUTH_EXIT=1")
@@ -643,6 +755,33 @@ func TestInstallShHashTools(t *testing.T) {
 			c.path = tools
 			c.expect(c.run(), 1, "sha256sum, shasum or openssl is required to verify the download")
 			expectFiles(t, c.dir, nil)
+		})
+	}
+}
+
+// TestInstallShHashToolsEscapes: each SHA-256 tool reads the download from
+// its standard input, so a directory holding a backslash, which sha256sum
+// and shasum escape in a file name, still verifies
+// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md F6).
+func TestInstallShHashToolsEscapes(t *testing.T) {
+	r := sharedReleases(t)
+	base := []string{"awk", "cat", "chmod", "curl", "cut", "grep", "gzip", "head", "id", "mkdir", "mktemp", "mv",
+		"rm", "sort", "sysctl", "tar", "tr", "uname", "wget"}
+	for _, sh := range shells(t) {
+		t.Run(sh.name, func(t *testing.T) {
+			t.Parallel()
+			for _, tool := range []string{"sha256sum", "shasum", "openssl"} {
+				t.Run(tool, func(t *testing.T) {
+					if _, err := exec.LookPath(tool); err != nil {
+						t.Skipf("no %s on this host", tool)
+					}
+					c := newShCase(t, sh, r)
+					c.needStubs()
+					c.path = linkTools(t, append(slices.Clone(base), tool)...)
+					dir := filepath.Join(c.home, `a\b`)
+					c.expect(c.run("--dir", dir, "--product", "relayctl"), 0, "installed "+filepath.Join(dir, "relayctl"))
+				})
+			}
 		})
 	}
 }

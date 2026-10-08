@@ -85,6 +85,15 @@ for i, what in ((setup, "Go setup"), (archives, "archive check")):
     check("continue-on-error" not in step, "the %s has no continue-on-error" % what)
 check(archives >= 0 and "selfupdate-release check" in publish[archives].get("run", ""),
       "the archive check runs selfupdate-release check")
+# docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md F4, F9.
+wait = index(publish, "Wait for immutability and release attestation")
+wait_run = publish[wait].get("run", "") if wait >= 0 else ""
+check("Enable release immutability" in wait_run and "gh release delete" in wait_run,
+      "the immutability timeout names the setting and how to recover")
+group = load(sys.argv[1])["jobs"]["publish"].get("concurrency", {})
+check(group.get("group") == "go-selfupdate-lib-publish-${{ github.repository }}"
+      and group.get("cancel-in-progress") is False,
+      "one publish runs at a time per repository, none cancelled")
 
 doc = load(sys.argv[2])
 jobs = doc["jobs"]

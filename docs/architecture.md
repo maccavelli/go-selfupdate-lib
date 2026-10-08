@@ -362,7 +362,13 @@ four publish inputs.
    never becomes the release stable clients read. A stable tag below the
    current latest release, such as a backport, is created and published
    with `--latest=false` too (`release-latest-flag.sh`), so clients keep
-   seeing the newest one.
+   seeing the newest one. When the current latest is not `vX.Y.Z`, the
+   highest published stable `vX.Y.Z` stands in for it. A timeout on
+   immutability says whether the repository's setting is off.
+
+The job runs in the concurrency group
+`go-selfupdate-lib-publish-<repository>`, never cancelling a run in
+progress, so two tags of one repository publish one after the other.
 
 Every `gh` step that acts on the calling repository sets `GH_REPO`. Every
 `run:` block reads the ref from `env:` (`TAG`, `REF_TYPE`); no `${{ }}` is

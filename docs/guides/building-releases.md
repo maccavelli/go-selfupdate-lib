@@ -141,7 +141,8 @@ the staged program on each platform that has a GitHub-hosted runner
 (linux/amd64, linux/arm64, darwin/arm64, windows/amd64 and windows/arm64)
 and requires exactly `<tag> (release)`, optionally followed by the commit.
 A product without `identity_args` is built and checked without being run,
-and the job summary says so.
+and the job summary says so. The installers run the same command after an
+install, with no standard input.
 
 ## 4. Call the workflows
 
@@ -187,6 +188,10 @@ jobs:
   The Go version is that module's `go` line.
 - **`artifact-name`** overrides the staged artifact's name. Set it when one
   run calls the build workflow twice.
+- **One publish at a time:** the publish job runs in the concurrency group
+  `go-selfupdate-lib-publish-<owner>/<repo>`, without cancelling one in
+  progress, so two tags never race the latest flag. Do not give another
+  job that group's name.
 
 **Before the first release,** set up the repository:
 
@@ -403,8 +408,8 @@ is no race and no rate limit.
 | `install.sh` | `install.ps1` | Variable | What it does |
 | :--- | :--- | :--- | :--- |
 | `--version TAG` | `-Version TAG` | `<PREFIX>_VERSION` | install another release, with or without its `v`: a stable tag, or a prerelease on a channel the spec lists. A release whose asset names differ, such as a raw release from an archive release's installer, is refused (exit 1) with its own installer's URL |
-| `--dir DIR` | `-InstallDir DIR` | `<PREFIX>_INSTALL_DIR` | install there |
-| `--product NAME` | `-Product NAME` | | install only that product; repeat it for more |
+| `--dir DIR` | `-InstallDir DIR` | `<PREFIX>_INSTALL_DIR` | install there; a relative folder is made absolute first |
+| `--product NAME` | `-Product NAME` | | install only that product; repeat it for more (a name given twice counts once) |
 | `--verify-attestation` | `-VerifyAttestation` | | also verify each download's attestation with `gh` (below) |
 | `--no-hooks` | `-NoHooks` | `<PREFIX>_NO_HOOKS=1` | skip the hooks |
 | | `-NoPathUpdate` | `<PREFIX>_NO_PATH_UPDATE=1` | print PATH advice instead of updating it |
@@ -429,6 +434,7 @@ refused.
   `$`, because the installers embed them in shell and PowerShell code. With
   `installer` present, so do `identity_args`. A step that needs more
   belongs in a subcommand of your program.
+- They run with no standard input, and only a regular file is run.
 - Their output is shown; `--no-hooks` skips them.
 
 ### Exit codes
@@ -436,7 +442,7 @@ refused.
 | Code | Meaning |
 | :--- | :--- |
 | 0 | installed (or removed, or a dry run) |
-| 1 | a usage or environment error: an unknown option, an unsupported platform, root, a missing tool, a refused version, a failed `before_install` hook |
+| 1 | a usage or environment error: an unknown option, an empty or unsafe `--product`, an unsupported platform, root, a missing tool, a refused version, a directory where a program or its `.prev` goes, a failed `before_install` hook |
 | 2 | a verification failure: a download, `SHA256SUMS`, a checksum, an attestation or the identity; nothing was changed, or the previous binaries were put back |
 | 3 | installed, but an `after_install` hook failed |
 

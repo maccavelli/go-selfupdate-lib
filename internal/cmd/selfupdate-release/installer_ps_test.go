@@ -175,6 +175,10 @@ type psCase struct {
 	log    string // HOOK_LOG
 	work   string // the case's own files
 	path   string // replaces PATH when set
+	wd     string // the working directory, when set
+	// rawArgs, when set, is the scriptblock form's arguments as
+	// PowerShell source, such as an array no argv can carry.
+	rawArgs string
 }
 
 func newPsCase(t *testing.T, ps psHost, mode psMode, r installReleases) *psCase {
@@ -258,7 +262,12 @@ func (c *psCase) command(ctx context.Context, args ...string) *exec.Cmd {
 		argv = append(argv, c.writeFile("driver.ps1", []byte(psDriver)), "-Mode", "block", "-Url", c.srv.URL+scriptPath)
 	}
 	cmd := exec.CommandContext(ctx, c.ps.path, argv...)
-	cmd.Env = append(c.envFor(), "SELFUPDATE_INSTALL_TEST_ARGS="+psArgsText(args))
+	text := psArgsText(args)
+	if c.rawArgs != "" {
+		text = c.rawArgs
+	}
+	cmd.Env = append(c.envFor(), "SELFUPDATE_INSTALL_TEST_ARGS="+text)
+	cmd.Dir = c.wd
 	return cmd
 }
 
@@ -798,6 +807,53 @@ var psCases = []struct {
 	{"RELAY_NO_PATH_UPDATE writes nothing", allModes, func(c *psCase) {
 		c.env = append(c.env, "RELAY_NO_PATH_UPDATE=1")
 		c.expect(c.run(), 0, "add "+c.dir+" to your PATH to run the programs by name")
+		c.expectNoPath()
+	}},
+	// docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md
+	// F1, F5 and F7.
+	{"a repeated -Product installs it once", []psMode{psBlock}, func(c *psCase) {
+		old := standInExe(c.t, "old", fixtureTag)
+		c.place("relay.exe", old)
+		c.rawArgs = "-Product 'relay','relay'"
+		c.expect(c.run(), 0, c.installed("relay"))
+		expectFiles(c.t, c.dir, map[string][]byte{"relay.exe": c.r.program(c.t, "relay"), "relay.exe.prev": old})
+	}},
+	{"a relative -InstallDir is made absolute", argModes, func(c *psCase) {
+		c.wd = c.work
+		abs := filepath.Join(c.work, "rel")
+		c.expect(c.run("-InstallDir", "rel", "-Product", "relayctl"), 0, "installed "+filepath.Join(abs, "relayctl.exe"))
+		expectFiles(c.t, abs, map[string][]byte{"relayctl.exe": c.r.program(c.t, "relayctl")})
+		c.expectPath("REG_EXPAND_SZ", abs)
+	}},
+	{"a -Version with a newline is refused", argModes, func(c *psCase) {
+		c.expect(c.run("-Version", "v1.2.3\n"), 1, "is not a release tag")
+		if got := c.srv.got(); len(got) != 0 {
+			c.t.Fatalf("requested %v", got)
+		}
+		expectFiles(c.t, c.dir, nil)
+	}},
+	{"a stale .prev stays when the identity fails", argModes, func(c *psCase) {
+		stale := standInExe(c.t, "old", fixtureTag)
+		c.place("relay.exe.prev", stale)
+		c.srv.replaceAsset(c.t, rawRepo, fixtureTag, c.asset("raw", "relay"), standInExe(c.t, "new", "v9.9.9"))
+		c.expect(c.run(), 2, "the previous ones were restored")
+		expectFiles(c.t, c.dir, map[string][]byte{"relay.exe.prev": stale})
+	}},
+	{"a directory at the target is refused", argModes, func(c *psCase) {
+		for _, name := range []string{"relay.exe", "relay.exe.prev"} {
+			target := filepath.Join(c.dir, name)
+			if err := os.MkdirAll(target, 0o755); err != nil {
+				c.t.Fatal(err)
+			}
+			c.expect(c.run(), 1, target+" is a directory; nothing was changed")
+			if info, err := os.Stat(target); err != nil || !info.IsDir() {
+				c.t.Fatalf("%s after the run: %v, %v", target, info, err)
+			}
+			if err := os.Remove(target); err != nil {
+				c.t.Fatal(err)
+			}
+		}
+		expectFiles(c.t, c.dir, nil)
 		c.expectNoPath()
 	}},
 	{"a running copy is replaced", fileModes, func(c *psCase) {

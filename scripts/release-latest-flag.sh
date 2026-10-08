@@ -9,6 +9,8 @@
 # every client on v1.5.0 would see an older release as the update. Such a tag
 # gets --latest=false. A prerelease is never latest, so it always gets
 # --latest=false. A higher stable tag, or the first release, gets nothing.
+# When the current latest is not vX.Y.Z, the highest published stable
+# vX.Y.Z stands in for it.
 #
 # TAG has already passed check-release-tag.sh. GH_REPO names the repository.
 #
@@ -41,6 +43,36 @@ if [ "$rc" -ne 0 ]; then
 	echo "release-latest-flag: gh release view failed (exit $rc):" >&2
 	cat "$err" >&2
 	exit 1
+fi
+
+# A latest release that is not vX.Y.Z, such as one from before the
+# repository's tags followed the rule, is not compared: the highest
+# published stable vX.Y.Z is, and with none, the tag gets no flag
+# (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md F8).
+if ! printf '%s\n' "${latest%%-*}" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+	old=$latest
+	rc=0
+	list=$(gh release list --exclude-drafts --exclude-pre-releases --limit 1000 --json tagName --jq '.[].tagName' 2>"$err") || rc=$?
+	if [ "$rc" -ne 0 ]; then
+		echo "release-latest-flag: gh release list failed (exit $rc):" >&2
+		cat "$err" >&2
+		exit 1
+	fi
+	latest=$(printf '%s\n' "$list" | python3 -B -c '
+import re
+import sys
+
+found = []
+for line in sys.stdin:
+    m = re.fullmatch(r"v([0-9]+)\.([0-9]+)\.([0-9]+)", line.strip())
+    if m:
+        found.append((tuple(int(n) for n in m.groups()), line.strip()))
+print(max(found)[1] if found else "")
+')
+	if [ -z "$latest" ]; then
+		echo "release-latest-flag: the latest release, $old, is not vX.Y.Z, and no stable vX.Y.Z is published; $tag gets no --latest flag" >&2
+		exit 0
+	fi
 fi
 
 python3 -B - "$tag" "$latest" <<'PY'

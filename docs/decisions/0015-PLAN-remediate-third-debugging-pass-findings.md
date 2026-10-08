@@ -1681,7 +1681,7 @@ this PLAN.
      * "a stale .prev stays when the identity fails";
      * "a directory at the target is refused": exit 1, the directory
        untouched;
-     * "a hook named by a directory is skipped".
+     * ~~"a hook named by a directory is skipped"~~ *a FIFO instead, Deviation D6*.
 
      ps: (a), (c) and (d).
    * **Red:** each one's current exit or effect.
@@ -3214,3 +3214,143 @@ approved it: "proceed". The PLAN as approved is commit `47f0f97`.
   clean"; `make gate`, all 14 steps `rc=0`, `overall=0`; apicheck
   "compatible with v1.10.0"; links "331 links in 49 files, 0 broken"; ids
   "4 files, 16 deny-list rules, 0 findings".
+
+### Deviation D6 (2026-10-07): F7(d)'s hook guard cannot meet a directory
+
+* **Found** while writing P7's tests: step 6 (d) adds a preflight that
+  refuses a directory at `$DIR/$prod` or `$DIR/$prod.prev` once the
+  directory is resolved, before any hook runs; a hook therefore never
+  meets a directory, and the planned test "a hook named by a directory is
+  skipped" could not fail, nor its plant be caught. In `install.sh` a FIFO
+  at the target still reaches `run_hooks`: today it is executed, fails,
+  and the install exits 1. Windows has no such file for `install.ps1`.
+* **Options put to the owner:**
+  1. both preflights; the sh guard, tested with a FIFO; no ps1 guard
+     (recommended);
+  2. both preflights, no hook guards;
+  3. guards in both, as planned, the ps1 guard untested.
+* **Decision:** the owner chose "Guards in both, ps1 untested".
+  * `install.sh`'s guard is tested with a FIFO at the target: "a hook
+    named by something other than a regular file is skipped", in place of
+    the planned directory case, which the preflight test covers;
+  * `install.ps1`'s `Test-Path -PathType Leaf` guard is kept as a defense
+    that no test can make fail, and is named so in P7's record.
+
+### Phase P7: the installers and the release tooling (2026-10-07)
+
+* **Red,** on the unfixed code:
+  * **`install.sh`,** under sh and bash on this Mac and dash and bash on
+    the Linux test host, the new `TestInstallSh` cases:
+    * "a repeated --product installs it once": exit 1, `mv: … relay.new`;
+    * "an identity command that reads stdin hides no product": exit 0,
+      want 2;
+    * "a hook that reads stdin skips no hook": hook log
+      `"new hook-after --mark=1\n"`, one hook;
+    * "a relative --dir is advised as an absolute PATH entry": "installed
+      rel/relayctl";
+    * "a --version with a newline is refused": exit 2, "curl: (3) URL
+      rejected";
+    * "an empty --product is refused": exit 0;
+    * "a stale .prev stays when the identity fails": the folder holds
+      `[relay]`, want `[relay.prev]`;
+    * "a directory at the target is refused": "running relay hook-before",
+      and no refusal;
+    * "a hook named by something other than a regular file is skipped"
+      (Deviation D6): the shell blocks reading the FIFO until the run's
+      timeout, exit -1.
+  * **F6,** `TestInstallShHashToolsEscapes`: the `shasum` leg on this Mac,
+    and the `sha256sum` and `shasum` legs on the Linux test host: "SHA-256
+    \<hash> does not match SHA256SUMS". The `openssl` leg passes on both,
+    and so does macOS's own `/sbin/sha256sum`, which does not escape the
+    name.
+  * **`install.ps1`,** on the Windows test host under Windows PowerShell
+    5.1 and PowerShell 7, file and scriptblock forms, eighteen runs, each
+    failing: "a repeated -Product installs it once" (scriptblock form
+    only, which can pass an array): exit 1; "a relative -InstallDir is
+    made absolute": the output lacks the absolute path; "a -Version with
+    a newline is refused": exit 2, want 1; "a stale .prev stays when the
+    identity fails": the folder holds `[relay.exe]`; "a directory at the
+    target is refused": no refusal.
+  * **F4, F9,** `workflow-shape_test.sh`: "FAIL the immutability timeout
+    names the setting and how to recover"; "FAIL one publish runs at a
+    time per repository, none cancelled".
+  * **F8,** `release-latest-flag_test.sh`: three of the four new cases,
+    rc 1 ("is not vX.Y.Z", not the plan's "is not a release tag"); "the
+    list fails" exits 1 before and after, as a pin.
+  * **G7,** `TestUsageListsEveryFlag`: "stage: -repository is not in the
+    usage line".
+* **Fix:**
+  * **`install.sh`:** `--product` refuses an empty or unsafe name; a new
+    `in_list`; the validation builds `chosen` without repeats (F1). `</dev/null`
+    for each hook and identity command (F2). After `mkdir -p`, a relative
+    `DIR` becomes `$(CDPATH='' cd -- "$DIR" && pwd)`, then the preflight
+    refuses a directory at `$DIR/$prod` or `$DIR/$prod.prev` (F5, F7 d).
+    The three hash tools read stdin (F6). `check_tag` first refuses
+    anything outside `[A-Za-z0-9.-]`; `PREVIOUS` records what the swap
+    moved aside, and `restore` puts back only those; `run_hooks` runs only
+    a regular file (F7).
+  * **`install.ps1`:** `$chosen` without repeats (F1);
+    `GetUnresolvedProviderPathFromPSPath`, refusing a provider other than
+    `FileSystem` (F5); `Test-ReleaseTag` ends with `\z`; `$hadPrevious`;
+    the `Container` preflight before the work folder; the hook's
+    `-PathType Leaf` guard, which no test reaches (Deviation D6) (F7).
+  * **`publish-selfupdate-release.yml`:** `concurrency` under
+    `jobs.publish`, group `go-selfupdate-lib-publish-${{ github.repository }}`,
+    `cancel-in-progress: false` (F9); `check-workflows.sh` allows the
+    expression there, outside any `run`. The wait step keeps `immutable`
+    and names the setting and the recovery, or the failed verify (F4).
+  * **`release-latest-flag.sh`:** a latest whose core is not `vX.Y.Z`
+    falls back to the highest stable `vX.Y.Z` from `gh release list`;
+    none gives no flag and a notice; a failed list exits 1 (F8).
+  * **`main.go`:** `stage`'s usage line gains `[-repository OWNER/NAME]`
+    (G7).
+* **Test placement:** `renderWith` and `stdinReader` sit in
+  `installer_sh_test.go`, not the harness: only the Unix-only sh tests use
+  them, and the Windows lint run refused `renderWith` as unused in the
+  harness. The ps harness gains `wd` and `rawArgs`; the sh harness `wd`.
+* **Green:**
+  * the sh tests on this Mac (sh, bash) and on the Linux test host (dash,
+    bash, BusyBox, which skips the stub cases as before): 141 passed;
+  * `TestInstallPs1` on the Windows test host: 190 passed, 0 failed;
+  * `workflow-shape_test.sh`, `release-latest-flag_test.sh` (14 passed),
+    `TestUsageListsEveryFlag`;
+  * `check-installers.sh` on both templates, on the Windows test host
+    (PSScriptAnalyzer is not on this Mac): "check-installers: clean";
+    shellcheck and `dash -n` on `install.sh` and the latest-flag script;
+    actionlint 1.7.12 and `check-workflows.sh` on the publish workflow.
+* **Plants,** twenty, each caught:
+
+  | Plant | Fails |
+  | :--- | :--- |
+  | F1 sh: the repeat guard dropped | "a repeated --product installs it once" |
+  | F1 sh: an empty `--product` allowed | "an empty --product is refused" |
+  | F2: a hook reads the list | "a hook that reads stdin skips no hook" |
+  | F2: an identity command reads the list | "an identity command that reads stdin hides no product" |
+  | F5 sh: the resolve dropped | "a relative --dir is advised …" |
+  | F6: `shasum` given the name | `TestInstallShHashToolsEscapes/…/shasum` |
+  | F7 (a) sh: a newline allowed | "a --version with a newline is refused" |
+  | F7 (c) sh: any `.prev` restored | "a stale .prev stays …" |
+  | F7 (d) sh: the preflight off | "a directory at the target is refused" |
+  | F7 (d) sh: the hook guard off | "a hook named by something other than a regular file is skipped" |
+  | G7: `-repository` removed again | `TestUsageListsEveryFlag` |
+  | F4: the setting's name dropped | the immutability assertion |
+  | F9: `cancel-in-progress: true` | the concurrency assertion |
+  | F8: the fallback skipped | the three legacy-latest cases |
+  | F8: `min` for `max` | "backport below the highest" |
+  | F1 ps: the repeat guard dropped | its case, 7 runs failed |
+  | F5 ps: the resolve dropped | its case, 11 runs failed |
+  | F7 (a) ps: `$` again for `\z` | its case |
+  | F7 (c) ps: any `.prev` restored | its case |
+  | F7 (d) ps: the preflight off | its case |
+
+* **Not done here:** CI's Alpine and Debian container jobs run once this
+  commit is pushed.
+* **Docs:** the building guide's step 3 (no standard input), step 4 (the
+  concurrency group's name), Options (`--dir`, `--product`), Hooks and
+  Exit codes; `docs/architecture.md`, Release workflow; the latest-flag
+  script's header. F4's guide text was written in R3.
+* **Checks:** `make pre-add-check` on the four Go files: clean; `make gate`
+  on `4d0e38b` with P7's changes: all 14 steps `rc=0`, `overall=0`; apicheck
+  "compatible with v1.10.0"; ids "13 files, 16 deny-list rules, 0
+  findings". Its first run failed `lint` on `renderWith`, then in the
+  harness, which moved (Test placement above).

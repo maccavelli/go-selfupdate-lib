@@ -39,6 +39,13 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-24.04
+    # One publish at a time per repository: two runs could race the latest
+    # flag, or each pass the existing-release check and create two drafts
+    # (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md
+    # F9). A caller must not reuse this group's name.
+    concurrency:
+      group: go-selfupdate-lib-publish-${{ github.repository }}
+      cancel-in-progress: false
     steps:
       - name: Check gh release capabilities
         shell: bash
@@ -250,6 +257,7 @@ jobs:
         run: |
           set -euo pipefail
           tag="$TAG"
+          immutable=''
           deadline=$((SECONDS + 120))
           while [ "$SECONDS" -lt "$deadline" ]; do
             immutable=$(gh release view "$tag" --json isImmutable --jq .isImmutable || true)
@@ -259,5 +267,15 @@ jobs:
             fi
             sleep 5
           done
-          echo "publish-selfupdate-release: timed out waiting for immutability of $tag" >&2
+          # The release is already published: say what it needs
+          # (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md F4).
+          if [ "$immutable" != "true" ]; then
+            echo "publish-selfupdate-release: $tag is published, but GitHub has not marked it immutable after 120 s." \
+              "Immutable releases must be on for $GH_REPO: Settings > General > Releases > \"Enable release immutability\"" \
+              "(or the organization's release policy); it applies only to releases published after it is on." \
+              "The release is live and mutable: delete it (gh release delete $tag --repo $GH_REPO --yes)," \
+              "turn the setting on, and re-run all jobs." >&2
+          else
+            echo "publish-selfupdate-release: $tag is immutable, but gh release verify did not pass within 120 s" >&2
+          fi
           exit 1
