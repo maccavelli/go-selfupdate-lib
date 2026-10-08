@@ -14,14 +14,17 @@ backends (`docs/decisions/0011-MADR-reference-service-lifecycles.md`);
 (`docs/decisions/0012-MADR-archive-assets-and-macos-codesign.md`);
 `selfupdate/releasespec`, the release spec a program embeds and the build
 workflow reads
-(`docs/decisions/0013-MADR-build-and-stage-release-workflow.md`); and
+(`docs/decisions/0013-MADR-build-and-stage-release-workflow.md`);
+`selfupdate/verify/ghattest`, an opt-in provenance check
+(`docs/decisions/0017-MADR-verify-build-provenance-and-close-0015-open-items.md`); and
 `buildinfo`, which stamps the identity `selfupdate` decides on. A package
 that does not serve self-update belongs in another module. It is a library
 only: no packaged binary. Commands under `internal/cmd/` are build and
 release tools that the workflows run from source; they are never released.
 `buildinfo` and `selfupdate` are top-level
 directories, and each `selfupdate` subpackage lives in a directory under
-`selfupdate/`, named after it; there is no root package. Unexported helpers
+`selfupdate/`, named after it, or under `selfupdate/verify/` for a
+verifier; there is no root package. Unexported helpers
 shared between packages live under `internal/`. Requires Go 1.27.1.
 
 ## Dependencies
@@ -43,8 +46,8 @@ pre-add check and CI fail on a breach
   required modules, in every file;
 - `buildinfo`, `selfupdate`, `selfupdate-cli`, `selfupdatetest`,
   `service`, `service-launchd`, `service-scm`, `service-systemd`,
-  `selfupdate-archive`, `selfupdate-codesign` and `selfupdate-releasespec`
-  allow each package,
+  `selfupdate-archive`, `selfupdate-codesign`, `selfupdate-releasespec` and
+  `selfupdate-verify-ghattest` allow each package,
   outside its tests, only the imports its record names;
 - `other-packages` allows any other package, an `internal/` helper
   included, only the standard library and this module

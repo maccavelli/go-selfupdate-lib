@@ -174,6 +174,18 @@ linters:
             - $gostd
             - github.com/maccavelli/go-selfupdate-lib/selfupdate$
             - github.com/maccavelli/go-selfupdate-lib/selfupdate/archive$
+        # selfupdate/verify/ghattest: the standard library, selfupdate, and
+        # selfupdate/service for its Runner
+        # (docs/decisions/0017-MADR-verify-build-provenance-and-close-0015-open-items.md 1B).
+        selfupdate-verify-ghattest:
+          list-mode: strict
+          files:
+            - "**/selfupdate/verify/ghattest/*.go"
+            - "!$test"
+          allow:
+            - $gostd
+            - github.com/maccavelli/go-selfupdate-lib/selfupdate$
+            - github.com/maccavelli/go-selfupdate-lib/selfupdate/service$
         # Every other package, such as a new internal/ helper, gets only the
         # standard library and this module until a record gives it its own
         # rule (docs/decisions/0010-MADR-remediate-second-debugging-pass-findings.md
@@ -195,6 +207,7 @@ linters:
             - "!**/selfupdate/archive/*.go"
             - "!**/selfupdate/codesign/*.go"
             - "!**/selfupdate/releasespec/*.go"
+            - "!**/selfupdate/verify/ghattest/*.go"
           allow:
             - $gostd
             - github.com/maccavelli/go-selfupdate-lib
