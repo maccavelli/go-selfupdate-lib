@@ -1233,3 +1233,31 @@ amendment A1.
   points to correction 3.
 * **This PLAN:** `status: in-progress`, and this record.
 * **`docs/README.md`:** the 0017 PLAN row reads `in-progress`.
+
+### Phase D1: documentation on `main` (2026-10-08)
+
+* **`docs/architecture.md`** (the concurrency paragraph after the
+  release-workflow list): GitHub keeps one pending run per group; a third
+  tag cancels the waiting one, whose tag has no release until its publish
+  job is re-run; `queue: max` waits for actionlint.
+* **`docs/guides/building-releases.md`**, step 4:
+  * the "One publish at a time" bullet adds the third-tag cancellation,
+    the re-run, and GitHub's no-events limit for a push of more than three
+    tags;
+  * "Before the first release" gains "Restrict who can create `v*`
+    tags", with what provenance does not stop without it (question 3).
+* **0004-MADR P3's open-work table:**
+  * the ghattest row splits into its exec verifier (0017 track 3) and its
+    `sigstore-go` variant (0017, "Not decided here");
+  * the 0015 row splits into the zip and names row (track 2), the crash
+    row (track 3), and the `queue: max` row (item 5);
+  * each cites 0015-PLAN `:57-68`.
+* **`docs/README.md`:** "§6 to §10" becomes "§6 to §11" (correction 6).
+* **This PLAN** is staged with each phase, for its record (Phase
+  procedure, step 7), though the phase's **Files** list does not name it.
+* **Checks:**
+  * `make gate`: every step `rc=0`, `overall=0`; apicheck "compatible
+    with v1.11.0"; links "373 links in 52 files, 0 broken";
+  * `scripts/check-docs.sh` on the four files: "122 links in 4 files, 0
+    broken", "0 findings";
+  * markdownlint: "0 issues".

@@ -372,7 +372,11 @@ four publish inputs.
 
 The job runs in the concurrency group
 `go-selfupdate-lib-publish-<repository>`, never cancelling a run in
-progress, so two tags of one repository publish one after the other.
+progress. GitHub keeps one pending run per group: a third tag that
+arrives while one publish runs and another waits cancels the waiting one,
+whose tag then has no release until its publish job is re-run
+([0017-MADR](decisions/0017-MADR-verify-build-provenance-and-close-0015-open-items.md)
+item 5). `queue: max` would keep it, once actionlint accepts the key.
 
 Every `gh` step that acts on the calling repository sets `GH_REPO`. Every
 `run:` block reads the ref from `env:` (`TAG`, `REF_TYPE`); no `${{ }}` is

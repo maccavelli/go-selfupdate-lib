@@ -195,7 +195,12 @@ jobs:
 - **One publish at a time:** the publish job runs in the concurrency group
   `go-selfupdate-lib-publish-<owner>/<repo>`, without cancelling one in
   progress, so two tags never race the latest flag. Do not give another
-  job that group's name.
+  job that group's name. GitHub keeps one waiting run per group: a third
+  tag pushed while one publish runs and another waits cancels the waiting
+  one, and that tag gets no release. Re-run its cancelled publish job
+  from the Actions page. GitHub creates no tag events at all for a push
+  of more than three tags, so push tags one at a time, or at most three
+  together.
 
 **Before the first release,** set up the repository:
 
@@ -207,6 +212,15 @@ jobs:
   installers would still install from. Delete it, turn the setting on, and
   re-run the jobs.
 - **Attestations** need a public repository, or GitHub Enterprise Cloud.
+- **Restrict who can create `v*` tags:** Settings → Rules → Rulesets → New
+  tag ruleset, targeting `v*`, with creations restricted to the owner or
+  the release managers. The publish workflow attests whatever a `v*` tag
+  builds. A check of that attestation (`selfupdate/verify/ghattest` from
+  `v1.12.0`, or the installers' `--verify-attestation`) stops a release
+  made with a stolen token outside the workflow, but not a malicious tag
+  pushed through it
+  ([0017-MADR](../decisions/0017-MADR-verify-build-provenance-and-close-0015-open-items.md)
+  item 1).
 
 ## 5. Rehearsals
 
