@@ -820,7 +820,13 @@ var psCases = []struct {
 	}},
 	{"a relative -InstallDir is made absolute", argModes, func(c *psCase) {
 		c.wd = c.work
-		abs := filepath.Join(c.work, "rel")
+		// PowerShell reports the folder by its long name, where TEMP is an
+		// 8.3 path, as on GitHub's runners (0015-PLAN deviation D7).
+		work, err := filepath.EvalSymlinks(c.work)
+		if err != nil {
+			c.t.Fatal(err)
+		}
+		abs := filepath.Join(work, "rel")
 		c.expect(c.run("-InstallDir", "rel", "-Product", "relayctl"), 0, "installed "+filepath.Join(abs, "relayctl.exe"))
 		expectFiles(c.t, abs, map[string][]byte{"relayctl.exe": c.r.program(c.t, "relayctl")})
 		c.expectPath("REG_EXPAND_SZ", abs)

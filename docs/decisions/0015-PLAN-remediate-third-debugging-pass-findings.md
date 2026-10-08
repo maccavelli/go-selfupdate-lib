@@ -3427,3 +3427,36 @@ No API change; `make apicheck` reports `v1.10.1` compatible with
 * C7: a typed-nil writer is treated as nil, not a later panic.
 * A9, G5, G6, G10: godoc and examples corrected.
 * G7: `selfupdate-release stage`'s usage line lists `-repository`.
+
+### Deviation D7 (2026-10-08): P7's relative-folder test on an 8.3 temp path
+
+* **Found** in CI on the pushed release commit `dbf19ef` (run
+  37713627683): `validate (windows-2025)` failed
+  `TestInstallPs1/*/a_relative_-InstallDir_is_made_absolute`, all four
+  runs (`installer_ps_test.go:824`). The runner's `%TEMP%` is an 8.3 path
+  (`C:\Users\RUNNER~1\…`); PowerShell reports the folder by its long name
+  (`C:\Users\runneradmin\…`), so the installer printed the long form and
+  the test expected the short one. The install itself was right. The
+  Windows test host's temp folder has no short form, so P7's runs there
+  passed. Every other CI job passed, the container installer jobs
+  included.
+* **Options put to the owner:**
+  1. build the test's expected folder from `filepath.EvalSymlinks`, which
+     gives the long name on Windows, as the sh test does for macOS's
+     `/private/var` (recommended);
+  2. make `install.ps1` keep the short form, undoing part of F5.
+* **Decision:** the owner chose "Long-name the expectation". A probe on
+  the Windows test host showed `filepath.EvalSymlinks` turning
+  `…\Temp\A-LONG~1` into its long name. The fix commit, not `dbf19ef`,
+  becomes the release commit to tag.
+* **Checks,** on the Windows test host with `TMP` and `TEMP` set to an 8.3
+  path, as on the runners: the committed test fails as CI did, all four
+  runs ("the output lacks …"); with the fix, `TestInstallPs1` passes,
+  190 of 190, twice. `make pre-add-check` on the test file: clean.
+* **Found alongside, not decided:** "before_install runs the installed
+  copy, and only that" (0014's) fails now and then on that host under an
+  8.3 `TEMP`: `installer_ps_test.go:655`, `c.place` writing `relay.exe`
+  right after the installer ran it: "The requested operation cannot be
+  performed on a file with a user-mapped section open". 5 of 60 runs at
+  `4d0e38b`, before P7; 4 of 60 with P7 and this fix; so it predates P7.
+  It can fail CI at random. Its fix waits for the owner.
