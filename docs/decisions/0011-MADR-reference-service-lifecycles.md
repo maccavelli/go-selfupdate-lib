@@ -812,6 +812,24 @@ Phases R2 and Q1.*
 * **systemd errors (D11):** "not found" makes `ErrNotInstalled` only when
   systemd names this unit.
 
+### A8 (2026-10-08): the service contracts settled in v1.11.0
+
+*Status: accepted (2026-10-08). The findings are in [0015-MADR-remediate-third-debugging-pass-findings.md](0015-MADR-remediate-third-debugging-pass-findings.md) (D6, D10, G4);
+they were built in [0015-PLAN-remediate-third-debugging-pass-findings.md](0015-PLAN-remediate-third-debugging-pass-findings.md), Phase Q3, and ship in `v1.11.0`.*
+
+* **§7, the SCM's dependents (D6):** with `Options.StopDependents`,
+  `Stop` records each dependent it stops, and `Start` starts them again,
+  in reverse stop order, once the service runs, also when the service's
+  own stop had failed; a dependent that fails to start is `Start`'s error.
+* **§4, the poll options (D10):** `PollOptions.Validate` refuses a settle
+  window that is not shorter than the timeout, with the defaults applied;
+  each backend's `New` calls it, launchd with the settle raised to its
+  10 s throttle. A wait's timeout says "not ready within".
+* **§6, the receipt's warnings (G4):** `ReconcileResult.Warnings` carries
+  a `Receipt`'s warnings, and a warning for a definition rewritten without
+  a reload; on an update that applied, the run reports each as a warning
+  after `complete`, and lists it in `Result.Warnings`.
+
 ## More Information
 
 ### Probe evidence

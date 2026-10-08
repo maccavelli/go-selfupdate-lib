@@ -916,6 +916,16 @@ publisher wants it.
   joined to it: a requirement such as `anchor apple) or (always` could
   otherwise cancel the identifier pin.
 
+### A2 (2026-10-08): a PAX global header
+
+*Status: accepted (2026-10-08). The finding is in [0015-MADR-remediate-third-debugging-pass-findings.md](0015-MADR-remediate-third-debugging-pass-findings.md) (E8); it was built
+in [0015-PLAN-remediate-third-debugging-pass-findings.md](0015-PLAN-remediate-third-debugging-pass-findings.md), Phase Q4, and ships in `v1.11.0`.*
+
+* **§4:** a PAX global header, such as `git archive` writes with the
+  commit as a comment, is skipped, and counts toward the entry limit. One
+  whose records set `path`, `linkpath`, `size` or a `GNU.sparse.` key is
+  refused: it would change how another tool reads every entry.
+
 ## More Information
 
 ### Probe evidence

@@ -886,6 +886,21 @@ The owner answered:
   archive with the client's own selector, so a release the client could
   not select is never published.
 
+### A2 (2026-10-08): null in the spec, and the module's library version
+
+*Status: accepted (2026-10-08). The findings are in [0015-MADR-remediate-third-debugging-pass-findings.md](0015-MADR-remediate-third-debugging-pass-findings.md) (E7, F3); they
+were built in [0015-PLAN-remediate-third-debugging-pass-findings.md](0015-PLAN-remediate-third-debugging-pass-findings.md), Phase Q4, and ship in `v1.11.0`.*
+
+* **§2 (E7):** `Parse` refuses `null` for any value, which
+  `encoding/json` would read as an absent field: `"installer": null` is
+  not `"installer": {}`.
+* **§7 (F3):** the plan step takes `-module-dir`, and checks that the
+  module requires a release of this library that reads every field the
+  spec uses (`installer` needs `v1.10.0`): a program built against an
+  older one cannot parse the spec it embeds. A module that is the library,
+  and a directory `replace`, are not checked; the job summary notes the
+  latter.
+
 ## More Information
 
 ### Probe evidence

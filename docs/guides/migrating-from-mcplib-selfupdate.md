@@ -31,6 +31,8 @@ go get github.com/maccavelli/go-selfupdate-lib@v1.10.1
 [9. From v1.8 to v1.9](#9-from-v18-to-v19) and
 [10. From v1.9 to v1.10](#10-from-v19-to-v110). `v1.10.1` changes no API;
 its fixes are in [From v1.10.0 to v1.10.1](#from-v1100-to-v1101).
+`v1.11.0` adds to the API and changes a few behaviours: see
+[11. From v1.10 to v1.11](#11-from-v110-to-v111).
 
 Replace every `github.com/maccavelli/mcplib/selfupdate` import with
 `github.com/maccavelli/go-selfupdate-lib/selfupdate`. No identifier or signature
@@ -695,3 +697,77 @@ why, is in
 - A pull request's rehearsal stages `install.sh` and `install.ps1`, and a
   dry run of the released one-liner (`… | sh -s -- --dry-run`) names the
   assets you expect.
+
+## 11. From v1.10 to v1.11
+
+```bash
+go get github.com/maccavelli/go-selfupdate-lib@v1.11.0
+```
+
+`v1.11.0` settles the contracts the third debugging pass left open.
+`make apicheck` reports it compatible with `v1.10.1`: every exported change
+is an addition. Some behaviours change, and a program that relies on them
+may need a change. Why, and how, is in
+[0015-MADR](../decisions/0015-MADR-remediate-third-debugging-pass-findings.md).
+
+### What changes
+
+- **Zero values:** an `Updater` or a `Checker` that its constructor did
+  not make, such as a zero value or a nil pointer, returns
+  `ErrNotConstructed` instead of panicking; a zero `Stream`'s `Cancel`
+  does nothing.
+- **No such release:** a 404 for the latest release, or for a tag, is
+  `ErrNoRelease`. `CheckCached` caches it as `CheckNoRelease`
+  (`no-release`) for `maxAge`, so a repository with no stable release yet
+  is asked once per interval, not on every start.
+- **The JSON result is schema 3:** `rolled_back` says the previous binary
+  was restored after the new one was installed, and `probes_skipped` that
+  a dry run for another platform did not run the probes. `Result` has
+  `RolledBack` and `ProbesSkipped`. A reader that checks `schema_version`
+  must accept 3.
+- **Handoffs:** an update from inside a service without `--yes` is refused
+  with `ErrConfirmationRequired` (exit 1), since the detached run cannot
+  ask; and a run with nothing to install is not handed off.
+- **Reconcile warnings:** `ReconcileResult.Warnings` reaches
+  `Result.Warnings` and a `warning` event after `complete`, on an update
+  that applied. `ExecReconciler` fills it from the receipt, and warns
+  when a definition was rewritten without the service manager being
+  reloaded.
+- **Poll options:** the service backends' `New` refuses `Options.Poll`
+  whose settle window is not shorter than its timeout, launchd's settle
+  at least 10 s (`PollOptions.Validate`).
+- **Dependents:** with `StopDependents`, the SCM backend starts the
+  dependents it stopped again after the service.
+- **Special mode bits:** a previous binary kept beside the target, by
+  `KeepPrevious` or after a failed restore, loses setuid and setgid.
+- **Back-off:** a rate limit with requests left waits its `Retry-After`,
+  not the primary window's reset.
+- **The spec:** `null` for any value is refused: leave the field out.
+- **Archives:** a tar.gz from `git archive` unpacks: its PAX global header
+  is skipped, unless it sets an entry's path, link, size or sparse map.
+- **The build workflow:** its plan step checks that the module at
+  `module-dir` requires a release of this library that reads every field
+  the spec uses, such as `installer` (`v1.10.0`).
+
+### Adopting it
+
+- **A zero `Updater` or `Checker`** that used to panic now returns an
+  error: build them with `New` and `NewChecker`.
+- **Read `schema_version` 3,** and the two new keys, if you parse the
+  result object.
+- **Pass `--yes`** to an update an agent runs inside a service; it already
+  had to, since the detached run never asked.
+- **Check `Options.Poll`:** a short `Timeout` needs a shorter `Settle`, or
+  a negative one for no window.
+- **Restore setuid or setgid yourself** when you put a kept `.previous`
+  back.
+- **A spec with `null`** fails to parse: remove the key.
+- **Move both to `v1.11.0` together:** your program's module and the
+  workflows' pins. The build workflow now refuses a module whose
+  requirement is too old for the spec.
+
+### Check
+
+- `go build ./...`, `go vet ./...` and `go test ./...` pass.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.11.0`.
+- A pull request's rehearsal passes the plan step's module check.

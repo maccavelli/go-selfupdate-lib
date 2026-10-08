@@ -3773,3 +3773,47 @@ No API change; `make apicheck` reports `v1.10.1` compatible with
   single-case `switch` in `semverCompare`; `make gate` on `91797fa` with
   Q4's changes: all 14 steps `rc=0`, `overall=0`. CI's `release-rehearsal`
   jobs run with the new flag once pushed.
+
+### Phase Q5: the `v1.11.0` release commit (2026-10-08)
+
+* **Migration guide:** `## 11. From v1.10 to v1.11`, with "What changes",
+  "Adopting it" and "Check"; §2 names `v1.11.0` and links §11. Its current
+  release and `go get` lines move to `v1.11.0` in the pin commit.
+* **Record amendments:**
+  [0011-MADR-reference-service-lifecycles.md](0011-MADR-reference-service-lifecycles.md)
+  `### A8` (D6, D10, G4);
+  [0012-MADR-archive-assets-and-macos-codesign.md](0012-MADR-archive-assets-and-macos-codesign.md)
+  `### A2` (E8);
+  [0013-MADR-build-and-stage-release-workflow.md](0013-MADR-build-and-stage-release-workflow.md)
+  `### A2` (E7, F3).
+* **Not yet done:** the release procedure for `v1.11.0` (CI on the pushed
+  release commit, the tag on the owner's ask, the tag's CI, the pin
+  commit, the proxy), and closing this PLAN. The live tests are Q1's and
+  Q3's, recorded in their phases.
+
+### Release notes for v1.11.0 (2026-10-08)
+
+`make apicheck` reports `v1.11.0` compatible with `v1.10.1`. The full
+apidiff report adds `ErrNotConstructed`, `ErrNoRelease`, `CheckNoRelease`,
+`Result.RolledBack`, `Result.ProbesSkipped`, `ResultDocument.RolledBack`,
+`ResultDocument.ProbesSkipped`, `ReconcileResult.Warnings` and
+`service.PollOptions.Validate`. In the migration guide's order:
+
+* C8: a zero or nil `Updater` or `Checker` returns `ErrNotConstructed`; a
+  zero `Stream`'s `Cancel` does nothing.
+* A1 (404): a missing release is `ErrNoRelease`, cached as
+  `CheckNoRelease`.
+* G3, C9: the result document is schema 3, with `rolled_back` and
+  `probes_skipped`.
+* C3: a handoff needs `--yes`, and a run with nothing to install is not
+  handed off.
+* G4: a reconciler's warnings reach `Result.Warnings`.
+* D10: `PollOptions.Validate`; the backends refuse a settle window as long
+  as the timeout.
+* D6: the SCM backend restarts the dependents `StopDependents` stopped.
+* B5: a kept previous binary loses setuid and setgid.
+* A5: a rate limit with requests left waits its `Retry-After` only.
+* E7: `null` in a spec is refused.
+* E8: `git archive` tarballs unpack; a PAX global header is skipped.
+* F3: the build workflow checks the module's library version against the
+  spec.
