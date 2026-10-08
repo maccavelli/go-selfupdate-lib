@@ -79,7 +79,8 @@
 // one terminal event, except a check that succeeds and a run that finds the
 // program up to date: they install nothing and end at EventSelected, and
 // Result.Operation is the outcome. An error after EventComplete is an
-// EventWarning, listed in Result.Warnings, and does not fail the run.
+// EventWarning, listed in Result.Warnings, and does not fail the run; so is
+// each of a managed install's ReconcileResult.Warnings.
 // Result.Document is the stable JSON form of a Result. A program keeps its
 // stdout for structured output and writes human text to stderr.
 //

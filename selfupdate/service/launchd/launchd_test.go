@@ -28,6 +28,8 @@ func TestNewRefuses(t *testing.T) {
 		"no domain":     func(o *Options) { o.Domain = Domain{} },
 		"relative":      func(o *Options) { o.Plist = "x.plist" },
 		"relative tool": func(o *Options) { o.Launchctl = "launchctl" },
+		// The settle is at least ThrottleInterval, 10 s (0015-MADR D10).
+		"settle over timeout": func(o *Options) { o.Poll = service.PollOptions{Settle: time.Second, Timeout: 10 * time.Second} },
 	} {
 		o := ok
 		mutate(&o)
@@ -321,7 +323,10 @@ func TestWaitHealthy(t *testing.T) {
 // launchd's ThrottleInterval is raised to it.
 func TestWaitHealthySettlesAtLeastThrottle(t *testing.T) {
 	f := newFake()
-	j := testJob(t, f, Options{Poll: service.PollOptions{Settle: time.Millisecond, Timeout: 50 * time.Millisecond}})
+	// New refuses these options (0015-MADR D10); WaitHealthy must still
+	// raise the settle when they are set afterwards.
+	j := testJob(t, f, Options{})
+	j.o.Poll = service.PollOptions{Settle: time.Millisecond, Timeout: 50 * time.Millisecond}
 	if err := j.WaitHealthy(context.Background(), "demo"); !errors.Is(err, service.ErrTimeout) {
 		t.Fatalf("err = %v; a 1 ms settle must have become 10 s, and timed out", err)
 	}

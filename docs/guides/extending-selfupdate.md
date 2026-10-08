@@ -109,7 +109,10 @@ program up to date, install nothing: they end at `selected`, the result's
 `operation` is the outcome, and no `complete` follows. Since
 `v1.6.0`, an error that arrives after `complete`, such as a failed unlock
 once the binary is replaced, does not fail the run. Each one is a `warning`
-event, `Result.Warnings` lists them, and `Run` returns no error. A dry run's
+event, `Result.Warnings` lists them, and `Run` returns no error. Since
+`v1.11.0`, so is each of a managed install's `ReconcileResult.Warnings`,
+such as an exec reconciler's receipt warnings, or a definition rewritten
+without the service manager being reloaded. A dry run's
 `complete` has the `detail` `dry-run`. `Warnings` is a string type whose JSON
 form is an array: read it with `List`, or build one with `NewWarnings`.
 
@@ -448,6 +451,11 @@ Why each behaves as it does is in
     - on Windows, reads an unquoted command line whose path holds a
       space the way the SCM runs it, and refuses one that could name two
       programs: quote it.
+  - Since `v1.11.0`, `New` refuses `Options.Poll` whose settle window is
+    not shorter than its timeout, launchd's at least 10 s, since every
+    wait would time out (`PollOptions.Validate`); and on Windows the
+    dependents `StopDependents` stopped are started again after the
+    service.
   - `Enabled` on launchd counts `RunAtLoad` only as `<true/>`; launchd
     does not run a job at load for an integer, even 1. A plist `plutil`
     cannot read is an error (since `v1.10.1`).

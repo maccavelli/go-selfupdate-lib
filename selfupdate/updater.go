@@ -407,7 +407,8 @@ func (u *run) apply(ctx context.Context, req Request, result Result, target Targ
 		Kind: EventComplete, Product: req.Product, Current: req.CurrentVersion,
 		Target: rel.Tag, Asset: sel.Binary.Name, Detail: detail,
 	})
-	return u.warn(ctx, req, resultOut, rel, sel, instErr, closeErr, repErr), nil
+	warnings, instErr := splitReconcileWarnings(instErr)
+	return u.warn(ctx, req, resultOut, rel, sel, append(warnings, instErr, closeErr, repErr)...), nil
 }
 
 // unpack has the Unpacker write the program from the archive at archive

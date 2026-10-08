@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -149,5 +150,25 @@ func TestNewExecReconcilerValidates(t *testing.T) {
 	}
 	if _, err := NewExecReconciler(ExecOptions{Reconcile: []string{"r"}, Restore: []string{"s"}}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestExecReconcilerSurfacesWarnings: the receipt's warnings, and a
+// rewrite the service manager was not told about, reach the
+// ReconcileResult (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md G4).
+func TestExecReconcilerSurfacesWarnings(t *testing.T) {
+	out := `{"schema_version":1,"verdict":"refreshed","path":"/u/demo.service","changed":true,"reloaded":false,"warnings":["unit is masked"]}`
+	res, err := fakeReconciler(t, out, "0").Reconcile(context.Background(), "demo", selfExe(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"unit is masked",
+		"demo: /u/demo.service was rewritten and the service manager was not reloaded; the next start may run the previous definition"}
+	if got := res.Warnings.List(); !slices.Equal(got, want) {
+		t.Fatalf("warnings %q, want %q", got, want)
+	}
+	out = `{"schema_version":1,"verdict":"refreshed","path":"/u/demo.service","changed":true,"reloaded":true}`
+	if res, err := fakeReconciler(t, out, "0").Reconcile(context.Background(), "demo", selfExe(t)); err != nil || res.Warnings.Len() != 0 {
+		t.Fatalf("a reloaded rewrite: %q, %v", res.Warnings, err)
 	}
 }

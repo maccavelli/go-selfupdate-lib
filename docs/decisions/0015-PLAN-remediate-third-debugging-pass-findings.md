@@ -3629,3 +3629,73 @@ No API change; `make apicheck` reports `v1.10.1` compatible with
   `AllowSpecialModeBits` and `KeepPrevious` comments;
   `docs/architecture.md`'s mode-bits item; a dated note under
   0010-PLAN-v1-5-1's deviation D1.
+
+### Phase Q3: the service contracts (2026-10-08)
+
+* **Red,** on the unfixed code:
+  * **D6:** `TestStopDependentsAreRestarted`: "started [\"demo\"]". Live,
+    on the Windows test host, `TestLiveStopDependentsRestarted` with the
+    committed SCM code: "the service never reported ready" for the
+    dependent.
+  * **D10:** each backend's `TestNewRefuses` (the new options copied onto
+    the committed code): launchd "settle over timeout accepted"; SCM and
+    systemd "a settle as long as the timeout: <nil>".
+  * **G4:** the build fails on `ReconcileResult.Warnings`. With the field
+    declared and unused: `TestExecReconcilerSurfacesWarnings`: "warnings
+    [], want …"; `TestRunReportsReconcileWarnings`: no warnings on the
+    result.
+* **Fix:**
+  * **D6** (`scm/lifecycle.go`, `service.go`): `Service.stoppedDeps`,
+    under `s.mu`; `Stop` records each dependent once its `stopOne`
+    succeeds, without repeats, so a second `Stop` does not lose one the
+    first stopped. `Start` is now `startOne` for the service, then
+    `startDependents`, in reverse stop order, which forgets the record on
+    success; a dependent that fails is the error, naming it. The
+    dependents are started when the service was already running too,
+    which is the case after a `Stop` that failed on the service itself.
+  * **D10** (`service/poll.go`): `PollOptions.Validate` applies the
+    defaults and refuses `Settle >= Timeout`; `systemd.newUnit`,
+    `scm.newService` and `launchd.newJob` call it, launchd with the settle
+    raised to at least 10 s unless negative. `PollHealthy` does not call
+    it. `timeoutError` says "not ready within".
+  * **G4:** `ReconcileResult.Warnings`; `ExecReconciler.Reconcile` sets
+    it from the receipt, adding "<product>: <path> was rewritten and the
+    service manager was not reloaded; …" for a rewrite that was not
+    reloaded; `managedSession.Install` joins `reconcileWarnings` to its
+    result after a commit; the run splits it out
+    (`splitReconcileWarnings`) and reports one warning per entry after
+    `complete`.
+* **Test edits:** `TestWaitHealthySettlesAtLeastThrottle` sets `j.o.Poll`
+  after `New`, as planned. The systemd `TestNewRefuses` row passes tool
+  paths, as its neighbours do: without them, on a host with no
+  `systemctl`, it failed on the tool lookup instead of on the settle,
+  which a plant showed.
+* **Test placement:** `TestRunReportsReconcileWarnings` uses its own
+  `warnRec` in `managed_started_test.go`, not a field on `managed_test.go`'s
+  `fakeRec`; it checks `ExitCode` 0 directly, which is what `cli.Exit`
+  returns. `TestLiveStopDependentsRestarted` is in
+  `scm/live_fixes_windows_test.go`.
+* **Live:** on the Windows test host, `TestLiveStopDependentsRestarted`
+  passes with the other SCM live tests, and the SCM unit tests pass
+  there; the launchd live tests here and the systemd ones on the Linux
+  test host pass with the new constructor check.
+* **Plants,** each caught:
+
+  | Plant | Fails |
+  | :--- | :--- |
+  | D6: the record skipped | `TestStopDependentsAreRestarted` |
+  | D10: systemd's `Validate` call dropped | systemd `TestNewRefuses`: "<nil>" |
+  | D10: SCM's call dropped | SCM `TestNewRefuses` |
+  | D10: launchd's call dropped | launchd `TestNewRefuses` |
+  | D10: launchd's settle not raised | launchd `TestNewRefuses` |
+  | G4: the join dropped | `TestRunReportsReconcileWarnings` |
+  | G4: the receipt's warnings not copied | `TestExecReconcilerSurfacesWarnings` |
+
+* **Acceptance:** the full apidiff report against `v1.10.1` adds, beyond
+  Q1's seven, exactly `PollOptions.Validate` and
+  `ReconcileResult.Warnings`; `make apicheck`: "compatible with v1.10.1".
+* **Checks:** `make pre-add-check` on the 17 Go files: clean; `make gate`
+  on `9fd6cad` with Q3's changes: all 14 steps `rc=0`, `overall=0`.
+* **Docs:** `StopDependents`, `Stop` and `Start` (SCM); `ReconcileResult`
+  and `Result.Warnings`; `doc.go`; the extending guide's "Read JSON
+  output" and "Run as a service".

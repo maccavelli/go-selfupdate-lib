@@ -118,9 +118,16 @@ func (r *ExecReconciler) Reconcile(ctx context.Context, product, executable stri
 		return selfupdate.ReconcileResult{}, fmt.Errorf("selfupdate: service: reconcile %s: %w", product, perr)
 	}
 	result := selfupdate.ReconcileResult{
-		Changed: rec.Changed,
-		Detail:  receiptDetail(rec),
-		State:   ExecState{Receipt: rec, Executable: executable},
+		Changed:  rec.Changed,
+		Detail:   receiptDetail(rec),
+		State:    ExecState{Receipt: rec, Executable: executable},
+		Warnings: selfupdate.NewWarnings(rec.Warnings...),
+	}
+	if rec.Changed && !rec.Reloaded {
+		// The update succeeds; the user is told (0015-MADR G4).
+		result.Warnings = result.Warnings.Add(fmt.Sprintf(
+			"%s: %s was rewritten and the service manager was not reloaded; the next start may run the previous definition",
+			product, rec.Path))
 	}
 	if out.ExitCode != 0 {
 		return result, childError(product, "reconcile", out)

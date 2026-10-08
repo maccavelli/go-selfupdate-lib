@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -83,7 +84,8 @@ func (s *Service) query(name string) (status, error) {
 // Stop stops the service and waits until it is STOPPED, by Microsoft's
 // wait-hint and checkpoint loop. It records the process ID first, so
 // WaitHealthy can require a new one. A running dependent service is an
-// error, unless Options.StopDependents, when it is stopped first. Stop
+// error, unless Options.StopDependents, when it is stopped first and
+// recorded, for Start to start again (0015-MADR D6). Stop
 // refuses with service.ErrInsideService when this process descends from
 // the service: the update must be handed off (0011-MADR §3).
 func (s *Service) Stop(ctx context.Context, product string) (err error) {
@@ -137,6 +139,11 @@ func (s *Service) Stop(ctx context.Context, product string) (err error) {
 			if err := s.stopOne(ctx, d); err != nil {
 				return err
 			}
+			s.mu.Lock()
+			if !slices.Contains(s.stoppedDeps[name], d) {
+				s.stoppedDeps[name] = append(s.stoppedDeps[name], d)
+			}
+			s.mu.Unlock()
 		}
 	}
 	return s.stopHandle(ctx, name, h, st)
@@ -186,13 +193,41 @@ func (s *Service) stopHandle(ctx context.Context, name string, h handle, st stat
 
 // Start starts the service, after waiting out a pending stop, and waits
 // until it leaves START_PENDING. A service already running is left alone.
-func (s *Service) Start(ctx context.Context, product string) (err error) {
+// Then it starts the dependents Stop stopped, in reverse stop order; one
+// that fails is the error (0015-MADR D6).
+func (s *Service) Start(ctx context.Context, product string) error {
 	name, err := s.name(product)
 	if err != nil {
 		return err
 	}
 	ctx, cancel := s.deadline(ctx)
 	defer cancel()
+	if err := s.startOne(ctx, name); err != nil {
+		return err
+	}
+	return s.startDependents(ctx, name)
+}
+
+// startDependents starts, in reverse stop order, the dependents Stop
+// stopped for name, and forgets them once all have started.
+func (s *Service) startDependents(ctx context.Context, name string) error {
+	s.mu.Lock()
+	deps := slices.Clone(s.stoppedDeps[name])
+	s.mu.Unlock()
+	for i := len(deps) - 1; i >= 0; i-- {
+		if err := s.startOne(ctx, deps[i]); err != nil {
+			return fmt.Errorf("selfupdate: scm: start %s, which stopping %s stopped: %w", deps[i], name, err)
+		}
+	}
+	s.mu.Lock()
+	delete(s.stoppedDeps, name)
+	s.mu.Unlock()
+	return nil
+}
+
+// startOne starts one service, after waiting out a pending stop, and waits
+// until it leaves START_PENDING. A service already running is left alone.
+func (s *Service) startOne(ctx context.Context, name string) (err error) {
 	h, err := s.open(name, accessStart)
 	if err != nil {
 		return err

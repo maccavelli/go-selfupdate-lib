@@ -155,6 +155,15 @@ func newJob(o Options, goos string, uid, euid int) (*Job, error) {
 	if !filepath.IsAbs(o.Plist) {
 		return nil, fmt.Errorf("selfupdate: launchd: plist path %q is not absolute", o.Plist)
 	}
+	// WaitHealthy settles for at least launchd's ThrottleInterval, so the
+	// timeout must exceed that (0015-MADR D10).
+	poll := o.Poll
+	if poll.Settle >= 0 && poll.Settle < throttleInterval {
+		poll.Settle = throttleInterval
+	}
+	if err := poll.Validate(); err != nil {
+		return nil, fmt.Errorf("selfupdate: launchd: %w", err)
+	}
 	j := &Job{o: o, uid: uid, euid: euid, groups: processGroups}
 	for _, t := range []struct {
 		dst          *string

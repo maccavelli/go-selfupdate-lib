@@ -24,6 +24,11 @@ func TestNewRefuses(t *testing.T) {
 			t.Errorf("name %q accepted", name)
 		}
 	}
+	// 0015-MADR D10.
+	if _, err := newService(Options{Poll: service.PollOptions{Timeout: 5 * time.Second}}, "windows", newFake()); err == nil ||
+		!strings.Contains(err.Error(), "Poll.Settle") {
+		t.Errorf("a settle as long as the timeout: %v", err)
+	}
 	s, _ := testService(t, newFake(), Options{Name: ""})
 	s.o.Name = ""
 	if _, err := s.Installed(context.Background(), "a/b"); err == nil {
@@ -261,6 +266,57 @@ func TestStopDependents(t *testing.T) {
 	}
 	if !slices.Equal(stops, []string{"child", "grandchild", "demo"}) {
 		t.Fatalf("stopped %q", stops)
+	}
+}
+
+// TestStopDependentsAreRestarted: the dependents Stop stopped are started
+// again by Start, in reverse stop order, and so is one stopped before the
+// service's own stop failed
+// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md D6).
+func TestStopDependentsAreRestarted(t *testing.T) {
+	ctx := context.Background()
+	f := newFake()
+	f.add("demo", 1).deps = []string{"child", "grandchild"}
+	f.add("child", 2)
+	f.add("grandchild", 3)
+	s, _ := testService(t, f, Options{StopDependents: true})
+	if err := s.Stop(ctx, "demo"); err != nil {
+		t.Fatal(err)
+	}
+	f.calls = nil
+	if err := s.Start(ctx, "demo"); err != nil {
+		t.Fatal(err)
+	}
+	var starts []string
+	for _, c := range f.calls {
+		if strings.HasPrefix(c, "start ") {
+			starts = append(starts, strings.Fields(c)[1])
+		}
+	}
+	if !slices.Equal(starts, []string{"demo", "grandchild", "child"}) {
+		t.Fatalf("started %q", starts)
+	}
+	for _, name := range []string{"child", "grandchild"} {
+		if st := f.services[name].st.State; st != stateRunning {
+			t.Fatalf("%s %s after Start", name, stateName(st))
+		}
+	}
+
+	// demo's own stop fails after child stopped: Start brings child back.
+	f = newFake()
+	demo := f.add("demo", 1)
+	demo.deps = []string{"child"}
+	demo.controlErr = []error{errors.New("access denied")}
+	f.add("child", 2)
+	s, _ = testService(t, f, Options{StopDependents: true})
+	if err := s.Stop(ctx, "demo"); err == nil || f.services["child"].st.State != stateStopped {
+		t.Fatalf("Stop = %v, child %s; want demo's stop to fail after child stopped", err, stateName(f.services["child"].st.State))
+	}
+	if err := s.Start(ctx, "demo"); err != nil {
+		t.Fatal(err)
+	}
+	if st := f.services["child"].st.State; st != stateRunning {
+		t.Fatalf("child %s after Start; want it running again", stateName(st))
 	}
 }
 

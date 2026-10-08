@@ -64,6 +64,17 @@ func (o PollOptions) withDefaults() PollOptions {
 	return o
 }
 
+// Validate applies the defaults and refuses a settle window that is not
+// shorter than the timeout: every wait would time out, and every update
+// roll back. A negative Settle is no window (0015-MADR D10).
+func (o PollOptions) Validate() error {
+	d := o.withDefaults()
+	if d.Settle >= d.Timeout {
+		return fmt.Errorf("service: Poll.Settle %s is not less than Poll.Timeout %s", d.Settle, d.Timeout)
+	}
+	return nil
+}
+
 // clock is time, replaced in tests.
 type clock interface {
 	Now() time.Time
@@ -147,7 +158,7 @@ func describe(h Health) string {
 }
 
 func timeoutError(timeout time.Duration, last Health, lastErr error) error {
-	err := fmt.Errorf("%w: not healthy within %s (last: %s)", ErrTimeout, timeout, describe(last))
+	err := fmt.Errorf("%w: not ready within %s (last: %s)", ErrTimeout, timeout, describe(last))
 	if lastErr != nil {
 		err = errors.Join(err, lastErr)
 	}

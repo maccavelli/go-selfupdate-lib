@@ -4,6 +4,7 @@ package scm
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"slices"
@@ -131,4 +132,57 @@ func TestLiveHandOffHealthFailureReportsRollback(t *testing.T) {
 	if got, err := os.ReadFile(cfg.Target); err != nil || !strings.HasSuffix(string(got), "\nold build\n") { //nolint:gosec // the live test's own file
 		t.Fatalf("the service's binary is not the previous build: %v", err)
 	}
+}
+
+// TestLiveStopDependentsRestarted: with StopDependents, an update stops a
+// service that depends on the live one, and starts it again afterwards
+// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md D6).
+func TestLiveStopDependentsRestarted(t *testing.T) {
+	cfg := newLiveService(t)
+	before := waitReady(t, cfg, 0)
+	const depName = liveName + "-dep"
+	removeService(t, depName)
+	dir := filepath.Join(t.TempDir(), "scm live dep")
+	if err := os.Mkdir(dir, 0o755); err != nil { //nolint:gosec // the service, LocalSystem, writes here too
+		t.Fatal(err)
+	}
+	dep := liveConfig{Name: depName, Dir: dir, Target: filepath.Join(dir, "dep.exe"), Path: filepath.Join(dir, "live.json")}
+	body, err := json.Marshal(dep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dep.Path, body, 0o644); err != nil { //nolint:gosec // read by the service
+		t.Fatal(err)
+	}
+	build(t, dep.Target, "\ndependent\n")
+	m, err := mgr.Connect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = m.Disconnect() }()
+	ds, err := m.CreateService(depName, registeredPath(t, dep.Target), mgr.Config{
+		StartType: mgr.StartManual, DisplayName: "go-selfupdate-lib live test dependent", Dependencies: []string{liveName},
+	}, liveArg, "service", dep.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { removeService(t, depName) })
+	if err := ds.Start(); err != nil {
+		_ = ds.Close()
+		t.Fatal(err)
+	}
+	_ = ds.Close()
+	depBefore := waitReady(t, dep, 0)
+
+	s, err := New(Options{Name: cfg.Name, Poll: liveSvc(t, cfg).o.Poll, StopDependents: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	build(t, cfg.New, "\nnew build\n")
+	res, err := managedInstall(s, cfg.Target, cfg.New)
+	if err != nil || !res.Applied || !res.ServiceStarted {
+		t.Fatalf("Install = %+v, %v", res, err)
+	}
+	waitReady(t, cfg, before)
+	waitReady(t, dep, depBefore)
 }

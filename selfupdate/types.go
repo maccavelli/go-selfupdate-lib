@@ -168,7 +168,8 @@ type Result struct {
 	// Previous is where InstallOptions.KeepPrevious kept the previous
 	// binary.
 	Previous string
-	// Warnings lists the errors that arrived after EventComplete. None of
+	// Warnings lists the errors that arrived after EventComplete, and a
+	// managed install's ReconcileResult.Warnings (0015-MADR G4). None of
 	// them failed the run.
 	Warnings Warnings
 	// RolledBack reports that the previous binary was restored after the
@@ -563,6 +564,11 @@ type ReconcileResult struct {
 	Detail string
 	// State holds consumer restoration data.
 	State any
+	// Warnings are what the reconcile wants the user told without failing
+	// the update, such as a definition the service manager was not
+	// reloaded for. A managed run that applies reports each as a warning
+	// (0015-MADR G4).
+	Warnings Warnings
 }
 
 // Reconciler rewrites an existing managed definition and can restore it.

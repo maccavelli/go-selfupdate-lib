@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
 )
@@ -72,6 +73,11 @@ func TestNewRefuses(t *testing.T) {
 	}
 	if _, err := newUnit(Options{Scope: 7, Systemctl: "/x/s", SystemdRun: "/x/r"}, "linux", env); err == nil {
 		t.Fatal("an unknown scope was accepted")
+	}
+	// 0015-MADR D10.
+	if _, err := newUnit(Options{Systemctl: "/x/s", SystemdRun: "/x/r", Poll: service.PollOptions{Timeout: 5 * time.Second}}, "linux", env); err == nil ||
+		!strings.Contains(err.Error(), "Poll.Settle") {
+		t.Fatalf("a settle as long as the timeout: %v", err)
 	}
 }
 

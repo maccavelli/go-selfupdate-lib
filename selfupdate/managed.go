@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -141,7 +142,44 @@ func (s *managedSession) Install(ctx context.Context, req InstallRequest) (Insta
 	result.ServiceInstalled = true
 	result.ServiceWasRunning = running
 	result.ServiceStarted = start
+	if receipt.Warnings != "" {
+		// The run reports each after complete (0015-MADR G4).
+		err = errors.Join(err, reconcileWarnings{receipt.Warnings})
+	}
 	return result, err
+}
+
+// reconcileWarnings carries a Reconciler's warnings from a managed install
+// that applied to the run, which reports each one as a warning
+// (0015-MADR G4).
+type reconcileWarnings struct{ w Warnings }
+
+func (e reconcileWarnings) Error() string {
+	return "selfupdate: reconcile warnings: " + strings.Join(e.w.List(), "; ")
+}
+
+// splitReconcileWarnings takes a managed install's reconcileWarnings out of
+// err: one error per warning, and what remains of err.
+func splitReconcileWarnings(err error) ([]error, error) {
+	var rw reconcileWarnings
+	if !errors.As(err, &rw) {
+		return nil, err
+	}
+	var rest error
+	if j, ok := err.(interface{ Unwrap() []error }); ok {
+		var keep []error
+		for _, e := range j.Unwrap() {
+			if !errors.As(e, new(reconcileWarnings)) {
+				keep = append(keep, e)
+			}
+		}
+		rest = errors.Join(keep...)
+	}
+	var out []error
+	for _, w := range rw.w.List() {
+		out = append(out, errors.New(w))
+	}
+	return out, rest
 }
 
 // recoverStop handles a Stop error. A backend can fail after the stop took

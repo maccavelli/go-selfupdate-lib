@@ -40,8 +40,9 @@ type Options struct {
 	// rewritten command line quotes the program; an unquoted one that
 	// could name two programs is refused.
 	RewritePath bool
-	// StopDependents lets Stop stop running dependent services first.
-	// Without it, a running dependent is an error.
+	// StopDependents lets Stop stop running dependent services first, and
+	// Start start them again afterwards. Without it, a running dependent is
+	// an error.
 	StopDependents bool
 	// TriggerStartEnabled counts a demand-start service with start triggers
 	// as enabled. Without it, only an automatic start type does.
@@ -58,6 +59,9 @@ type Service struct {
 
 	mu       sync.Mutex
 	previous map[string]uint32
+	// stoppedDeps are, per service, the dependents Stop stopped, in stop
+	// order, which Start starts again (0015-MADR D6).
+	stoppedDeps map[string][]string
 }
 
 var (
@@ -82,9 +86,12 @@ func newService(o Options, goos string, m manager) (*Service, error) {
 			return nil, err
 		}
 	}
+	if err := o.Poll.Validate(); err != nil {
+		return nil, fmt.Errorf("selfupdate: scm: %w", err)
+	}
 	return &Service{
 		o: o, m: m, now: time.Now, sleep: sleepCtx, self: currentPID,
-		previous: map[string]uint32{},
+		previous: map[string]uint32{}, stoppedDeps: map[string][]string{},
 	}, nil
 }
 

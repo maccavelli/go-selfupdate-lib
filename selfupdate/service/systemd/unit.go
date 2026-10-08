@@ -115,6 +115,9 @@ func newUnit(o Options, goos string, getenv func(string) string) (*Unit, error) 
 	if o.Scope != System && o.Scope != User {
 		return nil, fmt.Errorf("selfupdate: systemd: unknown scope %d", o.Scope)
 	}
+	if err := o.Poll.Validate(); err != nil {
+		return nil, fmt.Errorf("selfupdate: systemd: %w", err)
+	}
 	u := &Unit{o: o, getenv: getenv, baseline: map[string]baseline{}}
 	var err error
 	if u.systemctl, err = tool(o.Systemctl, "systemctl"); err != nil {

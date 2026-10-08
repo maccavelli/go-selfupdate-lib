@@ -137,3 +137,24 @@ func TestPollHealthyDefaults(t *testing.T) {
 		t.Fatal("a nil probe was accepted")
 	}
 }
+
+// TestPollOptionsValidate: a settle window as long as the timeout is
+// refused, since every wait would time out; zero takes the defaults, and a
+// negative settle is no window
+// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md D10).
+func TestPollOptionsValidate(t *testing.T) {
+	for _, c := range []struct {
+		o  PollOptions
+		ok bool
+	}{
+		{PollOptions{}, true},
+		{PollOptions{Settle: 10 * time.Second, Timeout: 5 * time.Second}, false},
+		{PollOptions{Settle: 10 * time.Second, Timeout: 10 * time.Second}, false},
+		{PollOptions{Settle: -1, Timeout: time.Second}, true},
+	} {
+		err := c.o.Validate()
+		if (err == nil) != c.ok || err != nil && !strings.Contains(err.Error(), "is not less than Poll.Timeout") {
+			t.Errorf("%+v: %v, want ok %t", c.o, err, c.ok)
+		}
+	}
+}

@@ -115,3 +115,64 @@ func TestRunReportsRolledBack(t *testing.T) {
 		t.Fatalf("events %v lack EventRolledBack", rep.events)
 	}
 }
+
+// warnRec is a Reconciler that changes nothing and has warnings.
+type warnRec struct{ warnings Warnings }
+
+func (r warnRec) Reconcile(context.Context, string, string) (ReconcileResult, error) {
+	return ReconcileResult{Warnings: r.warnings}, nil
+}
+func (warnRec) Restore(context.Context, string, ReconcileResult) error { return nil }
+
+// TestRunReportsReconcileWarnings: a Reconciler's warnings, on an update
+// that applied, are the run's warnings: one EventWarning each after
+// complete, listed in Result.Warnings, and no error
+// (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md G4).
+func TestRunReportsReconcileWarnings(t *testing.T) {
+	_, exe := withTempHome(t)
+	inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := NewManagedInstaller(inner, &fakeLife{installed: true, running: true},
+		warnRec{warnings: NewWarnings("unit is masked", "not reloaded")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rel, bodies, plats := probeRelease(t)
+	sel, err := NewExactAssetSelector(plats)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep := &recReporter{}
+	u, err := New(Config{Source: &scriptSource{rel: rel, bodies: bodies}, Versions: NewStrictVersionPolicy(), Assets: sel,
+		Installer: m, Reporter: rep, Confirmer: &recConfirmer{}, Limits: DefaultLimits()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := applyReq()
+	req.Yes = true
+	res, err := u.Run(context.Background(), req)
+	if err != nil || !res.Applied || !slices.Equal(res.Warnings.List(), []string{"unit is masked", "not reloaded"}) {
+		t.Fatalf("Run = %+v, %v; want applied with two warnings", res, err)
+	}
+	if ExitCode(res, err) != 0 {
+		t.Fatalf("exit %d, want 0", ExitCode(res, err))
+	}
+	var warnings []string
+	complete := -1
+	for i, ev := range rep.events {
+		switch ev.Kind {
+		case EventComplete:
+			complete = i
+		case EventWarning:
+			if complete < 0 {
+				t.Fatalf("a warning before complete: %v", rep.events)
+			}
+			warnings = append(warnings, ev.Detail)
+		}
+	}
+	if !slices.Equal(warnings, []string{"unit is masked", "not reloaded"}) {
+		t.Fatalf("warning events %q", warnings)
+	}
+}
