@@ -197,7 +197,7 @@ func (s Spec) validateArchiveNames() error {
 				continue
 			}
 			prog := prod.Name
-			if t.OS == "windows" {
+			if t.OS == goosWindows {
 				prog += ".exe"
 			}
 			if len(prog) > maxTarName {

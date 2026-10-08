@@ -34,6 +34,10 @@ const (
 	PackagingArchive Packaging = "archive"
 )
 
+// goosWindows is the GOOS whose programs end in ".exe" and whose default
+// archive is a zip.
+const goosWindows = "windows"
+
 // Spec is a release spec.
 type Spec struct {
 	// Schema is SchemaVersion.
@@ -245,7 +249,7 @@ func (s Spec) FormatFor(p selfupdate.Platform) (archive.Format, bool) {
 	if sp.Format != "" {
 		return sp.Format, true
 	}
-	if p.OS == "windows" {
+	if p.OS == goosWindows {
 		return archive.Zip, true
 	}
 	return archive.TarGz, true

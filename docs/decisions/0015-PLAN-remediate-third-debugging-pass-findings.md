@@ -3183,3 +3183,34 @@ approved it: "proceed". The PLAN as approved is commit `47f0f97`.
 * **Docs:** `archive/doc.go`; the extending guide's "Ship an archive" and
   "Sign on macOS"; the building guide's step 1 and §7; the
   `SignOptions.Requirement` comment.
+
+### Deviation D5 (2026-10-07): P6 was committed before its checks, and lint failed
+
+* **Found** after the owner committed and pushed P6 as `6b7db9b`, before
+  P6's last checks had run. `make fuzz FUZZTIME=60s` then ran clean, and
+  `make gate` on `6b7db9b` failed one step, `lint`, on all three GOOS
+  runs: "string `windows` has 3 occurrences, make it a constant
+  (goconst)" at `releasespec/installer.go:117`, `spec.go:248` and
+  `validate.go:200`. E5's `validateArchiveNames` added the third.
+* **Options put to the owner:**
+  1. an unexported package constant for the three sites, committed as a
+     P6 follow-up with P6's check results (recommended);
+  2. the same change folded into P7's commit, with `main` failing lint
+     until then.
+* **Decision:** the owner chose "Package constant". `spec.go` gains
+  `goosWindows`, which `installer.go`, `spec.go` and `validate.go` use;
+  both of the first two join P6's files. Nothing else changes.
+
+### Phase P6, checks (2026-10-07)
+
+* `make fuzz FUZZTIME=60s` on P6's changes: all nine targets ran 60 s
+  each with no failing input ("5 fuzz targets ran clean in ./selfupdate",
+  "3 … in ./selfupdate/archive", "1 … in ./selfupdate/releasespec").
+* The full apidiff report against `v1.10.0`, on `6b7db9b`: only "Ignoring
+  internal package …".
+* `make gate` on `6b7db9b`: thirteen steps `rc=0`, `lint` `rc=2`
+  (Deviation D5).
+* With D5's constant: `make pre-add-check` on the three files, "3 file(s)
+  clean"; `make gate`, all 14 steps `rc=0`, `overall=0`; apicheck
+  "compatible with v1.10.0"; links "331 links in 49 files, 0 broken"; ids
+  "4 files, 16 deny-list rules, 0 findings".

@@ -114,7 +114,7 @@ func (s Spec) InstallerScripts() []string {
 	}
 	var unix, windows bool
 	for _, p := range s.Platforms {
-		if p.OS == "windows" {
+		if p.OS == goosWindows {
 			windows = true
 		} else {
 			unix = true
