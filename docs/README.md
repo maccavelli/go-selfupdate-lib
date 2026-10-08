@@ -48,6 +48,8 @@ name, and the files they cite moved with the rename
 | 0015 | MADR | [Fix the third debugging pass's findings: a v1.10.1 of contract-preserving fixes, record and tooling fixes on main, and a v1.11.0 for the contracts the owner decides](decisions/0015-MADR-remediate-third-debugging-pass-findings.md) | accepted |
 | 0015 | PLAN | [Implement the third debugging pass's remediation: records and the gate on main, v1.10.1 of contract-preserving fixes, and v1.11.0 for the owner's contracts](decisions/0015-PLAN-remediate-third-debugging-pass-findings.md) | complete |
 | 0016 | REPORT | [The pre-add check passes a file gofmt cannot read](reports/0016-REPORT-precheck-gofmt-errors.md) | — |
+| 0017 | MADR | [Check build provenance at update time with an opt-in `selfupdate/verify/ghattest`, and close the four items 0015 left open](decisions/0017-MADR-verify-build-provenance-and-close-0015-open-items.md) | accepted |
+| 0017 | PLAN | [Implement 0017: the documentation on main, `v1.11.1` (the zip tiling and Windows-name refusals), and `v1.12.0` (the interrupted-update journal and `selfupdate/verify/ghattest`)](decisions/0017-PLAN-verify-build-provenance-and-close-0015-open-items.md) | in-progress |
 
 ## I want to…
 
