@@ -1389,3 +1389,43 @@ amendment A1.
   * `make gate`: every step `rc=0`, `overall=0`; apicheck "compatible
     with v1.11.0";
   * `make pre-add-check` on the four Go files: "4 file(s) clean".
+
+### Phase P3: the `v1.11.1` release commit (2026-10-08)
+
+* **0012-MADR** gains `### A3 (2026-10-08): no unreferenced bytes, and no
+  name Windows reserves`, in A1's shape: a status line naming 0017-MADR
+  2B and 4C, this PLAN's P1 and P2, and `v1.11.1`, then the two rules.
+* **The migration guide:**
+  * `### From v1.11.0 to v1.11.1` inside §11, before its `### Check`: the
+    `go get …@v1.11.1` line, "changes no API", the two behaviour changes,
+    and its check;
+  * the intro names `v1.11.1` and links the section.
+* **The extending guide's "Ship an archive" list** gains a "Since
+  `v1.11.1`" bullet with the two rules.
+* **The full apidiff report** against `v1.11.0` (0015-PLAN V3's command)
+  printed only its two "Ignoring internal package" lines: no exported
+  change (V2).
+
+### Release notes for v1.11.1 (2026-10-08)
+
+`v1.11.1` closes the two archive differentials 0015 recorded open. It
+changes no API: `make apicheck` reports it compatible with `v1.11.0`.
+
+* **A zip's records account for every byte of it**
+  ([0017-MADR](0017-MADR-verify-build-provenance-and-close-0015-open-items.md)
+  2B). The unpacker refuses:
+  * bytes before the first entry, between entries, or after the end
+    record;
+  * slack in the central directory;
+  * a zip64 end record that disagrees with the end record;
+  * a data descriptor that reads two ways, or not as its central record
+    says;
+  * a local header and central record that disagree on whether a
+    descriptor follows.
+
+  `v1.11.0` installed the central directory's program from such a zip
+  while macOS's `ditto` extracted a hidden one.
+* **A name Windows reserves is refused on every host** (4C):
+  * an element holding one of `< > : " | ? *`, or naming a device (CON,
+    PRN, AUX, NUL, CONIN$, CONOUT$, COM0–COM9, LPT0–LPT9);
+  * `UnpackOptions.Member` follows the same rules.

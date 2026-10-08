@@ -32,7 +32,8 @@ go get github.com/maccavelli/go-selfupdate-lib@v1.11.0
 [10. From v1.9 to v1.10](#10-from-v19-to-v110). `v1.10.1` changes no API;
 its fixes are in [From v1.10.0 to v1.10.1](#from-v1100-to-v1101).
 `v1.11.0` adds to the API and changes a few behaviours: see
-[11. From v1.10 to v1.11](#11-from-v110-to-v111).
+[11. From v1.10 to v1.11](#11-from-v110-to-v111). `v1.11.1` changes no
+API; its fixes are in [From v1.11.0 to v1.11.1](#from-v1110-to-v1111).
 
 Replace every `github.com/maccavelli/mcplib/selfupdate` import with
 `github.com/maccavelli/go-selfupdate-lib/selfupdate`. No identifier or signature
@@ -766,6 +767,37 @@ may need a change. Why, and how, is in
 - **Move both to `v1.11.0` together:** your program's module and the
   workflows' pins. The build workflow now refuses a module whose
   requirement is too old for the spec.
+
+### From v1.11.0 to v1.11.1
+
+```bash
+go get github.com/maccavelli/go-selfupdate-lib@v1.11.1
+```
+
+`v1.11.1` closes the last two archive differentials and changes no API:
+`make apicheck` reports it compatible with `v1.11.0`. What changed, and
+why, is in
+[0017-MADR](../decisions/0017-MADR-verify-build-provenance-and-close-0015-open-items.md).
+
+**Behaviour changes:**
+
+- **A zip whose records do not account for every byte** is refused:
+  bytes before its first entry, between entries or after its end record;
+  slack in its central directory; a zip64 end record that disagrees with
+  the end record; and a data descriptor that reads two ways, or not as
+  its central record says. A streaming reader, such as macOS's `ditto`,
+  would extract an entry no central record names. Archives this module's
+  build workflow packs, and those Go, Python and Info-ZIP write, pass.
+- **A name Windows reserves is refused on every host,** not only on
+  Windows: an element holding one of `< > : " | ? *`, or naming a device
+  (`CON`, `PRN`, `AUX`, `NUL`, `CONIN$`, `CONOUT$`, `COM0`–`COM9`,
+  `LPT0`–`LPT9`, before its first dot, in any case). `UnpackOptions.Member`
+  follows the same rules, so `NewUnpacker` refuses one no entry could
+  have. A product named after a device, such as `aux`, cannot be packed
+  as an archive.
+
+**Check:** `go list -m github.com/maccavelli/go-selfupdate-lib` gives
+`v1.11.1`.
 
 ### Check
 

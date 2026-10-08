@@ -926,6 +926,36 @@ in [0015-PLAN-remediate-third-debugging-pass-findings.md](0015-PLAN-remediate-th
   whose records set `path`, `linkpath`, `size` or a `GNU.sparse.` key is
   refused: it would change how another tool reads every entry.
 
+### A3 (2026-10-08): no unreferenced bytes, and no name Windows reserves
+
+*Status: accepted (2026-10-08). The decisions are in [0017-MADR-verify-build-provenance-and-close-0015-open-items.md](0017-MADR-verify-build-provenance-and-close-0015-open-items.md) (2B, 4C); they were built
+in [0017-PLAN-verify-build-provenance-and-close-0015-open-items.md](0017-PLAN-verify-build-provenance-and-close-0015-open-items.md), Phases P1 and P2, and ship in
+`v1.11.1`.*
+
+* **§4, a zip's records account for every byte of it** (2B). The
+  unpacker refuses a zip unless:
+  * its end record's comment ends at the end of the file;
+  * its central directory ends where the end record, or the zip64 end
+    record, begins, so nothing is prepended;
+  * a zip64 end record, when present, ends at its locator and agrees with
+    the end record;
+  * its central records fill the central directory;
+  * its local entries, each from its header to the end of its data and
+    data descriptor, tile the file up to the central directory;
+  * each data descriptor reads exactly one way that matches its central
+    record, and the local and central headers agree that it is there.
+
+  A local entry no central record names is what a streaming reader, such
+  as macOS's `ditto` or Java's `ZipInputStream`, extracts in place of the
+  one the updater installs.
+* **§4, names Windows reserves, on every host** (4C). An element holding
+  one of `< > : " | ? *`, or naming a device (CON, PRN, AUX, NUL, CONIN$,
+  CONOUT$, COM0–COM9, LPT0–LPT9, before its first dot, in any case), is
+  refused on every OS, where `filepath.IsLocal` refused most of them only
+  on Windows. Windows extractors rewrite those characters to `_`, so two
+  entries could become one file there. `UnpackOptions.Member` follows the
+  same rules.
+
 ## More Information
 
 ### Probe evidence

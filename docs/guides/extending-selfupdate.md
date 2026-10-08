@@ -242,6 +242,12 @@ binary. Why it works as it does is in
   - Since `v1.11.0`, a tar.gz from `git archive` unpacks: its PAX global
     header is skipped, and counts as an entry. One that sets `path`,
     `linkpath`, `size` or a sparse map is refused.
+  - Since `v1.11.1` it also refuses a zip whose records do not account
+    for every byte of it (bytes before, between or after its entries,
+    slack in its central directory, or a data descriptor that does not
+    read one way only), and, on every host, a name Windows reserves: an
+    element holding one of `< > : " | ? *`, or naming a device such as
+    `aux` or `com1`.
   - It then checks that the program is an executable for the platform.
   - Every refusal is an `ErrIntegrity`.
 - **Publishing:** since `v1.9.0`, this repository's workflows build,
