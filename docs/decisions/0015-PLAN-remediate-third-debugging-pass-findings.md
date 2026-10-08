@@ -3460,3 +3460,46 @@ No API change; `make apicheck` reports `v1.10.1` compatible with
   performed on a file with a user-mapped section open". 5 of 60 runs at
   `4d0e38b`, before P7; 4 of 60 with P7 and this fix; so it predates P7.
   It can fail CI at random. Its fix waits for the owner.
+
+### Phase P8: the `v1.10.1` release (2026-10-08)
+
+* **The release commit** is `0589232491cba47ee916b2a31ce7e31f05805eb1`
+  (Deviation D7), not `dbf19ef`, whose CI run 37713627683 failed
+  `validate (windows-2025)`.
+* **Step 1:** CI run 37716131684 on `main` at `0589232`: every job
+  passed (`validate` on Ubuntu, macOS and Windows, `installer-containers`,
+  both release rehearsals with their ten identity legs, and
+  `release-rehearsal-check`).
+* **Step 2:** the live tests are P1's and P5's, recorded in their phases.
+* **Step 3,** on the owner's ask ("Tag v1.10.1"):
+  `scripts/check-release-tag.sh v1.10.1` exited 0; `git tag -a v1.10.1 -m
+  v1.10.1 0589232`; the disclosure guard over the tag exited 0; `git push
+  origin v1.10.1`.
+* **Step 4:** `git ls-remote origin 'refs/tags/v1.10.1^{}'` gives
+  `0589232491cba47ee916b2a31ce7e31f05805eb1`. The tag's CI run,
+  37718127201, passed every job; all ten identity legs print `v1.10.1
+  (release) 0589232491cb`.
+* **Step 6:** `GOPROXY=https://proxy.golang.org GOFLAGS=-mod=mod go list -m
+  -json github.com/maccavelli/go-selfupdate-lib@v1.10.1` gives `v1.10.1`,
+  `Time` `2026-10-08T02:01:50Z`, `Origin.Hash` the release commit;
+  `@latest` resolves to `v1.10.1`.
+* **Step 5, the pin commit,** `<40-hex> # v1.10.1` for every pin:
+  * `README.md`: the status's current release, the `go get` line, the
+    publish example's pin;
+  * `docs/architecture.md`: the current release and its commit;
+  * the building guide: "the examples below pin `v1.10.1`'s"; the build
+    and publish pins in step 4 and the extras example's build pin; the
+    `ls-remote` example; and §12's requirement, which named the pinned
+    version as `v1.10.0`, now reads "the version the workflow is pinned
+    to, at least `v1.10.0`";
+  * the migration guide: the six `go get` lines and the four `go list`
+    checks; §2's current release, with a sentence that `v1.10.1` changes
+    no API and links its section; §3's pin, its `ls-remote` example, and
+    a sentence on `v1.10.1`'s workflow changes; §5's `go.mod` step.
+  * Kept, as each section's statements about its own release: §2's list
+    of releases that only add, §3's sentence on `v1.10.0`'s archive
+    check, §6's list of what later releases add, §10's opening and its
+    "Move both to `v1.10.0` together", and the v1.10.1 section's own
+    lines.
+* **Step 7,** the live installer rehearsal, was not asked for, and was not
+  run.

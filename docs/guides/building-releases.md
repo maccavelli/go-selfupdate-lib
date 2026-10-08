@@ -23,7 +23,7 @@ The pieces:
   12).
 
 Both workflows are pinned to the same commit of this repository; the
-examples below pin `v1.10.0`'s.
+examples below pin `v1.10.1`'s.
 
 ## 1. Write the spec
 
@@ -158,7 +158,7 @@ permissions:
 
 jobs:
   build:
-    uses: maccavelli/go-selfupdate-lib/.github/workflows/build-selfupdate-release.yml@a0a26b6ecf66f51c19e9fea0f665c76ca5e99e4c # v1.10.0
+    uses: maccavelli/go-selfupdate-lib/.github/workflows/build-selfupdate-release.yml@0589232491cba47ee916b2a31ce7e31f05805eb1 # v1.10.1
     with:
       spec-path: internal/updateclient/selfupdate-release.json
 
@@ -169,7 +169,7 @@ jobs:
       contents: write
       id-token: write
       attestations: write
-    uses: maccavelli/go-selfupdate-lib/.github/workflows/publish-selfupdate-release.yml@a0a26b6ecf66f51c19e9fea0f665c76ca5e99e4c # v1.10.0
+    uses: maccavelli/go-selfupdate-lib/.github/workflows/publish-selfupdate-release.yml@0589232491cba47ee916b2a31ce7e31f05805eb1 # v1.10.1
     with:
       artifact-name: ${{ needs.build.outputs.artifact-name }}
       products-json: ${{ needs.build.outputs.products-json }}
@@ -180,7 +180,7 @@ jobs:
 
 - **Pin both to the full commit SHA of a release tag,** as the publish
   workflow has always required. Tags are annotated; resolve the commit with
-  `git ls-remote https://github.com/maccavelli/go-selfupdate-lib 'refs/tags/v1.10.0^{}'`.
+  `git ls-remote https://github.com/maccavelli/go-selfupdate-lib 'refs/tags/v1.10.1^{}'`.
 - **The build job needs only `contents: read`.** A called workflow cannot
   raise its token beyond what the calling workflow grants, so grant at
   least that.
@@ -229,7 +229,7 @@ in its own job, and name the artifact:
 
   build:
     needs: apk
-    uses: maccavelli/go-selfupdate-lib/.github/workflows/build-selfupdate-release.yml@a0a26b6ecf66f51c19e9fea0f665c76ca5e99e4c # v1.10.0
+    uses: maccavelli/go-selfupdate-lib/.github/workflows/build-selfupdate-release.yml@0589232491cba47ee916b2a31ce7e31f05805eb1 # v1.10.1
     with:
       spec-path: internal/updateclient/selfupdate-release.json
       extras-artifact-name: extras
@@ -340,8 +340,8 @@ repository's templates with your products, platforms, formats, channels,
 repository and tag. They are extras: published and attested with the
 release, and not listed in `SHA256SUMS`.
 
-Your program's module must require `v1.10.0` or later, the version the
-workflow is pinned to: an older `releasespec.Parse` refuses the spec's
+Your program's module must require the version the workflow is pinned
+to, at least `v1.10.0`: an older `releasespec.Parse` refuses the spec's
 `installer` field, and the shipped program cannot update itself. Move
 `go.mod` and both pins together.
 

@@ -16,8 +16,8 @@ It also hosts the two reusable GitHub Actions workflows that programs using
 
 The module requires Go 1.27.1 and three modules: `golang.org/x/mod v0.40.0`,
 `golang.org/x/sys v0.47.0` and `golang.org/x/term v0.43.0`. Its current
-release is `v1.10.0`, an annotated tag on commit
-`a0a26b6ecf66f51c19e9fea0f665c76ca5e99e4c`. `v1.5.0`, the first under this
+release is `v1.10.1`, an annotated tag on commit
+`0589232491cba47ee916b2a31ce7e31f05805eb1`. `v1.5.0`, the first under this
 path, is the annotated tag on commit
 `6deaa524cfb28aad90bea97a6d9162e5b4257204`.
 
