@@ -73,7 +73,8 @@ every file the module builds, and every rewrite is a behaviour-preserving
 form valid at the module's language version.
 
 1. `CGO_ENABLED=0 GOOS=<os> go fix ./...` runs for darwin, linux and
-   windows, in that order, and nothing else edits the code.
+   windows, in that order, ~~and nothing else edits the code~~ and one
+   hand-written line follows it (Amendment A1).
 2. The result lands as one commit, apart from this record's commit.
 3. No release follows from this record. The change reaches consumers with
    the next release that has its own reason.
@@ -124,6 +125,27 @@ form valid at the module's language version.
 * Good, because nothing changes.
 * Bad, because the gap grows with every Go release, and the owner asked for
   the change.
+
+## Amendments
+
+### A1 (2026-10-09): one line `go fix` writes fails errcheck
+
+* **Found in PLAN F1:** `go fix` rewrote
+  `internal/cmd/selfupdate-release/main.go:83` to
+  `if _, ok := errors.AsType[usageError](err); ok {`. Lint failed on it
+  for linux, darwin and windows: "Error return value of `errors.AsType`
+  is not checked (errcheck)". `.golangci.yml:216` sets errcheck's
+  `check-blank: true`, and `usageError` implements `error`, so the blank
+  first result counts as an unchecked error. The old two-line form passed.
+* **Decision (the owner, 2026-10-09, "One-line hand form"):** that line
+  is written by hand as `if errors.As(err, new(usageError)) {`. It has the
+  same behaviour, `go fix` does not propose a change to it, and errcheck
+  accepts it.
+* **What this changes:** "nothing else edits the code" in Decision
+  Outcome item 1 becomes "one hand-written line follows it". The 19 files
+  and every Confirmation item stay as they were.
+* **Not chosen:** keeping `main.go` unchanged (V1 would fail on it), and
+  exempting `errors.AsType` from errcheck (a gate change for one line).
 
 ## More Information
 

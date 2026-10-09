@@ -27,7 +27,8 @@ Associated MADR: [0019-MADR-apply-go-fix-modernizers.md](0019-MADR-apply-go-fix-
 
 * **Hand edits to the code.** If a check fails on `go fix`'s output, the
   phase stops (see Rollout and Rollback); nothing is fixed by hand inside
-  F1.
+  F1. *Amended by Deviation D1: one line, `main.go:83`, is written by
+  hand.*
 * **New lint rules** (for example golangci-lint's `modernize`) to keep the
   idiom. That is a decision of its own.
 * **A release, the migration guide and the pins.** No exported API or
@@ -127,3 +128,30 @@ Associated MADR: [0019-MADR-apply-go-fix-modernizers.md](0019-MADR-apply-go-fix-
 * The owner then decided "we will not be using a branch. we will continue
   to commit and push to main." (see Rules).
 * The owner approved execution: "proceed".
+
+### Deviation D1 (2026-10-09): one `go fix` line fails errcheck
+
+* **Found:** after F1 steps 1–6 held (each `go fix` run exited 0, the three
+  `-diff` runs were empty, the file list matched the 19 files exactly,
+  the diff matched the MADR's table, `gofmt -l` was empty),
+  `make pre-add-check` exited 2 and `make gate` ended `overall=1` on `lint`:
+
+  ```text
+  internal/cmd/selfupdate-release/main.go:83:5: Error return value of `errors.AsType` is not checked (errcheck)
+  	if _, ok := errors.AsType[usageError](err); ok {
+  ```
+
+  The same line failed for linux, darwin and windows. Every other gate
+  step passed, `apicheck` "compatible with v1.12.1" included. The failure
+  is new with `go fix`'s output.
+* **Tried on a scratch copy of the tree,** not in the tree: with
+  `if errors.As(err, new(usageError)) {` at that line, `go fix -diff` on
+  the package was empty, golangci-lint exited 0, both for each of the three
+  OSes, and `go test ./internal/cmd/selfupdate-release/` passed.
+* **Decision (the owner):** "One-line hand form". MADR Amendment A1
+  records it.
+* **Scope change:** F1's commit is the 19 files, as before, with that one
+  line written by hand after the three `go fix` runs. The F1 rule "nothing
+  is fixed by hand inside F1" is amended for this line only. F1 resumes at
+  step 3 (each OS's `go fix -diff` empty) and runs every step after it
+  again.
