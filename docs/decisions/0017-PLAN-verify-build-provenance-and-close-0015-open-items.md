@@ -2060,3 +2060,40 @@ reports it compatible with `v1.12.0`.
   renames a binary still held to `<name>.exe.bad-<guid>`. The installers
   of `v1.10.0` to `v1.12.0` carry the defect; a program ships the fix by
   moving both workflows' pins to `v1.12.1`.
+
+### `v1.12.1`, the release (2026-10-09)
+
+* **The release commit** is `e8116a2319bb17ab61eb35e485e371d4e847f6a9`, Q5's.
+* **Step 1:** CI run 37879404285 on `main` at `e8116a2` passed all 17
+  jobs. `check-installers: clean` held for the templates as written and as
+  both rehearsals staged them.
+* **Step 2:** Q4's tests on the Windows test host, recorded in Q4.
+* **Step 3,** on the owner's ask ("Tag v1.12.1 and proceed"):
+  * `scripts/check-release-tag.sh v1.12.1` exited 0;
+  * `git tag -a v1.12.1 -m v1.12.1 e8116a2`;
+  * the disclosure guard over the tag exited 0;
+  * `git push origin v1.12.1`.
+* **Step 4:**
+  * `git ls-remote origin 'refs/tags/v1.12.1^{}'` gives
+    `e8116a2319bb17ab61eb35e485e371d4e847f6a9`;
+  * the tag's CI run, 37880297981, passed all 17 jobs; all ten identity
+    legs print `v1.12.1 (release) e8116a2319bb`.
+* **Step 6:** the proxy gives `v1.12.1`, `Time` `2026-10-09T03:25:53Z`,
+  `Origin.Hash` the release commit, `Ref` `refs/tags/v1.12.1`; `@latest`
+  resolves to `v1.12.1`.
+* **Step 5, the pin commit,** `e8116a23… # v1.12.1` for every pin:
+  * `README.md`: the current release, the `go get` line, the publish
+    example's pin;
+  * `docs/architecture.md`: the current release and its commit;
+  * the building guide: "the examples below pin `v1.12.1`'s", the three
+    workflow pins, the `ls-remote` example;
+  * the migration guide:
+    * §2's current release, and eight `go get` lines (the `v1.12.1`
+      section's own is already `v1.12.1`);
+    * §3's pin, its `ls-remote` example, and the sentence that `v1.11.0`
+      to `v1.12.1` change nothing in the publish workflow (`git diff
+      v1.12.0 v1.12.1` of it is empty);
+    * §5's `go.mod` step, and six `go list` checks.
+  * Kept: the lines that state what `v1.12.0` itself changed.
+* **Step 7,** the live installer rehearsal, was not asked for, and was not
+  run.
