@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: in-progress
 date: 2026-10-09
 associated-madr: "0020-MADR-precheck-gofmt-errors-and-replace-before-stop.md"
 ---
@@ -555,3 +555,15 @@ release commit S4's:
   it. A defect is fixed in `v1.13.1`. A consumer that hits one unsets the
   option, which restores today's flow without a downgrade.
 * **A deviation in any phase** stops it, by rule 4.
+
+## Execution record
+
+### Approval (2026-10-09)
+
+* The owner committed the MADR, this PLAN and the two index rows
+  (`82b8463`), and approved execution: "i committed, proceed."
+
+### S0 (2026-10-09)
+
+* The records are `82b8463`, the owner's commit. This entry, the status
+  `in-progress` and the index row follow in a records-only commit.

@@ -55,7 +55,7 @@ name, and the files they cite moved with the rename
 | 0019 | MADR | [Apply Go 1.27.2's `go fix` modernizers across every target OS, as one behaviour-preserving change](decisions/0019-MADR-apply-go-fix-modernizers.md) | accepted |
 | 0019 | PLAN | [Implement Go 1.27.2's `go fix` modernizers across every target OS](decisions/0019-PLAN-apply-go-fix-modernizers.md) | complete |
 | 0020 | MADR | [Fail the pre-add check when gofmt fails, and offer an opt-in replace-before-stop order for managed updates](decisions/0020-MADR-precheck-gofmt-errors-and-replace-before-stop.md) | accepted |
-| 0020 | PLAN | [Implement a pre-add check that fails when gofmt fails, and an opt-in replace-before-stop order](decisions/0020-PLAN-precheck-gofmt-errors-and-replace-before-stop.md) | proposed |
+| 0020 | PLAN | [Implement a pre-add check that fails when gofmt fails, and an opt-in replace-before-stop order](decisions/0020-PLAN-precheck-gofmt-errors-and-replace-before-stop.md) | in-progress |
 
 ## I want to…
 
