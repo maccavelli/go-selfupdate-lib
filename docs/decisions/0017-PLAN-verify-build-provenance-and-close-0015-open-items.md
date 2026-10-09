@@ -2026,3 +2026,37 @@ only these additions:
   * `make pre-add-check` on `installer_ps_test.go`: clean, with
     golangci-lint for windows;
   * `make gate`: every step `rc=0`, `overall=0`.
+
+### Phase Q5: the `v1.12.1` release commit (2026-10-09)
+
+* **The migration guide:**
+  * `### From v1.12.0 to v1.12.1` inside §12, before its `### Check`, in
+    the `v1.11.1` section's shape: the `go get …@v1.12.1` line, "changes
+    no API", the behaviour change, the advice to move both workflows'
+    pins, and its check;
+  * the intro names `v1.12.1`.
+* **The building guide's installer section,** "Check the identity": a new
+  binary with no earlier copy is removed, or on Windows renamed
+  `<product>.exe.bad-<guid>` when still held after 2 s, since `v1.12.1`.
+* **The MADR:** A3 was set accepted at approval.
+* **The full apidiff report** against `v1.12.0` printed only its
+  "Ignoring internal package" lines: no exported change.
+  `git diff --stat v1.12.0 HEAD` of the Go files, the workflows and the
+  templates lists only `install.ps1` and `installer_ps_test.go`.
+
+### Release notes for v1.12.1 (2026-10-09)
+
+`v1.12.1` fixes the Windows installer, and changes no API: `make apicheck`
+reports it compatible with `v1.12.0`.
+
+* **`install.ps1` no longer leaves a binary that failed its identity
+  check**
+  ([0017-MADR](0017-MADR-verify-build-provenance-and-close-0015-open-items.md)
+  A3). For a product with no earlier copy, the new binary was deleted with
+  one silent `Remove-Item`. Windows can keep the image of the program the
+  identity check has just run mapped for a moment, so the delete could
+  fail, and the binary stayed under its own name while the run exited 2.
+  It now waits up to 2 s, as the branch with an earlier copy did, and
+  renames a binary still held to `<name>.exe.bad-<guid>`. The installers
+  of `v1.10.0` to `v1.12.0` carry the defect; a program ships the fix by
+  moving both workflows' pins to `v1.12.1`.

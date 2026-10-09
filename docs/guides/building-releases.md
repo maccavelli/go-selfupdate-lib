@@ -420,7 +420,10 @@ is no race and no rate limit.
   overwritten.
 - **Check the identity** of each product with `identity_args`: it must
   print `<tag> (release)` first. If it does not, the previous binaries are
-  put back.
+  put back, and a new binary with no earlier copy is removed. On Windows,
+  one that the identity check's process still holds after 2 s is renamed
+  `<product>.exe.bad-<guid>`, so it never keeps its name (since
+  `v1.12.1`).
 - **PATH:** advice on Unix. On Windows the user PATH is updated, editing
   the registry value so `%VAR%` entries and its type are kept.
 

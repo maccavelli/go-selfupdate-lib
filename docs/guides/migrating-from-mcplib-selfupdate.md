@@ -35,7 +35,8 @@ its fixes are in [From v1.10.0 to v1.10.1](#from-v1100-to-v1101).
 [11. From v1.10 to v1.11](#11-from-v110-to-v111). `v1.11.1` changes no
 API; its fixes are in [From v1.11.0 to v1.11.1](#from-v1110-to-v1111).
 `v1.12.0` only adds to the API: see
-[12. From v1.11 to v1.12](#12-from-v111-to-v112).
+[12. From v1.11 to v1.12](#12-from-v111-to-v112). `v1.12.1` changes no
+API; its fix is in [From v1.12.0 to v1.12.1](#from-v1120-to-v1121).
 
 Replace every `github.com/maccavelli/mcplib/selfupdate` import with
 `github.com/maccavelli/go-selfupdate-lib/selfupdate`. No identifier or signature
@@ -876,6 +877,29 @@ an update that was interrupted. `make apicheck` reports it compatible with
 
 - **Nothing else changes:** the journal is written whatever you adopt, and
   a program that adopts neither keeps working.
+
+### From v1.12.0 to v1.12.1
+
+```bash
+go get github.com/maccavelli/go-selfupdate-lib@v1.12.1
+```
+
+`v1.12.1` fixes the Windows installer and changes no API: `make apicheck`
+reports it compatible with `v1.12.0`. What changed, and why, is in
+[0017-MADR](../decisions/0017-MADR-verify-build-provenance-and-close-0015-open-items.md), amendment A3.
+
+**Behaviour change:**
+
+- **`install.ps1`, when the identity check fails** for a product with no
+  earlier copy, no longer leaves the new binary installed. Windows can
+  keep the image of a program that has just run mapped for a moment, and
+  the one silent delete could fail. The installer now waits up to 2 s for
+  it, and if it is still held, renames it to `<name>.exe.bad-<guid>`. The
+  installers from `v1.10.0` to `v1.12.0` carry the defect; move both
+  workflows' pins to `v1.12.1` so your releases ship the fixed one.
+
+**Check:** `go list -m github.com/maccavelli/go-selfupdate-lib` gives
+`v1.12.1`.
 
 ### Check
 
