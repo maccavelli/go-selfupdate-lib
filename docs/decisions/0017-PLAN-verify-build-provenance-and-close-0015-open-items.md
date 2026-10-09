@@ -1946,3 +1946,41 @@ only these additions:
   go1.27.2` line, from `v1.11.1`, builds CI and the release tools with Go
   1.27.2
   ([0018-MADR](0018-MADR-move-toolchain-to-go-1-27-2.md)).
+
+### `v1.12.0`, the release (2026-10-09)
+
+* **The release commit** is `247a2b644b0594a16041e091e4769e43e4f6e639`, Q3's.
+* **Step 1:** CI run 37875983588 on `main` at `247a2b6` passed all 17
+  jobs.
+* **Step 2:** the live tests are Q0's, Q1's and Q2's, recorded in their
+  phases.
+* **Step 3,** on the owner's ask ("Push tag v1.12.0 then proceed"):
+  * `scripts/check-release-tag.sh v1.12.0` exited 0;
+  * `git tag -a v1.12.0 -m v1.12.0 247a2b6`;
+  * the disclosure guard over the tag exited 0;
+  * `git push origin v1.12.0`.
+* **Step 4:**
+  * `git ls-remote origin 'refs/tags/v1.12.0^{}'` gives
+    `247a2b644b0594a16041e091e4769e43e4f6e639`;
+  * the tag's CI run, 37876959811, passed all 17 jobs; all ten identity
+    legs print `v1.12.0 (release) 247a2b644b05`.
+* **Step 6:** the proxy gives `v1.12.0`, `Time` `2026-10-09T02:38:20Z`,
+  `Origin.Hash` the release commit, `Ref` `refs/tags/v1.12.0`; `@latest`
+  resolves to `v1.12.0`.
+* **Step 5, the pin commit,** `247a2b64… # v1.12.0` for every pin:
+  * `README.md`: the current release, the `go get` line, the publish
+    example's pin;
+  * `docs/architecture.md`: the current release and its commit;
+  * the building guide: "the examples below pin `v1.12.0`'s", the three
+    workflow pins, the `ls-remote` example;
+  * the migration guide:
+    * §2's current release, and seven `go get` lines (the `v1.11.1`
+      section keeps its own);
+    * §3's pin, its `ls-remote` example, and the sentence that `v1.11.0`,
+      `v1.11.1` and `v1.12.0` change nothing in the publish workflow
+      (`git diff v1.11.1 v1.12.0` of both workflows, `go.mod` and
+      `internal/cmd` is empty);
+    * §5's `go.mod` step, and five `go list` checks.
+  * Kept: the lines that state what `v1.11.1` itself changed.
+* **Step 7,** the live installer rehearsal, was not asked for, and was not
+  run.
