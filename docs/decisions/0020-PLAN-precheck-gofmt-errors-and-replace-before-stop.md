@@ -794,3 +794,90 @@ release commit S4's:
      `#replace-before-the-stop` anchor included;
    * identifiers: 0 findings;
    * markdownlint: "0 issues".
+
+### S5, `v1.13.0` (2026-10-09)
+
+* **The release commit** is `5e199c831b5691ea687943e3c3fd495d50c739ed`, S4's.
+* **Step 1:** CI run 37976906986 on `main` at `5e199c8` passed all 17
+  jobs. Its live steps ran the new tests:
+  * launchd, `validate (macos-15)`: `TestLiveReplaceBeforeStop` (10.56s)
+    and `TestLiveReplaceBeforeStopHealthFailure` (25.61s);
+  * systemd, `validate (ubuntu-24.04)`: system scope (1.78s, 1.75s) and
+    user scope (1.48s, 1.46s);
+  * SCM, `validate (windows-2025)`: (4.34s, 4.27s).
+* **Step 2:** the live records are S2 step 12's and S3's.
+* **Step 3, the tag,** was made and pushed by the owner. Verified:
+  * `v1.13.0` is an annotated tag (`git cat-file -t` gives `tag`), object
+    `0a121fbc2001f7013cac58f65399ab72fef6f47d`, peeled to `5e199c8`;
+  * `scripts/check-release-tag.sh v1.13.0` exits 0.
+* **Step 4:**
+  * `git ls-remote origin 'refs/tags/v1.13.0^{}'` gives
+    `5e199c831b5691ea687943e3c3fd495d50c739ed`, and `refs/heads/main`
+    gives the same commit;
+  * the tag's CI run, 37979214344, passed all 17 jobs; all ten identity
+    legs print `v1.13.0 (release) 5e199c831b56`.
+* **Step 6:**
+  * `GOPROXY=https://proxy.golang.org GOFLAGS=-mod=mod go list -m -json
+    github.com/maccavelli/go-selfupdate-lib@v1.13.0` gives `v1.13.0`,
+    `Time` `2026-10-09T18:41:40Z`, `Origin.Hash` the release commit and
+    `Ref` `refs/tags/v1.13.0`;
+  * `@latest` resolves to `v1.13.0`.
+* **Step 5, the pin commit.**
+  * **Candidates:** 39 lines, from
+    `git grep -n 'v1\.12\.1\|e8116a2' -- README.md docs/architecture.md docs/guides`.
+  * **Preconditions:** `git diff v1.12.1 v1.13.0` of both release
+    workflows and the installer templates is empty; only `ci.yml`
+    changed.
+  * **Changed,** 31 lines, to `5e199c83… # v1.13.0` or `v1.13.0`:
+    * `README.md:24` (the current release), `:28` (`go get`), `:126` (the
+      publish pin);
+    * `docs/architecture.md:23-24`, the current release and its commit;
+    * the building guide: `:26` ("the examples below pin"), `:161`,
+      `:172` and `:250` (the workflow pins), `:183` (the `ls-remote`
+      example);
+    * the migration guide:
+      * `:23` (`go get`) and `:26` (current release);
+      * `:39` gains "`v1.13.0` only adds to the API: see [13. …]";
+      * `:90` (§3's pin), `:108` ("`v1.11.0` to `v1.13.0` change
+        nothing in it"), `:110` ("the example pins") and `:113`
+        (`ls-remote`);
+      * `:159` (§5's `go.mod`);
+      * seven `go get` lines (`:378`, `:465`, `:509`, `:561`, `:606`,
+        `:710`, `:821`);
+      * six `go list` checks (`:504`, `:556`, `:600`, `:702`, `:815`,
+        `:906`).
+  * **Kept,** 9 lines that state what `v1.12.1` itself is or changed:
+    * the building guide `:426` ("since `v1.12.1`");
+    * the migration guide `:38-39` (the summary of `v1.12.1`);
+    * its section `### From v1.12.0 to v1.12.1`, with its own `go get`,
+      its text, its pin advice and its check;
+    * §13's "compatible with `v1.12.1`".
+* **Step 8:** the live installer rehearsal was not asked for, and was not
+  run.
+
+### Release notes for v1.13.0 (2026-10-09)
+
+`v1.13.0` adds an opt-in order for managed updates. `make apicheck` reports
+it compatible with `v1.12.1`.
+
+* **`ManagedOptions.ReplaceBeforeStop`,** through
+  `NewManagedInstallerWith`: a running service's binary is replaced while
+  the old instance still runs, then the service is stopped, reconciled,
+  started and checked.
+  * A replacement or post-install probe that fails then costs no
+    downtime.
+  * A failed stop rolls the binary back too.
+  * The default order is unchanged.
+  * Use it only for a service that never starts its own executable while
+    it runs, and whose stop hooks do not run it. The extending guide's
+    "Replace before the stop" has the conditions.
+* **The JSON result is schema 4:** `replaced_before_stop`, with
+  `Result.ReplacedBeforeStop` and `InstallResult.ReplacedBeforeStop`. The
+  key is the only change.
+* **Tooling, not in the API:**
+  * the pre-add check fails when gofmt itself fails;
+  * the no-list path no longer hands gofmt a tracked file the work tree
+    lacks;
+  * CI's gofmt line fails on its own.
+* **Records:** this PLAN and its MADR. MADR 0011's replace-before-stop
+  candidate, and report 0016, are decided.

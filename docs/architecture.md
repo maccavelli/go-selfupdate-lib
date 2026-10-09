@@ -20,8 +20,8 @@ The module requires Go 1.27.1 and three modules: `golang.org/x/mod v0.40.0`,
 build with Go 1.27.2, which fixes ten advisories in 1.27.1's standard
 library ([0018-MADR](decisions/0018-MADR-move-toolchain-to-go-1-27-2.md)).
 Its current
-release is `v1.12.1`, an annotated tag on commit
-`e8116a2319bb17ab61eb35e485e371d4e847f6a9`. `v1.5.0`, the first under this
+release is `v1.13.0`, an annotated tag on commit
+`5e199c831b5691ea687943e3c3fd495d50c739ed`. `v1.5.0`, the first under this
 path, is the annotated tag on commit
 `6deaa524cfb28aad90bea97a6d9162e5b4257204`.
 
