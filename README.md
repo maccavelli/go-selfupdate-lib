@@ -19,7 +19,9 @@ Module: `github.com/maccavelli/go-selfupdate-lib`
 
 ## Status
 
-The module requires Go 1.27.1. The current release is `v1.11.0`. `v1.5.0` was
+The module requires Go 1.27.1, and is built and tested with Go 1.27.2 (its
+`toolchain` line), whose standard library has no published advisory; build
+your program with 1.27.2 too. The current release is `v1.11.0`. `v1.5.0` was
 the first under this path:
 
 ```bash

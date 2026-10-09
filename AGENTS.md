@@ -25,7 +25,9 @@ release tools that the workflows run from source; they are never released.
 directories, and each `selfupdate` subpackage lives in a directory under
 `selfupdate/`, named after it, or under `selfupdate/verify/` for a
 verifier; there is no root package. Unexported helpers
-shared between packages live under `internal/`. Requires Go 1.27.1.
+shared between packages live under `internal/`. Requires Go 1.27.1; built
+and tested with Go 1.27.2, the `toolchain` line in `go.mod`
+(`docs/decisions/0018-MADR-move-toolchain-to-go-1-27-2.md`).
 
 ## Dependencies
 

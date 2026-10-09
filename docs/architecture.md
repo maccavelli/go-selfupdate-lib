@@ -15,7 +15,11 @@ It also hosts the two reusable GitHub Actions workflows that programs using
 `selfupdate` build and publish their releases through.
 
 The module requires Go 1.27.1 and three modules: `golang.org/x/mod v0.40.0`,
-`golang.org/x/sys v0.47.0` and `golang.org/x/term v0.43.0`. Its current
+`golang.org/x/sys v0.47.0` and `golang.org/x/term v0.43.0`. `go.mod`'s
+`toolchain go1.27.2` line makes CI and the publish workflow's release tools
+build with Go 1.27.2, which fixes ten advisories in 1.27.1's standard
+library ([0018-MADR](decisions/0018-MADR-move-toolchain-to-go-1-27-2.md)).
+Its current
 release is `v1.11.0`, an annotated tag on commit
 `a0612daab7ce70eec370a4b2cd55fc72ab8bf6e7`. `v1.5.0`, the first under this
 path, is the annotated tag on commit

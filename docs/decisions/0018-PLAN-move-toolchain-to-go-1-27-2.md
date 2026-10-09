@@ -70,10 +70,16 @@ rule 7 changes here: `go.mod` gains a `toolchain` line in T2, and
 
 ### Phase T1: the hosts
 
-*The owner moved this Mac and the WSL distribution to Go 1.27.2
-(2026-10-08: "Im moving the environment to 1.27.2"). On the owner's
-answer ("Yes, move them"), the agent moves the Linux test host and the
-Windows test host by steps 1–6. Step 7's checks run on all four.*
+*The hosts are moved by the owner's dotfiles repository, under its own
+records: `docs/decisions/0011-MADR-upgrade-homedir-go-toolchain-to-1.27.2.md`
+and its PLAN (P2 for this Mac, P3 for the Linux test host, P4 for the
+Windows test host). That plan also sets the Linux host's `PATH` line and
+reinstalls eleven Go tools. This Mac and the WSL distribution were on
+1.27.2 on 2026-10-08. The agent first answered "Yes, move them" for the
+two test hosts, then found that plan under way, and the owner chose that
+it moves them ("Dotfiles plan moves them"). Steps 1–6 below are therefore
+not run by this PLAN. The agent runs step 7's checks, read-only, on each
+host once the owner says P3 and P4 are done.*
 
 For each host, in this order: this Mac, the Linux test host, the Windows
 test host, its default WSL distribution.
@@ -208,3 +214,41 @@ them". On that day:
 
 * This pair, and the two rows in `docs/README.md`.
 * 0017-PLAN gains its Q2 record and Deviation D4.
+
+### Phase T1: the hosts (2026-10-08)
+
+* **This Mac:** `go version go1.27.2 darwin/arm64`, `GOTOOLCHAIN` `go1.27.2`,
+  `~/.local/bin/go` → `~/.local/go1.27.2/bin/go`. The owner moved it,
+  under the dotfiles plan's P2.
+* **The WSL distribution:** `go1.27.2`, `GOTOOLCHAIN` `go1.27.2`.
+* **The Linux test host and the Windows test host:** still `go1.27.1` on
+  2026-10-08. The dotfiles plan's P3 and P4 move them, and step 7's checks
+  wait for the owner to say they are done.
+
+### Phase T2: the `toolchain` line, and CI on release branches (2026-10-08)
+
+* **Commit:** `355dd3d`, holding the two files only:
+  * `go.mod` gains `toolchain go1.27.2`, after `go 1.27.1`;
+  * `ci.yml`'s `on.push.branches` is `[main, 'release/**']`, with a
+    comment citing 0018-MADR.
+* **Red:** 0017 Q2's gate, `vuln rc=2`, on Go 1.27.1.
+* **Checks,** on this Mac with Go 1.27.2:
+  * `go mod tidy -diff`: clean;
+  * actionlint v1.7.12 on `ci.yml`: clean;
+  * `scripts/check-workflows.sh`, as CI runs it: with no arguments, and
+    with `--rule expressions`, `--rule permissions` and `--rule pins` on
+    `ci.yml`, each `rc=0`;
+  * `make gate`: every step `rc=0`, `vuln` "No vulnerabilities found.",
+    `overall=0`.
+
+### Phase T3: the docs that name the toolchain (2026-10-08)
+
+* `git grep -n '1\.27\.1' -- AGENTS.md README.md docs/architecture.md docs/guides`
+  listed seven lines. These changed:
+  * `AGENTS.md:28`: "Requires Go 1.27.1; built and tested with Go 1.27.2,
+    the `toolchain` line in `go.mod`", citing 0018-MADR;
+  * `README.md:22`: the same, and "build your program with 1.27.2 too";
+  * `docs/architecture.md:17`: the `toolchain` line, what it moves, and
+    the ten advisories, linking 0018-MADR.
+* **Kept:** the migration guide's four lines (`:14`, `:16`, `:18`, `:155`),
+  which state a consumer's `go 1.27.1` floor.
