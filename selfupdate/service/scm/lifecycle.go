@@ -214,9 +214,9 @@ func (s *Service) startDependents(ctx context.Context, name string) error {
 	s.mu.Lock()
 	deps := slices.Clone(s.stoppedDeps[name])
 	s.mu.Unlock()
-	for i := len(deps) - 1; i >= 0; i-- {
-		if err := s.startOne(ctx, deps[i]); err != nil {
-			return fmt.Errorf("selfupdate: scm: start %s, which stopping %s stopped: %w", deps[i], name, err)
+	for _, dep := range slices.Backward(deps) {
+		if err := s.startOne(ctx, dep); err != nil {
+			return fmt.Errorf("selfupdate: scm: start %s, which stopping %s stopped: %w", dep, name, err)
 		}
 	}
 	s.mu.Lock()

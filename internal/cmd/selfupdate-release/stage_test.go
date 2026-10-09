@@ -98,7 +98,7 @@ func TestStageRaw(t *testing.T) {
 		t.Fatalf("SHA256SUMS: %v, %d entries", err, len(parsed))
 	}
 	var names []string
-	for _, line := range strings.Split(strings.TrimSuffix(string(data), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSuffix(string(data), "\n"), "\n") {
 		names = append(names, line[66:])
 	}
 	if !sort.StringsAreSorted(names) {

@@ -645,8 +645,7 @@ func (s *GitHubSource) do(ctx context.Context, rawURL, accept string, cred *Cred
 	if err != nil {
 		// A refused redirect, or a failure on the redirected hop, names the
 		// redirect URL, whose query can be a signature (0010-MADR A5).
-		var ue *url.Error
-		if errors.As(err, &ue) {
+		if ue, ok := errors.AsType[*url.Error](err); ok {
 			ue.URL = redactURL(ue.URL)
 		}
 		return nil, err

@@ -204,8 +204,7 @@ func (c *Checker) CheckCached(ctx context.Context, cr CheckRequest, store CheckS
 		}
 		return fresh, cerr
 	}
-	var rl *RateLimitError
-	if errors.As(cerr, &rl) {
+	if rl, ok := errors.AsType[*RateLimitError](cerr); ok {
 		saved := rec
 		saved.Request = key
 		saved.NotBefore = notBefore(now, rl)

@@ -77,8 +77,7 @@ func runExec(ctx context.Context, c Command) (Output, error) {
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return out, fmt.Errorf("selfupdate: service: %s: %w", filepath.Base(c.Path), ctxErr)
 	}
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
+	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 		out.ExitCode = exitErr.ExitCode()
 		return out, nil
 	}

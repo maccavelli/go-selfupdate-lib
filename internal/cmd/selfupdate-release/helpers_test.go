@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -29,10 +30,8 @@ var host = selfupdate.Platform{OS: runtime.GOOS, Arch: runtime.GOARCH}
 // host's.
 func testPlatforms() []selfupdate.Platform {
 	out := []selfupdate.Platform{{OS: "linux", Arch: "amd64"}, {OS: "darwin", Arch: "arm64"}, {OS: "windows", Arch: "amd64"}}
-	for _, p := range out {
-		if p == host {
-			return out
-		}
+	if slices.Contains(out, host) {
+		return out
 	}
 	return append(out, host)
 }

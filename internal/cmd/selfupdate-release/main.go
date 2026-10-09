@@ -80,8 +80,7 @@ func dispatch(ctx context.Context, args []string, stdout io.Writer) (int, string
 		return 0, ""
 	}
 	msg := fmt.Sprintf("selfupdate-release %s: %v", args[0], err)
-	var ue usageError
-	if errors.As(err, &ue) {
+	if errors.As(err, new(usageError)) {
 		return 2, msg
 	}
 	return 1, msg

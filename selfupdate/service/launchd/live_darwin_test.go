@@ -238,7 +238,7 @@ func signedAs(t *testing.T, path string) string {
 	if err != nil {
 		t.Fatalf("codesign -d: %v: %s", err, out)
 	}
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		if id, ok := strings.CutPrefix(line, "Identifier="); ok {
 			return id
 		}

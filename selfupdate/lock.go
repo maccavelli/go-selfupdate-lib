@@ -17,7 +17,7 @@ var lockOpenHook = func(stage string) {}
 // os.SameFile after opening (0003-MADR B5). lockOpenFlags, set per OS, are
 // ORed into the open flags.
 func openLockFile(root *os.Root, name string) (*os.File, error) {
-	for attempt := 0; attempt < 2; attempt++ {
+	for range 2 {
 		lockOpenHook("before-lstat")
 		pre, err := root.Lstat(name)
 		lockOpenHook("after-lstat")

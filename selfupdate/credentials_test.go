@@ -162,7 +162,7 @@ func TestCredentialLazy(t *testing.T) {
 	if prov.calls != 0 {
 		t.Fatal("the constructor asked the provider")
 	}
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		if _, err := src.Latest(context.Background()); err != nil {
 			t.Fatal(err)
 		}
@@ -275,7 +275,7 @@ func TestCredentialAcceptedOnce(t *testing.T) {
 		o.Credentials = &scripted{values: []Credential{bearer("good")}}
 		o.Observer = obs
 	})
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		if _, err := src.Latest(context.Background()); err != nil {
 			t.Fatal(err)
 		}
@@ -385,14 +385,12 @@ func TestCredentialConcurrent(t *testing.T) {
 	prov := &slowProvider{}
 	src := cs.source(t, func(o *GitHubOptions) { o.Credentials = prov })
 	var wg sync.WaitGroup
-	for i := 0; i < 8; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 8 {
+		wg.Go(func() {
 			if _, err := src.Latest(context.Background()); err != nil {
 				t.Error(err)
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	if got := prov.calls.Load(); got != 1 {

@@ -280,14 +280,14 @@ func jsonPaths(t reflect.Type, prefix string) []string {
 		return nil
 	}
 	var out []string
-	for i := range t.NumField() {
-		name, _, _ := strings.Cut(t.Field(i).Tag.Get("json"), ",")
+	for field := range t.Fields() {
+		name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
 		if name == "" || name == "-" {
 			continue
 		}
 		path := prefix + name
 		out = append(out, path)
-		out = append(out, jsonPaths(t.Field(i).Type, path+".")...)
+		out = append(out, jsonPaths(field.Type, path+".")...)
 	}
 	return out
 }

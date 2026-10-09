@@ -407,7 +407,7 @@ func (c *psCase) pathValue() (string, string, bool) {
 	if err != nil {
 		return "", "", false
 	}
-	for _, line := range strings.Split(string(out), "\r\n") {
+	for line := range strings.SplitSeq(string(out), "\r\n") {
 		f := strings.SplitN(strings.TrimSpace(line), "    ", 3)
 		if len(f) >= 2 && f[0] == "Path" {
 			if len(f) == 2 {

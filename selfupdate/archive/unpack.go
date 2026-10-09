@@ -291,7 +291,7 @@ func checkPortable(name, clean string) error {
 			return refuse("entry name %q is not printable ASCII", name)
 		}
 	}
-	for _, el := range strings.Split(clean, "/") {
+	for el := range strings.SplitSeq(clean, "/") {
 		if el != "." && el != ".." && (strings.HasSuffix(el, ".") || strings.HasSuffix(el, " ")) {
 			return refuse("entry name %q has an element ending in a dot or a space", name)
 		}

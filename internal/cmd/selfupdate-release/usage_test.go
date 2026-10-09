@@ -45,7 +45,7 @@ func TestUsageListsEveryFlag(t *testing.T) {
 		t.Fatalf("found no usage comment (%d bytes) or no subcommands (%v)", len(doc), flags)
 	}
 	lines := map[string]string{}
-	for _, line := range strings.Split(doc, "\n") {
+	for line := range strings.SplitSeq(doc, "\n") {
 		fields := strings.Fields(line)
 		if len(fields) >= 2 && fields[0] == "selfupdate-release" {
 			lines[fields[1]] = " " + strings.Join(fields[2:], " ") + " "

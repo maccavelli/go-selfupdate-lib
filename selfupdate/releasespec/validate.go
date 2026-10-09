@@ -128,7 +128,7 @@ func validatePath(p string) error {
 	if p == "." || !fs.ValidPath(p) {
 		return fmt.Errorf("not a clean relative slash path")
 	}
-	for _, elem := range strings.Split(p, "/") {
+	for elem := range strings.SplitSeq(p, "/") {
 		if elem == "." || strings.ContainsAny(elem, "\\:\x00") {
 			return fmt.Errorf("element %q is not allowed", elem)
 		}

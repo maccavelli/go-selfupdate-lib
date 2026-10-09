@@ -57,7 +57,7 @@ func build(ctx context.Context, in buildInput, log io.Writer) error {
 		return err
 	}
 	known := map[string]bool{}
-	for _, t := range strings.Fields(targets) {
+	for t := range strings.FieldsSeq(targets) {
 		known[t] = true
 	}
 	flags := ldflags(in.StampVersion, in.StampKind)
@@ -96,7 +96,7 @@ func requireBuildinfo(ctx context.Context, g goTool, dir string, env, tags []str
 	if err != nil {
 		return err
 	}
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		if strings.TrimSpace(line) == buildinfoPkg {
 			return nil
 		}

@@ -67,7 +67,7 @@ func TestManifestDifferential(t *testing.T) {
 		Error   string            `json:"error"`
 	}
 	results := map[string]pyResult{}
-	for _, line := range bytes.Split(bytes.TrimSpace(out), []byte("\n")) {
+	for line := range bytes.SplitSeq(bytes.TrimSpace(out), []byte("\n")) {
 		var r pyResult
 		if err := json.Unmarshal(line, &r); err != nil {
 			t.Fatalf("unreadable result %q: %v", line, err)
