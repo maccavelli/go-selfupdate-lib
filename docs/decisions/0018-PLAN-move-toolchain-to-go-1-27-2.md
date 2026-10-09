@@ -221,9 +221,24 @@ them". On that day:
   `~/.local/bin/go` → `~/.local/go1.27.2/bin/go`. The owner moved it,
   under the dotfiles plan's P2.
 * **The WSL distribution:** `go1.27.2`, `GOTOOLCHAIN` `go1.27.2`.
-* **The Linux test host and the Windows test host:** still `go1.27.1` on
-  2026-10-08. The dotfiles plan's P3 and P4 move them, and step 7's checks
-  wait for the owner to say they are done.
+* **The Linux test host and the Windows test host:** still `go1.27.1`
+  earlier on 2026-10-08. The dotfiles plan's P3 and P4 moved them.
+* **The check, on the owner's ask ("Verify go version on all hosts"),
+  2026-10-08:**
+
+  | Host | `go version` | `GOTOOLCHAIN` |
+  | :--- | :--- | :--- |
+  | this Mac | `go1.27.2 darwin/arm64` | `go1.27.2` |
+  | the Linux test host | `go1.27.2 linux/amd64` | `go1.27.2` |
+  | the Windows test host | `go1.27.2 windows/amd64` | `go1.27.2` |
+  | its WSL distribution | `go1.27.2 linux/amd64` | `go1.27.2` |
+
+  The Windows test host did not answer at first: ssh logged in, but even
+  `echo ok` did not return within a minute. Once the owner said it was
+  online, it answered at once.
+
+  Step 7's tool versions (`golangci-lint`, `govulncheck`) were not
+  checked; the owner asked for the Go version.
 
 ### Phase T2: the `toolchain` line, and CI on release branches (2026-10-08)
 
