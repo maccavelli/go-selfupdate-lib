@@ -99,12 +99,12 @@ func TestWarningsJSON(t *testing.T) {
 func TestDocumentWarnings(t *testing.T) {
 	res := Result{Product: "demo", CurrentVersion: "v1.0.0", Applied: true}
 	b, err := json.Marshal(res.Document())
-	if err != nil || strings.Contains(string(b), "warnings") || !strings.Contains(string(b), `"schema_version":3`) {
+	if err != nil || strings.Contains(string(b), "warnings") || !strings.Contains(string(b), `"schema_version":4`) {
 		t.Fatalf("no warnings: %s, %v", b, err)
 	}
 	res.Warnings = NewWarnings("unlock failed")
 	b, err = json.Marshal(res.Document())
-	if err != nil || !strings.HasSuffix(string(b), `"service_started":false,"warnings":["unlock failed"],"rolled_back":false,"probes_skipped":false}`) {
+	if err != nil || !strings.HasSuffix(string(b), `"service_started":false,"warnings":["unlock failed"],"rolled_back":false,"probes_skipped":false,"replaced_before_stop":false}`) {
 		t.Fatalf("with warnings: %s, %v", b, err)
 	}
 	var doc ResultDocument

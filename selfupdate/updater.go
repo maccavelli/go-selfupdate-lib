@@ -368,6 +368,7 @@ func (u *run) apply(ctx context.Context, req Request, result Result, target Targ
 	resultOut.PendingBackup = installed.PendingBackup
 	resultOut.Previous = installed.Previous
 	resultOut.RolledBack = installed.RolledBack
+	resultOut.ReplacedBeforeStop = installed.ReplacedBeforeStop
 	if installed.RolledBack {
 		u.reportOutcome(ctx, Event{Kind: EventRolledBack, Product: req.Product, Target: rel.Tag, Asset: sel.Binary.Name})
 	}

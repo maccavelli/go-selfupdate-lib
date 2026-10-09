@@ -182,6 +182,9 @@ type Result struct {
 	// running one did not run Config.Probes: this host cannot run that
 	// platform's binary (0015-MADR C9).
 	ProbesSkipped bool
+	// ReplacedBeforeStop reports what InstallResult.ReplacedBeforeStop
+	// reports (0020-MADR 4B).
+	ReplacedBeforeStop bool
 }
 
 // Repository is a GitHub owner/name pair.
@@ -491,6 +494,12 @@ type InstallResult struct {
 	// Previous is where the previous binary was kept at commit, when the
 	// installer keeps it.
 	Previous string
+	// ReplacedBeforeStop reports that the binary was replaced while the
+	// service still ran, before Stop: ManagedOptions.ReplaceBeforeStop was
+	// set and the service was running. It is reported on a failed install
+	// too, so a rollback can be read against the order
+	// (docs/decisions/0020-MADR-precheck-gofmt-errors-and-replace-before-stop.md).
+	ReplacedBeforeStop bool
 }
 
 // Installer resolves the target and begins a locked install session.

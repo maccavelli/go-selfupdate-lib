@@ -15,9 +15,11 @@
 // binary is replaced, is a warning, not a failure: the exit status stays 0,
 // stderr gets one "warning: …" line for each in either mode, and under
 // --json the result object's "result" carries them as its "warnings" array.
-// The result is schema_version 3: "rolled_back" says the previous binary
-// was restored after the new one was installed, and "probes_skipped" that a
-// dry run for another platform did not run the probes. Failing to write those lines, and a failing
+// The result is schema_version 4: "rolled_back" says the previous binary
+// was restored after the new one was installed, "probes_skipped" that a
+// dry run for another platform did not run the probes, and
+// "replaced_before_stop" that a managed install replaced the binary while
+// the service still ran. Failing to write those lines, and a failing
 // HandOff.Report, do fail the run; both come before the result object, so
 // its "exit_code" is always the process's.
 //

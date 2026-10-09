@@ -2,4 +2,4 @@
 {"kind":"fetching-release","product":"demo","current":"v1.0.0"}
 {"kind":"selected","product":"demo","current":"v1.0.0","target":"v1.1.0","asset":"{{asset}}"}
 {"kind":"declined","product":"demo","current":"v1.0.0","target":"v1.1.0","asset":"{{asset}}"}
-{"kind":"result","exit_code":0,"result":{"schema_version":3,"product":"demo","current_version":"v1.0.0","target_version":"v1.1.0","release_url":"https://github.invalid/releases/tag/v1.1.0","asset_name":"{{asset}}","operation":"upgrade","checked":false,"applied":false,"declined":true,"dry_run":false,"service_installed":false,"service_was_running":false,"service_started":false,"rolled_back":false,"probes_skipped":false}}
+{"kind":"result","exit_code":0,"result":{"schema_version":4,"product":"demo","current_version":"v1.0.0","target_version":"v1.1.0","release_url":"https://github.invalid/releases/tag/v1.1.0","asset_name":"{{asset}}","operation":"upgrade","checked":false,"applied":false,"declined":true,"dry_run":false,"service_installed":false,"service_was_running":false,"service_started":false,"rolled_back":false,"probes_skipped":false,"replaced_before_stop":false}}

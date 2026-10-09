@@ -304,6 +304,25 @@ func ExampleNewManagedInstallerFor() {
 	// Output: *selfupdate.ManagedInstaller
 }
 
+// ReplaceBeforeStop replaces a running service's binary before the stop, for
+// a service that never starts its own executable while it runs
+// (docs/decisions/0020-MADR-precheck-gofmt-errors-and-replace-before-stop.md).
+func ExampleNewManagedInstallerWith() {
+	inner, err := selfupdate.NewStandaloneInstaller(selfupdate.InstallOptions{})
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	managed, err := selfupdate.NewManagedInstallerWith(inner, exampleService{}, exampleDefinition{},
+		selfupdate.ManagedOptions{ReplaceBeforeStop: true})
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Printf("%T\n", managed)
+	// Output: *selfupdate.ManagedInstaller
+}
+
 // Document is the stable JSON form of a Result, for a --json flag.
 func ExampleResult_Document() {
 	res := selfupdate.Result{
@@ -316,7 +335,7 @@ func ExampleResult_Document() {
 		return
 	}
 	fmt.Println(string(out))
-	// Output: {"schema_version":3,"product":"demo","current_version":"v1.0.0","target_version":"v1.1.0","asset_name":"demo-linux-amd64","operation":"upgrade","checked":false,"applied":false,"declined":false,"dry_run":true,"service_installed":false,"service_was_running":false,"service_started":false,"rolled_back":false,"probes_skipped":false}
+	// Output: {"schema_version":4,"product":"demo","current_version":"v1.0.0","target_version":"v1.1.0","asset_name":"demo-linux-amd64","operation":"upgrade","checked":false,"applied":false,"declined":false,"dry_run":true,"service_installed":false,"service_was_running":false,"service_started":false,"rolled_back":false,"probes_skipped":false,"replaced_before_stop":false}
 }
 
 // exampleUpdater updates a stand-in binary in a temporary directory from

@@ -15,6 +15,23 @@ type ManagedInstaller struct {
 	inner Installer
 	life  Lifecycle
 	rec   Reconciler
+	opts  ManagedOptions
+}
+
+// ManagedOptions configure a ManagedInstaller. The zero value is the
+// default order: stop a running service, then replace its binary
+// (docs/decisions/0020-MADR-precheck-gofmt-errors-and-replace-before-stop.md).
+type ManagedOptions struct {
+	// ReplaceBeforeStop runs Apply, and InstallOptions.PostInstall's
+	// probe, while a running service still runs; then Stop, Reconcile,
+	// Start, WaitHealthy and Commit, as before. A failed Apply or probe
+	// then leaves the service running, untouched. Use it only when the
+	// service never starts its own executable while it runs, and no
+	// ExecStop-like hook runs it: those would run the new binary while
+	// the old instance runs. An unplanned restart in that window, such as
+	// systemd's Restart=, launchd's KeepAlive or an SCM failure action,
+	// starts the new binary before its health check.
+	ReplaceBeforeStop bool
 }
 
 // NewManagedInstaller wraps a standalone installer. life and rec are required.
@@ -27,8 +44,16 @@ func NewManagedInstaller(inner *StandaloneInstaller, life Lifecycle, rec Reconci
 
 // NewManagedInstallerFor wraps any Installer whose sessions implement
 // TwoPhaseSession; Begin refuses a session that does not. life and rec are
-// required (0004-MADR G7).
+// required (0004-MADR G7). It uses the default order, as
+// NewManagedInstallerWith does with zero ManagedOptions.
 func NewManagedInstallerFor(inner Installer, life Lifecycle, rec Reconciler) (*ManagedInstaller, error) {
+	return NewManagedInstallerWith(inner, life, rec, ManagedOptions{})
+}
+
+// NewManagedInstallerWith is NewManagedInstallerFor with options: opts
+// chooses the order of the binary replacement and the service stop
+// (0020-MADR 4B).
+func NewManagedInstallerWith(inner Installer, life Lifecycle, rec Reconciler, opts ManagedOptions) (*ManagedInstaller, error) {
 	if isNil(inner) {
 		return nil, fmt.Errorf("selfupdate: managed installer requires an installer")
 	}
@@ -40,7 +65,7 @@ func NewManagedInstallerFor(inner Installer, life Lifecycle, rec Reconciler) (*M
 	if isNil(rec) {
 		return nil, fmt.Errorf("selfupdate: managed installer requires a reconciler")
 	}
-	return &ManagedInstaller{inner: inner, life: life, rec: rec}, nil
+	return &ManagedInstaller{inner: inner, life: life, rec: rec, opts: opts}, nil
 }
 
 // ResolveTarget implements Installer.
@@ -73,13 +98,14 @@ func (m *ManagedInstaller) Begin(ctx context.Context, target Target) (InstallSes
 	if !ok {
 		return nil, joinClose(fmt.Errorf("selfupdate: managed installer requires a two-phase session"), inner)
 	}
-	return &managedSession{inner: sess, life: m.life, rec: m.rec}, nil
+	return &managedSession{inner: sess, life: m.life, rec: m.rec, opts: m.opts}, nil
 }
 
 type managedSession struct {
 	inner TwoPhaseSession
 	life  Lifecycle
 	rec   Reconciler
+	opts  ManagedOptions
 }
 
 func (s *managedSession) Target() Target { return s.inner.Target() }
@@ -117,32 +143,55 @@ func (s *managedSession) Install(ctx context.Context, req InstallRequest) (Insta
 		}
 		start = enabled
 	}
+	// With ReplaceBeforeStop, a running service's binary is replaced while
+	// the old instance still runs: a failed Apply or probe leaves it running,
+	// and nothing restarts (0020-MADR 4B).
+	early := running && s.opts.ReplaceBeforeStop
+	marked := func(r InstallResult, err error) (InstallResult, error) {
+		r.ReplacedBeforeStop = early
+		return r, err
+	}
+	var applied AppliedReplacement
+	if early {
+		a, err := s.inner.Apply(ctx, req)
+		if err != nil {
+			res, rerr := s.recover(ctx, product, a, ReconcileResult{}, false, false, err)
+			// Only a replacement that went live counts: an Apply refused
+			// before its rename replaced nothing.
+			res.ReplacedBeforeStop = a.Backup != "" || errors.Is(err, errRolledBack)
+			return res, rerr
+		}
+		applied = a
+	}
 	if running {
 		if err := s.life.Stop(ctx, product); err != nil {
-			return s.recoverStop(ctx, product, err)
+			return marked(s.recoverStop(ctx, product, applied, err))
 		}
 	}
-	// Until Start succeeds, recovery restarts only what was running.
-	applied, err := s.inner.Apply(ctx, req)
-	if err != nil {
-		// applied carries a backup when the new binary is live and the
-		// restore inside replaceTarget failed; recovery retries it
-		// (0003-MADR B1).
-		return s.recover(ctx, product, applied, ReconcileResult{}, running, false, err)
+	if !early {
+		// Until Start succeeds, recovery restarts only what was running.
+		var err error
+		applied, err = s.inner.Apply(ctx, req)
+		if err != nil {
+			// applied carries a backup when the new binary is live and the
+			// restore inside replaceTarget failed; recovery retries it
+			// (0003-MADR B1).
+			return s.recover(ctx, product, applied, ReconcileResult{}, running, false, err)
+		}
 	}
 	receipt, recErr := s.rec.Reconcile(ctx, product, s.inner.Target().Path)
 	if recErr != nil {
-		return s.recover(ctx, product, applied, receipt, running, false, recErr)
+		return marked(s.recover(ctx, product, applied, receipt, running, false, recErr))
 	}
 	if start {
 		if err := s.life.Start(ctx, product); err != nil {
-			return s.recover(ctx, product, applied, receipt, running, false, err)
+			return marked(s.recover(ctx, product, applied, receipt, running, false, err))
 		}
 		if err := s.life.WaitHealthy(ctx, product); err != nil {
 			// The new binary was started: it is stopped before the old one
 			// is restored under it, and the old one is started in its place
 			// (0010-MADR B4).
-			return s.recover(ctx, product, applied, receipt, true, true, err)
+			return marked(s.recover(ctx, product, applied, receipt, true, true, err))
 		}
 	}
 	result, err := s.inner.Commit(ctx, applied)
@@ -152,8 +201,9 @@ func (s *managedSession) Install(ctx context.Context, req InstallRequest) (Insta
 		// binary live and the backup behind (0010-MADR B7). Any other commit
 		// error is a cleanup failure after a healthy update, and is
 		// returned as it is.
-		return s.recover(ctx, product, applied, receipt, start, start, err)
+		return marked(s.recover(ctx, product, applied, receipt, start, start, err))
 	}
+	result.ReplacedBeforeStop = early
 	result.ServiceInstalled = true
 	result.ServiceWasRunning = running
 	result.ServiceStarted = start
@@ -203,14 +253,23 @@ func splitReconcileWarnings(err error) ([]error, error) {
 // and checked, as any recovery does, and the binary was never replaced.
 // When it still runs, or cannot be asked, the update ends as before; a stop
 // refused from inside the service leaves it running (0015-MADR B3).
-func (s *managedSession) recoverStop(parent context.Context, product string, stopErr error) (InstallResult, error) {
+//
+// applied is the replacement ReplaceBeforeStop made before the stop, or
+// empty. It is rolled back either way: under the service that still runs,
+// which is not restarted, or before the one that went down is started again
+// (0020-MADR 4B).
+func (s *managedSession) recoverStop(parent context.Context, product string, applied AppliedReplacement, stopErr error) (InstallResult, error) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), recoveryTimeout)
 	running, rerr := s.life.Running(ctx, product)
 	cancel()
 	if rerr != nil || running {
-		return InstallResult{}, fmt.Errorf("selfupdate: stop service: %w", errors.Join(ErrManagedInstall, stopErr, rerr))
+		err := fmt.Errorf("selfupdate: stop service: %w", errors.Join(ErrManagedInstall, stopErr, rerr))
+		if applied.Backup == "" {
+			return InstallResult{}, err
+		}
+		return s.recover(parent, product, applied, ReconcileResult{}, false, false, err)
 	}
-	return s.recover(parent, product, AppliedReplacement{}, ReconcileResult{}, true, false,
+	return s.recover(parent, product, applied, ReconcileResult{}, true, false,
 		fmt.Errorf("selfupdate: stop service: %w", stopErr))
 }
 

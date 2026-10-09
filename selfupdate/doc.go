@@ -132,8 +132,11 @@
 // and definition reconciliation; NewManagedInstallerFor does the same for any
 // Installer whose sessions implement TwoPhaseSession. A managed update starts
 // the service only when it was running, or when the Lifecycle is an
-// EnabledLifecycle that reports it configured to start. A custom session
-// used with a Transformer must implement StagingOwner.
+// EnabledLifecycle that reports it configured to start. It stops a running
+// service before it replaces the binary; NewManagedInstallerWith with
+// ManagedOptions.ReplaceBeforeStop replaces it first, while the service
+// still runs, and Result.ReplacedBeforeStop reports that order. A custom
+// session used with a Transformer must implement StagingOwner.
 //
 // # The canonical update command
 //

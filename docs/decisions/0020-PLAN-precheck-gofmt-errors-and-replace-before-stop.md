@@ -601,3 +601,98 @@ release commit S4's:
    | P3: `buildinfo/stamp_test.go` deleted, no list | 0 | no `lstat` line (0 matches); `go-precheck: 294 file(s) clean (gofmt, golangci-lint, go vet, go test).` |
    | `buildinfo/buildinfo.go` made unreadable (`chmod 000`), no list | 1 | `gofmt: failed (exit 2):` / `open buildinfo/buildinfo.go: permission denied` |
    | P4: an unparseable file in a list | 1 | first lines: `gofmt: failed (exit 2):` / `buildinfo/zz_broken.go:3:9: expected ')', found '{'` |
+
+### Deviation D1 (2026-10-09): the CLI's golden files hold schema 3
+
+* **Found in S2:** after steps 1–8, `go test ./selfupdate/...` failed in
+  `selfupdate/cli` only: `TestGolden` and `TestCommandGolden`. The other
+  packages passed. Thirteen files under `selfupdate/cli/testdata/golden/`
+  (`applied.json.stdout`, `failed.json.stdout` and eleven more) expect the
+  result document with `"schema_version":3` and no `replaced_before_stop`
+  key. S2's schema change caused it; it is not pre-existing. Step 8's list
+  missed them. It also missed a second schema-3 expectation in
+  `warnings_test.go`, the suffix at `:107` beside the `:102` it names.
+  That file was already in scope, and its line is updated.
+* **Decision (the owner):** "Regenerate and verify".
+  * The files are rewritten by the package's own flag:
+    `go test ./selfupdate/cli -run 'TestGolden|TestCommandGolden' -update`
+    (`selfupdate/cli/helpers_test.go:16`).
+  * Every changed line is checked to differ only by `schema_version` 3 →
+    4 and an added `"replaced_before_stop":false`, with no other byte
+    changed.
+* **Scope:** the thirteen golden files join S2's files. The MADR is
+  unchanged: it decided schema 4, and asserts nothing about these files.
+
+### S2 (2026-10-09)
+
+1. **The API** (steps 1–2):
+   * `ManagedOptions{ReplaceBeforeStop bool}`, with the MADR's comment and
+     its hazards;
+   * `NewManagedInstallerWith`, which holds the constructor checks.
+     `NewManagedInstallerFor` returns it with `ManagedOptions{}`;
+   * `InstallResult.ReplacedBeforeStop` and `Result.ReplacedBeforeStop`.
+2. **The flow** (step 3) is as written:
+   * `early := running && s.opts.ReplaceBeforeStop`;
+   * a `marked` closure sets the field on every result after the early
+     `Apply`;
+   * a failed early `Apply` reports it only when a replacement went live.
+3. **`recoverStop`** (step 4) takes the applied replacement. A still-running
+   service gets the binary rolled back and no restart. A service that went
+   down gets the binary rolled back, then a start.
+4. **The result** (steps 5–6): `updater.go` copies the field.
+   `resultDocumentSchema = 4`, and `replaced_before_stop` follows
+   `probes_skipped`.
+5. **Docs** (step 7): `selfupdate/doc.go` names the option and the result
+   field; `selfupdate/cli/doc.go` says schema 4.
+6. **Schema 3 → 4** (step 8):
+   * `example_test.go:319`, `events_test.go:370` and `:384`, and
+     `warnings_test.go:102`, plus `:107`;
+   * the thirteen CLI golden files (Deviation D1).
+
+   The D1 check printed
+   `13 files, 13 changed lines, each only schema 3->4 and the new key`. It
+   failed, as it must, on a scratch copy with `"applied":true` planted as
+   `false` in one golden. `checkcache_test.go` is not in the diff.
+7. **New tests** (steps 9–10):
+   * `selfupdate/managed_replacefirst_test.go` holds the twelve named tests.
+     The plan's `orderLife` is named `firstLife` (and `enabledFirstLife`):
+     `twophase_test.go:15` already declares `orderLife`.
+     `TestReplaceBeforeStopApplyRefused` also requires that the error
+     names the journal.
+   * `TestRunReportsReplacedBeforeStop` and `ExampleNewManagedInstallerWith`
+     are added.
+   * `TestReplaceBeforeStopRunningImage`, with a `helperService`, is in
+     `lifecycle_windows_test.go`.
+   * All pass: `go test ./selfupdate/ -run
+     'ReplaceBeforeStop|ManagedDefaultOrder|NewManagedInstallerWith'` gave
+     12 `PASS` lines and `ok`.
+8. **Seen failing** (step 11). Each plant was made with
+   `scripts/plant-copy.sh`, and each named test failed in the copy (`go
+   test` rc=1):
+
+   | Plant | Failing test, line |
+   | :--- | :--- |
+   | `early := false` | `TestReplaceBeforeStopOrder` (`:120`), `TestReplaceBeforeStopProbeFails` (`:192`), `TestRunReportsReplacedBeforeStop` (`managed_started_test.go:148`) |
+   | still-running `recoverStop` without the rollback | `TestReplaceBeforeStopStopFailsStillRunning` (`:228`): `RolledBack:false` |
+   | early-`Apply` failure with `restart` true | `TestReplaceBeforeStopProbeFails` (`:195`): `lifecycle [start health], running true; want the service untouched` |
+   | `document.go` mapping removed | `TestRunReportsReplacedBeforeStop` (`managed_started_test.go:155`): the document |
+   | `updater.go` copy removed | `TestRunReportsReplacedBeforeStop` (`:148`) |
+   | `NewManagedInstallerFor` passing `ReplaceBeforeStop: true` | `TestManagedDefaultOrderUnchanged` (`:155`) |
+   | `early := false`, on the Windows test host | `TestReplaceBeforeStopRunningImage` (`lifecycle_windows_test.go:140`): `ReplacedBeforeStop:false` |
+
+   The Windows plant failed on the result check, which runs before the
+   "target at Stop" check that the plan expected to fail.
+9. **Checks** (step 12):
+   * `CGO_ENABLED=0 GOOS=windows go vet ./selfupdate/` is clean;
+   * `TestReplaceBeforeStopRunningImage` passed `-test.count=30` twice on
+     the Windows test host: 30 `--- PASS` lines, then `PASS`;
+   * `make pre-add-check` on the twelve Go files:
+     `go-precheck: 12 file(s) clean (gofmt, golangci-lint, go vet, go test, govulncheck).`;
+   * `make gate`: `overall=0`, with `race`, `shuffle` and `crossvet`
+     rc=0, and `apicheck` `compatible with v1.12.1`.
+   * The full apidiff report against `v1.12.1`, `Compatible changes:` only:
+     * `InstallResult.ReplacedBeforeStop`: added;
+     * `ManagedOptions`: added;
+     * `NewManagedInstallerWith`: added;
+     * `Result.ReplacedBeforeStop`: added;
+     * `ResultDocument.ReplacedBeforeStop`: added.

@@ -116,6 +116,46 @@ func TestRunReportsRolledBack(t *testing.T) {
 	}
 }
 
+// TestRunReportsReplacedBeforeStop: with ManagedOptions.ReplaceBeforeStop
+// and a running service, Run's Result and its document report the order
+// (docs/decisions/0020-MADR-precheck-gofmt-errors-and-replace-before-stop.md
+// 4B).
+func TestRunReportsReplacedBeforeStop(t *testing.T) {
+	_, exe := withTempHome(t)
+	inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := NewManagedInstallerWith(inner, &fakeLife{installed: true, running: true}, &fakeRec{},
+		ManagedOptions{ReplaceBeforeStop: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rel, bodies, plats := probeRelease(t)
+	sel, err := NewExactAssetSelector(plats)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := New(Config{Source: &scriptSource{rel: rel, bodies: bodies}, Versions: NewStrictVersionPolicy(), Assets: sel,
+		Installer: m, Reporter: &recReporter{}, Confirmer: &recConfirmer{}, Limits: DefaultLimits()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := applyReq()
+	req.Yes = true
+	res, err := u.Run(context.Background(), req)
+	if err != nil || !res.Applied || !res.ReplacedBeforeStop {
+		t.Fatalf("Run = %+v, %v; want the replace-before-stop order reported", res, err)
+	}
+	b, err := json.Marshal(res.Document())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"replaced_before_stop":true`) || !strings.Contains(string(b), `"schema_version":4`) {
+		t.Fatalf("document %s", b)
+	}
+}
+
 // warnRec is a Reconciler that changes nothing and has warnings.
 type warnRec struct{ warnings Warnings }
 
