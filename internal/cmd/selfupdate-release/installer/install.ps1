@@ -434,8 +434,11 @@ public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wP
                                 Move-Item -LiteralPath $exe -Destination ("$exe.bad-" + [Guid]::NewGuid().ToString('N')) -Force
                             }
                             Move-Item -LiteralPath "$exe.prev" -Destination $exe -Force
-                        } else {
-                            Remove-Item -LiteralPath $exe -Force -ErrorAction SilentlyContinue
+                        } elseif (-not (Clear-SettledFile $exe)) {
+                            # Still held, by an image the identity check just
+                            # ran: set it aside, so no binary that failed its
+                            # identity check keeps its name.
+                            Move-Item -LiteralPath $exe -Destination ("$exe.bad-" + [Guid]::NewGuid().ToString('N')) -Force
                         }
                     }
                     Invoke-Fail 2 "the new binaries do not report $want; the previous ones were restored"

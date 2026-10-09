@@ -359,6 +359,25 @@ func writeSettled(path string, data []byte, mode os.FileMode) error {
 	}
 }
 
+// removeSettled removes path, retried every 100 ms for up to 10 s while an
+// image a test left lingering still holds it
+// (docs/decisions/0017-PLAN-verify-build-provenance-and-close-0015-open-items.md
+// Q4).
+func removeSettled(t *testing.T, path string) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		err := os.Remove(path)
+		if err == nil || os.IsNotExist(err) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("remove %s: %v", path, err)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
 func (c *psCase) hookLog() string {
 	c.t.Helper()
 	data, err := os.ReadFile(c.log)
@@ -437,12 +456,19 @@ func (c *psCase) unchanged(edit func(), code int, wants ...string) {
 
 // standInSource is a program for hooks and identity checks: it reports its
 // version as a release, holds when asked, and otherwise prints and logs
-// "<role> <args>" and exits with $<ROLE>_EXIT.
+// "<role> <args>" and exits with $<ROLE>_EXIT. With STANDIN_LINGER_MS set,
+// its version check starts a copy of itself that keeps the binary's image
+// mapped that long after the check returns, as a process that has just
+// exited can on Windows
+// (docs/decisions/0017-PLAN-verify-build-provenance-and-close-0015-open-items.md
+// Q4).
 const standInSource = `package main
 
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -450,9 +476,19 @@ import (
 var role, version string
 
 func main() {
+	if len(os.Args) == 3 && os.Args[1] == "linger" {
+		ms, _ := strconv.Atoi(os.Args[2])
+		time.Sleep(time.Duration(ms) * time.Millisecond)
+		return
+	}
 	args := strings.Join(os.Args[1:], " ")
 	switch args {
 	case "version":
+		if ms := os.Getenv("STANDIN_LINGER_MS"); ms != "" {
+			if exe, err := os.Executable(); err == nil {
+				_ = exec.Command(exe, "linger", ms).Start()
+			}
+		}
 		fmt.Println(version + " (release)")
 		return
 	case "hold":
@@ -866,6 +902,32 @@ var psCases = []struct {
 		c.srv.replaceAsset(c.t, rawRepo, fixtureTag, c.asset("raw", "relay"), standInExe(c.t, "new", "v9.9.9"))
 		c.expect(c.run(), 2, "the previous ones were restored")
 		expectFiles(c.t, c.dir, map[string][]byte{"relay.exe.prev": stale})
+	}},
+	// The identity check has just run the new binary, and Windows can keep
+	// its image mapped a moment longer: the binary is still removed, or set
+	// aside when it stays held
+	// (docs/decisions/0017-MADR-verify-build-provenance-and-close-0015-open-items.md
+	// A3).
+	{"a rejected new binary is removed though its image lingers", argModes, func(c *psCase) {
+		c.srv.replaceAsset(c.t, rawRepo, fixtureTag, c.asset("raw", "relay"), standInExe(c.t, "new", "v9.9.9"))
+		c.env = append(c.env, "STANDIN_LINGER_MS=1000")
+		c.expect(c.run(), 2, "the previous ones were restored")
+		expectFiles(c.t, c.dir, nil)
+	}},
+	{"a rejected new binary still held is set aside", argModes, func(c *psCase) {
+		c.srv.replaceAsset(c.t, rawRepo, fixtureTag, c.asset("raw", "relay"), standInExe(c.t, "new", "v9.9.9"))
+		c.env = append(c.env, "STANDIN_LINGER_MS=3500")
+		c.expect(c.run(), 2, "the previous ones were restored")
+		var names []string
+		for n := range filesIn(c.t, c.dir) {
+			names = append(names, n)
+		}
+		if len(names) != 1 || !regexp.MustCompile(`^relay\.exe\.bad-[0-9a-f]{32}$`).MatchString(names[0]) {
+			c.t.Fatalf("%s holds %v, want only relay.exe.bad-<32 hex>", c.dir, names)
+		}
+		// The lingering copy releases the image; the folder's cleanup then
+		// succeeds.
+		removeSettled(c.t, filepath.Join(c.dir, names[0]))
 	}},
 	{"a directory at the target is refused", argModes, func(c *psCase) {
 		for _, name := range []string{"relay.exe", "relay.exe.prev"} {

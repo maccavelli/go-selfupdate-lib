@@ -1984,3 +1984,45 @@ only these additions:
   * Kept: the lines that state what `v1.11.1` itself changed.
 * **Step 7,** the live installer rehearsal, was not asked for, and was not
   run.
+
+### Phase Q4: `install.ps1` removes a new binary its identity check rejected (2026-10-09)
+
+* **Fix, `install.ps1`:** the identity restore's branch for a product with
+  no earlier copy now does what the other branch does:
+  * it calls `Clear-SettledFile`, which waits up to 2 s;
+  * if the file is still held, it renames it to `<name>.exe.bad-<guid>`.
+
+  The single silent `Remove-Item` is gone.
+* **The stand-in** (`standInSource`) gains `STANDIN_LINGER_MS`:
+  * `version` starts a copy of itself with `linger <ms>`, and does not
+    wait for it;
+  * the copy sleeps, holding the binary's image after the identity check
+    returns.
+
+  `removeSettled` removes a file such a copy still holds, for a case's
+  cleanup.
+* **Tests,** on `argModes` (file and scriptblock), both shells:
+  * `a rejected new binary is removed though its image lingers`
+    (`STANDIN_LINGER_MS=1000`): exit 2, and no file left;
+  * `a rejected new binary still held is set aside` (3500 ms, longer than
+    `Clear-SettledFile`'s 2 s): exit 2, and only `relay.exe.bad-<32
+    hex>` left.
+* **Red,** on the Windows test host with an 8.3 `TEMP`, against
+  `v1.12.0`'s template: 8 of 8 cases failed. Every one left `relay.exe`
+  behind, which is CI run 37862176572's failure, made deterministic:
+  * `installer_ps_test.go:915: …\Programs\relay holds [relay.exe], want []`;
+  * `installer_ps_test.go:926: …\Programs\relay holds [relay.exe], want
+    only relay.exe.bad-<32 hex>`.
+* **Green,** on the same host:
+  * the two cases: `pass=17 fail=0` (8 cases and their groups);
+  * `TestInstallPs1` in full: `pass=193 fail=0`;
+  * the two cases `-count=30`: `pass=510 fail=0`.
+* **Plant,** in a scratch copy on the same host: the old `else {
+  Remove-Item … }` restored made all 8 cases fail again, with the lines
+  above.
+* **The template checks:** `scripts/check-installers.sh` needs
+  PSScriptAnalyzer, which this Mac does not have. CI's lint step runs it.
+* **Checks:**
+  * `make pre-add-check` on `installer_ps_test.go`: clean, with
+    golangci-lint for windows;
+  * `make gate`: every step `rc=0`, `overall=0`.
