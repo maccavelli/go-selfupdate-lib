@@ -106,7 +106,9 @@
 // as published, after the integrity check: the binary, or the archive when
 // Config.Unpacker is set. NewImageVerifier checks that the binary is an
 // executable for the selected platform; New refuses it beside an Unpacker,
-// which checks the program it extracts itself.
+// which checks the program it extracts itself. Package
+// selfupdate/verify/ghattest is an opt-in ManifestVerifier that checks the
+// release's build provenance on SHA256SUMS with gh attestation verify.
 //
 // # Probes
 //

@@ -1797,3 +1797,79 @@ and the cherry-picked `355dd3d` (`go.mod`'s `toolchain go1.27.2`, and
   * Kept: the 18 lines that state what `v1.11.0` itself changed.
 * **Step 7,** the live installer rehearsal, was not asked for, and was not
   run.
+
+### Phase Q3: the `v1.12.0` release commit (2026-10-09)
+
+* **The migration guide:**
+  * the intro adds `v1.12.0`, "only adds to the API", linking §12;
+  * `## 12. From v1.11 to v1.12`, in §11's shape: the `go get …@v1.12.0`
+    line, "compatible with `v1.11.1`", "What is new" (`ghattest`, the
+    journal, `KeptBackups`), "Adopting it" (the verifier snippet, the tag
+    ruleset, `KeptBackups` after `CleanupPending`), and "Check".
+* **The extending guide:**
+  * `## Check build provenance`, after "Verify a signature later", in "Sign
+    on macOS"'s shape: what it checks and needs, that it fails closed, what
+    it does not stop, and pointers;
+  * "Verify a signature later" points to it;
+  * "Keep the previous binary" adds the journal and `KeptBackups`.
+* **`docs/architecture.md`:**
+  * the tree gains `verify/ghattest/`;
+  * the Go code table gains `ghattest`'s row (2 files, 3 test files and a
+    `testdata/` capture). `selfupdate`'s row becomes 45 and 80 files, and
+    `archive`'s 3 and 8, counted with `git ls-files`;
+  * the installers bullet names the journal and `KeptBackups`;
+  * the package bullets gain `ghattest`;
+  * the install path gains the journal;
+  * the import rules become 15, with `selfupdate-verify-ghattest`;
+  * the live tests gain `TestLiveVerify`, "not in CI".
+* **`README.md`:** the package table gains `selfupdate/verify/ghattest`.
+  **`docs/README.md`:** "I want to…" gains "check that a release was built
+  by my workflow".
+* **`selfupdate/doc.go`:** the Integrity section names `ghattest`.
+* **0004-MADR P3:**
+  * the as-built table gains `selfupdate/verify/ghattest`;
+  * the open-work table loses its three 0017 rows, the exec verifier, the
+    zip and names row, and the crash row;
+  * a list of four done items, under 0017-MADR, follows the existing one.
+  * Kept open: the `sigstore-go` variant and `queue: max`.
+* **Checks:**
+  * the full apidiff report against `v1.11.1` (V2) lists only the four
+    additions in the release notes below;
+  * `make gate` ends `overall=0`, `vuln` "No vulnerabilities found.";
+  * links, identifiers and markdownlint are clean, and `make
+    pre-add-check` is clean on `selfupdate/doc.go`.
+* **The gate's `apicheck` says "compatible with v1.11.0", not `v1.11.1`.**
+  It compares against the newest `v1.*` tag `main` descends from (`git
+  describe`), and the `v1.11.1` tag is on the release branch (Deviation
+  D4). The full report above, against `v1.11.1` itself, is V2's check.
+
+### Release notes for v1.12.0 (2026-10-09)
+
+`v1.12.0` adds to the API and changes no documented behaviour: `make
+apicheck` reports it compatible with `v1.11.1`, and the full report lists
+only these additions:
+* `KeptBackup`;
+* `(*StandaloneInstaller).KeptBackups`;
+* `(*ManagedInstaller).KeptBackups`;
+* the package `selfupdate/verify/ghattest`.
+
+* **`selfupdate/verify/ghattest`**
+  ([0017-MADR](0017-MADR-verify-build-provenance-and-close-0015-open-items.md)
+  1B). An opt-in `ManifestVerifier`, and an asset `Verifier`. Each runs
+  `gh attestation verify` on `SHA256SUMS` (or the asset) and checks again
+  every policy field gh reports:
+  * the repository;
+  * the tag's ref;
+  * the signer workflow and its commits;
+  * the issuer, the predicate and a GitHub-hosted runner.
+
+  It fails closed with `ErrIntegrity`.
+* **The interrupted-update journal** (3B). `.<base>.selfupdate.pending`,
+  written before the replace. The next session keeps an interrupted
+  update's backup as `.<base>.selfupdate-kept-<n>`, and an update refuses
+  to start while a journal is still pending.
+* **`KeptBackups`** lists every kept backup beside the target.
+* **The toolchain:** `go.mod` keeps `go 1.27.1`, and its `toolchain
+  go1.27.2` line, from `v1.11.1`, builds CI and the release tools with Go
+  1.27.2
+  ([0018-MADR](0018-MADR-move-toolchain-to-go-1-27-2.md)).

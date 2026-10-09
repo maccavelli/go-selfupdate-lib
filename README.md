@@ -36,6 +36,7 @@ go get github.com/maccavelli/go-selfupdate-lib@v1.11.1
 | [`selfupdate/selfupdatetest`](selfupdate/selfupdatetest/) | test doubles: release fixtures, a fake source, a fake GitHub API |
 | [`selfupdate/archive`](selfupdate/archive/) | updating from a release asset that is a tar.gz, zip or gz holding the program |
 | [`selfupdate/codesign`](selfupdate/codesign/) | opt-in macOS re-signing of the staged binary, and signature checks, with `/usr/bin/codesign` |
+| [`selfupdate/verify/ghattest`](selfupdate/verify/ghattest/) | opt-in check that a release was built by its workflow, with `gh attestation verify` |
 | [`selfupdate/releasespec`](selfupdate/releasespec/) | the release spec a program embeds and the build workflow reads: products, platforms, packaging, extras, channels, installers |
 | [`selfupdate/service`](selfupdate/service/) | what the service lifecycles share: health polling, typed errors, and the handoff of an update started inside the service |
 | [`selfupdate/service/systemd`](selfupdate/service/systemd/), [`launchd`](selfupdate/service/launchd/), [`scm`](selfupdate/service/scm/) | the managed-update lifecycle for a systemd unit, a launchd job and a Windows service |

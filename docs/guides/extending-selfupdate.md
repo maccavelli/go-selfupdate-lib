@@ -281,9 +281,51 @@ update, and both make the run fail with `ErrIntegrity`:
   on the program instead.
 
 How signing would be added, and why it is not yet, is in
-[0004-REPORT](../reports/0004-REPORT-release-signing-research.md).
+[0004-REPORT](../reports/0004-REPORT-release-signing-research.md). To
+check that a release was built by your workflow, see
+[Check build provenance](#check-build-provenance).
 
 - `selfupdate/manifestverify_test.go`, `selfupdate/imageverify_test.go`
+
+## Check build provenance
+
+`selfupdate/verify/ghattest` checks, during an update, that a release was
+built by your release workflow: since `v1.12.0`. This module's publish
+workflow attests every file it publishes, `SHA256SUMS` included, and the
+check verifies that attestation with `gh attestation verify`. It is opt-in:
+nothing runs it unless you configure it.
+
+```go
+v, err := ghattest.NewManifestVerifier(ghattest.Options{
+    Policy: ghattest.Policy{Repository: selfupdate.Repository{Owner: "example", Name: "relay"}},
+    GH:     "/usr/local/bin/gh",
+})
+cfg.ManifestVerifiers = append(cfg.ManifestVerifiers, v)
+```
+
+- **What it checks:** the attestation's source is your repository at the
+  release's tag (`refs/tags/<tag>`), its signer is this module's publish
+  workflow (`Policy.SignerWorkflow`, optionally pinned to commits by
+  `SignerDigests`), it was made on a GitHub-hosted runner, and it names
+  the downloaded `SHA256SUMS`, which pins every asset's digest. It runs
+  before any binary is downloaded. `ghattest.NewVerifier` checks the asset
+  itself instead.
+- **What it needs:** `gh`, by an absolute path, logged in even for a public
+  repository. `Options.Env` is `gh`'s environment (nil: this process's),
+  and `Options.Timeout` bounds each run (default 2 minutes).
+- **It fails closed:** a missing or logged-out `gh`, a verification that
+  fails, a timeout, or an attestation that does not meet the whole policy
+  each fail the update with `ErrIntegrity`.
+- **What it does not stop:** a malicious commit and `v*` tag pushed through
+  your workflow, which attests it like any other. Restrict who can create
+  `v*` tags (the building guide's step 4).
+
+Pointers:
+
+- `ghattest.ExampleNewManifestVerifier`
+- `selfupdate/verify/ghattest/live_test.go`: the real `gh`, when
+  `SELFUPDATE_REQUIRE_GHATTEST=1`
+- [0017-MADR](../decisions/0017-MADR-verify-build-provenance-and-close-0015-open-items.md), item 1
 
 ## Probe the new binary
 
@@ -369,6 +411,12 @@ live, it reports the backup in `Result.PendingBackup` as the only copy of
 the previous binary. Since `v1.10.1` that backup is
 `.<base>.selfupdate-kept-<n>`, which no later session removes: restore or
 remove it yourself. A dry run removes nothing.
+
+Since `v1.12.0` an update interrupted between replacing the target and
+committing, by a crash or a kill, keeps its backup too: the update's
+journal, `.<base>.selfupdate.pending`, tells the next session, which keeps
+the backup under the same kept name. `StandaloneInstaller.KeptBackups`
+lists every kept backup, so call it after `CleanupPending`.
 
 ## Replace a setuid or setgid binary
 

@@ -34,6 +34,8 @@ its fixes are in [From v1.10.0 to v1.10.1](#from-v1100-to-v1101).
 `v1.11.0` adds to the API and changes a few behaviours: see
 [11. From v1.10 to v1.11](#11-from-v110-to-v111). `v1.11.1` changes no
 API; its fixes are in [From v1.11.0 to v1.11.1](#from-v1110-to-v1111).
+`v1.12.0` only adds to the API: see
+[12. From v1.11 to v1.12](#12-from-v111-to-v112).
 
 Replace every `github.com/maccavelli/mcplib/selfupdate` import with
 `github.com/maccavelli/go-selfupdate-lib/selfupdate`. No identifier or signature
@@ -811,3 +813,70 @@ why, is in
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
 - `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.11.1`.
 - A pull request's rehearsal passes the plan step's module check.
+
+## 12. From v1.11 to v1.12
+
+```bash
+go get github.com/maccavelli/go-selfupdate-lib@v1.12.0
+```
+
+`v1.12.0` adds a build-provenance check, and keeps the previous binary of
+an update that was interrupted. `make apicheck` reports it compatible with
+`v1.11.1`: every exported change is an addition. Why, and how, is in
+[0017-MADR](../decisions/0017-MADR-verify-build-provenance-and-close-0015-open-items.md).
+
+### What is new
+
+- **`selfupdate/verify/ghattest`:** an opt-in check that a release was
+  built by your release workflow. `NewManifestVerifier` runs `gh attestation
+  verify` on the release's `SHA256SUMS`, before any binary is downloaded:
+  the attestation must name your repository and the release's tag, and be
+  signed by this module's publish workflow on a GitHub-hosted runner.
+  `NewVerifier` checks the asset itself instead. Every failure fails the
+  update with `ErrIntegrity`, a missing or logged-out `gh` included.
+- **An interrupted update keeps the previous binary:** an update writes
+  `.<base>.selfupdate.pending` before it replaces the target, and removes
+  it once the replacement is committed or rolled back. The next session,
+  such as `CleanupPending` at startup, keeps the backup it names as
+  `.<base>.selfupdate-kept-<n>` instead of removing it. An update refuses
+  to start while a journal it could not resolve is still there, and names
+  it.
+- **`KeptBackups`:** `StandaloneInstaller.KeptBackups` and
+  `ManagedInstaller.KeptBackups` list the kept backups beside the target,
+  each with its path, size and time.
+
+### Adopting it
+
+- **To check provenance,** add the manifest verifier, with `gh`'s absolute
+  path and your own repository:
+
+  ```go
+  v, err := ghattest.NewManifestVerifier(ghattest.Options{
+      Policy: ghattest.Policy{Repository: selfupdate.Repository{Owner: "example", Name: "relay"}},
+      GH:     "/usr/local/bin/gh",
+  })
+  if err != nil {
+      return err
+  }
+  cfg.ManifestVerifiers = append(cfg.ManifestVerifiers, v)
+  ```
+
+  `gh` must be logged in on the machine that updates, even for a public
+  repository, so the check suits a developer's machine more than a
+  service. Restrict who can create `v*` tags in your repository (the
+  building guide's step 4): the check does not stop a malicious tag pushed
+  through your workflow.
+- **After `CleanupPending`, look for kept backups,** and tell the user, or
+  restore or remove them:
+
+  ```go
+  kept, err := inst.KeptBackups(ctx)
+  ```
+
+- **Nothing else changes:** the journal is written whatever you adopt, and
+  a program that adopts neither keeps working.
+
+### Check
+
+- `go build ./...`, `go vet ./...` and `go test ./...` pass.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.12.0`.

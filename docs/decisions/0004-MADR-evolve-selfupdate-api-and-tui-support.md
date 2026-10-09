@@ -1135,6 +1135,7 @@ this record:
   | `selfupdate/codesign` | `NewSigner` (a transformer) and `NewChecker` (a prober), running `/usr/bin/codesign` through `service.Runner` | stdlib, `selfupdate`, `selfupdate/service` |
   | `selfupdate/service/...` | its own record, 0011 | stdlib, `selfupdate`, `selfupdate/service`; `x/sys/windows` for `service` and the SCM |
   | `selfupdate/releasespec` | the release spec a program embeds and the build workflow reads (0013) | stdlib, `selfupdate`, `selfupdate/archive` |
+  | `selfupdate/verify/ghattest` | the runtime attestation check, as an exec verifier over `gh` (0017) | stdlib, `selfupdate`, `selfupdate/service` |
   | `internal/cmd/selfupdate-release` | the build workflow's tool, built from source, never released (0013) | stdlib, this module |
 
 * **The open work, in one place.** Each item keeps the record that
@@ -1144,7 +1145,6 @@ this record:
   | :--- | :--- |
   | Releases that are not immutable: the §6 record, and with it the `selfupdate/gitlab` and `selfupdate/httpmanifest` sources | this record, §6 (`:765-773`) and §1 (`:262-263`) |
   | `selfupdate/verify/signednote`, the signed-note release statement | this record, §1 (`:260`) and "Release signing" (`:788-830`); [0004-REPORT-release-signing-research.md](../reports/0004-REPORT-release-signing-research.md) |
-  | `selfupdate/verify/ghattest`, the runtime attestation check: its exec verifier | [0017-MADR](0017-MADR-verify-build-provenance-and-close-0015-open-items.md) track 3, `v1.12.0`; this record, §6 (`:784-786`) |
   | `selfupdate/verify/ghattest`'s `sigstore-go` variant | 0017-MADR, "Not decided here": its own repository and records |
   | `go-tui-lib/updatetea`, the Bubble Tea adapter | this record, §4 (`:636`) and §1 (`:264`); a record in go-tui-lib |
   | Replacing the binary before stopping the service | 0011-MADR, Related (`:909-912`) |
@@ -1153,14 +1153,19 @@ this record:
   | macOS signing or notarization in CI; an attestation from the build workflow; GoReleaser names in the fleet; files beside the program in an archive; hosts other than GitHub | 0013-MADR §10 (`:664-680`) |
   | Package managers; signing the installers; system-wide installs; completion, MCP registration and service setup in the templates | 0014-MADR §7 (`:454-466`) |
   | Moving each program onto the build workflow and the installers | 0013-MADR §10, 0014-MADR §7: each repository's own records |
-  | Unreferenced local entries in a zip; names Windows reserves (`:` among them) in archive entries | 0017-MADR track 2, `v1.11.1`; 0015-PLAN, Out of scope (`:57-68`) |
-  | A crash between `Apply` and `Commit` | 0017-MADR track 3, `v1.12.0`; 0015-PLAN, Out of scope (`:57-68`) |
   | `queue: max` on the publish workflow's concurrency | 0017-MADR item 5: waits for an actionlint release that accepts `queue`, after `v1.7.12`; 0015-PLAN, Out of scope (`:57-68`) |
 
   Two items that 0012 §8 and 0013 §10 list are done:
   * publishing archives through the publish workflow, done in `v1.9.0`
     (0013);
   * the installer templates, done in `v1.10.0` (0014).
+
+  Four items this table listed are done, under
+  [0017-MADR](0017-MADR-verify-build-provenance-and-close-0015-open-items.md):
+  * unreferenced local entries in a zip, and names Windows reserves in
+    archive entries, in `v1.11.1`;
+  * `selfupdate/verify/ghattest`'s exec verifier, and a crash between
+    `Apply` and `Commit`, in `v1.12.0`.
 
   §6's prerelease channels were built under
   [0005-MADR-opt-in-prerelease-channels.md](0005-MADR-opt-in-prerelease-channels.md).

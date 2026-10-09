@@ -67,6 +67,7 @@ name, and the files they cite moved with the rename
 | read JSON output | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#read-json-output) |
 | plug in a credential | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#plug-in-a-credential) |
 | verify a signature later | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#verify-a-signature-later) |
+| check that a release was built by my workflow | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#check-build-provenance) |
 | probe the new binary | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#probe-the-new-binary) |
 | drive an update from a TUI or event loop | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#drive-an-update-from-a-tui-or-event-loop) |
 | see the update path proven end to end on each OS | `selfupdate/e2e_running_test.go`; [0004-PLAN, H4](decisions/0004-PLAN-h4-running-copy-end-to-end.md) |

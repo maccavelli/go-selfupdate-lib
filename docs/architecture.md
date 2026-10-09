@@ -80,6 +80,7 @@ selfupdate/                 the self-update package
   archive/                  tar.gz, zip and gz release assets: selection
                             and extraction
   codesign/                 opt-in macOS re-signing and signature checks
+  verify/ghattest/          opt-in build-provenance check, through gh
   releasespec/              the release spec: products, platforms, packaging,
                             extras, channels and installers, for the program
                             and CI
@@ -107,11 +108,12 @@ docs/
 | Directory | Package | Non-test files | Test files | Non-standard imports |
 | :--- | :--- | :--- | :--- | :--- |
 | `buildinfo/` | `buildinfo` | 1 | 2 | none |
-| `selfupdate/` | `selfupdate` | 41 | 76, including five fuzz targets, plus `testdata/SHA256SUMS.{valid,invalid}`, 23 `testdata/manifest-parity/` cases and 14 `testdata/golden/` files | `x/mod/semver`, `x/sys/unix`, `x/sys/windows`, `x/term` |
+| `selfupdate/` | `selfupdate` | 45 | 80, including five fuzz targets, plus `testdata/SHA256SUMS.{valid,invalid}`, 23 `testdata/manifest-parity/` cases and 14 `testdata/golden/` files | `x/mod/semver`, `x/sys/unix`, `x/sys/windows`, `x/term` |
 | `selfupdate/cli/` | `cli` | 4 | 9, plus 53 `testdata/golden/` and 9 `testdata/migration/` files | `x/term` (and `selfupdate`, `buildinfo`) |
 | `selfupdate/selfupdatetest/` | `selfupdatetest` | 2 | 1 | none (`selfupdate` itself) |
-| `selfupdate/archive/` | `archive` | 3 | 6, including three fuzz targets, plus a real GoReleaser `testdata/` checksum file | none (`selfupdate`) |
+| `selfupdate/archive/` | `archive` | 3 | 8, including three fuzz targets, plus a real GoReleaser `testdata/` checksum file | none (`selfupdate`) |
 | `selfupdate/codesign/` | `codesign` | 2 | 4 | none (`selfupdate`, `service`) |
+| `selfupdate/verify/ghattest/` | `ghattest` | 2 | 3, plus a `testdata/` capture of `gh attestation verify --format json` | none (`selfupdate`, `service`) |
 | `selfupdate/releasespec/` | `releasespec` | 4 | 5, including a fuzz target, plus 4 `testdata/` specs | none (`selfupdate`, `archive`) |
 | `selfupdate/service/` | `service` | 16 | 13 | `x/sys/windows` (and `selfupdate`) |
 | `selfupdate/service/systemd/` | `systemd` | 8 | 12, plus 3 `testdata/` captures of `systemctl show` | none (`selfupdate`, `service`) |
@@ -146,7 +148,8 @@ docs/
   - **installers:** `TwoPhaseSession`, `StagingOwner` and
     `NewManagedInstallerFor` (`types.go`, `session.go`, `managed.go`), and
     `DryRun`, `KeepPrevious` and `CleanupPending` (`updater.go`,
-    `session.go`, `standalone.go`).
+    `session.go`, `standalone.go`); the interrupted-update journal
+    (`journal.go`) and `KeptBackups` (`standalone.go`, `managed.go`).
 - The Phase 2 core API:
   - **per-run options:** `runoptions.go` (`RunOption`, `RunWith`,
     `WithReporter`, `WithConfirmer`, `WithCredentials`,
@@ -243,6 +246,10 @@ docs/
   - **`codesign`:** `NewSigner`, a `Transformer`, and `NewChecker`, a
     `Prober`, over `/usr/bin/codesign` through `service.Runner`
     (`codesign.go`). It is opt-in: nothing in the module imports it.
+  - **`ghattest`:** `NewManifestVerifier` and `NewVerifier`, which run
+    `gh attestation verify` through `service.Runner` and check the
+    reported certificate against a `Policy` again (`ghattest.go`). It is
+    opt-in, like `codesign`.
 - The coordinator (`updater.go`) owns the order of every step. It validates
   the selected binary and manifest itself, and parses `SHA256SUMS` before any
   staging. It pins an exact `--version`, and closes the session before
@@ -272,6 +279,10 @@ docs/
     second;
   - runs the restore after a failed directory sync, and managed recovery,
     on contexts the caller's cancellation does not reach;
+  - writes a journal, `.<base>.selfupdate.pending`, before the replace,
+    and removes it once the replacement is committed or rolled back; the
+    next session keeps the backup an interrupted update's journal names as
+    `.<base>.selfupdate-kept-<n>` (`journal.go`);
   - removes, under the lock, the staging files and backups a crashed
     update left beside the target (`leftovers.go`), but never a backup a
     cleanup receipt still lists, a kept backup, or anything that is not a
@@ -423,7 +434,7 @@ interpolated into shell.
   `BASE=`), and any incompatible change fails it.
 - **`make lint`** runs `golangci-lint run -c .golangci.yml ./...` three
   times: `GOOS=linux`, `darwin` and `windows`, each with `CGO_ENABLED=0`.
-- **Import rules** are 14 `depguard` rules in `.golangci.yml`
+- **Import rules** are 15 `depguard` rules in `.golangci.yml`
   ([0008-MADR](decisions/0008-MADR-enforce-import-rules-with-depguard.md)):
   - `banned`: mcplib, the MCP go-sdk, go-llmprovider-sdk and Charm, in
     every file;
@@ -431,9 +442,9 @@ interpolated into shell.
     and `x/term`, in every file;
   - `buildinfo`, `selfupdate`, `selfupdate-cli`, `selfupdatetest`,
     `service`, `service-launchd`, `service-scm`, `service-systemd`,
-    `selfupdate-archive`, `selfupdate-codesign` and
-    `selfupdate-releasespec`: each package's own allowed imports, outside
-    its tests;
+    `selfupdate-archive`, `selfupdate-codesign`, `selfupdate-releasespec`
+    and `selfupdate-verify-ghattest`: each package's own allowed imports,
+    outside its tests;
   - `other-packages`: any other package, `internal/` included, only the
     standard library and this module.
 - **`scripts/go-precheck.sh`** runs `gofmt` on the given Go files, the same
@@ -475,6 +486,9 @@ interpolated into shell.
     - macOS: the launchd live tests (`SELFUPDATE_REQUIRE_LAUNCHD`) and the
       codesign live tests (`SELFUPDATE_REQUIRE_CODESIGN`);
     - Windows: the SCM live tests (`SELFUPDATE_REQUIRE_SCM`).
+    - Not in CI: `ghattest`'s `TestLiveVerify`
+      (`SELFUPDATE_REQUIRE_GHATTEST`), which needs `gh` logged in; CI has
+      no token.
   - **Linux also:** a full-history checkout; `go test -shuffle=on -count=2`;
     the fuzz script's test, then `make fuzz`, with the corpus uploaded as
     an artifact when it fails;

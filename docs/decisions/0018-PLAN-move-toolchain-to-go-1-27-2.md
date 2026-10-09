@@ -237,8 +237,19 @@ them". On that day:
   `echo ok` did not return within a minute. Once the owner said it was
   online, it answered at once.
 
-  Step 7's tool versions (`golangci-lint`, `govulncheck`) were not
-  checked; the owner asked for the Go version.
+  Step 7's tool versions, checked on 2026-10-09 with each copy's
+  `version`:
+
+  | Host | `golangci-lint` 2.14.0 built with | `govulncheck` |
+  | :--- | :--- | :--- |
+  | this Mac | `go1.27.2` | v1.8.0, `go1.27.2` |
+  | the Linux test host (two copies) | `go1.27.2` | v1.8.0, `go1.27.2` |
+  | the Windows test host | `go1.27.2` | v1.8.0, `go1.27.2` |
+  | its WSL distribution | **`go1.27.1`** | v1.8.0, `go1.27.2` |
+
+  WSL's `golangci-lint` is the one copy not rebuilt. The dotfiles plan
+  moves the hosts, and this PLAN does not change them, so it is reported
+  to the owner, not fixed here. V1 holds for every other copy.
 
 ### Phase T2: the `toolchain` line, and CI on release branches (2026-10-08)
 
