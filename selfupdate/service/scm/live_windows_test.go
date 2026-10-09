@@ -223,6 +223,13 @@ func liveService(cfg liveConfig) (*Service, error) {
 }
 
 func managedInstall(s *Service, target, newPath string) (selfupdate.InstallResult, error) {
+	return managedInstallWith(s, s, target, newPath, selfupdate.ManagedOptions{})
+}
+
+// managedInstallWith is managedInstall with a lifecycle, a reconciler and
+// options of the test's choosing (docs/decisions/0020-MADR-precheck-gofmt-errors-and-replace-before-stop.md
+// 4B).
+func managedInstallWith(life selfupdate.Lifecycle, rec selfupdate.Reconciler, target, newPath string, opts selfupdate.ManagedOptions) (selfupdate.InstallResult, error) {
 	ctx := context.Background()
 	inner, err := selfupdate.NewStandaloneInstaller(selfupdate.InstallOptions{
 		TargetPolicy: selfupdate.TargetPolicy{ExecutablePath: target, AllowedRoots: []string{filepath.Dir(target)}},
@@ -230,7 +237,7 @@ func managedInstall(s *Service, target, newPath string) (selfupdate.InstallResul
 	if err != nil {
 		return selfupdate.InstallResult{}, err
 	}
-	m, err := selfupdate.NewManagedInstaller(inner, s, s)
+	m, err := selfupdate.NewManagedInstallerWith(inner, life, rec, opts)
 	if err != nil {
 		return selfupdate.InstallResult{}, err
 	}
@@ -517,5 +524,94 @@ func TestLiveHandOff(t *testing.T) {
 		if ev == uint32(windows.WAIT_TIMEOUT) {
 			t.Fatalf("the agent %d outlived the service", agent)
 		}
+	}
+}
+
+// stopCheck records, at the first Stop, whether the target already held
+// the new build and whether the service still ran
+// (docs/decisions/0020-PLAN-precheck-gofmt-errors-and-replace-before-stop.md
+// S3).
+type stopCheck struct {
+	*Service
+	target    string
+	want      []byte
+	stops     int
+	newAtStop bool
+	ranAtStop bool
+}
+
+func (c *stopCheck) Stop(ctx context.Context, product string) error {
+	if c.stops == 0 {
+		if b, err := os.ReadFile(c.target); err == nil { //nolint:gosec // the live test's own file
+			c.newAtStop = string(b) == string(c.want)
+		}
+		c.ranAtStop, _ = c.Service.Running(ctx, product)
+	}
+	c.stops++
+	return c.Service.Stop(ctx, product)
+}
+
+// replaceFirst runs a managed install of newPath with ReplaceBeforeStop.
+func replaceFirst(b *Service, target, newPath string) (*stopCheck, selfupdate.InstallResult, error) {
+	want, err := os.ReadFile(newPath) //nolint:gosec // the live test's own file
+	if err != nil {
+		return nil, selfupdate.InstallResult{}, err
+	}
+	c := &stopCheck{Service: b, target: target, want: want}
+	res, err := managedInstallWith(c, c, target, newPath, selfupdate.ManagedOptions{ReplaceBeforeStop: true})
+	return c, res, err
+}
+
+// TestLiveReplaceBeforeStop: with ReplaceBeforeStop, the running service's
+// image is replaced before the stop, and the service restarts on it
+// (docs/decisions/0020-MADR-precheck-gofmt-errors-and-replace-before-stop.md
+// 4B).
+func TestLiveReplaceBeforeStop(t *testing.T) {
+	cfg := newLiveService(t)
+	before := waitReady(t, cfg, 0)
+	build(t, cfg.New, "\nnew build\n")
+	c, res, err := replaceFirst(liveSvc(t, cfg), cfg.Target, cfg.New)
+	if err != nil || !res.Applied || !res.ServiceStarted || !res.ReplacedBeforeStop {
+		t.Fatalf("Install = %+v, %v", res, err)
+	}
+	if !c.newAtStop || !c.ranAtStop {
+		t.Fatalf("at Stop: target held the new build %t, service running %t; want both", c.newAtStop, c.ranAtStop)
+	}
+	waitReady(t, cfg, before)
+	if got, err := os.ReadFile(cfg.Target); err != nil || !strings.HasSuffix(string(got), "\nnew build\n") { //nolint:gosec // the live test's own file
+		t.Fatal("the service's binary is not the new build")
+	}
+}
+
+// TestLiveReplaceBeforeStopHealthFailure: a new binary replaced before the
+// stop that is not a service program is rolled back, and the service runs
+// the previous one.
+func TestLiveReplaceBeforeStopHealthFailure(t *testing.T) {
+	cfg := newLiveService(t)
+	before := waitReady(t, cfg, 0)
+	orig, err := os.ReadFile(cfg.Target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	whoami, err := os.ReadFile(filepath.Join(os.Getenv("SystemRoot"), "System32", "whoami.exe"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cfg.New, whoami, 0o755); err != nil { //nolint:gosec // an executable fixture
+		t.Fatal(err)
+	}
+	c, res, err := replaceFirst(liveSvc(t, cfg), cfg.Target, cfg.New)
+	if !errors.Is(err, selfupdate.ErrManagedInstall) || res.Applied || !res.RolledBack || !res.ReplacedBeforeStop {
+		t.Fatalf("Install = %+v, %v; want a rollback after the early replace", res, err)
+	}
+	if !strings.Contains(err.Error(), "scm: start "+liveName) {
+		t.Fatalf("the install failed before the start: %v", err)
+	}
+	if !c.newAtStop || !c.ranAtStop {
+		t.Fatalf("at Stop: target held the new build %t, service running %t; want both", c.newAtStop, c.ranAtStop)
+	}
+	waitReady(t, cfg, before)
+	if got, err := os.ReadFile(cfg.Target); err != nil || string(got) != string(orig) { //nolint:gosec // the live test's own file
+		t.Fatal("after the rollback the target is not the previous binary")
 	}
 }

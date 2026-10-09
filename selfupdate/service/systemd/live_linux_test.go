@@ -149,6 +149,13 @@ func liveUnit() (*Unit, error) {
 // managedInstall replaces target with the bytes at newPath through a
 // ManagedInstaller over u.
 func managedInstall(u *Unit, target, newPath string) (selfupdate.InstallResult, error) {
+	return managedInstallWith(u, u, target, newPath, selfupdate.ManagedOptions{})
+}
+
+// managedInstallWith is managedInstall with a lifecycle, a reconciler and
+// options of the test's choosing (docs/decisions/0020-MADR-precheck-gofmt-errors-and-replace-before-stop.md
+// 4B).
+func managedInstallWith(life selfupdate.Lifecycle, rec selfupdate.Reconciler, target, newPath string, opts selfupdate.ManagedOptions) (selfupdate.InstallResult, error) {
 	ctx := context.Background()
 	inner, err := selfupdate.NewStandaloneInstaller(selfupdate.InstallOptions{
 		TargetPolicy: selfupdate.TargetPolicy{ExecutablePath: target, AllowedRoots: []string{filepath.Dir(target)}},
@@ -156,7 +163,7 @@ func managedInstall(u *Unit, target, newPath string) (selfupdate.InstallResult, 
 	if err != nil {
 		return selfupdate.InstallResult{}, err
 	}
-	m, err := selfupdate.NewManagedInstaller(inner, u, u)
+	m, err := selfupdate.NewManagedInstallerWith(inner, life, rec, opts)
 	if err != nil {
 		return selfupdate.InstallResult{}, err
 	}
@@ -427,5 +434,107 @@ func TestLiveHandOff(t *testing.T) {
 	got, err := os.ReadFile(e.target) //nolint:gosec // the live test's own file
 	if err != nil || !strings.HasSuffix(string(got), "handed-off build\n") {
 		t.Fatal("the unit's binary is not the handed-off build")
+	}
+}
+
+// stopCheck records, at the first Stop, whether the target already held
+// the new build and whether the service still ran
+// (docs/decisions/0020-PLAN-precheck-gofmt-errors-and-replace-before-stop.md
+// S3).
+type stopCheck struct {
+	*Unit
+	target    string
+	want      []byte
+	stops     int
+	newAtStop bool
+	ranAtStop bool
+}
+
+func (c *stopCheck) Stop(ctx context.Context, product string) error {
+	if c.stops == 0 {
+		if b, err := os.ReadFile(c.target); err == nil { //nolint:gosec // the live test's own file
+			c.newAtStop = string(b) == string(c.want)
+		}
+		c.ranAtStop, _ = c.Unit.Running(ctx, product)
+	}
+	c.stops++
+	return c.Unit.Stop(ctx, product)
+}
+
+// replaceFirst runs a managed install of newPath with ReplaceBeforeStop.
+func replaceFirst(b *Unit, target, newPath string) (*stopCheck, selfupdate.InstallResult, error) {
+	want, err := os.ReadFile(newPath) //nolint:gosec // the live test's own file
+	if err != nil {
+		return nil, selfupdate.InstallResult{}, err
+	}
+	c := &stopCheck{Unit: b, target: target, want: want}
+	res, err := managedInstallWith(c, c, target, newPath, selfupdate.ManagedOptions{ReplaceBeforeStop: true})
+	return c, res, err
+}
+
+// TestLiveReplaceBeforeStop: with ReplaceBeforeStop, the running unit's
+// binary is replaced before the stop, and the unit restarts on it
+// (docs/decisions/0020-MADR-precheck-gofmt-errors-and-replace-before-stop.md
+// 4B).
+func TestLiveReplaceBeforeStop(t *testing.T) {
+	scope := requireLive(t)
+	e := newLiveUnit(t, scope)
+	t.Setenv("FAKE_UNIT", e.unit)
+	if scope == User {
+		t.Setenv(scopeEnv, "user")
+	}
+	before := e.show(t, "InvocationID")
+	newBin := filepath.Join(e.dir, "new")
+	self, _ := os.Executable()
+	copyFile(t, self, newBin, []byte("\nnew build\n"))
+	u, err := liveUnit()
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, res, err := replaceFirst(u, e.target, newBin)
+	if err != nil || !res.Applied || !res.ServiceStarted || !res.ReplacedBeforeStop {
+		t.Fatalf("Install = %+v, %v", res, err)
+	}
+	if !c.newAtStop || !c.ranAtStop {
+		t.Fatalf("at Stop: target held the new build %t, unit running %t; want both", c.newAtStop, c.ranAtStop)
+	}
+	if after := e.show(t, "InvocationID"); after == before || e.show(t, "ActiveState") != "active" {
+		t.Fatalf("invocation %s -> %s, state %s", before, after, e.show(t, "ActiveState"))
+	}
+}
+
+// TestLiveReplaceBeforeStopHealthFailure: a new binary replaced before the
+// stop that cannot start is rolled back, and the unit runs the previous one.
+func TestLiveReplaceBeforeStopHealthFailure(t *testing.T) {
+	scope := requireLive(t)
+	e := newLiveUnit(t, scope)
+	t.Setenv("FAKE_UNIT", e.unit)
+	if scope == User {
+		t.Setenv(scopeEnv, "user")
+	}
+	orig, err := os.ReadFile(e.target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad := filepath.Join(e.dir, "bad")
+	if err := os.WriteFile(bad, []byte("#!/bin/sh\nexit 3\n"), 0o755); err != nil { //nolint:gosec // an executable fixture
+		t.Fatal(err)
+	}
+	u, err := liveUnit()
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, res, err := replaceFirst(u, e.target, bad)
+	if !errors.Is(err, selfupdate.ErrManagedInstall) || res.Applied || !res.RolledBack || !res.ReplacedBeforeStop {
+		t.Fatalf("Install = %+v, %v; want a rollback after the early replace", res, err)
+	}
+	if !c.newAtStop || !c.ranAtStop {
+		t.Fatalf("at Stop: target held the new build %t, unit running %t; want both", c.newAtStop, c.ranAtStop)
+	}
+	if got, err := os.ReadFile(e.target); err != nil || string(got) != string(orig) {
+		t.Fatal("after the rollback the target is not the previous binary")
+	}
+	if e.show(t, "ActiveState") != "active" {
+		t.Fatalf("after the rollback the unit is %s", e.show(t, "ActiveState"))
 	}
 }

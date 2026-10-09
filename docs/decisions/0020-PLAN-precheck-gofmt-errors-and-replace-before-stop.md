@@ -696,3 +696,45 @@ release commit S4's:
      * `NewManagedInstallerWith`: added;
      * `Result.ReplacedBeforeStop`: added;
      * `ResultDocument.ReplacedBeforeStop`: added.
+
+### S3 (2026-10-09)
+
+1. **Helpers** (steps 1–2). In each of the three live files, `managedInstall`
+   now calls `managedInstallWith(life, rec, target, newPath, opts)`, with
+   `ManagedOptions{}`, so its callers are unchanged. Each file also gains
+   two helpers:
+   * `stopCheck`, which embeds the backend (`*Unit`, `*Job`, `*Service`).
+     At the first `Stop` it records whether the target held the new
+     build's bytes, and the backend's `Running`;
+   * `replaceFirst`, which installs with `ReplaceBeforeStop`.
+2. **Tests** (steps 3–4): `TestLiveReplaceBeforeStop` and
+   `TestLiveReplaceBeforeStopHealthFailure` per backend.
+   * The health-failure tests also require the target to equal the
+     previous binary's bytes afterwards.
+   * The SCM one also requires the failure to be the start's, as
+     `TestLiveHealthFailureRollsBack` does.
+   * `go vet` is clean for linux, darwin and windows.
+3. **Runs** (step 6), every `^TestLive` test in each package:
+
+   | Host | Scope | Result |
+   | :--- | :--- | :--- |
+   | this Mac | launchd, this user's GUI domain | 10 `PASS`, among them `TestLiveReplaceBeforeStop` (10.59s) and `...HealthFailure` (25.71s); `ok` |
+   | the Linux test host, systemd 259 (259.5-0ubuntu3.4) | system, under `sudo` | 9 `PASS`; `TestLiveReplaceBeforeStop` (2.85s), `...HealthFailure` (2.79s) |
+   | the same host | user | 9 `PASS`; (2.15s), (1.98s) |
+   | the Windows test host, an administrator shell (`net session` exit 0) | SCM | 8 `PASS`; (5.37s), (5.39s) |
+
+   CI's run on the pushed commit is recorded with S5 step 1.
+4. **Seen failing** (step 5), in scratch copies:
+   * **`early := false`.** Both new tests failed on every host, first on
+     the result check, `ReplacedBeforeStop` false:
+     `live_darwin_test.go:631`, `:665`; `live_linux_test.go:496`, `:529`;
+     `live_windows_test.go:575`, `:605`.
+   * **The at-Stop check** runs after the result check, so a second plant
+     was needed to see it fail:
+     * the early branch was made `if false {` and the late one
+       `if true {`. That is the stop-first order, with
+       `ReplacedBeforeStop` still reported;
+     * `TestLiveReplaceBeforeStop` then failed on that check on each host:
+       * `live_darwin_test.go:634: at Stop: target held the new build false, job running true; want both`;
+       * `live_linux_test.go:499: … unit running true; want both`;
+       * `live_windows_test.go:578: … service running true; want both`.

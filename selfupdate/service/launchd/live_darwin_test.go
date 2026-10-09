@@ -134,6 +134,13 @@ func liveJob() (*Job, error) {
 }
 
 func managedInstall(j *Job, target, newPath string) (selfupdate.InstallResult, error) {
+	return managedInstallWith(j, j, target, newPath, selfupdate.ManagedOptions{})
+}
+
+// managedInstallWith is managedInstall with a lifecycle, a reconciler and
+// options of the test's choosing (docs/decisions/0020-MADR-precheck-gofmt-errors-and-replace-before-stop.md
+// 4B).
+func managedInstallWith(life selfupdate.Lifecycle, rec selfupdate.Reconciler, target, newPath string, opts selfupdate.ManagedOptions) (selfupdate.InstallResult, error) {
 	ctx := context.Background()
 	inner, err := selfupdate.NewStandaloneInstaller(selfupdate.InstallOptions{
 		TargetPolicy: selfupdate.TargetPolicy{ExecutablePath: target, AllowedRoots: []string{filepath.Dir(target)}},
@@ -141,7 +148,7 @@ func managedInstall(j *Job, target, newPath string) (selfupdate.InstallResult, e
 	if err != nil {
 		return selfupdate.InstallResult{}, err
 	}
-	m, err := selfupdate.NewManagedInstaller(inner, j, j)
+	m, err := selfupdate.NewManagedInstallerWith(inner, life, rec, opts)
 	if err != nil {
 		return selfupdate.InstallResult{}, err
 	}
@@ -568,5 +575,102 @@ func TestLiveHandOffHealthFailureReportsRollback(t *testing.T) {
 	}
 	if got := signedAs(t, e.target); got != "selfupdate.live.old" {
 		t.Fatalf("the job's binary is signed as %q, not the previous build", got)
+	}
+}
+
+// stopCheck records, at the first Stop, whether the target already held
+// the new build and whether the service still ran
+// (docs/decisions/0020-PLAN-precheck-gofmt-errors-and-replace-before-stop.md
+// S3).
+type stopCheck struct {
+	*Job
+	target    string
+	want      []byte
+	stops     int
+	newAtStop bool
+	ranAtStop bool
+}
+
+func (c *stopCheck) Stop(ctx context.Context, product string) error {
+	if c.stops == 0 {
+		if b, err := os.ReadFile(c.target); err == nil { //nolint:gosec // the live test's own file
+			c.newAtStop = string(b) == string(c.want)
+		}
+		c.ranAtStop, _ = c.Job.Running(ctx, product)
+	}
+	c.stops++
+	return c.Job.Stop(ctx, product)
+}
+
+// replaceFirst runs a managed install of newPath with ReplaceBeforeStop.
+func replaceFirst(b *Job, target, newPath string) (*stopCheck, selfupdate.InstallResult, error) {
+	want, err := os.ReadFile(newPath) //nolint:gosec // the live test's own file
+	if err != nil {
+		return nil, selfupdate.InstallResult{}, err
+	}
+	c := &stopCheck{Job: b, target: target, want: want}
+	res, err := managedInstallWith(c, c, target, newPath, selfupdate.ManagedOptions{ReplaceBeforeStop: true})
+	return c, res, err
+}
+
+// TestLiveReplaceBeforeStop: with ReplaceBeforeStop, the running job's
+// binary is replaced before the stop, and the job restarts on it
+// (docs/decisions/0020-MADR-precheck-gofmt-errors-and-replace-before-stop.md
+// 4B).
+func TestLiveReplaceBeforeStop(t *testing.T) {
+	requireLive(t)
+	e := newLiveJob(t)
+	before := waitRunning(t, e)
+	build(t, filepath.Join(e.dir, "new"), "selfupdate.live.new")
+	j, err := liveJobFor(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, res, err := replaceFirst(j, e.target, filepath.Join(e.dir, "new"))
+	if err != nil || !res.Applied || !res.ServiceStarted || !res.ReplacedBeforeStop {
+		t.Fatalf("Install = %+v, %v", res, err)
+	}
+	if !c.newAtStop || !c.ranAtStop {
+		t.Fatalf("at Stop: target held the new build %t, job running %t; want both", c.newAtStop, c.ranAtStop)
+	}
+	if after := e.pid(t); after == before || after <= 0 {
+		t.Fatalf("pid %d -> %d", before, after)
+	}
+	if got := signedAs(t, e.target); got != "selfupdate.live.new" {
+		t.Fatalf("the job's binary is signed as %q, not the new build", got)
+	}
+}
+
+// TestLiveReplaceBeforeStopHealthFailure: a new binary replaced before the
+// stop that cannot run is rolled back, and the job runs the previous one.
+func TestLiveReplaceBeforeStopHealthFailure(t *testing.T) {
+	requireLive(t)
+	e := newLiveJob(t)
+	waitRunning(t, e)
+	orig, err := os.ReadFile(e.target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad := filepath.Join(e.dir, "bad")
+	if err := os.WriteFile(bad, []byte("#!/bin/sh\nexit 3\n"), 0o755); err != nil { //nolint:gosec // an executable fixture
+		t.Fatal(err)
+	}
+	j, err := liveJobFor(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j.o.Poll.Timeout = 15 * time.Second
+	c, res, err := replaceFirst(j, e.target, bad)
+	if !errors.Is(err, selfupdate.ErrManagedInstall) || res.Applied || !res.RolledBack || !res.ReplacedBeforeStop {
+		t.Fatalf("Install = %+v, %v; want a rollback after the early replace", res, err)
+	}
+	if !c.newAtStop || !c.ranAtStop {
+		t.Fatalf("at Stop: target held the new build %t, job running %t; want both", c.newAtStop, c.ranAtStop)
+	}
+	if got, err := os.ReadFile(e.target); err != nil || string(got) != string(orig) {
+		t.Fatal("after the rollback the target is not the previous binary")
+	}
+	if pid := waitRunning(t, e); pid <= 0 {
+		t.Fatal("after the rollback the job is not running")
 	}
 }
