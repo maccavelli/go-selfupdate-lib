@@ -1,7 +1,9 @@
 name: CI
 on:
   push:
-    branches: [main]
+    # A release branch's commit is tested before it is tagged
+    # (docs/decisions/0018-MADR-move-toolchain-to-go-1-27-2.md).
+    branches: [main, 'release/**']
     tags: ['v*']
   pull_request:
 
