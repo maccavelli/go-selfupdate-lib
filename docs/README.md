@@ -52,6 +52,8 @@ name, and the files they cite moved with the rename
 | 0017 | PLAN | [Implement 0017: the documentation on main, `v1.11.1` (the zip tiling and Windows-name refusals), and `v1.12.0` (the interrupted-update journal and `selfupdate/verify/ghattest`)](decisions/0017-PLAN-verify-build-provenance-and-close-0015-open-items.md) | complete |
 | 0018 | MADR | [Build and test with Go 1.27.2 through a `toolchain` line, keep `go 1.27.1` as the floor, and release `v1.11.1` from a branch](decisions/0018-MADR-move-toolchain-to-go-1-27-2.md) | accepted |
 | 0018 | PLAN | [Implement the Go 1.27.2 toolchain: the hosts, a `toolchain` line, and `v1.11.1` from a release branch](decisions/0018-PLAN-move-toolchain-to-go-1-27-2.md) | complete |
+| 0019 | MADR | [Apply Go 1.27.2's `go fix` modernizers across every target OS, as one behaviour-preserving change](decisions/0019-MADR-apply-go-fix-modernizers.md) | accepted |
+| 0019 | PLAN | [Implement Go 1.27.2's `go fix` modernizers across every target OS](decisions/0019-PLAN-apply-go-fix-modernizers.md) | in-progress |
 
 ## I want to…
 
