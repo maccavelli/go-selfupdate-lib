@@ -19,7 +19,9 @@ rc0() { if [ "$rc" -eq 0 ]; then ok "$1"; else bad "$1: rc=$rc"; fi; }
 
 # Stubs. Each records its arguments in $WORK/calls; go test exits with
 # $STUB_TEST_RC, go -C DIR test with $STUB_NESTED_RC, and govulncheck exits
-# with $STUB_VULN_RC, after printing a network error when STUB_VULN_NET=1.
+# with $STUB_VULN_RC, after printing a network error when STUB_VULN_NET=1;
+# gofmt prints $STUB_GOFMT_ERR on standard error and exits with
+# $STUB_GOFMT_RC (docs/decisions/0020-MADR-precheck-gofmt-errors-and-replace-before-stop.md).
 STUBS="$WORK/bin"
 mkdir -p "$STUBS"
 cat >"$STUBS/go" <<'EOF'
@@ -34,6 +36,8 @@ EOF
 cat >"$STUBS/gofmt" <<'EOF'
 #!/bin/sh
 echo "gofmt $*" >>"$CALLS"
+[ -n "${STUB_GOFMT_ERR:-}" ] && echo "$STUB_GOFMT_ERR" >&2
+exit "${STUB_GOFMT_RC:-0}"
 EOF
 cat >"$STUBS/golangci-lint" <<'EOF'
 #!/bin/sh
@@ -168,6 +172,30 @@ if [ "$rc" -eq 0 ] && grep -q '^go -C fix vet \./\.\.\.$' "$WORK/calls" && ! gre
 	ok "a deleted package in a nested module falls back to that module's ./..."
 else
 	bad "nested deletion: rc=$rc calls=[$(tr '\n' ';' <"$WORK/calls")]"
+fi
+
+# 0020 G1: gofmt's own failure, a file it cannot read or parse, fails the
+# check and shows its message. The message has no space: run splits its
+# VAR=value words on spaces.
+r=$(repo gofmtfail)
+run "$r" STUB_GOFMT_RC=2 STUB_GOFMT_ERR=pkg/a.go:1:1:broken -- pkg/a.go
+case "$out" in
+*"gofmt: failed (exit 2)"*"pkg/a.go:1:1:broken"*)
+	if [ "$rc" -eq 1 ]; then ok "gofmt's own failure fails the check, with its message"; else bad "gofmt failure: rc=$rc out=[$out]"; fi
+	;;
+*) bad "gofmt failure: rc=$rc out=[$out]" ;;
+esac
+
+# 0020 G3: with no arguments, a tracked file deleted from the work tree is
+# not handed to gofmt, and its package is still checked.
+r=$(repo nolist)
+rm "$r/pkg/a.go"
+run "$r" --
+if [ "$rc" -eq 0 ] && grep -q '^gofmt -l pkg/b.go$' "$WORK/calls" &&
+	! grep -q '^gofmt .*pkg/a.go' "$WORK/calls" && grep -q '^go vet \./\.\.\.$' "$WORK/calls"; then
+	ok "with no arguments, a deleted tracked file is not formatted, and its package is checked"
+else
+	bad "deleted, no arguments: rc=$rc out=[$out] calls=[$(tr '\n' ';' <"$WORK/calls")]"
 fi
 
 echo "go-precheck_test: $PASS passed, $FAIL failed"

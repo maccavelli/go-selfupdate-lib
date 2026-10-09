@@ -567,3 +567,37 @@ release commit S4's:
 
 * The records are `82b8463`, the owner's commit. This entry, the status
   `in-progress` and the index row follow in a records-only commit.
+
+### S1 (2026-10-09)
+
+1. **The script** (steps 1–3): the header names this record, and the usage
+   paragraph says a deleted file is not formatted on either path. The
+   no-list loop adds a file to gofmt's list only if it exists, and always
+   adds its directory. The gofmt step keeps gofmt's standard error and
+   exit status, and fails with `gofmt: failed (exit N):` and the message.
+2. **The test** (step 4): the gofmt stub prints `$STUB_GOFMT_ERR` and exits
+   `$STUB_GOFMT_RC`. Two cases are added, G1 and G3.
+3. **Seen failing first** (step 5). `SCRIPT=<scratch>/old-precheck.sh`,
+   which is `HEAD`'s script, made the test exit 1. Every earlier case
+   reported `ok`, and the two new ones failed:
+
+   ```text
+     FAIL gofmt failure: rc=0 out=[pkg/a.go:1:1:broken
+   go-precheck: 1 file(s) clean (gofmt, golangci-lint, go vet, go test, govulncheck).]
+     FAIL deleted, no arguments: rc=0 out=[go-precheck: 2 file(s) clean (gofmt, golangci-lint, go vet, go test, govulncheck).] calls=[gofmt -l pkg/a.go pkg/b.go;go vet ./...;go test ./...;govulncheck ./...;]
+   go-precheck_test: 11 passed, 2 failed
+   ```
+
+   Against the new script: `go-precheck_test: 13 passed, 0 failed`.
+4. **CI's line** (step 6) is now `unformatted="$(gofmt -l .)"` and
+   `test -z "$unformatted"`, with a comment. Under `bash -e`, on a scratch
+   clone holding an unparseable file, the new form exited 2 and the old
+   form exited 0.
+5. **On the real tools** (step 7), on scratch clones with the new script
+   and `GO_PRECHECK_SKIP_VULN=1`:
+
+   | Case | Exit | Output that decides |
+   | :--- | ---: | :--- |
+   | P3: `buildinfo/stamp_test.go` deleted, no list | 0 | no `lstat` line (0 matches); `go-precheck: 294 file(s) clean (gofmt, golangci-lint, go vet, go test).` |
+   | `buildinfo/buildinfo.go` made unreadable (`chmod 000`), no list | 1 | `gofmt: failed (exit 2):` / `open buildinfo/buildinfo.go: permission denied` |
+   | P4: an unparseable file in a list | 1 | first lines: `gofmt: failed (exit 2):` / `buildinfo/zz_broken.go:3:9: expected ')', found '{'` |

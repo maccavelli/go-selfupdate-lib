@@ -17,7 +17,10 @@
 # vulnerability database fails instead of passing (D4); and by
 # docs/decisions/0013-PLAN-build-and-stage-release-workflow.md D4: a file in
 # a nested module, such as a fixture module under testdata/, is vetted and
-# tested in that module.
+# tested in that module; and by
+# docs/decisions/0020-MADR-precheck-gofmt-errors-and-replace-before-stop.md:
+# gofmt's own failure fails the check, and the no-list path does not hand
+# gofmt a tracked file the work tree no longer has.
 #
 # Step 2 runs golangci-lint with this repository's .golangci.yml instead of
 # golint. golint is archived, and CI already runs golangci-lint; a gate weaker
@@ -29,9 +32,10 @@
 #
 # With no arguments it checks every tracked Go file; with arguments, only those
 # (non-Go arguments are ignored, so callers can pass a whole changed-file list).
-# A Go argument that is no longer on disk, a deletion, still names its package
-# for go vet and go test; when that package has no Go file left, they run over
-# ./... instead, so a deletion that breaks a dependant still fails.
+# A Go file that is no longer on disk, a deletion, is not formatted on either
+# path, but still names its package for go vet and go test; when that package
+# has no Go file left, they run over ./... instead, so a deletion that breaks a
+# dependant still fails.
 # go vet and go test run in the module that owns each package: the nearest
 # go.mod above it. The main module's ./... never reaches a nested module, and
 # lint, which runs ./... in the main module, does not cover one either.
@@ -65,7 +69,11 @@ if [ "$#" -gt 0 ]; then
   done
 else
   while IFS= read -r f; do
-    [ -n "$f" ] && files+=("$f") && dirs+=("$(dirname "$f")")
+    [ -n "$f" ] || continue
+    # A tracked file deleted but not yet staged is not a file to format; its
+    # package is still vetted and tested (0010-MADR D3).
+    [ -f "$f" ] && files+=("$f")
+    dirs+=("$(dirname "$f")")
   done < <(git ls-files '*.go')
 fi
 
@@ -92,10 +100,21 @@ fail() {
   [ "$failed" -lt "$1" ] && failed="$1"
 }
 
-# 1. gofmt, over the files that exist.
+# 1. gofmt, over the files that exist. Its exit status counts as well as its
+# list: a file it cannot read or parse makes it fail with nothing on its
+# output
+# (docs/decisions/0020-MADR-precheck-gofmt-errors-and-replace-before-stop.md).
 if [ "${#files[@]}" -gt 0 ]; then
   need gofmt || exit 2
-  unformatted="$(gofmt -l "${files[@]}")"
+  gofmt_err="$(mktemp)"
+  unformatted="$(gofmt -l "${files[@]}" 2>"$gofmt_err")"
+  gofmt_rc=$?
+  if [ "$gofmt_rc" -ne 0 ]; then
+    echo "gofmt: failed (exit $gofmt_rc):" >&2
+    sed 's/^/  /' "$gofmt_err" >&2
+    fail 1
+  fi
+  rm -f "$gofmt_err"
   if [ -n "$unformatted" ]; then
     echo "gofmt: these files are not formatted (run 'gofmt -w <file>'):" >&2
     printf '%s\n' "$unformatted" | sed 's/^/  /' >&2
