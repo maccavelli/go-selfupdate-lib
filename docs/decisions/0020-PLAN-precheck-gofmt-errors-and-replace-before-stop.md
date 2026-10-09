@@ -1,0 +1,557 @@
+---
+status: proposed
+date: 2026-10-09
+associated-madr: "0020-MADR-precheck-gofmt-errors-and-replace-before-stop.md"
+---
+# Implement a pre-add check that fails when gofmt fails, and an opt-in replace-before-stop order
+
+Associated MADR: [0020-MADR-precheck-gofmt-errors-and-replace-before-stop.md](0020-MADR-precheck-gofmt-errors-and-replace-before-stop.md)
+
+## Goal
+
+* **Item 1 (1A).** Every gofmt check in the tree fails when gofmt fails:
+  * `scripts/go-precheck.sh`;
+  * CI's line;
+  * `make gate`, which already does.
+
+  The no-list path stops handing gofmt a tracked file the work tree no
+  longer has, and still checks that file's package. The script's test can
+  see both.
+* **Item 4 (4B).** `ManagedOptions.ReplaceBeforeStop` and
+  `NewManagedInstallerWith` run `Apply` while a running service still
+  runs, then stop, reconcile, start, check and commit. `ReplacedBeforeStop`
+  reports the order in `InstallResult`, `Result` and `ResultDocument`
+  (schema 4). The default flow is unchanged.
+* **`v1.13.0`** is released with both, by the release procedure of
+  [0017-PLAN-verify-build-provenance-and-close-0015-open-items.md](0017-PLAN-verify-build-provenance-and-close-0015-open-items.md).
+
+## Scope
+
+### In scope
+
+| Phase | What | Commit |
+| :--- | :--- | :--- |
+| S0 | this PLAN, its index row | records only |
+| S1 | item 1: the script, its test, CI's line | one commit |
+| S2 | item 4: the API, the flow, recovery, the result field, unit tests | one commit |
+| S3 | item 4: a live test per backend | one commit |
+| S4 | item 4: guides, architecture, migration guide, record notes | docs only |
+| S5 | `v1.13.0`: the release procedure, and the pin commit | the tag, one commit |
+| S6 | the closing record | records only |
+
+### Out of scope
+
+* **Changing the default order** (MADR 4C), and **splitting `Apply`**
+  (4D).
+* **Detecting the hazards** the MADR lists. The guide documents them.
+* **`Lifecycle`, `Reconciler`, `TwoPhaseSession`, the journal and the
+  handoff.** None of them changes.
+* **The check record's schema** (`checkcache.go:303`,
+  `checkRecordSchema = 3`). It is not the result document's, and stays 3.
+* **go-tui-lib's and other repositories' copies** of the script.
+* **Push and tags.** Each happens only on the owner's ask in the same
+  turn.
+
+## Rules for every phase
+
+1. **Commits.** Each phase commits on `main`, with `git commit --no-edit`.
+   The global `prepare-commit-msg` hook writes the message.
+2. **Before each commit:**
+   * `make pre-add-check FILES="<the phase's Go files>"` exits 0 when the
+     phase has Go files;
+   * `make gate` ends `overall=0`;
+   * for a phase that changes Markdown, `scripts/check-docs.sh --links`
+     and `--ids` are clean on its files.
+
+   Long output goes to a scratch file, with `$?` captured before any
+   filter.
+3. **Every new test case fails first,** on a scratch copy, never in the
+   tree:
+   * a Go test: `scripts/plant-copy.sh FILE OLD NEW` plants one break, and
+     the case runs in the copy;
+   * a script case: it runs against today's script, through the test's
+     `SCRIPT` variable.
+
+   Each phase's record quotes the failing line.
+4. **A deviation stops the phase.** The agent reports evidence, a
+   resolution (recommended first, with its cost) and what doing nothing
+   costs. It records the owner's choice as a dated `Deviation Dn` here,
+   and as an amendment in the MADR when a decision or fact changes. No
+   workaround: no loosened assertion, no skipped test, no swallowed error.
+5. **Identifiers.** Host results name the host by role ("this Mac", "the
+   Linux test host", "the Windows test host") and paths as `<dir>`.
+6. **Each phase's record** goes under `## Execution record`: commands, exit
+   statuses and the output lines that decide.
+
+## Implementation Steps
+
+### Phase S0: records
+
+**Files:**
+* `docs/decisions/0020-MADR-precheck-gofmt-errors-and-replace-before-stop.md`
+  (accepted; written before this PLAN)
+* `docs/decisions/0020-PLAN-precheck-gofmt-errors-and-replace-before-stop.md`
+* `docs/README.md`
+
+1. `docs/README.md` gains this PLAN's row after the MADR's, `proposed`.
+2. On approval, this PLAN becomes `status: in-progress`, with an
+   `### Approval` entry quoting the owner.
+3. Links, identifiers and `make gate`, then commit.
+
+### Phase S1: item 1, the gofmt step
+
+**Files:**
+* `scripts/go-precheck.sh`
+* `scripts/go-precheck_test.sh`
+* `.github/workflows/ci.yml`
+
+**Facts this phase rests on (MADR, Item 1):**
+* gofmt exits 2 with nothing on standard output for a file it cannot read
+  or parse.
+* The script reads only standard output (`:98-99`).
+* The no-list path has no existence check (`:66-69`).
+* The test's gofmt stub always exits 0 (`:34-37`).
+* CI's `test -z "$(gofmt -l .)"` (`ci.yml:144`) passes under `bash -e`.
+
+1. **`scripts/go-precheck.sh`, the header.** After the 0013 D4 sentence,
+   add a sentence naming this record: gofmt's own failure fails the check,
+   and the no-list path skips a tracked file the work tree no longer has.
+   The usage paragraph (`:30-34`) says so too.
+2. **The no-list loop** (`:67-69`) becomes:
+
+   ```bash
+     while IFS= read -r f; do
+       [ -n "$f" ] || continue
+       # A tracked file deleted but not yet staged is not a file to format;
+       # its package is still vetted and tested (0010-MADR D3).
+       [ -f "$f" ] && files+=("$f")
+       dirs+=("$(dirname "$f")")
+     done < <(git ls-files '*.go')
+   ```
+
+3. **The gofmt step** (`:95-105`) becomes:
+
+   ```bash
+   # 1. gofmt, over the files that exist. Its exit status counts as well as
+   # its list: a file it cannot read or parse makes it fail with nothing on
+   # its output
+   # (docs/decisions/0020-MADR-precheck-gofmt-errors-and-replace-before-stop.md).
+   if [ "${#files[@]}" -gt 0 ]; then
+     need gofmt || exit 2
+     gofmt_err="$(mktemp)"
+     unformatted="$(gofmt -l "${files[@]}" 2>"$gofmt_err")"
+     gofmt_rc=$?
+     if [ "$gofmt_rc" -ne 0 ]; then
+       echo "gofmt: failed (exit $gofmt_rc):" >&2
+       sed 's/^/  /' "$gofmt_err" >&2
+       fail 1
+     fi
+     rm -f "$gofmt_err"
+     if [ -n "$unformatted" ]; then
+       echo "gofmt: these files are not formatted (run 'gofmt -w <file>'):" >&2
+       printf '%s\n' "$unformatted" | sed 's/^/  /' >&2
+       fail 1
+     fi
+     ran+=(gofmt)
+   fi
+   ```
+
+   The script runs with `set -uo pipefail`, without `-e`, so `$?` after
+   the assignment is gofmt's status.
+4. **`scripts/go-precheck_test.sh`:**
+   * **The stub** (`:34-37`) becomes:
+
+     ```sh
+     #!/bin/sh
+     echo "gofmt $*" >>"$CALLS"
+     [ -n "${STUB_GOFMT_ERR:-}" ] && echo "$STUB_GOFMT_ERR" >&2
+     exit "${STUB_GOFMT_RC:-0}"
+     ```
+
+     The comment above the stubs (`:20-22`) names both variables.
+   * **Case G1, gofmt's own failure fails the check.** `r=$(repo
+     gofmtfail)`, then `run "$r" STUB_GOFMT_RC=2
+     STUB_GOFMT_ERR=pkg/a.go:1:1:broken -- pkg/a.go`.
+     * It passes when `rc` is 1 and `$out` holds both
+       `gofmt: failed (exit 2)` and `pkg/a.go:1:1:broken`.
+     * The message has no space, because `run` splits its `VAR=value`
+       words on spaces (`:66-76`).
+   * **Case G3, a deleted tracked file with no list.** `r=$(repo
+     nolist)`, `rm "$r/pkg/a.go"`, then `run "$r" --`.
+     * It passes when `rc` is 0, `$WORK/calls` has `gofmt -l pkg/b.go`
+       and no `gofmt` line naming `pkg/a.go`, and it has
+       `go vet ./...`.
+     * The file stays tracked: `repo` ran `git add`, and the deletion is
+       not staged.
+5. **The new cases fail first.**
+   * `git show HEAD:scripts/go-precheck.sh > <scratch>/old-precheck.sh`.
+   * `SCRIPT=<scratch>/old-precheck.sh sh scripts/go-precheck_test.sh`
+     must report `FAIL` for G1 (`rc=0`) and for G3 (a `gofmt` call naming
+     `pkg/a.go`), and `ok` for every earlier case.
+   * The new test then passes against the new script: `0 failed`.
+6. **`.github/workflows/ci.yml:144`** becomes:
+
+   ```bash
+             unformatted="$(gofmt -l .)"
+             test -z "$unformatted"
+   ```
+
+   with a comment that the assignment form fails when gofmt fails, under
+   the step's `bash -e` (this record).
+   * **Seen failing:** on a scratch clone holding an unparseable file,
+     `bash -e -c 'unformatted="$(gofmt -l .)"; test -z "$unformatted"'`
+     exits 2. The old line exits 0 there (MADR P1).
+7. **Seen working on the real tool,** on scratch clones of the S1 commit's
+   tree, with `GO_PRECHECK_SKIP_VULN=1`:
+   * the MADR's P3 (deleted `buildinfo/stamp_test.go`, no list) no longer
+     prints `lstat`. It exits 0 when every package still passes, which is
+     correct, because that file is not formatted;
+   * a scratch case with a tracked file made unreadable (`chmod 000`)
+     makes gofmt fail. With no list it exits 1, with
+     `gofmt: failed (exit 2)` naming the file;
+   * P4 exits 1, now with `gofmt: failed (exit 2)` first.
+8. **Checks:** `shellcheck scripts/go-precheck.sh
+   scripts/go-precheck_test.sh` is clean; `make gate` (its `scripts` and
+   `shellcheck` steps run both) ends `overall=0`. Commit the three files.
+
+### Phase S2: item 4, the API, the flow and the result
+
+**Files:**
+* `selfupdate/managed.go`
+* `selfupdate/types.go`
+* `selfupdate/updater.go`
+* `selfupdate/document.go`
+* `selfupdate/doc.go`
+* `selfupdate/cli/doc.go`
+* `selfupdate/managed_replacefirst_test.go` (new)
+* `selfupdate/managed_started_test.go`
+* `selfupdate/example_test.go`
+* `selfupdate/events_test.go`
+* `selfupdate/warnings_test.go`
+* `selfupdate/lifecycle_windows_test.go`
+
+**Facts this phase rests on:**
+* The flow and its recovery: `managed.go:96-165`, `recoverStop` at
+  `:206-215`, `recover` at `:226-273`.
+* `Apply` keeps the backup and runs the post-install probe, and rolls back
+  itself when the probe fails (`session.go:239-281`, `errRolledBack`).
+* `updater.go:363-370` copies `InstallResult` into `Result`.
+* `document.go:5` has `resultDocumentSchema = 3`.
+
+1. **`types.go`:**
+   * after `InstallResult.Previous`, add `ReplacedBeforeStop bool`, with the
+     MADR's comment;
+   * after `Result.ProbesSkipped`, add `ReplacedBeforeStop bool`: "reports
+     what InstallResult.ReplacedBeforeStop reports".
+2. **`managed.go`:**
+   * `ManagedOptions`, with `ReplaceBeforeStop` and the MADR's comment.
+   * `ManagedInstaller` and `managedSession` gain `opts ManagedOptions`.
+   * `NewManagedInstallerWith(inner Installer, life Lifecycle, rec
+     Reconciler, opts ManagedOptions)` holds today's checks.
+   * `NewManagedInstallerFor` returns
+     `NewManagedInstallerWith(inner, life, rec, ManagedOptions{})`.
+     `NewManagedInstaller` is unchanged: it calls `...For`.
+   * `Begin` passes `opts` to the session.
+3. **`managedSession.Install`,** after `start` is known and before the
+   `if running { Stop }` block:
+
+   ```go
+   early := running && s.opts.ReplaceBeforeStop
+   var applied AppliedReplacement
+   if early {
+       // The binary is replaced while the old instance still runs
+       // (0020-MADR 4B): a failed Apply or probe leaves it running, and
+       // nothing restarts.
+       a, err := s.inner.Apply(ctx, req)
+       if err != nil {
+           res, rerr := s.recover(ctx, product, a, ReconcileResult{}, false, false, err)
+           res.ReplacedBeforeStop = a.Backup != "" || errors.Is(err, errRolledBack)
+           return res, rerr
+       }
+       applied = a
+   }
+   ```
+
+   Then:
+   * **The stop:** `if running { if err := s.life.Stop(...); err != nil {
+     return s.recoverStop(ctx, product, applied, err) } }`.
+   * **The late apply:** `if !early { applied, err = s.inner.Apply(ctx,
+     req); ... }`, with today's code and comments.
+   * **Every later `recover(...)` call and the success path** set
+     `ReplacedBeforeStop = early` on the result they return. One helper,
+     `func mark(r InstallResult, early bool) InstallResult`, keeps it to a
+     line each.
+
+   `ReplacedBeforeStop` is true when a replacement went live before
+   `Stop`. A failed early `Apply` that never renamed (no backup, and no
+   `errRolledBack`) reports false.
+4. **`recoverStop`** gains `applied AppliedReplacement`, which is empty
+   when the binary was not replaced first:
+   * **The service still runs, or cannot be asked:** with a live backup,
+     `s.inner.Rollback(ctx, applied)` runs under the recovery context, and
+     its error and its `RolledBack` or kept backup are reported as
+     `recover` reports them. There is no restart.
+   * **The service went down:**
+     `s.recover(parent, product, applied, ReconcileResult{}, true, false, ...)`,
+     as today, with `applied` instead of `AppliedReplacement{}`. The binary
+     is rolled back, then the service is started on it.
+   * **Today's callers** pass `AppliedReplacement{}`. Their behaviour is
+     unchanged, which `TestManagedStopFailsAfterStoppingRestarts` and
+     `TestManagedStopFailsStillRunning` keep proving.
+5. **`updater.go`,** after `resultOut.RolledBack = installed.RolledBack`:
+   `resultOut.ReplacedBeforeStop = installed.ReplacedBeforeStop`.
+6. **`document.go`:**
+   * `resultDocumentSchema = 4`. The comment gains "version 4 adds
+     replaced_before_stop (0020-MADR 4B)".
+   * `ReplacedBeforeStop bool \`json:"replaced_before_stop"\`` goes after
+     `ProbesSkipped`, and `Document()` maps it.
+7. **Package docs:**
+   * `selfupdate/doc.go`'s managed-installer paragraph names the option and
+     says the default order is unchanged;
+   * `selfupdate/cli/doc.go:18` says schema 4, and what
+     `replaced_before_stop` reports.
+8. **Existing expectations of schema 3 move to 4,** and gain
+   `"replaced_before_stop":false`:
+   * `example_test.go:319`;
+   * `events_test.go:370` and `:384`;
+   * `warnings_test.go:102`.
+
+   `checkcache_test.go`'s `"schema_version":3` lines are the check
+   record's and do not change; `git diff --stat` must not list that file.
+9. **New tests,** in `managed_replacefirst_test.go`. They use a recording
+   lifecycle, `orderLife`:
+   * its `Stop` records the target's bytes and `Running` at that moment;
+   * its `Running` follows `Stop` and `Start`;
+   * its failures are injectable.
+
+   Each test builds the installer with `NewManagedInstallerWith(...,
+   ManagedOptions{ReplaceBeforeStop: true})`.
+
+   | Test | Setup | Asserts |
+   | :--- | :--- | :--- |
+   | `TestReplaceBeforeStopOrder` | running | at `Stop` the target held `new-bytes` and the service ran; log `stop, start, health`; `Applied`, `ReplacedBeforeStop` true |
+   | `TestReplaceBeforeStopStoppedService` | stopped, enabled | log `start, health`; `ReplacedBeforeStop` false |
+   | `TestReplaceBeforeStopNotInstalled` | not installed | standalone result; `ReplacedBeforeStop` false |
+   | `TestReplaceBeforeStopProbeFails` | running, `PostInstall` fails | empty log: never stopped or started; target `old-bytes`; `RolledBack` and `ReplacedBeforeStop` true; error wraps `ErrManagedInstall` |
+   | `TestReplaceBeforeStopApplyRefused` | running, a pending journal planted beside the target (`errJournalPending`) | empty log; target `old-bytes`; `ReplacedBeforeStop` false |
+   | `TestReplaceBeforeStopStopFailsStillRunning` | running, `Stop` errors and the service stays up | log `stop`; target `old-bytes`; `RolledBack` true; no `start` |
+   | `TestReplaceBeforeStopStopFailsWentDown` | running, `Stop` errors after stopping | log `stop, start, health`; target `old-bytes`; `RolledBack` true |
+   | `TestReplaceBeforeStopReconcileFails` | running, `Reconcile` errors | log `stop, start, health`; target `old-bytes`; `RolledBack`, `ReplacedBeforeStop` true |
+   | `TestReplaceBeforeStopHealthFails` | running, `WaitHealthy` errors | log `stop, start, health, stop, start, health`; target `old-bytes`; `RolledBack` true |
+   | `TestReplaceBeforeStopCommitRefused` | running, the directory swapped in `Reconcile` (as `swapRec`) | `ErrConcurrentUpdate`; the new binary rolled back; `ReplacedBeforeStop` true |
+   | `TestNewManagedInstallerWithRefusesNil` | nil and typed-nil installer, lifecycle, reconciler | each refused, as `TestManagedRefusesTypedNil` |
+   | `TestManagedDefaultOrderUnchanged` | `NewManagedInstallerFor`, running | at `Stop` the target held `old-bytes`; `ReplacedBeforeStop` false |
+
+   * **In `managed_started_test.go`:** `TestRunReportsReplacedBeforeStop`
+     drives `Updater.Run` with the option and a running fake service, as
+     `TestRunReportsRolledBack` does. It asserts
+     `Result.ReplacedBeforeStop` and the document's
+     `"replaced_before_stop":true`.
+   * **`ExampleNewManagedInstallerWith`** goes in `example_test.go`, with
+     no output, as `ExampleNewManagedInstallerFor`.
+10. **On Windows,** `lifecycle_windows_test.go` gains
+    `TestReplaceBeforeStopRunningImage`:
+    * the target runs as a helper process (`SELFUPDATE_NATIVE_HELPER`, as
+      `TestKeepPreviousRunningImage`);
+    * the lifecycle's `Stop` ends the helper and waits for it;
+    * the install with the option is `Applied`, the target holds the new
+      bytes, and `PendingBackup` is empty, because the old image had
+      stopped by `Commit`.
+11. **Each new test fails first.** Each plant is made with
+    `scripts/plant-copy.sh`, and the named tests run in the copy:
+
+    | Plant in the copy | Must fail |
+    | :--- | :--- |
+    | `early := running && s.opts.ReplaceBeforeStop` → `early := false` | `TestReplaceBeforeStopOrder`, `...ProbeFails`, `TestRunReportsReplacedBeforeStop` |
+    | in `recoverStop`, the still-running branch's `Rollback` call removed | `TestReplaceBeforeStopStopFailsStillRunning` |
+    | the early-`Apply` failure calls `recover` with `restart` true | `TestReplaceBeforeStopProbeFails` (a `start` in the log) |
+    | `document.go`: the `ReplacedBeforeStop` mapping removed | `TestRunReportsReplacedBeforeStop` |
+    | `updater.go`: the copy of `ReplacedBeforeStop` removed | `TestRunReportsReplacedBeforeStop` |
+    | `NewManagedInstallerFor` passes `ManagedOptions{ReplaceBeforeStop: true}` | `TestManagedDefaultOrderUnchanged` |
+
+    The Windows test runs on the Windows test host (it builds only there).
+    Its plant, `early := false`, makes it fail on "the target held
+    old-bytes at Stop", which it asserts too.
+12. **Checks:**
+    * `go test -race ./selfupdate/...`;
+    * `CGO_ENABLED=0 GOOS=windows go vet ./selfupdate/...`;
+    * the Windows test, 30 runs on the Windows test host (`-count=30`),
+      as 0017 Q4 ran its own;
+    * `make apicheck` reports "compatible with v1.12.1";
+    * `make pre-add-check`, then `make gate`.
+
+    Commit.
+
+### Phase S3: item 4, live tests per backend
+
+**Files:**
+* `selfupdate/service/systemd/live_linux_test.go`
+* `selfupdate/service/launchd/live_darwin_test.go`
+* `selfupdate/service/scm/live_windows_test.go`
+
+**Facts:**
+* Each backend has `managedInstall(<backend>, target, newPath)`
+  (`systemd :151`, `launchd :136`, `scm :225`), which builds
+  `NewManagedInstaller(inner, b, b)`.
+* CI runs `^TestLive` in each package, under `SELFUPDATE_REQUIRE_SYSTEMD`
+  (system and user scope), `SELFUPDATE_REQUIRE_LAUNCHD` and
+  `SELFUPDATE_REQUIRE_SCM` (`ci.yml:61-95`). New `TestLive…` tests run
+  there with no workflow change.
+
+1. **In each file,** `managedInstall` becomes a call to
+   `managedInstallWith(life selfupdate.Lifecycle, rec selfupdate.Reconciler,
+   target, newPath string, opts selfupdate.ManagedOptions)`, so existing
+   callers are unchanged.
+2. **A wrapper, `stopCheck`,** embeds the backend (`*Unit`, `*Job` or
+   `*Service`), so `Enabled` and the `Reconciler` methods are promoted. Its
+   `Stop` records two things before calling the backend's `Stop`:
+   * whether the target already holds the new build's marker;
+   * the backend's `Running`.
+3. **`TestLiveReplaceBeforeStop`,** per backend, on the throwaway unit,
+   job or service that `TestLiveManagedUpdate` uses:
+   * the option is set;
+   * at `Stop`, the target held the new build and the service was running;
+   * `Applied`, `ServiceStarted` and `ReplacedBeforeStop` are true;
+   * the service's identity changed: systemd's `InvocationID`, the
+     launchd PID, the SCM process ID.
+4. **`TestLiveReplaceBeforeStopHealthFailure`,** per backend, as
+   `TestLiveHealthFailureRollsBack` but with the option:
+   * the install fails;
+   * `RolledBack` and `ReplacedBeforeStop` are true;
+   * the service runs the previous binary afterwards.
+5. **Seen failing first,** each on its host, in a scratch copy with
+   `early := false` planted in `managed.go`: `TestLiveReplaceBeforeStop`
+   fails on "target held the new build at Stop".
+6. **Runs, recorded:**
+   * **the Linux test host:** system scope under `sudo`, and user scope,
+     as `ci.yml`'s systemd step runs them;
+   * **this Mac:** `SELFUPDATE_REQUIRE_LAUNCHD=1`, in this user's GUI
+     domain;
+   * **the Windows test host:** `SELFUPDATE_REQUIRE_SCM=1`, from an
+     elevated shell. If the host's shell is not elevated, CI's run is the
+     record, and this says so;
+   * **CI:** every `TestLive` step, on the pushed S3 commit.
+7. **Checks:** `make gate`, then commit.
+
+### Phase S4: item 4, documentation and record notes
+
+**Files:**
+* `docs/guides/extending-selfupdate.md`
+* `docs/guides/migrating-from-mcplib-selfupdate.md`
+* `docs/architecture.md`
+* `docs/decisions/0004-MADR-evolve-selfupdate-api-and-tui-support.md`
+* `docs/decisions/0011-MADR-reference-service-lifecycles.md`
+* `docs/reports/0016-REPORT-precheck-gofmt-errors.md`
+
+1. **`extending-selfupdate.md`:**
+   * **"Run as a service"** gains a subsection, `### Replace before the
+     stop`. It covers `NewManagedInstallerWith` with the option, and the
+     order. It covers what the option buys: a failed `Apply` or probe
+     costs no downtime, and the swap is a few tens of milliseconds
+     (MADR). And it gives the three hazards as conditions for using it:
+     * the service never starts its own executable while it runs;
+     * no `ExecStop=`-like hook runs it;
+     * the consumer accepts that an unplanned restart runs the new
+       binary before its health check.
+   * **"Read JSON output"** (`:100`) says schema 4 since `v1.13.0`, and
+     names `replaced_before_stop`.
+   * **The handoff result example** (`:564`) shows `"schema_version":4`.
+2. **The migration guide** gains `## 13. From v1.12 to v1.13`, with
+   `### What is new`, `### Adopting it` and `### Check`, in §12's form:
+   * the option, and that the default is unchanged;
+   * schema 4, which only adds a key;
+   * the pre-add check's gofmt step, for a program that copied the
+     script.
+
+   §2's "current release" and the `go get` lines move in S5's pin commit,
+   not here.
+3. **`docs/architecture.md`:**
+   * the managed-installer bullet (`:149`) names `NewManagedInstallerWith`
+     and `ManagedOptions`;
+   * the `selfupdate/` row's file counts (`:111`) are recounted with
+     `ls selfupdate/*.go | grep -v _test | wc -l` and the `_test` count,
+     and the command output is recorded.
+4. **`README.md` is not changed here.** `247a2b6`'s one README line was a
+   package-table row for a new package, and this release adds no package.
+   Its pins move in S5.
+5. **Record notes,** each an annotation, not a rewrite:
+   * **0004-MADR P3's open-work table:** the row "Replacing the binary
+     before stopping the service" moves to the done list, "opt-in, in
+     `v1.13.0`, under 0020".
+   * **0011-MADR, Related:** the candidate gets "*(Decided 2026-10-09 by
+     0020-MADR: opt-in, `ManagedOptions.ReplaceBeforeStop`.)*".
+   * **0016-REPORT:** a dated closing line says it is decided by
+     0020-MADR and fixed in S1. Its claim that `make release-check` also
+     reaches the gap is corrected there: this repository has no such
+     target. The finding above it stays as written.
+6. **Checks:** links and identifiers on every changed file, markdownlint
+   (`npx --yes markdownlint-cli2@0.23.2`) on the guides, then `make gate`.
+   Commit.
+
+### Phase S5: `v1.13.0`
+
+0017-PLAN's "Release procedure" applies, with `vX = v1.13.0` and the
+release commit S4's:
+
+1. **CI** on `main` at S4's commit is green: every job, including S3's
+   live tests. The commits must be pushed first, on the owner's ask.
+2. **The live tests** are S2 step 12's and S3 step 6's records.
+3. **The tag,** on the owner's ask in that turn:
+   * `scripts/check-release-tag.sh v1.13.0`;
+   * `git tag -a v1.13.0 -m v1.13.0 <commit>`;
+   * the disclosure guard over the tag;
+   * `git push origin v1.13.0`.
+4. **The tag's state:** `ls-remote` gives the commit. The tag's CI passes
+   all jobs, and the ten identity legs print `v1.13.0 (release) <12-hex>`.
+5. **The pin commit,** whose candidates are
+   `git grep -n 'v1\.12\.1\|e8116a2' -- README.md docs/architecture.md docs/guides`.
+   Each changed line is named in the record. The lines that state what
+   `v1.12.1` itself changed are kept.
+6. **The proxy:** `go list -m -json …@v1.13.0` gives `Origin.Hash` the
+   commit, and `@latest` resolves to `v1.13.0`.
+7. **Release notes,** in this PLAN under `### Release notes for v1.13.0`.
+8. **No installer rehearsal,** unless the owner asks for one.
+
+### Phase S6: closing
+
+1. `### Verification, at closing`: V1–V8, each with its evidence.
+2. `### Closing`, `status: complete`, and the index row. Commit, then push
+   on the owner's ask.
+
+## Verification
+
+* **V1 (item 1).** G1 and G3 failed against the old script and pass
+  against the new one, and the test reports `0 failed`. On the real tool,
+  P3 no longer prints `lstat`, and the unreadable-file case exits 1 with
+  `gofmt: failed (exit 2)`.
+* **V2 (item 1, CI).** The new CI line exits 2 on a scratch unparseable
+  file under `bash -e`, and CI is green on S1's commit.
+* **V3 (item 4, units).** Every S2 test failed against its plant and
+  passes. The default-order test proves nothing changed without the
+  option.
+* **V4 (item 4, Windows).** `TestReplaceBeforeStopRunningImage` passed 30
+  runs on the Windows test host and passes in CI's Windows job.
+* **V5 (item 4, live).** `TestLiveReplaceBeforeStop` and its health-failure
+  test pass on each backend, on the hosts S3 names and in CI.
+* **V6 (API).** `make apicheck` is compatible with `v1.12.1`, and the
+  apidiff report lists only the additions: `ManagedOptions`,
+  `NewManagedInstallerWith`, `InstallResult.ReplacedBeforeStop`,
+  `Result.ReplacedBeforeStop` and `ResultDocument.ReplacedBeforeStop`.
+* **V7 (schema).** `resultDocumentSchema` is 4, `checkRecordSchema` is still
+  3, and `checkcache_test.go` is unchanged since `v1.12.1`.
+* **V8 (release).** `v1.13.0` is tagged at S4's commit (or a later
+  release-shaped commit, recorded), its CI is green, the pins name it, and
+  the proxy serves it.
+
+## Rollout and Rollback
+
+* **Rollout:** item 1 takes effect on its commit, for every agent commit
+  and `make pre-add-check`. Item 4 reaches consumers in `v1.13.0`, and does
+  nothing until a consumer sets the option.
+* **Rollback, item 1:** `git revert` of S1's commit restores the old
+  check.
+* **Rollback, item 4, before the tag:** revert S2 to S4. After the tag, a
+  release cannot be withdrawn, since the tag ruleset and the proxy keep
+  it. A defect is fixed in `v1.13.1`. A consumer that hits one unsets the
+  option, which restores today's flow without a downgrade.
+* **A deviation in any phase** stops it, by rule 4.
