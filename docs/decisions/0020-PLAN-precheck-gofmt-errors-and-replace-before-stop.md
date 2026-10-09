@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 date: 2026-10-09
 associated-madr: "0020-MADR-precheck-gofmt-errors-and-replace-before-stop.md"
 ---
@@ -881,3 +881,58 @@ it compatible with `v1.12.1`.
   * CI's gofmt line fails on its own.
 * **Records:** this PLAN and its MADR. MADR 0011's replace-before-stop
   candidate, and report 0016, are decided.
+
+### Verification, at closing (2026-10-09)
+
+* **V1 (item 1).** G1 and G3 failed against the old script and pass
+  against the new one: `13 passed, 0 failed`. On the real tool, P3 prints
+  no `lstat`, and the unreadable file exits 1 with
+  `gofmt: failed (exit 2)` (S1).
+* **V2 (item 1, CI): holds with a note.** The new CI line exits 2 on a
+  scratch unparseable file under `bash -e` (S1). No CI run exists for
+  `2870b54` alone: it was pushed with the later commits in one push, and
+  `gh run list --commit 2870b54` lists none. Run 37976906986 at `5e199c8`,
+  which holds it, passed all 17 jobs, `vet, gofmt, tidy, lint` included.
+* **V3 (item 4, units).** Every S2 test failed against its plant and
+  passes. `TestManagedDefaultOrderUnchanged` failed when the default was
+  planted on, and passes (S2).
+* **V4 (item 4, Windows).** `TestReplaceBeforeStopRunningImage` passed
+  `-test.count=30` twice on the Windows test host (S2). It has no skip,
+  and CI's `validate (windows-2025)` ran it in `go test ./...`:
+  `ok  github.com/maccavelli/go-selfupdate-lib/selfupdate  30.775s`.
+* **V5 (item 4, live).** `TestLiveReplaceBeforeStop` and its
+  health-failure test pass:
+  * on this Mac (launchd);
+  * on the Linux test host (systemd 259, system and user scope);
+  * on the Windows test host (SCM);
+  * in CI on all three runners (S3, S5).
+
+  Each failed against `early := false`, and the at-Stop check failed
+  against the second plant, on every host.
+* **V6 (API).** The full apidiff report against `v1.12.1` lists only the
+  five additions (S2), and the tag's CI `apicheck` passed.
+* **V7 (schema).** `selfupdate/document.go:7` has
+  `resultDocumentSchema = 4`, and `selfupdate/checkcache.go:303` has
+  `checkRecordSchema = 3`. `git diff --stat v1.12.1 HEAD --
+  selfupdate/checkcache_test.go` is empty. (`checkcache.go` itself changed
+  since `v1.12.1` only in
+  [0019-PLAN-apply-go-fix-modernizers.md](0019-PLAN-apply-go-fix-modernizers.md)'s
+  `errors.AsType` rewrite.)
+* **V8 (release).** `v1.13.0` is the annotated tag on `5e199c8`, S4's
+  commit. Its CI passed with ten identity legs, the pins name it
+  (`2db85b4`), and the proxy serves it as `@latest` (S5).
+
+### Closing (2026-10-09)
+
+* V1–V8 hold, V2 with its note. There was one deviation, D1, and one
+  breach of Rules item 2: S3's lint failure was committed, then fixed in
+  `6f56a04`. Both are recorded above.
+* This PLAN is `complete`, and its row in `docs/README.md` follows. The
+  MADR stays `accepted`.
+* **Not done, as scoped:**
+  * the default order is unchanged (MADR 4C);
+  * `Apply` is not split (4D);
+  * the hazards are documented, not detected;
+  * go-tui-lib's and other repositories' copies of the pre-add script are
+    theirs to change. The migration guide's §13 tells a program that
+    copied it.
