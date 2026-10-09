@@ -1657,3 +1657,100 @@ tests. Step 3, the tag, waits for the owner's ask.
 * **Checks:**
   * `make pre-add-check` on the 21 Go files: "21 file(s) clean";
   * `make gate`: every step `rc=0`, `overall=0`.
+
+### Phase Q2: `selfupdate/verify/ghattest` (2026-10-08)
+
+* **Commit:** the code is `cf95233`. It was committed and pushed outside
+  this session, before this record, with the work as the agent had left it
+  in the tree; its gate had failed only `vuln` (Deviation D4).
+* **Fix:**
+  * `ghattest.go`:
+    * `Policy` and `Options`, and `PublishWorkflow`, `PredicateType`,
+      `Issuer`;
+    * `NewManifestVerifier` and `NewVerifier`;
+    * construction checks: names, the workflow form, 40-hex digests, an
+      absolute `gh` with `filepath.IsAbs`, a non-negative timeout;
+    * the argv of step 3, with `--hostname github.com` (N12);
+    * N13's environment;
+    * the `--format json` re-check of every policy field and the subject
+      digest (N11);
+    * codesign's bounded `detail`, copied.
+  * `doc.go`, `example_test.go`, `live_test.go`.
+  * `testdata/verify-aqua-v2.64.0.json`: the probe's gh output, 17,795
+    bytes, public data.
+  * `.golangci.yml`: the rule `selfupdate-verify-ghattest` and the
+    `other-packages` exclusion. `AGENTS.md`: the scope paragraph, the
+    `selfupdate/verify/` directory, the rule list.
+* **Red:**
+  * the tests did not build before the package existed (`undefined:
+    Policy`, `undefined: Options`);
+  * `TestUpdaterRefusesUnattested`, with the manifest verifier list
+    emptied (`v1.11.1`'s behaviour), failed with `example_test.go:93: Run
+    = <nil>, want an ErrIntegrity from the attestation check`.
+* **Green:**
+  * `go test -count=1 ./selfupdate/verify/ghattest/` passed;
+  * the live test with `SELFUPDATE_REQUIRE_GHATTEST=1` passed on this Mac
+    (22.82 s) and on the Windows test host (24.87 s). The Windows host's
+    `gh auth status` exited non-zero there, but the live test's refusal
+    cases need gh's exit 1, not 4, so gh ran authenticated;
+  * the package on the Windows test host: `pass=47 fail=0`.
+* **Fixes while greening:**
+  * the updater test's target needed `AllowedRoots`, since the temporary
+    directory is outside the home directory;
+  * errcheck flagged `_ = r.Close()`; the close error is now joined into
+    the result.
+* **Plants,** each in a scratch copy:
+
+  | Plant | First failing line |
+  | :--- | :--- |
+  | `--source-ref` dropped | `ghattest_test.go:199: ran … want …` (every `TestArguments` case) |
+  | the ref re-check off | `ghattest_test.go:340: err = <nil>, want "sourceRepositoryRef" named` |
+  | exit 4 not recognised | `ghattest_test.go:241: err = … attestation verification failed (exit 4) …, want "gh is not logged in (ex…` |
+  | the asset digest check off | `ghattest_test.go:414: err = … (exit 1): , runs = 1, want 0` |
+  | the temporary file kept | `ghattest_test.go:384: exit 0: left [- selfupdate-ghattest-…]` |
+  | a negative timeout accepted | `ghattest_test.go:142: NewManifestVerifier accepted it` |
+  | a leading `-` accepted | `ghattest_test.go:142: NewManifestVerifier accepted it` |
+
+  The red plant was first written so that `v` went unused, which did not
+  compile. It was rewritten as `ManifestVerifiers: …{v}[:0]`.
+* **V4, the depguard rule,** on a scratch copy whose `ghattest.go` imports
+  `selfupdate/archive`: `import 'github.com/maccavelli/go-selfupdate-lib/selfupdate/archive'
+  is not allowed from list 'selfupdate-verify-ghattest' (depguard)`. A
+  first run without a comment on the import showed only revive's
+  blank-import finding. golangci-lint keeps one issue per line, so
+  revive's hid depguard's; with the comment, depguard's is the one shown.
+* **API:** the full apidiff report against `v1.11.0` adds `package
+  …/selfupdate/verify/ghattest: added` to Q1's three additions.
+* **Checks:**
+  * `make pre-add-check` on the five Go files: clean;
+  * `make gate`: every step `rc=0` but `vuln rc=2` (Deviation D4).
+
+### Deviation D4 (2026-10-08): Go 1.27.1's standard library has ten advisories
+
+* **Found:** Q2's `make gate`, `vuln rc=2`. govulncheck v1.8.0 reported:
+  * ten Go standard-library advisories, all fixed in Go 1.27.2: GO-2026-6617,
+    -6613, -6612, -6611, -6610, -6608, -6607, -6605, -6604 (Windows) and
+    -6603;
+  * each reached through code that predates 0017.
+
+  The gate had passed earlier the same day. CI sets up Go from `go.mod`,
+  so it fails the same way.
+* **Resolutions offered:**
+  1. a `toolchain go1.27.2` line, with `go 1.27.1` kept and the hosts
+     moved (recommended);
+  2. a `go 1.27.2` minimum;
+  3. no change.
+
+  And for `v1.11.1`:
+  1. a `release/v1.11.1` branch from `50eafb6` plus the toolchain commit
+     (recommended);
+  2. fold it into `v1.12.0`;
+  3. tag `50eafb6` with a red tag CI.
+* **Decision:** the owner chose both recommended resolutions. They are
+  decided in
+  [0018-MADR-move-toolchain-to-go-1-27-2.md](0018-MADR-move-toolchain-to-go-1-27-2.md)
+  and carried out by its PLAN.
+* **For this PLAN:**
+  * `v1.11.1`'s release procedure applies to the `release/v1.11.1`
+    commit, not to `50eafb6`;
+  * Q3 waits for 0018's T2 and T3.
