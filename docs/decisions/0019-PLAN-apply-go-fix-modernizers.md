@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 date: 2026-10-09
 associated-madr: "0019-MADR-apply-go-fix-modernizers.md"
 ---
@@ -155,3 +155,64 @@ Associated MADR: [0019-MADR-apply-go-fix-modernizers.md](0019-MADR-apply-go-fix-
   is fixed by hand inside F1" is amended for this line only. F1 resumes at
   step 3 (each OS's `go fix -diff` empty) and runs every step after it
   again.
+
+### F0 (2026-10-09)
+
+* `HEAD` was `9dd2da8`, on `main`. The hooks path is the global hooks
+  directory.
+* Links: "86 links in 3 files, 0 broken". Identifiers: "0 findings".
+  markdownlint: exit 0. `make gate`: `overall=0`.
+* Commit `adb54a8`.
+
+### F1 (2026-10-09)
+
+1. `git status --short` was empty.
+2. `go fix ./...` exited 0, with no output, for darwin, linux and
+   windows.
+3. `go fix -diff ./...` exited 0, with no output, for each OS.
+4. `git diff --name-only` equalled the 19 files of the preview, with no
+   difference.
+5. The diff (19 files, 32 insertions, 39 deletions) was read in full. Each
+   hunk matched a row of the MADR's table. The `managed_stopped_test.go`
+   hunk's header was `@@ -223,7 +223,7 @@`, so the preview's three-line
+   offset was in the preview's display only. The applied diff changes the
+   three literals and removes no other line.
+6. `gofmt -l` on the 19 files: empty.
+7. `make pre-add-check` failed on errcheck: Deviation D1. After its hand
+   line, steps 3–6 were run again with the same results, and
+   `make pre-add-check` exited 0.
+8. `make gate` ended `overall=0`, one line per step:
+   * gofmt: clean;
+   * lint: "0 issues.";
+   * vet, race, shuffle, tidy, fuzz, shellcheck and crossvet: rc=0;
+   * apicheck: "compatible with v1.12.1";
+   * vuln: "No vulnerabilities found.";
+   * scripts: "all script tests passed";
+   * links: "406 links in 56 files, 0 broken";
+   * ids: "21 files, 16 deny-list rules, 0 findings".
+9. Commits: `a849b7a`, D1 and MADR A1; `a94730b`, the 19 files. The
+   disclosure guard over the three unpushed commits exited 0. The owner
+   pushed them.
+
+### F2 (2026-10-09)
+
+* CI run 37948055929 on `main` at `a94730b` passed all 17 jobs.
+* The Windows job, `validate (windows-2025)`, reported
+  `ok  github.com/maccavelli/go-selfupdate-lib/internal/cmd/selfupdate-release  142.021s`.
+  `installer_ps_test.go` has no skip, so its three tests ran there.
+
+### Verification, at closing (2026-10-09)
+
+* **V1:** `go fix -diff ./...` is empty for darwin, linux and windows
+  (F1 step 3, run again after D1).
+* **V2:** `a94730b` changes exactly the MADR's 19 files.
+* **V3:** `make gate` ended `overall=0` at F0 and F1, and at F2 before
+  this commit; `apicheck` was compatible with `v1.12.1` each time.
+* **V4:** CI passed on `a94730b`, the Windows job included (F2).
+
+### Closing (2026-10-09)
+
+* V1–V4 hold, with Deviation D1's one hand-written line. This PLAN is
+  `complete`, and its row in `docs/README.md` follows. The MADR stays
+  `accepted`.
+* No release follows (MADR Decision Outcome item 3).
