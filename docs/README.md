@@ -49,9 +49,9 @@ name, and the files they cite moved with the rename
 | 0015 | PLAN | [Implement the third debugging pass's remediation: records and the gate on main, v1.10.1 of contract-preserving fixes, and v1.11.0 for the owner's contracts](decisions/0015-PLAN-remediate-third-debugging-pass-findings.md) | complete |
 | 0016 | REPORT | [The pre-add check passes a file gofmt cannot read](reports/0016-REPORT-precheck-gofmt-errors.md) | — |
 | 0017 | MADR | [Check build provenance at update time with an opt-in `selfupdate/verify/ghattest`, and close the four items 0015 left open](decisions/0017-MADR-verify-build-provenance-and-close-0015-open-items.md) | accepted |
-| 0017 | PLAN | [Implement 0017: the documentation on main, `v1.11.1` (the zip tiling and Windows-name refusals), and `v1.12.0` (the interrupted-update journal and `selfupdate/verify/ghattest`)](decisions/0017-PLAN-verify-build-provenance-and-close-0015-open-items.md) | in-progress |
+| 0017 | PLAN | [Implement 0017: the documentation on main, `v1.11.1` (the zip tiling and Windows-name refusals), and `v1.12.0` (the interrupted-update journal and `selfupdate/verify/ghattest`)](decisions/0017-PLAN-verify-build-provenance-and-close-0015-open-items.md) | complete |
 | 0018 | MADR | [Build and test with Go 1.27.2 through a `toolchain` line, keep `go 1.27.1` as the floor, and release `v1.11.1` from a branch](decisions/0018-MADR-move-toolchain-to-go-1-27-2.md) | accepted |
-| 0018 | PLAN | [Implement the Go 1.27.2 toolchain: the hosts, a `toolchain` line, and `v1.11.1` from a release branch](decisions/0018-PLAN-move-toolchain-to-go-1-27-2.md) | in-progress |
+| 0018 | PLAN | [Implement the Go 1.27.2 toolchain: the hosts, a `toolchain` line, and `v1.11.1` from a release branch](decisions/0018-PLAN-move-toolchain-to-go-1-27-2.md) | complete |
 
 ## I want to…
 

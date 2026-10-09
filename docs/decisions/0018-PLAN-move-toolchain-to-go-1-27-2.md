@@ -1,6 +1,6 @@
 ---
-status: in-progress
-date: 2026-10-08
+status: complete
+date: 2026-10-09
 associated-madr: "0018-MADR-move-toolchain-to-go-1-27-2.md"
 ---
 # Implement the Go 1.27.2 toolchain: the hosts, a `toolchain` line, and `v1.11.1` from a release branch
@@ -247,9 +247,14 @@ them". On that day:
   | the Windows test host | `go1.27.2` | v1.8.0, `go1.27.2` |
   | its WSL distribution | **`go1.27.1`** | v1.8.0, `go1.27.2` |
 
-  WSL's `golangci-lint` is the one copy not rebuilt. The dotfiles plan
-  moves the hosts, and this PLAN does not change them, so it is reported
-  to the owner, not fixed here. V1 holds for every other copy.
+  WSL's `golangci-lint` was the one copy not rebuilt. Asked at closing,
+  the owner chose "Rebuild it first". Inside WSL, with its Go 1.27.2,
+  `GOBIN=$HOME/go/bin go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0`
+  changed `golangci-lint version`:
+  * before: "built with go1.27.1";
+  * after: "built with go1.27.2".
+
+  `which -a golangci-lint` lists only that copy.
 
 ### Phase T2: the `toolchain` line, and CI on release branches (2026-10-08)
 
@@ -298,3 +303,28 @@ them". On that day:
   the release". The tag's CI, run 37873687583, passed all 17 jobs, with
   ten identity legs `v1.11.1 (release) 1e0469da5dcc` (V4).
 * **The worktree** is removed. The branch is kept on `origin`.
+
+### Verification, at closing (2026-10-09)
+
+* **V1, the hosts.** `go version` is `go1.27.2`, with `GOTOOLCHAIN`
+  `go1.27.2`, on all four hosts, and every `golangci-lint` and
+  `govulncheck` copy on them is built with `go1.27.2`. WSL's
+  `golangci-lint` was rebuilt at closing (T1).
+* **V2, the gate.** `make gate` ended `overall=0`, `vuln` "No
+  vulnerabilities found.", at T2 and T3, and on the release branch.
+* **V3, CI.** It passed on `main` at T2's line (run 37872546475 at
+  `8709ef7`) and on `release/v1.11.1` (run 37872554022). The setup-go
+  steps of this module's jobs installed `go1.27.2`.
+* **V4, the tag.** The `v1.11.1` tag's CI, run 37873687583, passed all 17
+  jobs, with ten identity legs `v1.11.1 (release) 1e0469da5dcc`.
+* **V5, the branch.** `git diff --stat 50eafb6 1e0469d` lists `ci.yml`
+  and `go.mod` only.
+
+### Closing (2026-10-09)
+
+* V1–V5 hold. This PLAN is `complete`, and its row in `docs/README.md`
+  follows. The MADR stays `accepted`.
+* The fleet rule's record, magic-cli-remote's 0169 D2, still names 1.27.1.
+  It is that repository's to amend.
+* The `release/v1.11.1` branch remains on `origin` for the owner to
+  delete.

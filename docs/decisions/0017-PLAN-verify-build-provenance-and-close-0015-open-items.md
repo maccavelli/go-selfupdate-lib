@@ -1,6 +1,6 @@
 ---
-status: in-progress
-date: 2026-10-08
+status: complete
+date: 2026-10-09
 associated-madr: "0017-MADR-verify-build-provenance-and-close-0015-open-items.md"
 ---
 # Implement 0017: the documentation on main, `v1.11.1` (the zip tiling and Windows-name refusals), and `v1.12.0` (the interrupted-update journal and `selfupdate/verify/ghattest`)
@@ -2097,3 +2097,63 @@ reports it compatible with `v1.12.0`.
   * Kept: the lines that state what `v1.12.0` itself changed.
 * **Step 7,** the live installer rehearsal, was not asked for, and was not
   run.
+
+### Verification, at closing (2026-10-09)
+
+* **V1, every new test failed first and every plant made its test
+  fail.** Recorded per phase, P1, P2, Q0, Q1, Q2 and Q4, with the failing
+  lines. Three plants as first written did not fail, and were rewritten
+  and run again, each recorded:
+  * P1's in-loop gap plant (Deviation D1);
+  * Q1's digits plant, which did not compile;
+  * Q2's red plant, which did not compile.
+* **V2, the API reports.** The full apidiff report:
+  * against `v1.11.0`, at `v1.11.1`'s content: no change (P3);
+  * against `v1.11.1`, at `v1.12.0`: exactly `KeptBackup`, the two
+    `KeptBackups` methods, and the package `selfupdate/verify/ghattest`
+    (Q3);
+  * against `v1.12.0`, at `v1.12.1`: no change (Q5).
+* **V3, `go.mod`: holds with an exception.** `go.sum` is unchanged since
+  `v1.11.0`, and `go mod tidy -diff` is clean. `go.mod` gained `toolchain
+  go1.27.2`, decided in
+  [0018-MADR-move-toolchain-to-go-1-27-2.md](0018-MADR-move-toolchain-to-go-1-27-2.md)
+  (Deviation D4).
+* **V4, depguard.** `.golangci.yml` has 15 rules, and lint is clean for
+  linux, darwin and windows. A planted import of `selfupdate/archive`
+  into `ghattest.go` fails `selfupdate-verify-ghattest` (Q2).
+* **V5, the gate: holds with an exception.** `make gate` ended
+  `overall=0` at every phase except Q2, whose `vuln` failed on Go 1.27.1's
+  standard library (Deviation D4) until 0018 moved the toolchain.
+* **V6, CI: holds with exceptions.** CI is green on every tag (`v1.11.1`,
+  `v1.12.0`, `v1.12.1`) and on every later commit. Three runs were red:
+
+  | Commit | Cause | Fix |
+  | :--- | :--- | :--- |
+  | `476be2a` | two P2 rows' message on Windows | `50eafb6` (Deviation D2) |
+  | `6dcdd8a` | `TestWaitHopExit`'s start-up race | `d9dba09` (Q0) |
+  | `cf95233` | Go 1.27.1's advisories, and `install.ps1`'s identity race | 0018's `355dd3d`; Q4's `66f16b1` |
+* **V7, the live tests.**
+  * **Q0:** `TestWaitHopExit` passed 50 runs on the Windows test host.
+  * **Q1:** `TestWindowsInterruptedApplyRunningImage` passed 30 runs
+    there, and passes in CI's Windows job.
+  * **Q2:** `TestLiveVerify` passed on this Mac and on the Windows test
+    host.
+  * **Q4:** the two installer cases passed 30 runs on the Windows test
+    host.
+* **V8, the hidden zip entries.** `hidden-gap` and `hidden-prefix` (and
+  D1's between-entries zip) were accepted by `v1.11.0`'s code ("Unpack =
+  <nil>") and are refused from `v1.11.1`; the first two seed
+  `FuzzUnpackZip`.
+* **V9, the docs.** Links and identifiers are clean on every changed file.
+  The migration guide has `### From v1.11.0 to v1.11.1`, `## 12. From
+  v1.11 to v1.12` and `### From v1.12.0 to v1.12.1`.
+
+### Closing (2026-10-09)
+
+The owner chose "Complete, exceptions recorded": V1–V9 hold, V3, V5 and
+V6 with the exceptions above. This PLAN is `complete`, and its row in
+`docs/README.md` follows. The MADR stays `accepted`. Open, and recorded:
+* the `sigstore-go` variant (MADR, "Not decided here");
+* `queue: max`, which waits for actionlint;
+* the `release/v1.11.1` branch, which remains on `origin` for the owner
+  to delete.
