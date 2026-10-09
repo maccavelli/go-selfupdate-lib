@@ -1754,3 +1754,46 @@ tests. Step 3, the tag, waits for the owner's ask.
   * `v1.11.1`'s release procedure applies to the `release/v1.11.1`
     commit, not to `50eafb6`;
   * Q3 waits for 0018's T2 and T3.
+
+### `v1.11.1`, the release (2026-10-09)
+
+Per Deviation D4 and 0018-PLAN T4, the release commit is
+`1e0469da5dcc62ed43044034301d1f12e435a0ee` on `release/v1.11.1`: `50eafb6`
+and the cherry-picked `355dd3d` (`go.mod`'s `toolchain go1.27.2`, and
+`ci.yml`'s `release/**` trigger).
+
+* **Step 1:** CI run 37872554022 on the branch passed all 17 jobs. Its
+  setup-go steps installed `go1.27.2`, and `govulncheck` reported "No
+  vulnerabilities found."
+* **Step 2:** track 2 has no live tests.
+* **Step 3,** on the owner's ask ("Tag and proceed"):
+  * `scripts/check-release-tag.sh v1.11.1` exited 0;
+  * `git tag -a v1.11.1 -m v1.11.1 1e0469d`;
+  * the disclosure guard over the tag exited 0;
+  * `git push origin v1.11.1`.
+* **Step 4:**
+  * `git ls-remote origin 'refs/tags/v1.11.1^{}'` gives
+    `1e0469da5dcc62ed43044034301d1f12e435a0ee`;
+  * the tag's CI run, 37873687583, passed all 17 jobs; all ten identity
+    legs print `v1.11.1 (release) 1e0469da5dcc`.
+* **Step 6:** the proxy gives `v1.11.1`, `Time` `2026-10-09T00:54:27Z`,
+  `Origin.Hash` the release commit, `Ref` `refs/tags/v1.11.1`; `@latest`
+  resolves to `v1.11.1`.
+* **Step 5, the pin commit,** `1e0469da… # v1.11.1` for every pin:
+  * `README.md`: the current release, the `go get` line, the publish
+    example's pin;
+  * `docs/architecture.md`: the current release and its commit;
+  * the building guide: "the examples below pin `v1.11.1`'s", the three
+    workflow pins, the `ls-remote` example;
+  * the migration guide:
+    * §2's current release, and seven `go get` lines;
+    * §3's pin, its `ls-remote` example, and the sentence that `v1.11.0`
+      and `v1.11.1` change nothing in the publish workflow, though its
+      release tools build with Go 1.27.2 from `v1.11.1`;
+    * §5's `go.mod` step, and five `go list` checks.
+  * The migration guide's `### From v1.11.0 to v1.11.1` also gains a
+    **Go 1.27.2** bullet. The section was written before 0018, and
+    `v1.11.1` ships the `toolchain` line.
+  * Kept: the 18 lines that state what `v1.11.0` itself changed.
+* **Step 7,** the live installer rehearsal, was not asked for, and was not
+  run.

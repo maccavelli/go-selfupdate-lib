@@ -267,3 +267,23 @@ them". On that day:
     the ten advisories, linking 0018-MADR.
 * **Kept:** the migration guide's four lines (`:14`, `:16`, `:18`, `:155`),
   which state a consumer's `go 1.27.1` floor.
+
+### Phase T4: `v1.11.1` from `release/v1.11.1` (2026-10-09)
+
+* **The branch:**
+  * `git worktree add -b release/v1.11.1 <scratch> 50eafb6`, then
+    `git cherry-pick 355dd3d`, made `1e0469d`;
+  * `git diff --stat 50eafb6 1e0469d` lists `ci.yml` and `go.mod` only
+    (V5);
+  * in the worktree, `make gate` ended `overall=0`, `vuln` "No
+    vulnerabilities found.".
+* **The push,** on the owner's ask ("You may push"), with `main`: both
+  disclosure guards exited 0. CI on the branch, run 37872554022, and on
+  `main` at `8709ef7`, run 37872546475, passed all 17 jobs each (V3):
+  * the setup-go steps of this module's own jobs installed `go1.27.2`;
+  * the two release-rehearsal build jobs installed `go1.27.1`. They build
+    the stand-in caller from its own `go.mod`, as a caller's build does.
+* **0017's release procedure, steps 3–6:** recorded in 0017-PLAN, "`v1.11.1`,
+  the release". The tag's CI, run 37873687583, passed all 17 jobs, with
+  ten identity legs `v1.11.1 (release) 1e0469da5dcc` (V4).
+* **The worktree** is removed. The branch is kept on `origin`.
