@@ -46,6 +46,8 @@ numbers are at `70ad0be`. Bare Go file names are in `selfupdate/`;
 | Q1 | `v1.12.0` | 3B: the interrupted-update journal and `KeptBackups` | `selfupdate/` |
 | Q2 | `v1.12.0` | 1B: `selfupdate/verify/ghattest` | new package, depguard, scope docs |
 | Q3 | `v1.12.0` | the release commit, then the release procedure | documentation, then the tag and pins |
+| Q4 | `v1.12.1` | MADR A3: `install.ps1` leaves a binary that failed its identity check (amendment, 2026-10-09) | the template and its test |
+| Q5 | `v1.12.1` | the release commit, then the release procedure | documentation, then the tag and pins |
 
 ### Out of scope
 
@@ -1227,6 +1229,77 @@ Approved on 2026-10-08: "You may push to main then proceed".*
    (`:1131-1138`) gains `verify/ghattest`.
 7. **This PLAN:** the release notes for `v1.12.0`.
 8. **Then the Release procedure,** as `vX = v1.12.0`.
+
+### Phase Q4: `install.ps1` removes a new binary its identity check rejected (amendment, 2026-10-09)
+
+*Added on 2026-10-09 by MADR amendment A3, at the owner's direction ("It
+needs to be fixed"). Approved on 2026-10-09: "Proceed".*
+
+**Files:**
+* `internal/cmd/selfupdate-release/installer/install.ps1`
+* `internal/cmd/selfupdate-release/installer_ps_test.go`
+
+1. **Fix, `install.ps1:437-439`:** the `else` branch of the identity
+   restore (a product with no earlier copy) becomes:
+
+   ```powershell
+   } elseif (-not (Clear-SettledFile $exe)) {
+       # Still held, by an image the identity check just ran: set it aside,
+       # so no binary that failed its identity check keeps its name.
+       Move-Item -LiteralPath $exe -Destination ("$exe.bad-" + [Guid]::NewGuid().ToString('N')) -Force
+   }
+   ```
+
+2. **The stand-in** (`standInSource`, `installer_ps_test.go:441`) gains a
+   way to hold its image after it answers.
+   * With `STANDIN_LINGER_MS` set, `version` starts a copy of itself with
+     the arguments `linger <ms>` and does not wait for it. The copy sleeps
+     `<ms>` milliseconds, and so keeps the binary's image mapped after the
+     identity check returns.
+   * `linger` is handled before the other arguments.
+3. **Tests,** in `TestInstallPs1`'s table, both on `argModes`:
+   * **`a rejected new binary is removed though its image lingers`:**
+     * no earlier `relay.exe`, a new binary reporting `v9.9.9`, and
+       `STANDIN_LINGER_MS=1000`;
+     * expect exit 2, "the previous ones were restored", and no file in
+       the folder;
+     * so the wait in `Clear-SettledFile` (up to 2 s) outlasts the hold.
+   * **`a rejected new binary still held is set aside`:**
+     * the same, with `STANDIN_LINGER_MS=5000`;
+     * expect exit 2, no `relay.exe`, and one `relay.exe.bad-<32 hex>`.
+
+   `expectFiles` takes the exact set, so the second case checks the
+   `.bad-` name with a pattern.
+4. **Red,** on the Windows test host with an 8.3 `TEMP`: both cases fail
+   on `v1.12.0`'s template. `relay.exe` is still there. That reproduces CI
+   run 37862176572's failure deterministically.
+5. **Plant:** the fixed branch reverted to the one `Remove-Item` makes
+   both cases fail again.
+6. **Run:** `TestInstallPs1` in full, and the two new cases `-count=30`,
+   on the Windows test host with an 8.3 `TEMP`. Then CI's three legs. The
+   template checks (`scripts/check-installers.sh`, PSScriptAnalyzer
+   through it) pass.
+7. **API:** none; the template is not Go API.
+
+### Phase Q5: the `v1.12.1` release (amendment, 2026-10-09)
+
+**Files** (the release commit):
+* `docs/guides/migrating-from-mcplib-selfupdate.md`
+* `docs/guides/building-releases.md`
+* `docs/decisions/0017-MADR-verify-build-provenance-and-close-0015-open-items.md`
+* `docs/decisions/0017-PLAN-verify-build-provenance-and-close-0015-open-items.md`
+
+1. **The migration guide:**
+   * `### From v1.12.0 to v1.12.1` inside §12, before its `### Check`, in
+     the `v1.11.1` section's shape;
+   * the intro names `v1.12.1`.
+2. **The building guide's installer section** says what a failed identity
+   check leaves: the earlier copies are back, and a new binary that could
+   not be deleted is renamed `<name>.exe.bad-<guid>`.
+3. **The MADR:** A3 reads accepted (done at approval). **This PLAN:** the
+   release notes.
+4. **Then the Release procedure,** as `vX = v1.12.1`, on `main`. `main`
+   descends from `v1.12.0`, so no branch is needed.
 
 ## Verification
 

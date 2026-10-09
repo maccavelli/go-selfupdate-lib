@@ -1176,6 +1176,39 @@ it as a phase of this plan: the child signals that it is about to wait,
 and the stand-in counts from that signal. Only the test helper changes;
 no decision of this record changes.
 
+### A3 (2026-10-09): `install.ps1` can leave a binary that failed its identity check
+
+*Status: accepted (2026-10-09: "Proceed"), with
+[0017-PLAN-verify-build-provenance-and-close-0015-open-items.md](0017-PLAN-verify-build-provenance-and-close-0015-open-items.md)
+Phases Q4 and Q5. The owner directed that it be fixed: "It needs to be
+fixed".*
+
+* **Found:** CI run 37862176572, on `cf95233`, `validate (windows-2025)`:
+  `TestInstallPs1/pwsh/scriptblock/a stale .prev stays when the identity
+  fails` failed with `installer_ps_test.go:868: …\Programs\relay holds
+  [relay.exe relay.exe.prev], want [relay.exe.prev]`. The same test passed
+  on `50eafb6`, `8709ef7` and `247a2b6`.
+* **The cause, in the template:**
+  * when the identity check fails, `install.ps1` restores what it
+    replaced (`internal/cmd/selfupdate-release/installer/install.ps1:427-441`);
+  * for a product with no earlier copy, it deletes the new binary with one
+    `Remove-Item … -ErrorAction SilentlyContinue` (`:438`);
+  * the identity check has just run that binary, and Windows can keep its
+    image mapped a moment after the process exits, as 0015-PLAN Phase Q6
+    measured. The delete then fails, silently, and the binary that failed
+    its identity check stays installed while the run exits 2 saying "the
+    previous ones were restored".
+  * The branch with an earlier copy (`:432-435`) already waits with
+    `Clear-SettledFile` and sets a held file aside.
+* **The decision:** the no-earlier-copy branch does the same. It waits up
+  to 2 s with `Clear-SettledFile`, and if the file is still held, renames
+  it to `<name>.exe.bad-<guid>`, which a running image allows. No binary
+  that failed its identity check stays under its own name.
+* **`install.sh`** is not affected: on Unix the delete of a file whose
+  image is running succeeds.
+* **The release:** the templates reach programs only through a tag, so the
+  fix ships as `v1.12.1`. `v1.10.0` to `v1.12.0` carry the defect.
+
 ## More Information
 
 ### Related records
