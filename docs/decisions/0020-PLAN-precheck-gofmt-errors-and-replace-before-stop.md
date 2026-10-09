@@ -738,3 +738,27 @@ release commit S4's:
        * `live_darwin_test.go:634: at Stop: target held the new build false, job running true; want both`;
        * `live_linux_test.go:499: … unit running true; want both`;
        * `live_windows_test.go:578: … service running true; want both`.
+
+### S3, a lint failure committed (2026-10-09)
+
+* **What happened.** S3's commit, `1efe00b`, was made although its checks
+  had failed.
+  * `make pre-add-check` exited 2, and `make gate` ended `overall=1` on
+    `lint`.
+  * The agent's command chained the commit after the checks with `;`, not
+    `&&`, so the failure did not stop it.
+  * The machine-wide commit gate saw no staged Go file when it ran, before
+    the command staged them.
+  * This broke Rules item 2. The commit was not pushed.
+* **The finding,** for linux, darwin and windows alike:
+  `QF1008: could remove embedded field "Unit" from selector (staticcheck)`
+  at `c.Unit.Running(ctx, product)`. The same appears for `Job` and
+  `Service` in the other two files.
+* **The fix,** a new commit with no amend and no rewrite:
+  * the three lines call the promoted `c.Running(ctx, product)`, which is
+    the same method, so the runs recorded above are unchanged in what they
+    test;
+  * `c.<Backend>.Stop` stays: `stopCheck` overrides `Stop`.
+
+  `make pre-add-check` on the three files and `make gate` were run again,
+  and the commit was chained on their success.

@@ -455,7 +455,7 @@ func (c *stopCheck) Stop(ctx context.Context, product string) error {
 		if b, err := os.ReadFile(c.target); err == nil { //nolint:gosec // the live test's own file
 			c.newAtStop = string(b) == string(c.want)
 		}
-		c.ranAtStop, _ = c.Unit.Running(ctx, product)
+		c.ranAtStop, _ = c.Running(ctx, product)
 	}
 	c.stops++
 	return c.Unit.Stop(ctx, product)
