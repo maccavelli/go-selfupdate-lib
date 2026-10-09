@@ -1147,7 +1147,6 @@ this record:
   | `selfupdate/verify/signednote`, the signed-note release statement | this record, §1 (`:260`) and "Release signing" (`:788-830`); [0004-REPORT-release-signing-research.md](../reports/0004-REPORT-release-signing-research.md) |
   | `selfupdate/verify/ghattest`'s `sigstore-go` variant | 0017-MADR, "Not decided here": its own repository and records |
   | `go-tui-lib/updatetea`, the Bubble Tea adapter | this record, §4 (`:636`) and §1 (`:264`); a record in go-tui-lib |
-  | Replacing the binary before stopping the service | 0011-MADR, Related (`:909-912`) |
   | A D-Bus systemd backend | 0011-MADR, Consequences (`:536-537`) and option B (`:579`) |
   | xz, zstd and bzip2 archives; several programs from one archive; app bundles; notarization, `spctl` and quarantine; pure-Go signature checks | 0012-MADR §8 (`:670-697`) |
   | macOS signing or notarization in CI; an attestation from the build workflow; GoReleaser names in the fleet; files beside the program in an archive; hosts other than GitHub | 0013-MADR §10 (`:664-680`) |
@@ -1166,6 +1165,11 @@ this record:
     archive entries, in `v1.11.1`;
   * `selfupdate/verify/ghattest`'s exec verifier, and a crash between
     `Apply` and `Commit`, in `v1.12.0`.
+
+  One more is done, under
+  [0020-MADR](0020-MADR-precheck-gofmt-errors-and-replace-before-stop.md):
+  replacing the binary before stopping the service, opt-in through
+  `ManagedOptions.ReplaceBeforeStop`, in `v1.13.0`.
 
   §6's prerelease channels were built under
   [0005-MADR-opt-in-prerelease-channels.md](0005-MADR-opt-in-prerelease-channels.md).

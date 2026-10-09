@@ -92,3 +92,21 @@ go-tui-lib's proposed fix, recorded for reference:
 Here the gofmt stub in `scripts/go-precheck_test.sh` would have to fail
 on demand (say, through an environment variable, as the `go` and
 `govulncheck` stubs do), or one case would run the real gofmt.
+
+## Decided (2026-10-09)
+
+Decided by
+[0020-MADR-precheck-gofmt-errors-and-replace-before-stop.md](../decisions/0020-MADR-precheck-gofmt-errors-and-replace-before-stop.md)
+(item 1, option 1A), and fixed in its PLAN's Phase S1:
+
+- the gofmt step fails on gofmt's exit status and shows its message;
+- the no-list path does not hand gofmt a tracked file the work tree no
+  longer has, and still checks its package;
+- the test's gofmt stub can fail;
+- CI's gofmt line fails on its own.
+
+One statement above does not hold here. "What it does here" says the
+deleted-file case is reached on the no-list path by "`make pre-add-check`
+without `FILES`, and `make release-check`". This repository's `Makefile`
+has no `release-check` target: that one is go-tui-lib's. The finding is
+otherwise left as written.

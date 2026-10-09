@@ -762,3 +762,35 @@ release commit S4's:
 
   `make pre-add-check` on the three files and `make gate` were run again,
   and the commit was chained on their success.
+
+### S4 (2026-10-09)
+
+1. **`extending-selfupdate.md`:**
+   * "Read JSON output" says schema 4 since `v1.13.0`, names
+     `replaced_before_stop`, and adds that each version only adds keys;
+   * "Run as a service" gains `### Replace before the stop`: the call,
+     what it buys, the three conditions, recovery, and the result field;
+   * the handoff result example shows `"schema_version":4`.
+2. **The migration guide** gains `## 13. From v1.12 to v1.13`, with its
+   own `go get …@v1.13.0` line: `### What is new`, `### Adopting it` (the
+   option's conditions, schema 4, the copied pre-add script) and
+   `### Check`.
+3. **`docs/architecture.md`:**
+   * the installers bullet names `NewManagedInstallerWith` and
+     `ManagedOptions`;
+   * the `selfupdate/` row's test files are 81. That is
+     `ls selfupdate/*_test.go | wc -l`, and the non-test count stays 45,
+     from `ls selfupdate/*.go | grep -v _test | wc -l`. `selfupdate/cli`'s
+     53 golden files are unchanged in number.
+4. **`README.md`** is not changed (step 4).
+5. **Record notes:**
+   * **0004-MADR P3:** the row leaves the open-work table, and the done
+     list names it under 0020, as `247a2b6` did for 0017's items;
+   * **0011-MADR, Related:** an italic dated note follows the candidate;
+   * **0016-REPORT:** a `## Decided (2026-10-09)` section, with the
+     `make release-check` correction.
+6. **Checks:**
+   * links: "103 links in 6 files, 0 broken", the new
+     `#replace-before-the-stop` anchor included;
+   * identifiers: 0 findings;
+   * markdownlint: "0 issues".

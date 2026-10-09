@@ -97,11 +97,14 @@ a per-run choice, and a workflow input.
 `NewJSONReporter` writes one JSON object per event (JSON Lines), with the keys
 `kind`, `product`, `current`, `target`, `asset`, `bytes`, `total` and
 `detail`, in that order. `Result.Document` is the stable JSON form of the
-final `Result`. Its `schema_version` is 3 since `v1.11.0`, which added
+final `Result`. Its `schema_version` is 4 since `v1.13.0`, which added
+`replaced_before_stop` (a managed install replaced the binary while the
+service still ran: [Replace before the stop](#replace-before-the-stop));
+3 since `v1.11.0`, which added
 `rolled_back` (the previous binary was restored after the new one was
 installed) and `probes_skipped` (a dry run for another platform did not run
 the probes); 2 since `v1.6.0`, which added `service_started`, and `warnings`
-when there are any.
+when there are any. Each version only adds keys.
 
 A run that goes on past selection has one terminal event: `complete`,
 `failed` or `declined`. A check that succeeds, and a run that finds the
@@ -524,6 +527,43 @@ Why each behaves as it does is in
   program serves; `systemd.WatchdogInterval` and `systemd.Watchdog` serve
   `WatchdogSec=`.
 
+### Replace before the stop
+
+By default a managed install stops a running service, replaces its binary,
+then starts it. Since `v1.13.0`, it can replace the binary first, while the
+old instance still runs, then stop, reconcile, start and check, as Debian's
+`dh_installsystemd --restart-after-upgrade` and Teleport's updater do:
+
+```go
+m, err := selfupdate.NewManagedInstallerWith(inner, b, b,
+    selfupdate.ManagedOptions{ReplaceBeforeStop: true})
+```
+
+- **What it buys:** a replacement or post-install probe that fails does so
+  before the stop, so it costs no downtime at all: the binary is rolled
+  back under the running service, which is not stopped or restarted. The
+  replace itself is only a few tens of milliseconds of downtime either way
+  ([0020-MADR](../decisions/0020-MADR-precheck-gofmt-errors-and-replace-before-stop.md)).
+- **Use it only when all of these hold**, because the library cannot check
+  them:
+  - the service never starts its own executable while it runs, such as a
+    worker it spawns from `os.Executable()`: after the replace, that path
+    runs the new version under the old one;
+  - no stop hook runs the program, such as systemd's `ExecStop=` or
+    `ExecStopPost=`: it would run the new binary against the old instance;
+  - an unplanned restart between the replace and the stop, by systemd's
+    `Restart=`, launchd's `KeepAlive` or an SCM failure action, may start
+    the new binary before its health check. The planned stop, start and
+    health check then follow as usual.
+- **Recovery:** a stop that fails rolls the binary back too: under a
+  service that still runs, which is not restarted, or before a service
+  that went down is started again on the previous binary. Later failures
+  recover as without the option.
+- **The result says which order ran:** `Result.ReplacedBeforeStop`, and
+  `replaced_before_stop` in the JSON result, are true when the binary was
+  replaced while the service ran. A service that was stopped, or not
+  installed, has nothing to stop, so the option changes nothing for it.
+
 ### Updating from inside the service
 
 A process the service started, such as an agent running a remote session,
@@ -561,7 +601,7 @@ func main() {
   beside the binary, with `service.ReadHandOffResult`, or as JSON:
 
   ```json
-  {"schema_version":1,"id":"3f2a…","started_at":"…","finished_at":"…","exit_code":0,"result":{"schema_version":3,"applied":true,"service_started":true,"rolled_back":false}}
+  {"schema_version":1,"id":"3f2a…","started_at":"…","finished_at":"…","exit_code":0,"result":{"schema_version":4,"applied":true,"service_started":true,"rolled_back":false}}
   ```
 
   `exit_code` is the update's, `error` its message when it failed, and

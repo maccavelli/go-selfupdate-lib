@@ -904,3 +904,48 @@ reports it compatible with `v1.12.0`. What changed, and why, is in
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
 - `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.12.1`.
+
+## 13. From v1.12 to v1.13
+
+```bash
+go get github.com/maccavelli/go-selfupdate-lib@v1.13.0
+```
+
+`v1.13.0` lets a managed install replace the binary before it stops the
+service, and adds a key to the JSON result. `make apicheck` reports it
+compatible with `v1.12.1`: every exported change is an addition. Why, and
+how, is in
+[0020-MADR](../decisions/0020-MADR-precheck-gofmt-errors-and-replace-before-stop.md).
+
+### What is new
+
+- **`ManagedOptions.ReplaceBeforeStop`,** through
+  `NewManagedInstallerWith(inner, life, rec, opts)`: the binary of a
+  running service is replaced while the old instance still runs, then the
+  service is stopped, reconciled, started and checked. A failed replace or
+  post-install probe then costs no downtime. The default order is
+  unchanged: `NewManagedInstaller` and `NewManagedInstallerFor` stop
+  first, as before.
+- **The JSON result is schema 4:** `replaced_before_stop` says the binary
+  was replaced while the service ran. `Result.ReplacedBeforeStop` and
+  `InstallResult.ReplacedBeforeStop` say the same. The new key is the only
+  change.
+
+### Adopting it
+
+- **Turn the option on only for a service that never starts its own
+  executable while it runs, and whose stop hooks do not run it.** The
+  extending guide's
+  [Replace before the stop](extending-selfupdate.md#replace-before-the-stop)
+  has the conditions and what recovery does.
+- **Read `schema_version` 4** if you parse the result and check the
+  version; a reader of schema 3 that ignores unknown keys needs no change.
+- **If you copied `scripts/go-precheck.sh`:** since this release's tree,
+  its gofmt step fails when gofmt itself fails, such as on a file it
+  cannot read or parse, and a tracked file deleted from the work tree is no
+  longer handed to gofmt. Take the same change into your copy.
+
+### Check
+
+- `go build ./...`, `go vet ./...` and `go test ./...` pass.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.13.0`.

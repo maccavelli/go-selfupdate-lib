@@ -965,6 +965,10 @@ Prior art:
 * A candidate for a later record: replacing the binary before stopping
   the service, rather than after, shortens downtime, as Debian's
   `dh_installsystemd --restart-after-upgrade` and Teleport do. It changes
-  `ManagedInstaller`'s flow, so it is not decided here.
+  `ManagedInstaller`'s flow, so it is not decided here. *(Decided
+  2026-10-09 by
+  [0020-MADR-precheck-gofmt-errors-and-replace-before-stop.md](0020-MADR-precheck-gofmt-errors-and-replace-before-stop.md):
+  opt-in, `ManagedOptions.ReplaceBeforeStop`, in `v1.13.0`; the default
+  order is unchanged.)*
 * Moving magic-cli-remote and mcp-server-magictools to these packages is
   their own repositories' records.

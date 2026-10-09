@@ -108,7 +108,7 @@ docs/
 | Directory | Package | Non-test files | Test files | Non-standard imports |
 | :--- | :--- | :--- | :--- | :--- |
 | `buildinfo/` | `buildinfo` | 1 | 2 | none |
-| `selfupdate/` | `selfupdate` | 45 | 80, including five fuzz targets, plus `testdata/SHA256SUMS.{valid,invalid}`, 23 `testdata/manifest-parity/` cases and 14 `testdata/golden/` files | `x/mod/semver`, `x/sys/unix`, `x/sys/windows`, `x/term` |
+| `selfupdate/` | `selfupdate` | 45 | 81, including five fuzz targets, plus `testdata/SHA256SUMS.{valid,invalid}`, 23 `testdata/manifest-parity/` cases and 14 `testdata/golden/` files | `x/mod/semver`, `x/sys/unix`, `x/sys/windows`, `x/term` |
 | `selfupdate/cli/` | `cli` | 4 | 9, plus 53 `testdata/golden/` and 9 `testdata/migration/` files | `x/term` (and `selfupdate`, `buildinfo`) |
 | `selfupdate/selfupdatetest/` | `selfupdatetest` | 2 | 1 | none (`selfupdate` itself) |
 | `selfupdate/archive/` | `archive` | 3 | 8, including three fuzz targets, plus a real GoReleaser `testdata/` checksum file | none (`selfupdate`) |
@@ -147,6 +147,9 @@ docs/
     (ELF, Mach-O, PE), and `probe.go` (staged and post-install probes);
   - **installers:** `TwoPhaseSession`, `StagingOwner` and
     `NewManagedInstallerFor` (`types.go`, `session.go`, `managed.go`), and
+    `NewManagedInstallerWith` with `ManagedOptions`, whose
+    `ReplaceBeforeStop` replaces a running service's binary before the stop
+    (`managed.go`, 0020-MADR), and
     `DryRun`, `KeepPrevious` and `CleanupPending` (`updater.go`,
     `session.go`, `standalone.go`); the interrupted-update journal
     (`journal.go`) and `KeptBackups` (`standalone.go`, `managed.go`).
