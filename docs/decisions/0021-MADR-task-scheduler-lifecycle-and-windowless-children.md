@@ -56,7 +56,9 @@ Each claim below is marked with how it was established:
   record;
 * **[docs]**: Microsoft's documentation;
 * **[derived]**: reasoned from the kinds above, and not run;
-* **[unverified]**: open, and named for the PLAN to measure first.
+* **[unverified]**: open, and named for the PLAN to measure first;
+* **[measured]**: measured on the Windows test host by the PLAN's T1,
+  after acceptance (Amendment A1).
 
 No probe was run for this record. The tree was not written, apart from this
 file and its index row.
@@ -156,10 +158,15 @@ file and its index row.
 * **What is not known.**
   * Whether `get_EnginePID` is the action's own process for an `Exec`
     action, or a host process [unverified].
+    *(Settled by Amendment A1: it is the action's own process [measured].)*
   * Whether Task Scheduler's job object allows breakaway, already in 0011's
     "Not verified" [read] and still open [unverified].
+    *(Settled by Amendment A1: it does not; the job has no limit flags at all
+    [measured].)*
   * Whether `Stop` kills the task's descendants as well as its action
     process [unverified].
+    *(Settled by Amendment A1: it does not; it ends the action's process only
+    [measured].)*
 
 ## Decision Drivers
 
@@ -299,6 +306,7 @@ minor release (More Information, "Owner decisions").
   `IRegisteredTask::get_LastTaskResult`, the result Task Scheduler
   recorded for that run [docs]. Whether that is the program's exit code
   for an `Exec` action is [unverified].
+  *(Settled by Amendment A1: it is, 7 for an exit of 7 and 0 for 0 [measured].)*
 * **The instance identity** for `WaitHealthy` is the running instance's
   process ID.
   * It is `IRunningTask::get_EnginePID` if that is the action's process.
@@ -308,6 +316,8 @@ minor release (More Information, "Owner decisions").
 
   Which of the two holds is [unverified], and is the PLAN's first probe. The
   record is amended with the answer before any code depends on it.
+  *(Settled by Amendment A1: `get_EnginePID` is the action's process, so the
+  first rule holds and the snapshot rule is not built [measured].)*
 
 ### D4. Stop and Start
 
@@ -359,6 +369,10 @@ minor release (More Information, "Owner decisions").
   * When registration needs a user, the user is the **process token's SID**.
     `USERNAME` and `USERDOMAIN` are never read (0159 F11). Whether an
     interactive-token task's update needs a user at all is [unverified].
+    *(Settled by Amendment A1: it needs none. With no user, the principal and every
+    other element are unchanged, byte for byte, and the token's SID is
+    not read [measured]. Other logon types were not measured: owner
+    question Q6.)*
   * The receipt's `State` is the definition as it was: the XML `get_Xml`
     returned, kept as a Go string. It never passes through an 8-bit pipe.
 * **`Restore`** re-registers that saved XML with `ITaskFolder::RegisterTask`
@@ -388,6 +402,11 @@ minor release (More Information, "Owner decisions").
     D6 stands.
   * If breakaway is refused, the record is amended. The rejected
     alternatives in 0011 A4 are the starting point.
+
+  *(Settled by Amendment A1: breakaway is refused, but D6 stands. `Stop` ends
+  only the action's process, and the job has no kill-on-close limit, so
+  the hop's run survives inside the job, as a plain child does
+  [measured]. 0011 A4's alternatives are not needed.)*
 
 ### D7. This module's Windows children start without a window
 
@@ -619,15 +638,6 @@ everything together." The questions as asked, with the answers:
 
 ### Not verified
 
-* What `IRunningTask::get_EnginePID` returns for an `Exec` action (D3).
-* Whether `IRegisteredTask::get_LastTaskResult` is the program's exit code
-  for an `Exec` action (D3).
-* Whether `RegisterTaskDefinition(TASK_UPDATE)` of an interactive-token task
-  keeps its stored principal with no user given, or needs the token's SID
-  (D5).
-* Whether `IRegisteredTask::Stop` kills the instance's descendants (D6).
-* Whether a task's job object allows breakaway. This is carried from 0011's
-  "Not verified", and was not measured by 0159 either (D6).
 * Whether a GitHub Windows runner can run an interactive-token task
   (Confirmation).
 * That this module's handoff children flash a window in a user's session
@@ -637,6 +647,51 @@ everything together." The questions as asked, with the answers:
 * Whether golang/go#68313 was fixed in `syscall`. The issue is closed; the
   search for this record did not show how it was resolved. D8 does not
   depend on the answer.
+* Whether a rewrite of a task whose logon type is not `InteractiveToken`
+  keeps its principal (D5, owner question Q6).
+
+The five items this list held for the PLAN's probes are settled by
+Amendment A1.
+
+### Amendment A1 (2026-10-10): probe results
+
+Measured by 0021-PLAN T1 on the Windows test host (Windows 11, build
+26200), from a driver task at `Medium Mandatory Level` in the console
+session (session 1), as the PLAN's Deviation D1 records. Each probe task
+was a per-user task with an `InteractiveToken` principal at least
+privilege, a logon trigger, `IgnoreNew` and one `Exec` action running a Go
+probe program. Three complete runs agreed on every measured value; the
+PLAN's T1 record quotes the third, and says why the first two misreported
+one driver-side comparison.
+
+| Probe | Question | Result | Effect |
+| :--- | :--- | :--- | :--- |
+| 1 | What `get_EnginePID` names | The action's own process: `enginepid_is_probe=True`, `engine_image=taskprobe`. Its parent is `svchost.exe`. `State` is 4 while it runs and 3 after `Stop` | D3: the instance identity is `get_EnginePID`. The snapshot rule is not built |
+| 2 | `Stop`'s reach | `Stop` ended the action's process. Its plain child and its detached child were both still alive 5 s later, checked by PID and creation time | D6 stands. `Stop` leaves a program's own children running: the guide says so, and a program that needs them stopped does it in `RequestStop` |
+| 2 | Breakaway | The job's limit flags are `0x00000000`: no `BREAKAWAY_OK`, and no `KILL_ON_JOB_CLOSE`. `CREATE_BREAKAWAY_FROM_JOB` is refused with `Access is denied`, and the retry inside the job succeeds | D6 stands: the hop's run stays in the job and survives `Stop` |
+| 3 | `get_LastTaskResult` | 7 after an exit of 7, and 0 after an exit of 0. `LastRunTime` advanced past the `Run` call each time | D3's failure detail is the program's exit code |
+| 4 | An update's user | `RegisterTaskDefinition(TASK_UPDATE)` with no user succeeded. The principal stayed the token's SID with `InteractiveToken`; the trigger's user was unchanged; the XML read back equal, byte for byte, to the old XML with only the `Command` replaced. The task then ran from a directory whose name holds `é`, `ü` and a CJK character. `RegisterTask(TASK_UPDATE)` of the saved XML restored it byte for byte | D5 passes no user and never reads the token's SID. The rewrite and the restore keep a non-ASCII path. Measured for `InteractiveToken` only (Q6) |
+| 5 | Error codes | `GetTask` of a missing name: `0x80070002`. An unelevated registration into `\Microsoft\Windows\`: `0x80070005` | D2's map holds as written |
+
+Also seen, and consistent with 0159 F10: the task's console program had a
+console with a visible window, which its plain child shared
+(`console_procs=2`). The child started with `DETACHED_PROCESS` had no
+console at all (`console_procs=0`, `console_hwnd=0x0`), the state D7 says
+makes each of its own console children open a window. T2 measures that
+last step.
+
+#### Owner question Q6
+
+* **Q6. A rewrite of a task with another logon type.** Probe 4 measured
+  `InteractiveToken`, which is how magic-cli-remote registers its task.
+  For a task that uses `S4U` or a stored password, an update with no user
+  was not measured, and with a password it cannot work, since the backend
+  has none. Recommended: `Reconcile` under `RewritePath` refuses a task
+  whose logon type is not `InteractiveToken`, with an error naming the
+  logon type, until a probe shows otherwise. The probes, `Stop`, `Start`
+  and `Restore` of the saved XML are unaffected. The alternative is to
+  attempt the update for every logon type and report the HRESULT if Task
+  Scheduler refuses it.
 
 ### Not chosen, recorded so it is not re-proposed blind
 

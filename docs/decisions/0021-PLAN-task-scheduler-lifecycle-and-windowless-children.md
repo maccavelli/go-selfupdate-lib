@@ -176,6 +176,9 @@ registered by `schtasks /create /xml` from an XML file with a
    `whoami /groups` shows the shell is not elevated (`Mandatory
    Label\Medium Mandatory Level`), and the record says so without quoting
    the account.
+   *(Deviation D1, 2026-10-10: the ssh shell is elevated. Steps 2 to 6
+   run inside a driver task at least privilege, and the driver records
+   its own integrity level in place of this check.)*
 2. **Probe 1, the instance's process (MADR D3).** Register a task whose
    action is `taskprobe.exe report <dir> 120`, and `Run` it. Read `GetInstances(0)`, and each
    instance's `EnginePID`, `CurrentAction` and `InstanceGuid`, and the
@@ -383,6 +386,10 @@ interactive-token task. T6 finds out, by running there.
    * `images(pids []uint32) map[uint32]string`, for D3's snapshot rule if
      T1 needs it;
    * `tokenSID() (string, error)`.
+
+   *(After T1: `images` and `tokenSID` are not needed. `get_EnginePID` is
+   the action's process, and an update needs no user; MADR Amendment
+   A1.)*
 
    `registered` has `state`, `enabled`, `setEnabled`, `run`, `stop`,
    `instances` (each with its `EnginePID`), `triggers` (type, enabled,
@@ -687,3 +694,168 @@ and said "proceed".
   `make gate` ran on the commit's tree and exited 0: every step `rc=0`,
   `apicheck` `compatible with v1.13.0`, `links` `437 links in 60 files, 0
   broken`, `overall=0`.
+
+### Deviation D1 (2026-10-10): the ssh shell on the Windows test host is elevated
+
+* **Found.** T1 step 1, read-only over ssh: `whoami /groups` lists
+  `BUILTIN\Administrators` and `Mandatory Label\High Mandatory Level`. A
+  key-based ssh login on that host gets the account's full administrator
+  token. That was already true before T1; earlier PLANs ran the `scm` live
+  tests from that shell because they need an administrator.
+* **Why it matters.** The backend's real caller is the task's own program,
+  which runs unelevated. From an elevated shell, probe 5's refused
+  registration would likely succeed, and probe 4's update may keep or set
+  a principal differently. Probes 1 to 3 measure the task's process, not
+  the caller.
+* **Decision (the owner, 2026-10-10): run the probes through a driver
+  task.** The ssh shell only copies the files, registers
+  `selfupdate-probe-driver-<random>` (`InteractiveToken`, `LeastPrivilege`,
+  no trigger), runs it, waits for it to finish, deletes it and reads its
+  results. The driver, a PowerShell script, runs steps 2 to 6 itself, in
+  the console session at medium integrity, which is where the backend
+  will run. It records its own `Mandatory Label` line and session ID as
+  the evidence that replaces step 1's check. The owner confirmed the
+  console sign-in.
+* **Files added to the phase:** none in the tree. The driver,
+  `common.ps1`, `start-driver.ps1` and `taskprobe.exe` live in the
+  scratchpad and on the host, as T1 already said for its probes.
+* **Still to settle:** T5's `TestCOMLayout` and T6's live tests are run with
+  `go test` from the same elevated shell (rule 6). Before each of those
+  phases, the agent says how the elevation affects it and asks before
+  going on.
+
+### T1 (2026-10-10)
+
+**Preconditions.** The owner confirmed the console sign-in. The ssh shell
+is elevated, which stopped step 1 (Deviation D1); the owner chose the
+driver task. The driver's own lines prove its context:
+`driver.integrity=Mandatory Label\Medium Mandatory Level` and
+`driver.session=1`, the console session.
+
+**What was built, outside the tree:**
+
+* `taskprobe.exe`, a Go program with the modes step 1 names, built on this
+  Mac with `CGO_ENABLED=0 GOOS=windows GOARCH=amd64` (Go 1.27.2) and
+  `go vet` clean. It uses only the standard library's `syscall`. Each
+  report carries its PID, parent, session, job membership and limit
+  flags, creation time, console process count, console window and its
+  visibility, and its executable path. The driver never prints the path;
+  it compares it.
+* `common.ps1` (task XML, `schtasks /create /xml` from a UTF-16 file, the
+  HRESULT and redaction helpers), `driver.ps1` (steps 2 to 6) and
+  `start-driver.ps1` (Deviation D1's wrapper).
+* Each run used a new directory under the host's temporary directory, and
+  task names `selfupdate-probe-<random>-p1` to `-p5` and
+  `selfupdate-probe-driver-<random>`.
+
+**Runs, in order.** Six runs; runs 3, 5 and 6 are complete and agree on
+every measured value.
+
+| Run | Outcome | Why |
+| :--- | :--- | :--- |
+| 1 | driver exited 1, no results | the driver's result helper was named `R`, which is PowerShell's built-in alias for `Invoke-History`; an alias wins over a function |
+| 2 | returned at once | run 1 had left `driver.done`, which ended the wrapper's wait. The driver task's last result was `0x00041301` (still running) when the wrapper deleted it; its log showed the same alias error |
+| 3 | complete | the helper renamed `Write-Result`, and the wrapper clears `driver.done`, `results.txt` and `driver.log` first. `p4.ran_from_new_path=False`, see below |
+| 4 | **invalid** | it reused run 3's directory, so every wait found run 3's report files: its PIDs are run 3's. Not used |
+| 5 | complete, new directory | the same values as run 3, including `p4.ran_from_new_path=False` |
+| 6 | complete, new directory | the record below; `p4.ran_from_new_path=True` |
+
+`p4.ran_from_new_path` was a defect in the driver, not a measurement.
+Windows PowerShell 5.1 reads a BOM-less file as the ANSI code page, so the
+UTF-8 report's non-ASCII path was mis-decoded before the comparison. Read
+directly with `-Encoding UTF8`, run 5's report compared equal
+(`equal_ceq=True`, both 81 characters), and the task had run from the
+non-ASCII directory. The fix (`Get-Content -Raw -Encoding UTF8`) was meant
+to land before run 4, but its `sed` ran behind a `grep` guard that did not
+match, so it was skipped and runs 4 and 5 ran without it. It was applied
+with an exact-match edit before run 6, and that edit was checked
+(`grep -c` = 1). A second `sed`, a guard refusing an existing probe
+directory, also failed to land (`grep -c` = 0). Run 6's protection against
+stale files is its new directory alone.
+
+**Run 6, verbatim** (the random directory is `<tmp>\selfupdate-probe-<random>`
+on the host; the account's profile path is `<home>`):
+
+```text
+driver.task_last_result=0x00000000
+driver.integrity=Mandatory Label\Medium Mandatory Level
+driver.session=1
+p1.report={"tag":"main","pid":39516,"ppid":3464,"parent":"svchost.exe","session":1,"in_job":true,"job_flags":"0x00000000","created":134361354258596354,"console_procs":1,"console_hwnd":"0x1f0894","visible":true}
+p1.state=4
+p1.instances=1
+p1.enginepid_is_probe=True
+p1.enginepid_is_probe_parent=False
+p1.engine_image=taskprobe
+p1.current_action=<tmp>\selfupdate-probe-9a312b87\taskprobe.exe
+p1.probe_alive_after_stop=False
+p1.state_after_stop=3
+p2.report.spawn={"tag":"spawn","pid":4796,"ppid":3464,"parent":"svchost.exe","session":1,"in_job":true,"job_flags":"0x00000000","created":134361354292894429,"console_procs":1,"console_hwnd":"0x2a03b6","visible":true,"plain_pid":8988,"detached_pid":38848,"breakaway_err":"fork/exec <tmp>\\selfupdate-probe-9a312b87\\taskprobe.exe: Access is denied.","detached_flags":"0x00000208"}
+p2.report.plain={"tag":"plain","pid":8988,"ppid":4796,"parent":"taskprobe.exe","session":1,"in_job":true,"job_flags":"0x00000000","created":134361354293996095,"console_procs":2,"console_hwnd":"0x2a03b6","visible":true}
+p2.report.detached={"tag":"detached","pid":38848,"ppid":4796,"parent":"taskprobe.exe","session":1,"in_job":true,"job_flags":"0x00000000","created":134361354294039366,"console_procs":0,"console_hwnd":"0x0","visible":false}
+p2.enginepid_is_spawn=True
+p2.alive_after_stop.spawn=False
+p2.alive_after_stop.plain=True
+p2.alive_after_stop.detached=True
+p2.state_after_stop=3
+p3.exit7.settled=True
+p3.exit7.state=3
+p3.exit7.last_task_result=7
+p3.exit7.last_task_result_hex=0x00000007
+p3.exit7.last_run_time_advanced=True
+p3.exit7.last_run_time_at_or_after_run_call=True
+p3.exit0.settled=True
+p3.exit0.state=3
+p3.exit0.last_task_result=0
+p3.exit0.last_task_result_hex=0x00000000
+p3.exit0.last_run_time_advanced=True
+p3.exit0.last_run_time_at_or_after_run_call=True
+p4.principal_before_is_token_sid=True
+p4.update_no_user=ok
+p4.principal_unchanged=True
+p4.logon_type_after=InteractiveToken
+p4.trigger_userid_unchanged=True
+p4.path_intact=True
+p4.xml_equal_but_command=True
+p4.ran_from_new_path=True
+p4.restore_xml_equal=True
+p5.missing_hresult=0x80070002
+p5.system_folder_hresult=0x80070005
+cleanup.killed.plain=8988
+cleanup.killed.detached=38848
+```
+
+**Reading it** (MADR Amendment A1 states each result and its effect):
+
+* Probe 1: `get_EnginePID` is the action's process. `State` 4 running, 3
+  after `Stop`.
+* Probe 2: the job's limit flags are `0x00000000`; breakaway is refused
+  and the retry succeeds (`detached_flags=0x00000208`). `Stop` ended only
+  the action's process: `alive_after_stop.plain=True` and
+  `.detached=True`. Both were then killed by the driver's cleanup
+  (`cleanup.killed.*`).
+* Probe 3: `LastTaskResult` is the exit code.
+* Probe 4: an update with no user keeps the principal and every other
+  byte, and a restore of the saved XML is byte-identical.
+* Probe 5: `0x80070002` for a missing task, `0x80070005` for a refused
+  registration.
+
+**None of step 9's stop conditions arose.** `get_EnginePID` is the
+probe; the detached child survived `Stop`; the update kept the principal.
+Breakaway was refused, which the MADR's D6 said would amend the record:
+Amendment A1 does, and finds D6 stands, because the hop's run survives
+inside the job. Probe 4 measured `InteractiveToken` only, which raises
+owner question Q6 in the MADR. Q6 blocks T4's rewrite path, not T2 or T3.
+
+**Cleanup (step 7).** After run 6, from the ssh shell:
+
+* `schtasks /query /fo csv`: 0 lines naming `selfupdate-probe`.
+* `tasklist`: 2 `taskprobe` processes at the first sweep. 8 s later a
+  `Win32_Process` query found none, so their command lines could not be
+  read. They were most likely run 4's children: run 4's stale waits never
+  reached its cleanup, and its children sleep 120 s. That is inferred,
+  not shown.
+* The three run directories were removed. A final check found 0 probe
+  directories, 0 `selfupdate-` tasks and 0 `taskprobe` processes.
+
+* Checks: `scripts/check-docs.sh --ids` and `--links` on the MADR and
+  this PLAN, 0 findings and 0 broken; `make gate` `overall=0`.
