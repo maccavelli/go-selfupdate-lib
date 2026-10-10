@@ -143,6 +143,19 @@ linters:
             - github.com/maccavelli/go-selfupdate-lib/selfupdate$
             - github.com/maccavelli/go-selfupdate-lib/selfupdate/service$
             - github.com/maccavelli/go-selfupdate-lib/internal/winproc$
+        # The Task Scheduler backend: as scm, without svc/mgr
+        # (docs/decisions/0021-MADR-task-scheduler-lifecycle-and-windowless-children.md D1).
+        service-taskscheduler:
+          list-mode: strict
+          files:
+            - "**/selfupdate/service/taskscheduler/*.go"
+            - "!$test"
+          allow:
+            - $gostd
+            - golang.org/x/sys/windows$
+            - github.com/maccavelli/go-selfupdate-lib/selfupdate$
+            - github.com/maccavelli/go-selfupdate-lib/selfupdate/service$
+            - github.com/maccavelli/go-selfupdate-lib/internal/winproc$
         service-systemd:
           list-mode: strict
           files:
@@ -218,6 +231,7 @@ linters:
             - "!**/selfupdate/service/launchd/*.go"
             - "!**/selfupdate/service/scm/*.go"
             - "!**/selfupdate/service/systemd/*.go"
+            - "!**/selfupdate/service/taskscheduler/*.go"
             - "!**/selfupdate/archive/*.go"
             - "!**/selfupdate/codesign/*.go"
             - "!**/selfupdate/releasespec/*.go"

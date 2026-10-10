@@ -9,7 +9,9 @@ this file. A repository-local `CLAUDE.md` / `.claude/rules/` / `.grok/rules/` /
 (`docs/decisions/0009-MADR-rename-to-go-selfupdate-lib.md`). Its scope is
 self-update only: `selfupdate`; its `cli` and `selfupdatetest`
 subpackages; `selfupdate/service` and its `systemd`, `launchd` and `scm`
-backends (`docs/decisions/0011-MADR-reference-service-lifecycles.md`);
+backends (`docs/decisions/0011-MADR-reference-service-lifecycles.md`), and
+its `taskscheduler` backend
+(`docs/decisions/0021-MADR-task-scheduler-lifecycle-and-windowless-children.md`);
 `selfupdate/archive` and `selfupdate/codesign`
 (`docs/decisions/0012-MADR-archive-assets-and-macos-codesign.md`);
 `selfupdate/releasespec`, the release spec a program embeds and the build
@@ -48,6 +50,7 @@ pre-add check and CI fail on a breach
   required modules, in every file;
 - `buildinfo`, `selfupdate`, `selfupdate-cli`, `selfupdatetest`,
   `service`, `service-launchd`, `service-scm`, `service-systemd`,
+  `service-taskscheduler`,
   `selfupdate-archive`, `selfupdate-codesign`, `selfupdate-releasespec`,
   `selfupdate-verify-ghattest` and `internal-winproc` allow each package,
   outside its tests, only the imports its record names;

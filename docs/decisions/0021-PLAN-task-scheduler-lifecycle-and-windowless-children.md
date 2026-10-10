@@ -1047,3 +1047,101 @@ host directory was removed.
 **Checks.** `make pre-add-check FILES="<the 4 Go files>"`: `go-precheck: 4
 file(s) clean`. `make gate`: `overall=0`, `apicheck` `compatible with
 v1.13.0`.
+
+### T4 (2026-10-10)
+
+**Files.** New, in `selfupdate/service/taskscheduler/`: `task.go`,
+`api.go`, `scheduler.go`, `scheduler_other.go`, `lifecycle.go`,
+`reconcile.go`, `detach.go`; tests `fake_test.go`, `task_test.go`,
+`lifecycle_test.go`, `reconcile_test.go`, `detach_test.go`,
+`json_test.go`. Changed: `.golangci.yml`, `AGENTS.md`.
+
+**Exported API:** `New`, `Options` (`Name`, `Folder`, `Probe`, `Poll`,
+`RewritePath`, `RequestStop`, `StopGrace`), `Task` and its eight methods,
+`DefaultStopGrace` (10 s), and `DefinitionBackup` (`folder`, `name`, `xml`).
+The full apidiff report against `v1.13.0`, run once without
+`-incompatible` as `scripts/check-api-compat.sh` builds it:
+
+```text
+Compatible changes:
+- package github.com/maccavelli/go-selfupdate-lib/selfupdate/service/taskscheduler: added
+```
+
+**As built, against step 2's planned shape:**
+
+* `scheduler` has `open`, `processes`, `created`, and `running(pid,
+  born)`, which `Stop`'s waits need to tell an exited process from a
+  reused ID. `images` and `tokenSID` are not there: T1 showed neither is
+  needed (Amendment A1).
+* `registered` has every method step 2 names. `actions` returns every
+  action, with its type, so `Reconcile` can name what it refuses; an
+  action's working directory is not read, since nothing uses it.
+* `Options.RequestStop` receives `Stop`'s own context, bounded by
+  `Poll.Timeout`, not the caller's.
+* `Reconcile` compares an Exec `Path` without its surrounding quotes, and
+  writes a rewrite in the same form. magic-cli-remote writes an unquoted
+  absolute path (`internal/cli/service/schtasks.go:156` there).
+* `Folder` must be `\` or a path such as `\Vendor\Product`: no `/`, no
+  empty element, no trailing separator.
+* The method that walks the process tree is `insideTask`, not `inside`:
+  revive's `confusing-naming` refuses a method that differs from `Inside`
+  only by case. `scm`'s is `insideService`.
+* **Interim, until T5:** `scheduler_other.go` has no build tag, so
+  `systemScheduler` returns nil on every OS, and `newTask` refuses a nil
+  transport with `service.ErrUnsupported`. The plan did not say what
+  Windows builds at T4; this keeps T4's commit building and linting for
+  Windows. T5 adds `scheduler_windows.go` and the `!windows` tag.
+* depguard: `service-taskscheduler` (`$gostd`, `golang.org/x/sys/windows$`,
+  `selfupdate$`, `selfupdate/service$`, `internal/winproc$`);
+  `other-packages` excludes the package. `AGENTS.md` names the package in
+  its scope paragraph and the rule in its list.
+
+**Tests.** 29 tests over the fake, covering every item in step 10, and Q6's
+refusal of an `S4U` or stored-password task. On this Mac `ok`; on the
+Windows test host the cross-compiled suite `PASS`.
+
+**Fail first (steps 10 and 11).** A script made 28 planted copies with
+`scripts/plant-copy.sh`, ran the package's tests in each, and checked that
+every test failed under at least one plant: `tests: 29 never failed:
+none`. Seven plants first failed to compile (`declared and not used`),
+which proves nothing; they were rewritten to keep the variable in use, and
+the whole set was run again after the `insideTask` rename. The second
+run's results:
+
+| Plant | Tests that failed | First failing line |
+| :--- | :--- | :--- |
+| `off-windows` | `TestNewOffWindows` | `task_test.go:15: linux: <nil>, want ErrUnsupported` |
+| `folder-trailing` | `TestOptionsValidated` | `task_test.go:45: folder with trailing separator: <nil>, want ok false` |
+| `path-join` | `TestTaskPath` | `task_test.go:74: {Name:demo Folder:\Vendor Probe:<nil> Poll:{Interval:0s Timeout:0s Settle:0s Previous:} Re...` |
+| `map-denied` | `TestHRESULTMap`, `TestPermission` | `lifecycle_test.go:51: Installed: selfupdate: taskscheduler: open \demo: HRESULT 0x80070005` |
+| `map-missing` | `TestHRESULTMap`, `TestNotInstalled` | `lifecycle_test.go:20: Installed: false, selfupdate: taskscheduler: open \demo: HRESULT 0x80070002` |
+| `running-instances` | `TestRunningByState` | `lifecycle_test.go:74: ready, 1 instances: false, <nil>; want true` |
+| `enabled-repeats` | `TestEnabledRule` | `lifecycle_test.go:103: one-off time: true, <nil>; want false` |
+| `no-disable` | `TestStopGraceRunsOut`, `TestStopNotRunning`, `TestStopOrder`, `TestStopRequestHonoured` | `lifecycle_test.go:128: Stop calls ["request 4242" "stop"], want ["enable false" "request 4242" "stop"]` |
+| `request-ignored` | `TestStopRequestHonoured` | `lifecycle_test.go:160: calls ["enable false" "stop"], want ["enable false"]: the program exited on its own` |
+| `no-grace` | `TestStopGraceRunsOut`, `TestStopRequestHonoured` | `lifecycle_test.go:160: calls ["enable false" "stop"], want ["enable false"]: the program exited on its own` |
+| `request-error-waits` | `TestStopRequestFails` | `lifecycle_test.go:202: waited the grace after a failed request: 1h0m0s` |
+| `request-error-dropped` | `TestStopRequestFails` | `lifecycle_test.go:210: Stop: selfupdate: taskscheduler: stop \demo: HRESULT 0x80004005, want both errors` |
+| `start-always-enables` | `TestStartRunning`, `TestStopWithoutRequest` | `lifecycle_test.go:230: Start: <nil>, calls ["stop" "enable true" "run"], want ["stop" "run"]` |
+| `stop-wait-cancels` | `TestStopFinishesAfterCancel` | `lifecycle_test.go:266: Stop = selfupdate: service: timed out: \demo: context canceled` |
+| `stop-no-timeout` | `TestStopTimesOut` | `lifecycle_test.go:281: Stop: <nil>, want ErrTimeout` |
+| `stop-inside` | `TestStopInside` | `lifecycle_test.go:292: Stop: <nil>, want ErrInsideService` |
+| `start-second-instance` | `TestStartRunning` | `lifecycle_test.go:305: Start: <nil>, calls ["run"]` |
+| `probe-skipped` | `TestWaitHealthyNewInstance` | `lifecycle_test.go:327: WaitHealthy: <nil>, probed false` |
+| `old-instance-counts` | `TestWaitHealthyOldInstance` | `lifecycle_test.go:340: WaitHealthy: <nil>, want ErrTimeout` |
+| `failed-run-ignored` | `TestWaitHealthyFailedRun` | `lifecycle_test.go:361: WaitHealthy: selfupdate: service: timed out: not ready within 2s (last: \demo ran an...` |
+| `old-run-fails` | `TestWaitHealthyBeforeRun` | `lifecycle_test.go:373: WaitHealthy: selfupdate: service: not healthy: \demo ran and exited with code 1, wan...` |
+| `match-by-text` | `TestReconcileMatch` | `reconcile_test.go:21: c:\program files\demo\DEMO.EXE: {Changed:true Detail:\demo now runs C:\Program Files\...` |
+| `receipt-empty` | `TestReconcileMoved` | `reconcile_test.go:48: receipt taskscheduler.DefinitionBackup{Folder:"\\", Name:"demo", XML:""}, want tasksc...` |
+| `quote-dropped` | `TestReconcileQuoted` | `reconcile_test.go:65: calls ["setpath C:\\New Place\\demo.exe"], want ["setpath \"C:\\New Place\\demo.exe\""]` |
+| `any-logon` | `TestReconcileRefused` | `reconcile_test.go:92: S4U: <nil>, calls ["setpath C:\\New\\demo.exe"]; want an error about "S4U" and no change` |
+| `restore-empty` | `TestRestore` | `reconcile_test.go:110: definition "", calls ["restore"]` |
+| `first-instance-only` | `TestInside` | `detach_test.go:33: second instance: inside false, <nil>; want true` |
+| `json-key` | `TestDefinitionBackupJSON` | `json_test.go:15: {"folder":"\\Vendor","name":"demo","definition":"\u003cCommand\u003eC:\\café\\demo.exe\u00...` |
+
+depguard, a used `golang.org/x/mod/semver` import planted into `api.go`:
+`selfupdate/service/taskscheduler/api.go:6:2: import 'golang.org/x/mod/semver' is not allowed from list 'service-taskscheduler' (depguard)`.
+
+**Checks.** Lint on `GOOS=linux`, `darwin` and `windows`: `0 issues` each.
+`make pre-add-check FILES="<the 13 Go files>"`: `go-precheck: 13 file(s)
+clean`. `make gate`: `overall=0`, `apicheck` `compatible with v1.13.0`.
