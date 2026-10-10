@@ -56,6 +56,8 @@ name, and the files they cite moved with the rename
 | 0019 | PLAN | [Implement Go 1.27.2's `go fix` modernizers across every target OS](decisions/0019-PLAN-apply-go-fix-modernizers.md) | complete |
 | 0020 | MADR | [Fail the pre-add check when gofmt fails, and offer an opt-in replace-before-stop order for managed updates](decisions/0020-MADR-precheck-gofmt-errors-and-replace-before-stop.md) | accepted |
 | 0020 | PLAN | [Implement a pre-add check that fails when gofmt fails, and an opt-in replace-before-stop order](decisions/0020-PLAN-precheck-gofmt-errors-and-replace-before-stop.md) | complete |
+| 0021 | MADR | [Add a Task Scheduler reference lifecycle built on magic-cli-remote's measured Windows behaviour, and start the library's own Windows children without a window](decisions/0021-MADR-task-scheduler-lifecycle-and-windowless-children.md) | accepted |
+| 0021 | PLAN | [Implement a Task Scheduler reference lifecycle and windowless Windows children](decisions/0021-PLAN-task-scheduler-lifecycle-and-windowless-children.md) | proposed |
 
 ## I want to…
 
