@@ -648,7 +648,8 @@ everything together." The questions as asked, with the answers:
   search for this record did not show how it was resolved. D8 does not
   depend on the answer.
 * Whether a rewrite of a task whose logon type is not `InteractiveToken`
-  keeps its principal (D5, owner question Q6).
+  keeps its principal (D5). Until a probe shows it, the rewrite refuses
+  such a task (owner question Q6, decided).
 
 The five items this list held for the PLAN's probes are settled by
 Amendment A1.
@@ -692,6 +693,12 @@ last step.
   and `Restore` of the saved XML are unaffected. The alternative is to
   attempt the update for every logon type and report the HRESULT if Task
   Scheduler refuses it.
+
+  **The owner chose the recommendation on 2026-10-10.** Under
+  `RewritePath`, `Reconcile` refuses a task whose logon type is not
+  `InteractiveToken` (`TASK_LOGON_INTERACTIVE_TOKEN`, 3), with an error
+  naming the logon type. `Reconcile` without `RewritePath`, the probes,
+  `Stop`, `Start` and `Restore` are unaffected.
 
 ### Not chosen, recorded so it is not re-proposed blind
 

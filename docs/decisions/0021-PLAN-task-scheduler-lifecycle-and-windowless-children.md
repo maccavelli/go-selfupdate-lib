@@ -420,7 +420,10 @@ interactive-token task. T6 finds out, by running there.
    then `Options.Probe` with `Settle` -1, as `scm` does. Failed when not
    running and the last run began at or after `Start`, with the last
    result in the detail.
-7. **`Reconcile` and `Restore`** (MADR D5): refuse anything but exactly
+7. **`Reconcile` and `Restore`** (MADR D5, and Q6 of Amendment A1: a
+   rewrite refuses a task whose logon type is not `InteractiveToken`,
+   with an error naming it, and a table case pins that): refuse anything
+   but exactly
    one `Exec` action; compare `Path` by `samePath`; without `RewritePath`,
    a moved binary is an error naming the option. With it, save `xml()` as
    the receipt's `State` (a struct with a JSON tag, by the memory rule on
@@ -859,3 +862,9 @@ owner question Q6 in the MADR. Q6 blocks T4's rewrite path, not T2 or T3.
 
 * Checks: `scripts/check-docs.sh --ids` and `--links` on the MADR and
   this PLAN, 0 findings and 0 broken; `make gate` `overall=0`.
+
+### Owner decision Q6 (2026-10-10)
+
+Asked after T1's commit: under `RewritePath`, `Reconcile` refuses a task
+whose logon type is not `InteractiveToken`, the recommended option. Recorded
+in MADR Amendment A1 under Q6, and in T4 step 7. It changes T4 only.
