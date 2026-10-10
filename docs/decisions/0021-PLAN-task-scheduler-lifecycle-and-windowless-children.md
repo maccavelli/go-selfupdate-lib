@@ -1145,3 +1145,11 @@ depguard, a used `golang.org/x/mod/semver` import planted into `api.go`:
 **Checks.** Lint on `GOOS=linux`, `darwin` and `windows`: `0 issues` each.
 `make pre-add-check FILES="<the 13 Go files>"`: `go-precheck: 13 file(s)
 clean`. `make gate`: `overall=0`, `apicheck` `compatible with v1.13.0`.
+
+### Owner decision before T5 (2026-10-10)
+
+Deviation D1 asked for a decision before T5. The owner chose to iterate
+`TestCOMLayout` from the elevated ssh shell, then run the final test binary
+once more as the action of a throwaway least-privilege task in the console
+session, as T1's driver did, and record that run as the medium-integrity
+evidence. The owner confirmed the console sign-in.
