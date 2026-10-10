@@ -180,6 +180,10 @@ leaves the defects above in place.
 * Each package gets its own depguard rule naming exactly these imports,
   and is excluded from `other-packages` (AGENTS.md).
 * `schtasks` stays in magic-cli-remote behind `Lifecycle`, as 0004 says.
+  *(Amended 2026-10-10 by
+  0021-MADR-task-scheduler-lifecycle-and-windowless-children.md D1: a Task
+  Scheduler lifecycle is a reference backend here,
+  `selfupdate/service/taskscheduler`.)*
 * `selfupdate` and `selfupdate/cli` do not import the new packages.
   `selfupdate/cli` gains one additive field, `Options.HandOff` (§9), a
   struct of two plain functions, so it imports nothing new.
@@ -503,6 +507,10 @@ func ReadHandOffResult(path string) (HandOffResult, error)
     CREATE_BREAKAWAY_FROM_JOB`. When the caller's job refuses breakaway,
     which needs `JOB_OBJECT_LIMIT_BREAKAWAY_OK`, it retries without that
     flag (process-creation flags).
+    *(Amended 2026-10-10 by
+    0021-MADR-task-scheduler-lifecycle-and-windowless-children.md D7: the
+    run starts with `CREATE_NO_WINDOW` in place of `DETACHED_PROCESS`, so
+    its console children open no window.)*
     * The child keeps the caller's token, so a LocalSystem service's run
       can still control the SCM, as Elastic Agent's re-exec does.
     * The child runs the executable it is about to replace. The Windows

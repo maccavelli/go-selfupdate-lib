@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: in-progress
 date: 2026-10-10
 associated-madr: "0021-MADR-task-scheduler-lifecycle-and-windowless-children.md"
 ---
@@ -664,5 +664,26 @@ release commit T7's:
 
 ## Execution record
 
-Nothing has been executed. The owner approved the MADR's decisions on
-2026-10-10; this PLAN awaits approval.
+### Approval (2026-10-10)
+
+The owner committed the MADR, this PLAN and the index rows as `bb09133`,
+and said "proceed".
+
+### T0 (2026-10-10)
+
+* The MADR's acceptance and this PLAN's index row were already in
+  `bb09133`, which the owner committed. T0 step 1 and step 4 needed no
+  further change.
+* **0011-MADR:** §1's `schtasks` line carries the D1 annotation, and
+  §9's Windows flag list carries the D7 annotation.
+* **0004-MADR:** line 849's `schtasks` line carries the D1 annotation.
+* This PLAN is `in-progress`, here and in the index.
+* Checks on the four changed files, each exit 0:
+  * `scripts/check-docs.sh --ids`: `check-docs: 4 files, 16 deny-list
+    rules, 0 findings`;
+  * `scripts/check-docs.sh --links`: `check-docs: 132 links in 4 files, 0
+    broken`.
+* T0 has no Go files, so `make pre-add-check` does not apply. Rule 2's
+  `make gate` ran on the commit's tree and exited 0: every step `rc=0`,
+  `apicheck` `compatible with v1.13.0`, `links` `437 links in 60 files, 0
+  broken`, `overall=0`.

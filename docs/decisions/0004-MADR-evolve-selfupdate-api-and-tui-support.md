@@ -847,6 +847,10 @@ signature would add almost nothing today.
     carries magic-cli-remote's bootout-wait fix, which mcp-server-magictools
     lacks.
   * schtasks stays in magic-cli-remote behind `Lifecycle`.
+    *(Amended 2026-10-10 by
+    0021-MADR-task-scheduler-lifecycle-and-windowless-children.md D1: a Task
+    Scheduler lifecycle is a reference backend here,
+    `selfupdate/service/taskscheduler`.)*
 * **`selfupdate/codesign`**, moved from magic-cli-remote's
   `internal/updateclient/codesign_darwin.go`.
 
