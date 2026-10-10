@@ -469,47 +469,261 @@ interactive-token task. T6 finds out, by running there.
 
 ### Phase T5: the COM transport
 
-**Files:** `selfupdate/service/taskscheduler/scheduler_windows.go`,
-`com_windows.go`, `com_windows_test.go`.
+Associated MADR: Amendment A3 is normative for this phase. Implement the
+T4 `scheduler` and `registered` interfaces on the COM API. The exported
+package still only manages a registered task.
 
-1. **`com_windows.go`:** the COM plumbing, through `x/sys/windows` and
-   `syscall.SyscallN`, with no cgo:
-   * lazy `ole32` (`CoCreateInstance`) and `oleaut32` (`SysAllocString`,
-     `SysFreeString`, `VariantClear`) procedures, from
-     `windows.NewLazySystemDLL`;
-   * the CLSID and IIDs from `taskschd.h`, each with its source line in a
-     comment;
-   * one Go type per interface used (`ITaskService`, `ITaskFolder`,
-     `IRegisteredTask`, `IRunningTaskCollection`, `IRunningTask`,
-     `ITaskDefinition`, `IActionCollection`, `IAction`, `IExecAction`,
-     `ITriggerCollection`, `ITrigger`, `IRepetitionPattern`), whose vtable
-     slot numbers are constants, each commented with the `taskschd.h`
-     method name and its position after `IDispatch`'s seven;
-   * `VARIANT` as a fixed 24-byte struct on amd64 and arm64 (16 on 386),
-     with a test asserting its size;
-   * every call checks its HRESULT, and every interface pointer and BSTR
-     is released on every path.
-2. **`scheduler_windows.go`:** each `scheduler` call runs on a goroutine
-   locked to its OS thread, with `CoInitializeEx(COINIT_MULTITHREADED)`
-   and `CoUninitialize` around it, and a fresh `ITaskService::Connect` with
-   empty arguments, the current user on the local machine. `processes` and
-   `created` are `scm`'s code. `tokenSID` is
-   `windows.GetCurrentProcessToken().GetTokenUser()`'s SID, as a string.
-3. **The layout test,** `TestCOMLayout`, on the Windows test host and in
-   CI's Windows job. It registers a `selfupdate-probe-<random>` task from
-   a fixed XML, then calls every `scheduler` and `registered` method once,
-   checking each result against the XML: state, enabled, triggers,
-   action, XML, run, instances, stop, disable and re-enable, `setPath` to
-   a non-ASCII directory and back, `restore`, and `open` of a missing name.
-   It deletes the task in `t.Cleanup`. A wrong slot fails this test.
-4. **Fail first:** on a scratch copy with two adjacent slot constants
-   swapped (`get_State` and `get_Enabled`), `TestCOMLayout` fails,
-   naming the method. The record quotes the line.
-5. **CI.** If `TestCOMLayout` cannot register a task on a GitHub runner,
-   it skips there with the HRESULT in the reason, and that is recorded.
-   On the Windows test host it never skips.
-6. **Checks** (rule 2), with `GOOS=windows` lint clean on the new files.
-   Commit.
+**Files:**
+
+* `selfupdate/service/taskscheduler/com_windows.go` (new, `//go:build windows`)
+* `selfupdate/service/taskscheduler/scheduler_windows.go` (new, `//go:build windows`)
+* `selfupdate/service/taskscheduler/com_windows_test.go` (new, `//go:build windows`)
+* `selfupdate/service/taskscheduler/scheduler_other.go` (add `//go:build !windows`)
+
+**Preconditions.** Rule 6: the owner confirms the console sign-in. Elevation
+is the owner decision already recorded: iterate `TestCOMLayout` from the
+elevated ssh shell, then run the final test binary once as the action of a
+throwaway least-privilege InteractiveToken task in the console session.
+
+#### 1. `com_windows.go`: plumbing
+
+Lazy system DLLs, `windows.NewLazySystemDLL`, same form as
+`internal/winproc`:
+
+* `ole32.dll`: `CoCreateInstance`, `CoInitializeEx` (Amendment A3: the
+  lazy procedure, because `windows.CoInitializeEx` treats `S_FALSE` as
+  an error). `CoUninitialize` may use `windows.CoUninitialize`.
+* `oleaut32.dll`: `SysAllocString`, `SysFreeString`, `VariantClear`.
+
+GUIDs as `windows.GUID` literals, each commented with the IDL uuid. Values:
+
+* `CLSID_TaskScheduler` `{0f87369f-a4e5-4cfc-bd3e-73e6154572dd}`
+* `IID_ITaskService` `{2faba4c7-4da9-4013-9697-20cc3fd40f85}`
+* `IID_ITaskFolder` `{8cfac062-a080-4c15-9a88-aa7c2af80dfc}`
+* `IID_IRegisteredTask` `{9c86f320-dee3-4dd1-b972-a303f26b061e}`
+* `IID_IRunningTask` `{653758fb-7b9a-4f1e-a471-beeb8e9b834e}`
+* `IID_IRunningTaskCollection` `{6a67614b-6828-4fec-aa54-6d52e8f1f2db}`
+* `IID_ITaskDefinition` `{f5bc8fc5-536d-4f77-b852-fbc1356fdeb6}`
+* `IID_IActionCollection` `{02820e19-7b98-4ed2-b2e8-fdccceff619b}`
+* `IID_IAction` `{bae54997-48b1-4cbe-9965-d6be263ebea4}`
+* `IID_IExecAction` `{4c3d624d-fd6b-49a3-b9b7-09cb3cd3f047}`
+* `IID_ITriggerCollection` `{85df5081-1b24-4f32-878a-d9d14df4cb77}`
+* `IID_ITrigger` `{09941815-ea89-4b5b-89e0-2a773801fac3}`
+* `IID_IRepetitionPattern` `{7fb9acf1-26be-400e-85b5-294b9c75dfd6}`
+* `IID_IPrincipal` `{d98d51e5-c9b4-496a-a9c1-18980261cf0f}`
+
+HRESULT helper: `uint32(r0)`; `failed` if bit 31 is set; `S_OK` 0,
+`S_FALSE` 1, `RPC_E_CHANGED_MODE` `0x80010106`. Map `0x80070002` /
+`0x80070005` onto the existing `hresult` sentinels in `api.go`.
+
+`VARIANT`:
+
+```text
+type variant struct {
+    vt       uint16
+    reserved [3]uint16
+    data     [16]byte // 8 on 386: use build-tagged files if sizeof fails
+}
+```
+
+`TestVARIANTSize` asserts 24 on amd64/arm64 and 16 on 386. Zero value is
+`VT_EMPTY`. Integer index: `vt = 3` (`VT_I4`), `lVal` in `data`.
+`VARIANT_BOOL` true is `int16(-1)`.
+
+BSTR helpers: `sysString(s string) (bstr, error)` via UTF-16 and
+`SysAllocString`; `freeBSTR`; `bstrToString` copies then frees. NULL BSTR
+is `""`. `SysAllocString` returning NULL on a non-empty input is an error.
+
+One Go type per interface, first field `vtbl *struct{ … uintptr }`. Slots
+0–6 are IUnknown + IDispatch on every type. Interface slots, 0-based after
+those seven, commented `// ITaskService::GetFolder, slot 7`:
+
+**`ITaskService`:** 7 `GetFolder`, 8 `GetRunningTasks` (unused, keep the
+slot), 9 `NewTask` (unused), 10 `Connect`.
+
+**`ITaskFolder`:** 7 `get_Name` (unused), 8 `get_Path` (unused), 9
+`GetFolder` (unused), 10 `GetFolders` (unused), 11 `CreateFolder`
+(unused), 12 `DeleteFolder` (unused), 13 `GetTask`, 14 `GetTasks`
+(unused), 15 `DeleteTask` (unused), 16 `RegisterTask`, 17
+`RegisterTaskDefinition`.
+
+**`IRegisteredTask`:** 7 `get_Name`, 8 `get_Path`, 9 `get_State`, 10
+`get_Enabled`, 11 `put_Enabled`, 12 `Run`, 13 `RunEx` (unused), 14
+`GetInstances`, 15 `get_LastRunTime`, 16 `get_LastTaskResult`, 17
+`get_NumberOfMissedRuns` (unused), 18 `get_NextRunTime` (unused), 19
+`get_Definition`, 20 `get_Xml`, 21 `GetSecurityDescriptor` (unused), 22
+`SetSecurityDescriptor` (unused), 23 `Stop`.
+
+**`IRunningTaskCollection`:** 7 `get_Count`, 8 `get_Item` (`VARIANT`), 9
+`get__NewEnum` (unused).
+
+**`IRunningTask`:** 7 `get_Name` (unused), 8 `get_InstanceGuid` (unused),
+9 `get_Path` (unused), 10 `get_State` (unused), 11 `get_CurrentAction`
+(unused), 12 `Stop` (unused), 13 `Refresh` (unused), 14 `get_EnginePID`.
+
+**`ITaskDefinition`:** 7 `get_RegistrationInfo` (unused), 8 put unused, 9
+`get_Triggers`, 10 put unused, 11 `get_Settings` (unused), 12 put unused,
+13 `get_Data` (unused), 14 put unused, 15 `get_Principal`, 16 put unused,
+17 `get_Actions`.
+
+**`IActionCollection`:** 7 `get_Count`, 8 `get_Item` (`long`), 1-based.
+
+**`IAction`:** 7 `get_Id` (unused), 8 `put_Id` (unused), 9 `get_Type`.
+
+**`IExecAction`:** IAction plus 10 `get_Path`, 11 `put_Path`, 12
+`get_Arguments`, 13 `put_Arguments` (unused), 14 `get_WorkingDirectory`
+(unused), 15 put unused.
+
+**`ITriggerCollection`:** 7 `get_Count`, 8 `get_Item` (`long`), 1-based.
+
+**`ITrigger`** (IDL order, slots 7–19): 7 `get_Type`, 8 `get_Id`
+(unused), 9 `put_Id` (unused), 10 `get_Repetition`, 11 `put_Repetition`
+(unused), 12 `get_ExecutionTimeLimit` (unused), 13 put unused, 14
+`get_StartBoundary` (unused), 15 put unused, 16 `get_EndBoundary`
+(unused), 17 put unused, 18 `get_Enabled`, 19 `put_Enabled` (unused).
+`TestCOMLayout` is the check if a slot is off.
+
+**`IRepetitionPattern`:** 7 `get_Interval`. Empty or NULL interval is
+`Repeats: false`.
+
+**`IPrincipal`:** 7 `get_Id` (unused) through 13 `get_LogonType` (IDL:
+Id, put Id, DisplayName, put DisplayName, UserId, put UserId, LogonType).
+`get_LogonType` is slot 13.
+
+Every vtable call: `this` first, then arguments, `syscall.SyscallN`,
+`runtime.KeepAlive` on `this` and any `VARIANT` / UTF-16 buffer.
+
+Release helper: `IUnknown::Release` (slot 2). `close` on `registered` is
+that Release.
+
+#### 2. `scheduler_windows.go`: T4 interfaces
+
+`systemScheduler()` returns a `sysSched{}`.
+
+Each COM method:
+
+1. `runtime.LockOSThread()`; `defer runtime.UnlockOSThread()`.
+2. `CoInitializeEx(0, windows.COINIT_MULTITHREADED)`.
+   * `S_OK` or `S_FALSE`: `defer CoUninitialize()`.
+   * `RPC_E_CHANGED_MODE`: proceed, no uninit. Record this HRESULT in
+     `TestCOMLayout`.
+   * other `failed`: return it.
+3. `CoCreateInstance(CLSID_TaskScheduler, nil, CLSCTX_INPROC_SERVER,
+   IID_ITaskService, &svc)`. Out pointer starts nil.
+4. `Connect` with four zero `VARIANT`s.
+5. Work. `defer` Release on `svc` and every other interface acquired.
+6. Return.
+
+`open(folder, name)`: `GetFolder(folder)` then `GetTask(name)`. Missing
+task is `hrFileNotFound`. Keep the folder pointer on the `registered`
+value so `setPath` / `restore` can `RegisterTaskDefinition` /
+`RegisterTask` without a second Connect if that is simpler; a second
+Connect per call is also allowed, as the PLAN originally said. Prefer one
+Connect per exported method, releasing everything before return, so no
+COM object outlives the apartment on that thread.
+
+`state` / `enabled` / `setEnabled` / `run` / `stop` / `xml` / `lastRun`:
+the `IRegisteredTask` slots above. `setEnabled` passes `int16(-1)` or 0.
+`run` passes `VT_EMPTY` params and a NULL `IRunningTask**`; Release the
+running task if one is returned. `stop` flags 0; `S_FALSE` is an error
+whose text names that the user cannot stop the instances.
+
+`instances`: `GetInstances(0)`; `Count`; `Item` 1..Count with `VARIANT`
+`VT_I4`; `EnginePID`. Skip a PID of 0.
+
+`actions`: `get_Definition` → `get_Actions` → Count / Item (`long`) →
+`get_Type`; if Exec, `QueryInterface(IID_IExecAction)` → `get_Path`,
+`get_Arguments`.
+
+`triggers`: `get_Definition` → `get_Triggers` → Count / Item (`long`) →
+`get_Type`, `get_Enabled`, `get_Repetition` → `get_Interval`.
+
+`logonType`: `get_Definition` → `get_Principal` → `get_LogonType`.
+
+`setPath(path)`: `get_Definition` → one Exec `put_Path` →
+`RegisterTaskDefinition(name, def, TASK_UPDATE|TASK_IGNORE_REGISTRATION_TRIGGERS
+/* 0x24 */, empty, empty, logonType, empty, &out)`. Release `out`.
+
+`restore(xml)`: `RegisterTask(name, xml, 0x24, empty, empty,
+logonInteractiveToken, empty, &out)`. Release `out`. The saved XML
+already carries the principal; passing `logonInteractiveToken` matches
+Q6's only measured logon. If `TestCOMLayout` shows restore needs the
+XML's own logon type instead, that is a deviation (rule 4).
+
+`processes` / `created`: copy `scm/scm_windows.go` (Toolhelp32 snapshot,
+`GetProcessTimes`). `running(pid, born)`: `created(pid) == born` when
+`born != 0`, else the pid is still in the snapshot.
+
+Constants in `api.go` if T4 does not already have them: `taskUpdate = 4`,
+`taskIgnoreRegistrationTriggers = 0x20`. Add them in this commit if
+missing.
+
+#### 3. `TestCOMLayout`
+
+On the Windows test host and in CI's Windows job. Registers
+`selfupdate-probe-<random>` in `\`, from a fixed UTF-16 XML: one Exec
+(`taskprobe` or the test binary with a sleep argument), InteractiveToken,
+LeastPrivilege, a logon trigger, `IgnoreNew`, `AllowDemandStart` left
+default. Deletes in `t.Cleanup` with `ITaskFolder::DeleteTask` or
+`schtasks /delete /f`. Never touches another task.
+
+Then, in order, through the real `scheduler` / `registered` (not the
+fake):
+
+1. Record `CoInitializeEx`'s HRESULT (`S_OK`, `S_FALSE`, or
+   `RPC_E_CHANGED_MODE`).
+2. `open` of a missing name: `hrFileNotFound`.
+3. `open` of the probe task.
+4. Before `Run`: record `lastRun` (`DATE` bits and `LastTaskResult`). This
+   is the never-run sentinel. Do not treat `0x00041303` as a failed
+   `open`.
+5. `state`, `enabled` (true), `triggers` (one logon, enabled), `actions`
+   (one Exec, path matches, case-insensitive), `logonType`
+   (`logonInteractiveToken`), `xml` contains the path.
+6. `run`; `instances` length 1; `EnginePID` is a live process whose image
+   is the Exec path.
+7. `setEnabled(false)` then `enabled` false; `setEnabled(true)`.
+8. `stop`; after a short wait, `instances` empty and `state` is ready or
+   disabled, not running.
+9. `setPath` to a copy of the binary under a directory whose name holds
+   `é`, `ü` and a CJK character; `xml` contains that path; `actions` Path
+   matches; principal / logon type unchanged.
+10. `restore` of the XML saved before `setPath`; `xml` equals the saved
+    string byte for byte.
+11. `close`.
+
+Fail first (rule 3), on a scratch copy with `get_State` and `get_Enabled`
+slot constants swapped: the test names the method. Quote the line.
+
+CI: if registration returns a permission HRESULT, skip with that HRESULT
+in the reason. On the Windows test host it never skips.
+
+#### 4. Medium-integrity confirmation
+
+After the elevated-shell run is green, copy the same test binary into a
+new host directory, register `selfupdate-probe-driver-<random>`
+(InteractiveToken, LeastPrivilege, no trigger) whose action is that
+binary's `TestCOMLayout` (or a tiny driver that execs it), wait, delete.
+The driver's log must include `--- PASS: TestCOMLayout`. That run is the
+medium-integrity evidence, as the owner decided before T5.
+
+#### 5. Fail-first plants (this Mac or the host as noted)
+
+| Plant | Where | What fails |
+| :--- | :--- | :--- |
+| `get_State` / `get_Enabled` slots swapped | Windows test host | `TestCOMLayout` names the method |
+| `VARIANT` size asserted 16 on amd64 | this Mac with `GOARCH=amd64` | `TestVARIANTSize` |
+| `CoInitializeEx` treated as failed on `S_FALSE` | Windows test host, if init returns 1 | `open` errors on a live task |
+| `Stop` treats `S_FALSE` as success | only if a case can produce `S_FALSE`; otherwise record that it could not be planted | |
+| `Item` 0-based | Windows test host | `instances` or `actions` empty / `E_INVALIDARG` |
+| `put_Enabled(1)` instead of `-1` | Windows test host | `enabled` stays false after enable, or the plant is recorded as not distinguishing | |
+
+#### 6. Checks
+
+`GOOS=windows` lint clean on the new files. `make pre-add-check
+FILES="<the phase's Go files>"`. `make gate` `overall=0`. Commit.
+
+### Phase T6: the live test, and CI
 
 ### Phase T6: the live test, and CI
 
@@ -524,7 +738,9 @@ interactive-token task. T6 finds out, by running there.
 2. **`TestLiveTaskUpdate`**, with `SELFUPDATE_REQUIRE_TASKSCHED=1`, else
    skipped with that reason. It copies the test binary to `<dir>`,
    registers `selfupdate-live-<random>` with a logon trigger and a time
-   trigger repeating every minute (`IgnoreNew`), runs it, and from inside
+   trigger repeating every minute (`IgnoreNew`), `AllowDemandStart` left
+   at its default (true; Amendment A3: `Run` is a no-op when it is
+   false), runs it, and from inside
    the task runs a managed update to a second copy through
    `service.HandOffIfInside`, the handoff and this backend. It asserts:
    * the update completes, and the handoff's result file says so;
@@ -1146,6 +1362,15 @@ depguard, a used `golang.org/x/mod/semver` import planted into `api.go`:
 `make pre-add-check FILES="<the 13 Go files>"`: `go-precheck: 13 file(s)
 clean`. `make gate`: `overall=0`, `apicheck` `compatible with v1.13.0`.
 
+### Records amendment A3 (2026-10-10): COM research for T5
+
+Official Task Scheduler, COM and Automation pages were read and evaluated
+in Amendment A3 of the MADR. T5 above was rewritten against those facts:
+`ole32!CoInitializeEx` is called through a lazy procedure; `Stop` treats
+`S_FALSE` as failure; rewrite/restore pass `TASK_UPDATE |
+TASK_IGNORE_REGISTRATION_TRIGGERS`; collection indexes are 1-based;
+`tokenSID` is struck. No Go files changed.
+
 ### Owner decision before T5 (2026-10-10)
 
 Deviation D1 asked for a decision before T5. The owner chose to iterate
@@ -1153,3 +1378,51 @@ Deviation D1 asked for a decision before T5. The owner chose to iterate
 once more as the action of a throwaway least-privilege task in the console
 session, as T1's driver did, and record that run as the medium-integrity
 evidence. The owner confirmed the console sign-in.
+
+### T5 (2026-10-10)
+
+**Files.** New: `selfupdate/service/taskscheduler/com_windows.go`,
+`scheduler_windows.go`, `com_windows_test.go`. Changed:
+`scheduler_other.go` (`//go:build !windows`), `api.go` (no new exported
+API).
+
+* Lazy `ole32` / `oleaut32`, vtable slots after `IDispatch`, `VARIANT` 24
+  bytes on amd64, BSTRs, `CoInitializeEx` through a lazy procedure.
+* `systemScheduler` implements the T4 interfaces. Rewrite/restore use
+  `TASK_UPDATE | TASK_IGNORE_REGISTRATION_TRIGGERS`. `Stop` treats
+  `S_FALSE` as failure.
+* `TestCOMLayout` registers a throwaway `selfupdate-probe-<random>` task
+  through `ITaskFolder::RegisterTask` (not `schtasks`), exercises every
+  T4 method, rewrites the Exec path into a directory whose name holds
+  `é`, `ü` and a CJK character, and restores.
+
+**Windows test host** (elevated ssh, High Mandatory Level, as D1):
+`TestVARIANTSize` `--- PASS`. `TestCOMLayout` `--- PASS`.
+`CoInitializeEx HRESULT 0x00000000` (`S_OK`). Never-run
+`DATE 1999-11-30 00:00:00` local, `LastTaskResult 0x00041303`.
+
+**Fail first,** each in a `scripts/plant-copy.sh` copy, run on the
+Windows test host:
+
+| Plant | Test | Failing line |
+| :--- | :--- | :--- |
+| `get_State` slot 9→10 | `TestCOMLayout` | `get_State: 65535, <nil>` |
+| `sizeof(variant)` want 16 | `TestVARIANTSize` | `sizeof(variant) = 24, want 24 on amd64/arm64` |
+| `Item` index `i-1` (0-based) | `TestCOMLayout` | `HRESULT 0x80070057` (`E_INVALIDARG`) |
+
+**Deviation D2 (2026-10-10).** The owner-chosen medium-integrity run
+started `TestCOMLayout` as the action of a throwaway LeastPrivilege
+InteractiveToken task. `ITaskFolder::RegisterTask` from that process
+returned `0x80070005`. Nested create of a second per-user task is
+refused while the test itself is already a running task. The elevated
+ssh run covers create and every method. T6's live tests create their
+tasks from the ssh shell, as T1 did for the driver, not from inside a
+running task.
+
+**Checks.** `make pre-add-check FILES="<the 5 Go files>"`: `go-precheck:
+5 file(s) clean`. Lint on `GOOS=linux`, `darwin` and `windows`: `0
+issues` each. `make gate`: `overall=0`, `apicheck` `compatible with
+v1.13.0`.
+
+**Host cleanup.** Throwaway `selfupdate-t5-*` directories removed; no
+`selfupdate-probe-` task remains.

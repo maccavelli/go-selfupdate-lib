@@ -288,6 +288,12 @@ minor release (More Information, "Owner decisions").
   method the backend uses against a throwaway task, so a wrong slot fails a
   test, not a user. The owner chose COM (Q1).
 
+*(Amended 2026-10-10 by Amendment A3: call `ole32!CoInitializeEx`
+through a lazy procedure, not `windows.CoInitializeEx`, which treats
+`S_FALSE` as an error; pair `CoUninitialize` only with a successful init
+including `S_FALSE`; `Stop` treats `S_FALSE` as failure; rewrite and
+restore pass `TASK_UPDATE | TASK_IGNORE_REGISTRATION_TRIGGERS`.)*
+
 ### D3. Probes
 
 * **`Installed`**: `GetTask` succeeds. Not found gives false, with no error.
@@ -654,9 +660,16 @@ everything together." The questions as asked, with the answers:
 * Whether a rewrite of a task whose logon type is not `InteractiveToken`
   keeps its principal (D5). Until a probe shows it, the rewrite refuses
   such a task (owner question Q6, decided).
+* The `DATE` `get_LastRunTime` returns for a task that has never run, and
+  whether that `DATE` is local or UTC. Settled by T5 `TestCOMLayout` on the
+  Windows test host: `1999-11-30 00:00:00` in the host's local zone
+  (`CST`), `LastTaskResult` `0x00041303` (`SCHED_S_TASK_HAS_NOT_RUN`).
+* Whether `RPC_E_CHANGED_MODE` arises on a Go `LockOSThread` worker.
+  Amendment A3's rule is to proceed on that HRESULT without a matching
+  `CoUninitialize`. `TestCOMLayout` records the init HRESULT.
 
 The five items this list held for the PLAN's probes are settled by
-Amendment A1.
+Amendment A1. COM transport details for T5 are Amendment A3.
 
 ### Amendment A1 (2026-10-10): probe results
 
@@ -727,6 +740,227 @@ other; the version prober's path is the staging or target file). The
 rejected alternative, refusing every extensionless path, could refuse a
 legitimate binary and only approximates `Start`'s lookup.
 
+### Amendment A3 (2026-10-10): COM transport research for T5
+
+Research for T5, before that phase writes Go. It does not change D1–D9's
+shape. It pins how D2 is implemented, and names edge cases T5 must
+handle.
+Each claim is tagged as in Context.
+
+#### Source evaluation
+
+| Kind | What | Weight |
+| :--- | :--- | :--- |
+| Official API | learn.microsoft.com `taskschd.h` / `oleauto.h` / `combaseapi.h` / `oaidl.h` / `unknwn.h` pages listed under Sources | primary |
+| Official samples | Microsoft C++ Task Scheduler 2.0 examples: `CoCreateInstance(CLSID_TaskScheduler, NULL, CLSCTX_INPROC_SERVER, IID_ITaskService, …)` then `Connect(_variant_t(), _variant_t(), _variant_t(), _variant_t())` then `GetFolder(_bstr_t(L"\\"))` ([docs], Registration Trigger Example and Displaying Task Names) | primary for the call sequence |
+| Official COM | `CoInitializeEx` / `CoUninitialize`; "The COM Library"; `IUnknown::QueryInterface`; `IDispatch`; `VARIANT` (`oaidl.h`); `VARENUM`; `SysAllocString` / `SysFreeString`; `VariantClear` | primary |
+| Official constants | Task Scheduler error and success constants; `TASK_CREATION`; `TASK_LOGON_TYPE` | primary |
+| Protocol | [MS-OAUT] `VARIANT_TRUE` `((VARIANT_BOOL)0xffff)`; [MS-TSCH] `SCHED_S_*` | primary for those values |
+| Header / IDL order | Wine `taskschd.idl` and mingw-w64 `taskschd.h` CINTERFACE vtables. Microsoft Learn interface pages list methods alphabetically and say several dual interfaces "inherit from IUnknown". The IDL is `interface ITaskService : IDispatch` with `[oleautomation]`. Vtable order is IDL declaration order, not Learn's method table. Used only for slot numbers, checked against the official method signatures | secondary, confirmed by `TestCOMLayout` |
+| This module | `golang.org/x/sys/windows` v0.47.0 `CoInitializeEx` wrapper; T4 `scheduler` / `registered`; T1 probe 4 | [read] |
+| Forum / Q&A | Last Run Time shown as 11/30/1999 when a task has not run | anecdotal; T5 measures the `DATE` |
+
+`go-ole` stays out: a new module needs a MADR, and D2 already chose
+vtable calls.
+
+#### `x/sys/windows` v0.47.0 exports for this transport
+
+Already exported [read, module cache]: `CoInitializeEx`,
+`CoUninitialize`, `CoTaskMemFree`, `GUID`, `GUIDFromString`,
+`COINIT_MULTITHREADED` (0), `CLSCTX_INPROC_SERVER` (1).
+
+Not exported: `CoCreateInstance`, `SysAllocString`, `SysFreeString`,
+`VariantInit`, `VariantClear`. Those stay lazy `ole32` / `oleaut32`
+procedures, as D2 said.
+
+**`windows.CoInitializeEx` is the wrong wrapper for this call.** Its
+generated body treats any non-zero HRESULT as `syscall.Errno`
+(`zsyscall_windows.go:3913-3918` [read]). `S_FALSE` (1) is success: COM
+is already initialized on the thread ([docs], `CoInitializeEx`). Using
+the wrapper would refuse a legal init. T5 calls `ole32!CoInitializeEx`
+through a lazy procedure and classifies the HRESULT itself.
+
+#### Apartment rules
+
+`CoInitializeEx` must be called on each thread that uses COM ([docs],
+Initializing the COM Library). `COINIT_MULTITHREADED` is the flag D2
+named. The Task Scheduler 2.0 coclass is `threading(both)` in the IDL,
+so it is usable from MTA or STA.
+
+Return values ([docs], `CoInitializeEx`):
+
+* `S_OK` (0): this call initialized the thread. Pair with
+  `CoUninitialize`.
+* `S_FALSE` (1): already initialized with the same model. Pair with
+  `CoUninitialize`. `SUCCEEDED` includes this.
+* `RPC_E_CHANGED_MODE` (`0x80010106`): already initialized with the
+  other model. This call does **not** increment the init count. Do
+  **not** `CoUninitialize` for it ([docs], The COM Library; Microsoft's
+  `CoInitializeEx` remarks). Proceed: the thread already has COM, and
+  `threading(both)` allows the objects.
+
+`FAILED` is the high bit of the 32-bit HRESULT. `SCHED_S_*` values
+(`0x00041300`–…) have the high bit clear: they are success constants
+([docs], Task Scheduler error and success constants). Truncate
+`SyscallN`'s `r0` to `uint32` before classifying.
+
+`runtime.LockOSThread` holds the goroutine on one OS thread for the
+whole `CoInitializeEx` … `CoUninitialize` span, so the uninit runs on
+the thread that init ran on.
+
+#### Vtable layout
+
+`IDispatch` inherits `IUnknown` and adds four methods ([docs],
+`IDispatch`): `GetTypeInfoCount`, `GetTypeInfo`, `GetIDsOfNames`,
+`Invoke`. Every dual Task Scheduler interface therefore starts:
+
+| Slot | Method |
+| ---: | :--- |
+| 0 | `IUnknown::QueryInterface` |
+| 1 | `IUnknown::AddRef` |
+| 2 | `IUnknown::Release` |
+| 3 | `IDispatch::GetTypeInfoCount` |
+| 4 | `IDispatch::GetTypeInfo` |
+| 5 | `IDispatch::GetIDsOfNames` |
+| 6 | `IDispatch::Invoke` |
+| 7 | first method of the interface, in IDL order |
+
+T5 does not call `IDispatch::Invoke`. Direct slots are D2.
+
+`QueryInterface` on success calls `AddRef` on the returned pointer
+([docs], `IUnknown::QueryInterface`). Both the source and the new
+pointer are released. On failure it writes `nullptr` to `*ppvObject`.
+Out-parameters start as `NULL`; a non-NULL out pointer is overwritten
+and leaked ([docs], `GetTask`, `GetInstances`,
+`RegisterTaskDefinition`).
+
+#### VARIANT, BSTR, `VARIANT_BOOL`, `DATE`
+
+* **`VARIANT`** (`oaidl.h` [docs]): `VARTYPE vt` plus three `WORD`
+  reserved fields plus a union. Size is 16 bytes on 386 and 24 on
+  amd64/arm64 (pointer-sized union, 8-byte alignment). T5 asserts
+  `unsafe.Sizeof`. Zero bytes are `VT_EMPTY` (0) ([docs], `VARENUM`).
+* **Optional vtable arguments.** Official C++ samples pass
+  `_variant_t()` / `CComVariant()`, which is `VT_EMPTY`, to `Connect`.
+  `IRegisteredTask::Run` says to pass `VT_NULL` or `VT_EMPTY` for no
+  action parameters ([docs]). `RegisterTask` / `RegisterTaskDefinition`
+  say the password for `TASK_LOGON_SERVICE_ACCOUNT` must be `VT_NULL` or
+  `VT_EMPTY` ([docs]). T1 used PowerShell `$null` and the update
+  succeeded (Amendment A1 probe 4). T5 passes `VT_EMPTY` for Connect's
+  four arguments and for rewrite/restore `userId`, `password` and
+  `sddl`.
+* **`VT_ERROR` + `DISP_E_PARAMNOTFOUND`** is the Automation rule for an
+  omitted argument to `IDispatch::Invoke` ([docs], older VARIANT
+  remarks). T5 does not call `Invoke`, so it does not use that encoding.
+* **Do not `VariantClear` an uninitialized `VARIANT`** ([docs],
+  `VariantClear`). `VariantInit` or a zero struct first. `VariantClear`
+  on `VT_EMPTY` is fine.
+* **`VARIANT_BOOL`:** true is `-1` (`0xFFFF`), false is 0 ([docs],
+  `VARENUM`; [MS-OAUT]). `put_Enabled` takes `VARIANT_BOOL`, not a
+  `VARIANT`. Passing `1` is not `VARIANT_TRUE`.
+* **BSTR:** `SysAllocString` copies UTF-16; a NULL `psz` or OOM returns
+  NULL; a zero-length string returns a zero-length BSTR ([docs]).
+  `SysFreeString(NULL)` returns without doing anything ([docs]). Every
+  `get_*` BSTR is copied into a Go string and then freed.
+* **`DATE`:** `typedef double DATE`. `get_LastRunTime` returns this
+  ([docs]). The day-zero epoch is 30 December 1899 in Automation.
+  Timezone, and the value for a never-run task, are [unverified] and
+  recorded by `TestCOMLayout`. WaitHealthy already keys off `last.Time`
+  versus `Start`; a sentinel in 1899 or 1999 is before `Start`, so
+  `SCHED_S_TASK_HAS_NOT_RUN` (`0x00041303` [docs]) is not treated as a
+  failed exit.
+
+#### Task Scheduler call contracts T5 must honour
+
+* **`Connect` first.** "The `ITaskService::Connect` method should be
+  called before calling any of the other `ITaskService` methods"
+  ([docs]). Empty `serverName` is the local computer; unspecified user
+  is the current token.
+* **`CoCreateInstance`:** `CLSID_TaskScheduler`, `CLSCTX_INPROC_SERVER`,
+  `IID_ITaskService` ([docs], official samples). In-process server is
+  `taskschd.dll`.
+* **`GetFolder`** of `\` for the root, then **`GetTask`** with the
+  task's name (no `.` or `..` in the path) ([docs]).
+* **`GetInstances`:** `flags` is reserved and must be 0; a non-zero flag
+  is `E_INVALIDARG` ([docs]). It returns only instances at or below the
+  caller's security context ([docs]). Out pointer starts NULL.
+* **`Stop`:** `flags` must be 0 ([docs]). `S_OK`: instances the user may
+  stop were stopped. **`S_FALSE`: the user cannot stop the instances**
+  ([docs]). `S_FALSE` is a failed `Stop` for this backend, even though
+  `SUCCEEDED(S_FALSE)` is true.
+* **`Run`:** params `VT_EMPTY`. Returns `S_OK` without starting the task
+  when `AllowDemandStart` is false ([docs]). T6's throwaway XML leaves
+  that setting at its default (true). `TestCOMLayout` asserts an
+  instance after `Run`.
+* **Collections are 1-based** ([docs], `IActionCollection::get_Item`,
+  `ITriggerCollection::get_Item`, `IRunningTaskCollection::get_Item`).
+  `IActionCollection` and `ITriggerCollection` take `long`.
+  `IRunningTaskCollection` takes `VARIANT` (`VT_I4`).
+* **`IExecAction`** extends `IAction`. Path is not on `IAction`;
+  `QueryInterface(IID_IExecAction)` after `get_Type` is
+  `TASK_ACTION_EXEC` (0).
+* **`RegisterTaskDefinition` / `RegisterTask`:** `TASK_UPDATE` is 0x4
+  ([docs]). "When a task with a registration trigger is updated, the
+  task will execute after the update occurs."
+  `TASK_IGNORE_REGISTRATION_TRIGGERS` is 0x20 and may be combined with
+  `TASK_UPDATE` (`TASK_VALIDATE_ONLY |
+  TASK_IGNORE_REGISTRATION_TRIGGERS` is the combination the page calls
+  invalid). T5's rewrite and restore pass `TASK_UPDATE |
+  TASK_IGNORE_REGISTRATION_TRIGGERS` (0x24), so a consumer's
+  registration trigger cannot start the task mid-update. T1 used
+  `TASK_UPDATE` alone because the probe XML had no registration trigger.
+  `userId` / `password` / `sddl` are `VT_EMPTY`; `logonType` is the
+  value `IPrincipal::get_LogonType` already reports. `ppTask` starts
+  NULL and is Released.
+* **`get_EnginePID`:** "the process ID for the engine (process) which is
+  running the task" ([docs]). Amendment A1 measured that this is the
+  Exec action's process.
+
+#### Go calling convention
+
+`syscall.SyscallN` is the current Windows trampoline
+(`//go:uintptrkeepalive`, [read] `go/src/syscall/dll_windows.go`).
+Pointers converted to `uintptr` in the same call are kept alive for the
+call. T5 still `runtime.KeepAlive`s the COM object and any `VARIANT` /
+UTF-16 buffer after the call. HRESULT is the low 32 bits of `r0`.
+
+#### Implementation rules for T5 (normative)
+
+1. Lazy `ole32` (`CoCreateInstance`, `CoInitializeEx`) and `oleaut32`
+   (`SysAllocString`, `SysFreeString`, `VariantClear`). Skip
+   `windows.CoInitializeEx`, which treats `S_FALSE` as an error.
+2. Each `scheduler` / `registered` method that talks to Task Scheduler:
+   `LockOSThread`; `CoInitializeEx(0, COINIT_MULTITHREADED)`; classify
+   HRESULT as above; `CoCreateInstance` as the samples; `Connect` with
+   four `VT_EMPTY`; do the work; Release every interface and BSTR;
+   `CoUninitialize` only when this call's init succeeded (`S_OK` or
+   `S_FALSE`).
+3. Implement the T4 `scheduler` and `registered` interfaces only. No
+   `tokenSID`, no `images`.
+4. `processes` / `created` / `running` copy `scm/scm_windows.go`'s
+   Toolhelp32 and `GetProcessTimes` path. They are not COM.
+5. Slot constants named after the IDL method, commented with the 0-based
+   index after `IDispatch`'s seven. Unused slots still occupy a
+   `uintptr` so later slots land.
+6. `stop` returns an error on `S_FALSE`. `open` maps `0x80070002` /
+   `0x80070005` as D2.
+7. `setPath` / `restore` use `TASK_UPDATE |
+   TASK_IGNORE_REGISTRATION_TRIGGERS`, `VT_EMPTY` credentials, existing
+   logon type.
+8. `scheduler_other.go` gains `//go:build !windows`. Windows builds get
+   `systemScheduler` from `scheduler_windows.go`.
+9. `TestCOMLayout` records the init HRESULT, the never-run `DATE` and
+   `LastTaskResult`, then exercises every T4 method against a throwaway
+   `selfupdate-probe-<random>` task. It never skips on the Windows test
+   host.
+
+#### Effect on earlier decisions
+
+D1, D3–D9 unchanged. D2's transport is the same API, with the wrapper,
+`S_FALSE`/`Stop`, and registration-trigger flag spelled out. T4's fake
+already matches these method shapes; no T4 Go change.
+
+
 ### Not chosen, recorded so it is not re-proposed blind
 
 * **Adding the installer folder to the User `Path`** (0159 D16). It belongs
@@ -746,17 +980,70 @@ legitimate binary and only approximates `Start`'s lookup.
   `docs/decisions/0159-PLAN-the-windows-service-path-is-half-wired.md`
   (execution records for P1–P20, "What the plan predicted incorrectly");
   `docs/decisions/0054-MADR-standardize-self-update-on-go-selfupdate-lib.md`.
-* Microsoft, Task Scheduler:
+* Microsoft, Task Scheduler (Amendment A3):
   * `TASK_STATE`:
     <https://learn.microsoft.com/en-us/windows/win32/api/taskschd/ne-taskschd-task_state>
+  * `ITaskService::Connect`:
+    <https://learn.microsoft.com/en-us/windows/win32/api/taskschd/nf-taskschd-itaskservice-connect>
+  * `ITaskFolder::GetTask`:
+    <https://learn.microsoft.com/en-us/windows/win32/api/taskschd/nf-taskschd-itaskfolder-gettask>
+  * `ITaskFolder::RegisterTaskDefinition`:
+    <https://learn.microsoft.com/en-us/windows/win32/api/taskschd/nf-taskschd-itaskfolder-registertaskdefinition>
+  * `ITaskFolder::RegisterTask`:
+    <https://learn.microsoft.com/en-us/windows/win32/api/taskschd/nf-taskschd-itaskfolder-registertask>
+  * `IRegisteredTask::Run`:
+    <https://learn.microsoft.com/en-us/windows/win32/api/taskschd/nf-taskschd-iregisteredtask-run>
+  * `IRegisteredTask::GetInstances`:
+    <https://learn.microsoft.com/en-us/windows/win32/api/taskschd/nf-taskschd-iregisteredtask-getinstances>
   * `IRegisteredTask::Stop`:
     <https://learn.microsoft.com/en-us/windows/win32/api/taskschd/nf-taskschd-iregisteredtask-stop>
   * `IRunningTask::get_EnginePID`:
     <https://learn.microsoft.com/en-us/windows/win32/api/taskschd/nf-taskschd-irunningtask-get_enginepid>
+  * `IActionCollection::get_Item` (1-based, `long`):
+    <https://learn.microsoft.com/en-us/windows/win32/api/taskschd/nf-taskschd-iactioncollection-get_item>
+  * `ITriggerCollection::get_Item` (1-based, `long`):
+    <https://learn.microsoft.com/en-us/windows/win32/api/taskschd/nf-taskschd-itriggercollection-get_item>
+  * `IRunningTaskCollection::get_Item` (1-based, `VARIANT`):
+    <https://learn.microsoft.com/en-us/windows/win32/api/taskschd/nf-taskschd-irunningtaskcollection-get_item>
+  * Error and success constants (`SCHED_S_TASK_HAS_NOT_RUN` `0x00041303`):
+    <https://learn.microsoft.com/en-us/windows/win32/taskschd/task-scheduler-error-and-success-constants>
   * `RestartOnFailure`:
     <https://learn.microsoft.com/en-us/windows/win32/taskschd/taskschedulerschema-restartonfailure-settingstype-element>
   * `Exec`:
     <https://learn.microsoft.com/en-us/windows/win32/taskschd/taskschedulerschema-exec-actiongroup-element>
+  * C++ samples, `CLSCTX_INPROC_SERVER` then `Connect(_variant_t()…)`:
+    <https://learn.microsoft.com/en-us/windows/win32/taskschd/registration-trigger-example--c--->
+* Microsoft, COM and Automation (Amendment A3):
+  * `CoInitializeEx`:
+    <https://learn.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-coinitializeex>
+  * `CoUninitialize`:
+    <https://learn.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-couninitialize>
+  * Initializing the COM Library:
+    <https://learn.microsoft.com/en-us/windows/win32/learnwin32/initializing-the-com-library>
+  * The COM Library:
+    <https://learn.microsoft.com/en-us/windows/win32/com/the-com-library>
+  * `IUnknown::QueryInterface`:
+    <https://learn.microsoft.com/en-us/windows/win32/api/unknwn/nf-unknwn-iunknown-queryinterface(refiid_void)>
+  * `IDispatch`:
+    <https://learn.microsoft.com/en-us/windows/win32/api/oaidl/nn-oaidl-idispatch>
+  * `VARIANT`:
+    <https://learn.microsoft.com/en-us/windows/win32/api/oaidl/ns-oaidl-variant>
+  * `VARENUM` (`VARIANT_BOOL` true is -1):
+    <https://learn.microsoft.com/en-us/windows/win32/api/wtypes/ne-wtypes-varenum>
+  * `SysAllocString`:
+    <https://learn.microsoft.com/en-us/windows/win32/api/oleauto/nf-oleauto-sysallocstring>
+  * `SysFreeString` (NULL is a no-op):
+    <https://learn.microsoft.com/en-us/windows/win32/api/oleauto/nf-oleauto-sysfreestring>
+  * `VariantClear`:
+    <https://learn.microsoft.com/en-us/windows/win32/api/oleauto/nf-oleauto-variantclear>
+* [MS-OAUT] `VARIANT_TRUE` `0xffff`:
+  <https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-oaut/3fe7db9f-5803-4dc4-9d14-5425d3f5461f>
+* [MS-TSCH] `SCHED_S_*`:
+  <https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-tsch/2d1fbbab-fe6c-4ae5-bdf5-41dc526b2439>
+* Wine `taskschd.idl` (vtable declaration order only):
+  <https://github.com/wine-mirror/wine/blob/master/include/taskschd.idl>
+* Go `syscall.SyscallN` (`//go:uintptrkeepalive`):
+  <https://go.dev/src/syscall/dll_windows.go>
 * Microsoft, process-creation flags:
   <https://learn.microsoft.com/en-us/windows/win32/procthread/process-creation-flags>
 * golang/go#68313, "syscall/exec_windows.go: appendEscapeArg does not escape
