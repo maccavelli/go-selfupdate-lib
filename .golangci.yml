@@ -142,6 +142,7 @@ linters:
             - golang.org/x/sys/windows/svc/mgr$
             - github.com/maccavelli/go-selfupdate-lib/selfupdate$
             - github.com/maccavelli/go-selfupdate-lib/selfupdate/service$
+            - github.com/maccavelli/go-selfupdate-lib/internal/winproc$
         service-systemd:
           list-mode: strict
           files:

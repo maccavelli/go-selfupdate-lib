@@ -6,11 +6,9 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/winproc"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
 )
-
-// maxAncestors bounds the walk up the process table.
-const maxAncestors = 64
 
 // Inside implements service.Detacher for the service Options.Name names:
 // whether this process is the service's, or descends from it, and would be
@@ -24,9 +22,10 @@ func (s *Service) Inside(context.Context) (bool, error) {
 }
 
 // insideService walks from this process up its recorded parents, looking
-// for the service's process. The walk ends at a parent that has exited,
-// which is why a handoff detaches through a hop (0011-MADR amendment A4),
-// and at a parent created after its child: a reused process ID.
+// for the service's process (winproc.Descends). The walk ends at a parent
+// that has exited, which is why a handoff detaches through a hop
+// (0011-MADR amendment A4), and at a parent created after its child: a
+// reused process ID.
 func (s *Service) insideService(name string) (bool, error) {
 	st, err := s.query(name)
 	if errors.Is(err, service.ErrNotInstalled) {
@@ -42,31 +41,11 @@ func (s *Service) insideService(name string) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("selfupdate: scm: list processes: %w", err)
 	}
-	byPID := make(map[uint32]process, len(procs))
-	for _, p := range procs {
-		byPID[p.PID] = p
+	inside, err := winproc.Descends(s.self(), st.ProcessID, procs, s.m.created)
+	if err != nil {
+		return false, fmt.Errorf("selfupdate: scm: %w", err)
 	}
-	cur, ok := byPID[s.self()]
-	if !ok {
-		return false, errors.New("selfupdate: scm: this process is not in the process snapshot")
-	}
-	for range maxAncestors {
-		if cur.PID == st.ProcessID {
-			return true, nil
-		}
-		parent, ok := byPID[cur.ParentPID]
-		if !ok || parent.PID == cur.PID {
-			return false, nil
-		}
-		// A parent created after its child holds a reused ID. A time that
-		// cannot be read counts the link as genuine: erring towards a
-		// handoff (0011-MADR amendment A4).
-		if pc, cc := s.m.created(parent.PID), s.m.created(cur.PID); pc != 0 && cc != 0 && pc > cc {
-			return false, nil
-		}
-		cur = parent
-	}
-	return false, nil
+	return inside, nil
 }
 
 // Detach implements service.Detacher: it starts spec as a hop, which

@@ -1003,3 +1003,47 @@ the MADR and this PLAN: clean.
 `selfupdate-probe-` directory and no `.test.exe` process remains. The
 host's temporary directory holds 510 older `selfupdate-*` entries, none
 from today; they are not this PLAN's, and were left alone.
+
+### T3 (2026-10-10)
+
+**Files.** New: `internal/winproc/tree.go`, `tree_test.go`. Changed:
+`selfupdate/service/scm/api.go`, `selfupdate/service/scm/detach.go`,
+`.golangci.yml`.
+
+* `winproc.Process` and `winproc.Descends(self, target, procs, created)
+  (bool, error)` carry `scm.insideService`'s loop line for line:
+  `maxAncestors` (64), the end at a missing parent or a self-parented
+  entry, the end at a parent created after its child, and an unreadable
+  time counted as a genuine link. `winproc.ErrNotInSnapshot` replaces the
+  inline error; `scm` wraps it as `selfupdate: scm: %w`, so its message is
+  the same text as before.
+* `scm`'s `process` is now `type process = winproc.Process`, an alias, so
+  `fake_test.go` and `scm_test.go` compile and run unchanged. Step 2 said
+  the type "becomes `winproc.Process`"; the alias is how, without touching
+  the tests that are the evidence.
+* depguard: `service-scm` allows `internal/winproc$`. `fake_test.go`,
+  `scm_test.go` and every other `scm` test file are unchanged in this
+  commit (`git diff --stat`: only `api.go` and `detach.go` under `scm/`).
+
+**Fail first,** each in a `scripts/plant-copy.sh` copy of `tree.go`, on
+this Mac:
+
+| Plant | The failing lines |
+| :--- | :--- |
+| `cur.PID == target+1` | `self`, `parent`, `grandparent`, `older parent`, `unreadable time`, `within the bound`: `Descends false, <nil>; want true` |
+| a missing or self-parented parent returns true | `unrelated`, `own parent ends the walk`, `parent gone`: `Descends true, <nil>; want false` |
+| the reused-PID check disabled | `reused pid: Descends true, <nil>; want false` |
+| an unreadable time counted as reused | `parent`, `grandparent`, `unreadable time`, `within the bound`: `Descends false, <nil>; want true` |
+| `maxAncestors * 2` steps | `beyond the bound: Descends true, <nil>; want false` |
+| no error for a missing self | `tree_test.go:53: self missing: <nil>, want ErrNotInSnapshot` |
+
+**Behaviour unchanged.** On this Mac, `go test ./selfupdate/service/scm`
+`ok`. On the Windows test host: `scm.test.exe` `PASS`; with
+`SELFUPDATE_REQUIRE_SCM=1`, all eight `TestLive*` `--- PASS`, among them
+`TestLiveHandOff` and `TestLiveHandOffHealthFailureReportsRollback`, which
+call `Inside` from inside a real service; `winproc.test.exe` `PASS`. The
+host directory was removed.
+
+**Checks.** `make pre-add-check FILES="<the 4 Go files>"`: `go-precheck: 4
+file(s) clean`. `make gate`: `overall=0`, `apicheck` `compatible with
+v1.13.0`.

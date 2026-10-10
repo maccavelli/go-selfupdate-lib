@@ -1,6 +1,10 @@
 package scm
 
-import "syscall"
+import (
+	"syscall"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/winproc"
+)
 
 // The SCM values this package uses, as Win32 defines them. They are
 // declared here, not taken from x/sys/windows, so the logic and its fakes
@@ -71,11 +75,10 @@ type config struct {
 	Triggers uint32
 }
 
-// process is one entry of a process snapshot.
-type process struct {
-	PID       uint32
-	ParentPID uint32
-}
+// process is one entry of a process snapshot. The walk over a snapshot
+// is winproc.Descends, which the taskscheduler backend shares (0021-MADR
+// D6).
+type process = winproc.Process
 
 // manager is the SCM and the process table, faked in tests. The real one
 // wraps its handles in x/sys's mgr.Mgr and mgr.Service.
