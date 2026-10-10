@@ -455,6 +455,10 @@ minor release (More Information, "Owner decisions").
   so an extension it adds from `PATHEXT` is caught as well [derived from
   `os/exec`; the PLAN tests an extensionless path with a `.cmd` beside
   it].
+  *(Amended 2026-10-10, Amendment A2: wrong for Go 1.22 and later.
+  `os/exec` keeps `cmd.Path` as given and resolves the extension
+  privately for `Start`. The check resolves the path itself with
+  `exec.LookPath`.)*
 * Every path these functions receive is this module's own staging file or a
   target binary, so nothing legitimate is refused [derived]. The guard stops
   a misconfigured target from putting an argument under `cmd.exe`'s parser
@@ -699,6 +703,29 @@ last step.
   `InteractiveToken` (`TASK_LOGON_INTERACTIVE_TOKEN`, 3), with an error
   naming the logon type. `Reconcile` without `RewritePath`, the probes,
   `Stop`, `Start` and `Restore` are unaffected.
+
+### Amendment A2 (2026-10-10): the batch-file check resolves the path itself
+
+D8 said "resolved" meant `exec.Cmd.Path` after `os/exec` built the
+command. That was [derived], and T2's test of an extensionless path with
+only a `.cmd` beside it showed it wrong on the Windows test host:
+`Command(shim): refused false (<nil>), want true`.
+
+Go 1.27.2's `os/exec/exec.go:468-481` resolves an absolute path's
+extension into a private cache, `cachedLookExtensions`, and `Start`
+(`:690-707`) passes that resolved path to `os.StartProcess` while leaving
+`cmd.Path` unchanged, so that `Start` does not race a reader of
+`cmd.Path` (go.dev/issue/62596). `Start` would therefore run `shim.cmd`
+through `cmd.exe`, while a check of `cmd.Path` sees `shim`. That last step
+is read from the source, not run.
+
+**Decision (the owner, 2026-10-10):** on Windows, the check calls
+`exec.LookPath` on an absolute path, the same `PATHEXT` search `Start`
+makes, and refuses the result when it is a `.bat` or `.cmd` file. The
+callers pass absolute paths (`runExec` and `DetachProcess` refuse any
+other; the version prober's path is the staging or target file). The
+rejected alternative, refusing every extensionless path, could refuse a
+legitimate binary and only approximates `Start`'s lookup.
 
 ### Not chosen, recorded so it is not re-proposed blind
 

@@ -299,6 +299,8 @@ interactive-token task. T6 finds out, by running there.
      resolved path (MADR D8, derived). If `os/exec` does not resolve it
      that way, the case records what it does instead, and the phase stops
      (rule 4).
+     *(Deviation D2, 2026-10-10: it does not; `checkProgram` resolves the
+     path with `exec.LookPath`. MADR Amendment A2.)*
    * **D7, three deep:** `TestNoConsoleWindowThreeDeep`. The test binary
      re-runs itself as a parent that calls `FreeConsole` (a lazy
      `kernel32` procedure in the test) and starts a child through
@@ -868,3 +870,136 @@ owner question Q6 in the MADR. Q6 blocks T4's rewrite path, not T2 or T3.
 Asked after T1's commit: under `RewritePath`, `Reconcile` refuses a task
 whose logon type is not `InteractiveToken`, the recommended option. Recorded
 in MADR Amendment A1 under Q6, and in T4 step 7. It changes T4 only.
+
+### Deviation D2 (2026-10-10): `os/exec` does not write the resolved path back
+
+* **Found.** T2 step 7, the first run of `internal-winproc.test.exe` on the
+  Windows test host. Every case passed except the extensionless one:
+
+  ```text
+  winproc_windows_test.go:154: Command(shim): refused false (<nil>), want true
+  winproc_windows_test.go:158: Detached(shim): refused false (<nil>), want true
+  --- FAIL: TestBatchFileRefused (0.00s)
+  ```
+
+  Go 1.27.2's `os/exec/exec.go:468-481` and `:690-707`: for an absolute
+  path, `exec.Command` resolves the extension into `cachedLookExtensions`
+  and `Start` passes it to `os.StartProcess`, leaving `cmd.Path` as given
+  (go.dev/issue/62596). The MADR's D8 had assumed `cmd.Path` held the
+  resolved path, marked `[derived]`. The gap is new code's, not
+  pre-existing: nothing was guarded before T2.
+* **Decision (the owner):** on Windows, `checkProgram` resolves an absolute
+  path with `exec.LookPath`, the same `PATHEXT` search `Start` makes, and
+  checks the result's extension. The test stays as written. MADR
+  Amendment A2 records it.
+* **Rejected:** refusing every extensionless path on Windows.
+* **Files added to the phase:** none.
+
+### T2 (2026-10-10)
+
+**Files.** New: `internal/winproc/winproc.go`, `winproc_windows.go`,
+`winproc_unix.go`, `winproc_other.go`, `winproc_test.go`,
+`winproc_unix_test.go`, `winproc_windows_test.go`;
+`selfupdate/spawn_test.go`, `selfupdate/probe_batch_windows_test.go`,
+`selfupdate/service/batch_windows_test.go`. Changed: `selfupdate/probe.go`,
+`selfupdate/service/runner.go`, `detach_unix.go`, `detach_windows.go`,
+`.golangci.yml`, `AGENTS.md`.
+
+**As built, against the plan's planned names:**
+
+* `winproc.Command(ctx, path, args...)` and `winproc.Detached(path, args,
+  breakaway)`, as planned. `winproc.ErrBatchFile` is the sentinel.
+* The console check is unexported, `hasConsole`, because nothing outside
+  the package needs it. It is `GetConsoleProcessList` from
+  `windows.NewLazySystemDLL("kernel32.dll")`, under `sync.OnceValue`.
+* `checkProgram` resolves an absolute path with `exec.LookPath` before
+  checking the extension (Deviation D2).
+* The four start sites call the package; `detachFlags` is gone, and the
+  Windows `startWith` takes `breakaway bool`. The retry on
+  `ERROR_ACCESS_DENIED` stays in `service`.
+* The `getConsoleProcessList.Call` line carries
+  `//nolint:errcheck,gosec`, with its reason, the repository's form for a
+  checked-by-design call (`hopwait_windows.go:19`).
+* depguard: `internal-winproc` (`$gostd`, `golang.org/x/sys/windows$`);
+  `other-packages` excludes the package; `selfupdate` and `service` allow
+  `internal/winproc$`. `AGENTS.md`'s list names the rule.
+* The start-site test's shim takes no arguments, so that a broken guard,
+  as in the fail-first runs below, runs nothing but an empty script on the
+  host.
+
+**Windows tests, on the Windows test host** (cross-compiled test binaries,
+run from the ssh shell):
+
+```text
+--- PASS: TestCommandPassesProgramAndArgs (0.00s)
+--- PASS: TestDetachedPassesProgramAndArgs (0.00s)
+--- PASS: TestNoConsoleWindowThreeDeep (0.08s)
+    --- PASS: TestNoConsoleWindowThreeDeep/parent-command (0.04s)
+    --- PASS: TestNoConsoleWindowThreeDeep/parent-detached (0.04s)
+--- PASS: TestBatchFileRefused (0.00s)
+PASS
+```
+
+The first run, before Deviation D2's fix, failed only the `shim` case;
+D2 quotes it.
+
+**Fail first (step 8),** each in a `scripts/plant-copy.sh` copy:
+
+| Plant | Where it ran | The failing line |
+| :--- | :--- | :--- |
+| `Command` drops its arguments | this Mac | `winproc_test.go:19: Command: Path "<tmp>/prog", Args ["<tmp>/prog"]; want … ["<tmp>/prog" "a" "b c"]` |
+| `Detached` drops its arguments | this Mac | `winproc_test.go:32: Detached: … want … "a" "b c"]` |
+| Unix `attachedAttr` returns a `SysProcAttr` | this Mac | `winproc_unix_test.go:18: Command set SysProcAttr &{…}, want none` |
+| Unix `detachedAttr` with `Setsid: false` | this Mac | `winproc_unix_test.go:30: Detached SysProcAttr &{… Setsid:false …}, want Setsid` |
+| a direct `exec.Command` in `service/runner.go` | this Mac | `spawn_test.go:65: service/runner.go:77:6: service/runner.go: os/exec.Command: start the process through internal/winproc (0021-MADR D7)` |
+| `golang.org/x/mod/semver` imported into `internal/winproc` | this Mac, `GOOS=linux` lint | `internal/winproc/winproc.go:17:2: import 'golang.org/x/mod/semver' is not allowed from list 'internal-winproc' (depguard)` |
+| `attachedAttr` without `CREATE_NO_WINDOW` | the Windows test host | `child has a console window: procs=1 hwnd=0x9b00ba visible=false`, and the grandchild shares it |
+| `detachedAttr` with `DETACHED_PROCESS` | the Windows test host | `child has no console: procs=0 hwnd=0x0 visible=false`; `grandchild has a console window: procs=1 hwnd=0x9c00ba visible=false` |
+| the `.bat`/`.cmd` case removed | the Windows test host | all eight refusal cases in `TestBatchFileRefused`; `runExec: <nil>, want ErrBatchFile` and `DetachProcess: <nil>, want ErrBatchFile`; `Probe: selfupdate: staged probe of x printed "", want "v1.0.0", want ErrBatchFile` |
+| `exec.LookPath`'s result ignored | the Windows test host | `Command(shim): refused false (<nil>), want true`, and the same for `Detached` |
+
+Notes on two of them:
+
+* **The static ban's plant is in `service/runner.go`, not `probe.go`** as
+  step 8 says. `plant-copy.sh` makes one replacement, and `runner.go`
+  already imports `os/exec`; `probe.go` no longer does. The walk covers
+  both files.
+* **The depguard plant was made twice.** A blank import was reported by
+  `revive` (`blank-imports`) instead, because golangci-lint keeps one
+  finding per line. A used import (`var _ = semver.IsValid`) was then
+  reported by depguard, as quoted.
+
+**The MADR's derived window claim, first measured.** With today's flags,
+the console-less parent's child got a console window (`hwnd` non-zero),
+and so did the grandchild of the detached run. From the ssh session the
+window reports `visible=false`, because that session has no interactive
+desktop; magic-cli-remote's 0159 probe 8 measured `visible=true` in the
+console session. The test therefore asserts that no window exists, which
+holds in both.
+
+**Behaviour that must not change (step 9),** on the Windows test host:
+
+* `selfupdate-service.test.exe`, the whole suite: `PASS`;
+  `TestDetachProcessLeavesJob` `--- PASS` (both subtests).
+* `selfupdate-service-scm.test.exe`, the whole suite: `PASS`; and with
+  `SELFUPDATE_REQUIRE_SCM=1` (the ssh shell is an administrator) all eight
+  `TestLive*` `--- PASS`.
+* `internal-winproc.test.exe`: `PASS`.
+* `selfupdate.test.exe`, run away from its source tree, fails only tests
+  that open `testdata\…` or `scripts\selfupdate_manifest.py` (`TestGolden`,
+  `TestManifest*`, `TestParseSHA256SUMSExported`,
+  `TestStreamDeliversRunInOrder`, `FuzzParseSHA256SUMS`), each with
+  `The system cannot find the path specified` or `No such file`. The
+  prober tests, run by name (`-test.run Prob`), all 14 `--- PASS`. CI's
+  Windows job runs the whole suite from source.
+
+**Checks.** `make pre-add-check FILES="<the 14 Go files>"`: `go-precheck: 14
+file(s) clean (gofmt, golangci-lint, go vet, go test, govulncheck)`. Lint on
+`GOOS=linux`, `darwin` and `windows`: `0 issues` each. `make gate`:
+`overall=0`, `apicheck` `compatible with v1.13.0`. Links and identifiers on
+the MADR and this PLAN: clean.
+
+**Host cleanup.** The test directory was removed; no `selfupdate-t2-` or
+`selfupdate-probe-` directory and no `.test.exe` process remains. The
+host's temporary directory holds 510 older `selfupdate-*` entries, none
+from today; they are not this PLAN's, and were left alone.

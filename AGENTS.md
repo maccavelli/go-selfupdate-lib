@@ -48,8 +48,8 @@ pre-add check and CI fail on a breach
   required modules, in every file;
 - `buildinfo`, `selfupdate`, `selfupdate-cli`, `selfupdatetest`,
   `service`, `service-launchd`, `service-scm`, `service-systemd`,
-  `selfupdate-archive`, `selfupdate-codesign`, `selfupdate-releasespec` and
-  `selfupdate-verify-ghattest` allow each package,
+  `selfupdate-archive`, `selfupdate-codesign`, `selfupdate-releasespec`,
+  `selfupdate-verify-ghattest` and `internal-winproc` allow each package,
   outside its tests, only the imports its record names;
 - `other-packages` allows any other package, an `internal/` helper
   included, only the standard library and this module

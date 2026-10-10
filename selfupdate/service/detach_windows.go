@@ -5,32 +5,32 @@ package service
 import (
 	"errors"
 	"os"
-	"os/exec"
-	"syscall"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/winproc"
 )
 
-// detachFlags start a process with no console and in a new process group.
-const detachFlags = windows.DETACHED_PROCESS | windows.CREATE_NEW_PROCESS_GROUP
-
-// startDetached starts the program with no console, in a new process group,
-// and out of this process's job. A job that does not allow breakaway
-// refuses that with ERROR_ACCESS_DENIED; the start is then retried inside
-// the job (process-creation flags, 0011-MADR §9).
+// startDetached starts the program in a new process group, with a console
+// of its own and no window, and out of this process's job. A job that does
+// not allow breakaway refuses that with ERROR_ACCESS_DENIED; the start is
+// then retried inside the job (process-creation flags, 0011-MADR §9, as
+// amended by 0021-MADR D7).
 func startDetached(path string, args, env []string) (int, error) {
-	pid, err := startWith(path, args, env, detachFlags|windows.CREATE_BREAKAWAY_FROM_JOB)
+	pid, err := startWith(path, args, env, true)
 	if errors.Is(err, windows.ERROR_ACCESS_DENIED) {
-		pid, err = startWith(path, args, env, detachFlags)
+		pid, err = startWith(path, args, env, false)
 	}
 	return pid, err
 }
 
-func startWith(path string, args, env []string, flags uint32) (int, error) {
-	cmd := exec.Command(path, args...) //nolint:gosec // HandOffIfInside resolved path to this program
+func startWith(path string, args, env []string, breakaway bool) (int, error) {
+	cmd, err := winproc.Detached(path, args, breakaway)
+	if err != nil {
+		return 0, err
+	}
 	cmd.Env = env
 	cmd.Dir = os.TempDir()
-	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: flags}
 	if err := cmd.Start(); err != nil {
 		return 0, err
 	}

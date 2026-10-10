@@ -5,9 +5,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/winproc"
 )
 
 // Running the new binary before and after it is installed
@@ -96,10 +97,15 @@ func (p versionProber) Probe(parent context.Context, r ProbeRequest) error {
 	out := &cappedBuffer{limit: maxProbeOutput}
 	// Running the staged or installed binary is the probe's purpose; the
 	// path is the library's own staging or target file (0004-MADR G9).
-	cmd := exec.CommandContext(ctx, r.Path, p.args...) //nolint:gosec // G204: executes the release under test by design
+	// winproc keeps a console-less caller from opening a window for it,
+	// and refuses a batch file (0021-MADR D7, D8).
+	cmd, err := winproc.Command(ctx, r.Path, p.args...)
+	if err != nil {
+		return fmt.Errorf("selfupdate: %s probe of %s failed: %w", r.Phase, sanitizeText(r.Product), err)
+	}
 	cmd.Stdout = out
 	cmd.WaitDelay = time.Second
-	err := cmd.Run()
+	err = cmd.Run()
 	if perr := parent.Err(); perr != nil {
 		// The run's deadline or cancellation ended the probe: say so, so
 		// the failure is the run's and not the prober's own timeout

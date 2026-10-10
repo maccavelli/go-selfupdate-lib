@@ -68,6 +68,17 @@ linters:
             - "!$test"
           allow:
             - $gostd
+        # The process builder every package that starts a process uses: the
+        # standard library and x/sys/windows only, and nothing in this module
+        # (docs/decisions/0021-MADR-task-scheduler-lifecycle-and-windowless-children.md D7).
+        internal-winproc:
+          list-mode: strict
+          files:
+            - "**/internal/winproc/*.go"
+            - "!$test"
+          allow:
+            - $gostd
+            - golang.org/x/sys/windows$
         selfupdate:
           list-mode: strict
           files:
@@ -78,6 +89,7 @@ linters:
             - golang.org/x/mod/semver
             - golang.org/x/sys
             - golang.org/x/term
+            - github.com/maccavelli/go-selfupdate-lib/internal/winproc$
         selfupdate-cli:
           list-mode: strict
           files:
@@ -108,6 +120,7 @@ linters:
             - $gostd
             - golang.org/x/sys/windows$
             - github.com/maccavelli/go-selfupdate-lib/selfupdate$
+            - github.com/maccavelli/go-selfupdate-lib/internal/winproc$
         service-launchd:
           list-mode: strict
           files:
@@ -208,6 +221,7 @@ linters:
             - "!**/selfupdate/codesign/*.go"
             - "!**/selfupdate/releasespec/*.go"
             - "!**/selfupdate/verify/ghattest/*.go"
+            - "!**/internal/winproc/*.go"
           allow:
             - $gostd
             - github.com/maccavelli/go-selfupdate-lib

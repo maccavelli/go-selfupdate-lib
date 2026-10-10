@@ -1,0 +1,50 @@
+// Package winproc builds every process this module starts, so that on
+// Windows a child of a process with no console gets a console with no
+// window, and no batch file is started
+// (docs/decisions/0021-MADR-task-scheduler-lifecycle-and-windowless-children.md
+// D7, D8). Off Windows it adds nothing but the Unix handoff's new session.
+//
+// It imports only the standard library and golang.org/x/sys/windows, and
+// nothing in this module, so every package that starts a process can
+// import it.
+package winproc
+
+import (
+	"context"
+	"errors"
+	"os/exec"
+)
+
+// ErrBatchFile is returned for a command whose program is a .bat or .cmd
+// file. Windows runs one through cmd.exe, whose parser can turn an
+// argument into a second command (BatBadBut, CVE-2024-24576); this module
+// never means to run one (0021-MADR D8).
+var ErrBatchFile = errors.New("selfupdate: refusing to start a .bat or .cmd file, which Windows runs through cmd.exe (BatBadBut, CVE-2024-24576)")
+
+// Command returns the command for a child this process waits for. On
+// Windows it refuses a batch file, and, when this process has no console,
+// starts the child with CREATE_NO_WINDOW, so the child and its own
+// children share a console with no window (0021-MADR D7). Elsewhere it is
+// exec.CommandContext.
+func Command(ctx context.Context, path string, args ...string) (*exec.Cmd, error) {
+	cmd := exec.CommandContext(ctx, path, args...) //nolint:gosec // the caller's program: a fixed tool, the release under test, or a reconcile command (0021-MADR D7)
+	if err := checkProgram(cmd); err != nil {
+		return nil, err
+	}
+	cmd.SysProcAttr = attachedAttr()
+	return cmd, nil
+}
+
+// Detached returns the command for a process that outlives this one: on
+// Windows in a new process group with a console of its own and no window,
+// and out of this process's job when breakaway is set; on Unix in a new
+// session (0011-MADR §9, as amended by 0021-MADR D7). On Windows it refuses
+// a batch file.
+func Detached(path string, args []string, breakaway bool) (*exec.Cmd, error) {
+	cmd := exec.Command(path, args...) //nolint:gosec // HandOffIfInside resolved path to this program
+	if err := checkProgram(cmd); err != nil {
+		return nil, err
+	}
+	cmd.SysProcAttr = detachedAttr(breakaway)
+	return cmd, nil
+}

@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"time"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/winproc"
 )
 
 // Command is one program run. Path must be absolute: a runner never looks a
@@ -64,7 +66,13 @@ func runExec(ctx context.Context, c Command) (Output, error) {
 	if !filepath.IsAbs(c.Path) {
 		return Output{}, fmt.Errorf("selfupdate: service: %q is not an absolute path", c.Path)
 	}
-	cmd := exec.CommandContext(ctx, c.Path, c.Args...) //nolint:gosec // the backends pass a fixed tool path and validated arguments
+	// The backends pass a fixed tool path and validated arguments. winproc
+	// keeps a console-less caller from opening a window for the program,
+	// and refuses a batch file (0021-MADR D7, D8).
+	cmd, err := winproc.Command(ctx, c.Path, c.Args...)
+	if err != nil {
+		return Output{}, fmt.Errorf("selfupdate: service: run %s: %w", filepath.Base(c.Path), err)
+	}
 	cmd.Env = c.Env
 	if c.Stdin != nil {
 		cmd.Stdin = bytes.NewReader(c.Stdin)
@@ -72,7 +80,7 @@ func runExec(ctx context.Context, c Command) (Output, error) {
 	var stdout, stderr cappedBuffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	cmd.WaitDelay = waitDelay
-	err := cmd.Run()
+	err = cmd.Run()
 	out := Output{Stdout: stdout.buf.Bytes(), Stderr: stderr.buf.Bytes()}
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return out, fmt.Errorf("selfupdate: service: %s: %w", filepath.Base(c.Path), ctxErr)
