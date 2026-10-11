@@ -213,9 +213,20 @@ func (t *Task) waitGone(ctx context.Context, r registered, path string, inst ins
 	for {
 		pids, err := r.instances()
 		if err != nil {
-			return false, mapError("list the instances of", path, err)
+			var hr hresult
+			if errors.As(err, &hr) && hr == hrTaskNotRunning {
+				pids = nil
+			} else {
+				return false, mapError("list the instances of", path, err)
+			}
 		}
-		if len(pids) == 0 && !t.s.running(inst.pid, inst.born) {
+		// The recorded process is what Stop must wait for. GetInstances can
+		// still list a PID after the program has exited (T6 live run).
+		if inst.pid != 0 {
+			if !t.s.running(inst.pid, inst.born) {
+				return true, nil
+			}
+		} else if len(pids) == 0 {
 			return true, nil
 		}
 		if !t.now().Before(end) {

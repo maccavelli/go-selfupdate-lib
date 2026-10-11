@@ -123,13 +123,33 @@ func (r *sysReg) run() error {
 func (r *sysReg) stop() error {
 	return withTask(r.folder, r.name, func(t, _ *comObj) error {
 		hr := t.call(taskStop, 0)
-		if hr == hrSFalse {
-			return fmt.Errorf("selfupdate: taskscheduler: cannot stop instances of \\%s", r.name)
-		}
 		if hr.failed() {
 			return hr
 		}
-		return nil
+		if hr != hrSFalse {
+			return nil
+		}
+		// S_FALSE: the caller cannot stop running instances, or none remain
+		// (0021-PLAN T6: RequestStop already ended the process).
+		var col *comObj
+		if ihr := t.call(taskGetInstances, 0, ptr(&col)); ihr.failed() {
+			if uint32(ihr) == uint32(hrTaskNotRunning) {
+				return nil
+			}
+			return fmt.Errorf("selfupdate: taskscheduler: cannot stop instances of \\%s: %w", r.name, hr)
+		}
+		if col == nil {
+			return nil
+		}
+		defer col.release()
+		n, err := getLong(col, colGetCount)
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return nil
+		}
+		return fmt.Errorf("selfupdate: taskscheduler: cannot stop instances of \\%s", r.name)
 	})
 }
 
@@ -138,6 +158,9 @@ func (r *sysReg) instances() ([]uint32, error) {
 	err := withTask(r.folder, r.name, func(t, _ *comObj) error {
 		var col *comObj
 		if hr := t.call(taskGetInstances, 0, ptr(&col)); hr.failed() {
+			if uint32(hr) == uint32(hrTaskNotRunning) {
+				return nil
+			}
 			return hr
 		}
 		if col == nil {

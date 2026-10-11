@@ -94,6 +94,13 @@ jobs:
         env:
           SELFUPDATE_REQUIRE_SCM: "1"
         run: go test -count=1 -v -run '^TestLive' ./selfupdate/service/scm
+      # The Task Scheduler live test: a throwaway per-user task. GitHub
+      # runners have no interactive console session, so the tests skip until
+      # a run shows an InteractiveToken task can start
+      # (docs/decisions/0021-PLAN-task-scheduler-lifecycle-and-windowless-children.md T6).
+      - name: Task Scheduler live test
+        if: runner.os == 'Windows'
+        run: go test -count=1 -v -run '^TestLiveTask' ./selfupdate/service/taskscheduler
       # The race detector needs cgo, which the Linux and macOS runners have
       # (0003-MADR D9; 0002-PLAN V3; 0004-MADR H7).
       # The manifest differential must run, not skip, where python3 is on

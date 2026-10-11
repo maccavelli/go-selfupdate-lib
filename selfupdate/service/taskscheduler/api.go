@@ -45,8 +45,9 @@ func (h hresult) Error() string { return fmt.Sprintf("HRESULT 0x%08X", uint32(h)
 // The HRESULTs that map to typed errors, measured on the Windows test host
 // (0021-MADR Amendment A1, probe 5).
 const (
-	hrFileNotFound = hresult(0x80070002) // HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND): no such task
-	hrAccessDenied = hresult(0x80070005) // HRESULT_FROM_WIN32(ERROR_ACCESS_DENIED)
+	hrFileNotFound   = hresult(0x80070002) // HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND): no such task
+	hrAccessDenied   = hresult(0x80070005) // HRESULT_FROM_WIN32(ERROR_ACCESS_DENIED)
+	hrTaskNotRunning = hresult(0x8004130B) // SCHED_E_TASK_NOT_RUNNING: GetInstances when idle
 )
 
 func logonName(t int32) string {
