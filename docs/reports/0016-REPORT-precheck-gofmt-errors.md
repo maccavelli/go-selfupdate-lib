@@ -7,6 +7,12 @@ decided there in go-tui-lib's
 2026-10-08), with its plan in
 `docs/decisions/0015-PLAN-precheck-gofmt-errors.md`.
 
+*(Addendum, 2026-10-11: it is now decided in this repository too, by
+[0020-MADR-precheck-gofmt-errors-and-replace-before-stop.md](../decisions/0020-MADR-precheck-gofmt-errors-and-replace-before-stop.md)
+and its
+[PLAN](../decisions/0020-PLAN-precheck-gofmt-errors-and-replace-before-stop.md).
+The text above is as first written.)*
+
 Date: 2026-10-08
 
 This report records a finding. It decides nothing. Whether and how to fix

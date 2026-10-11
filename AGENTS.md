@@ -27,7 +27,10 @@ release tools that the workflows run from source; they are never released.
 directories, and each `selfupdate` subpackage lives in a directory under
 `selfupdate/`, named after it, or under `selfupdate/verify/` for a
 verifier; there is no root package. Unexported helpers
-shared between packages live under `internal/`. Requires Go 1.27.1; built
+shared between packages live under `internal/`: `internal/winproc` builds
+every process the library's packages start
+(`docs/decisions/0021-MADR-task-scheduler-lifecycle-and-windowless-children.md`
+D7). Requires Go 1.27.1; built
 and tested with Go 1.27.2, the `toolchain` line in `go.mod`
 (`docs/decisions/0018-MADR-move-toolchain-to-go-1-27-2.md`).
 
@@ -54,8 +57,9 @@ pre-add check and CI fail on a breach
   `selfupdate-archive`, `selfupdate-codesign`, `selfupdate-releasespec`,
   `selfupdate-verify-ghattest` and `internal-winproc` allow each package,
   outside its tests, only the imports its record names;
-- `other-packages` allows any other package, an `internal/` helper
-  included, only the standard library and this module
+- `other-packages` allows any other package, an `internal/` helper with
+  no rule of its own included (`internal/cmd/selfupdate-release` today),
+  only the standard library and this module
   (`docs/decisions/0010-MADR-remediate-second-debugging-pass-findings.md`
   D13).
 
@@ -158,10 +162,12 @@ It runs `scripts/go-precheck.sh`: `gofmt` on the files;
 `darwin` and `windows` with `CGO_ENABLED=0`, the same runs as `make lint` and
 CI (`docs/decisions/0002-MADR-rehome-selfupdate-from-mcplib.md` §5);
 `go vet` and `go test` on the packages the files belong to; and
-`govulncheck ./...` (`GO_PRECHECK_SKIP_VULN=1` skips it offline). The
-`selfupdate` tests include `TestManifestDifferential`, which needs
-`python3` and skips without it; set `SELFUPDATE_REQUIRE_PYTHON=1` to make it
-mandatory, as CI does on Linux and macOS. `golint` is
+`govulncheck ./...` (`GO_PRECHECK_SKIP_VULN=1` skips it offline;
+`GOLANGCI_LINT=<path>` names the golangci-lint binary, as for `make lint`).
+The `selfupdate` tests include `TestManifestDifferential`, which needs
+`python3` and skips without it, and `selfupdate/releasespec`'s parity test
+needs `python3` and `sh` the same way; set `SELFUPDATE_REQUIRE_PYTHON=1` to
+make both mandatory, as CI does on Linux and macOS. `golint` is
 not used: its checks are `revive`'s `exported`, `package-comments` and
 `var-naming` rules in `.golangci.yml`. A file that fails is not committed.
 
@@ -177,7 +183,8 @@ script tests, shellcheck, cross-target vet, the link check, the
 architecture table check and the identifier check. It ends `overall=0` when every step passed. Each step's
 output is kept in `GATE_OUT` (a new temporary directory by default);
 `GATE_SKIP=fuzz,vuln` skips named steps, and a record must say so. The
-identifier step runs `scripts/check-docs.sh --ids` on the changed files,
+identifier step runs `scripts/check-docs.sh --ids` on the changed and
+untracked files,
 with the pre-push guard's deny list (`DISCLOSURE_DENY`, or
 `~/.config/git/disclosure-deny`). The architecture table step runs
 `scripts/check-docs.sh --arch docs/architecture.md`: a change that adds or

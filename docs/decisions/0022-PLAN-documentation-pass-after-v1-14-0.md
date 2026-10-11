@@ -950,3 +950,147 @@ as stale as the first, in the same comment.
   `arch` `15 rows …, 0 differ`, `overall=0`.
 
 No test was added, so there was no fail-first run.
+
+### P7, `v1.15.0` (2026-10-11)
+
+* **The release commit** is `ac4ef550916f9c18af0947441f4ab55f7cf3c49a`,
+  P5's, which the owner committed and pushed.
+* **Step 1:** CI run 38149442253 on `main` at `ac4ef55`: `success`, 17 of
+  17 jobs. Its Linux job ran the new step, `check-docs: 15 rows in
+  docs/architecture.md, 0 differ`. Its `windows-2025` job's `go test`
+  passed `internal/winproc`, `selfupdate`, `selfupdate/service` and
+  `taskscheduler` from source. The `TestLiveTask*`, the new one included,
+  skip with their stated reason.
+* **Step 2, the tag,** made and pushed by the owner. Verified:
+  * `v1.15.0` is an annotated tag (`git cat-file -t` gives `tag`), object
+    `bc98ed5aca1e0965710f404395891e88298eeb67`, peeled to `ac4ef55`;
+  * `git ls-remote origin` gives `ac4ef55…` for `refs/tags/v1.15.0^{}`
+    and for `refs/heads/main`;
+  * `scripts/check-release-tag.sh v1.15.0` exits 0.
+* **Step 3:** the tag's CI run, 38150539554, passed all 17 jobs; all ten
+  identity legs print `v1.15.0 (release) ac4ef550916f`.
+* **Step 5:**
+  * `GOPROXY=https://proxy.golang.org GOFLAGS=-mod=mod go list -m -json
+    github.com/maccavelli/go-selfupdate-lib@v1.15.0` gives `v1.15.0`,
+    `Time` `2026-10-11T14:59:52Z`, `Origin.Hash` the release commit and
+    `Ref` `refs/tags/v1.15.0`;
+  * `@latest` resolves to `v1.15.0`.
+* **Step 4, the pins,** land with P6, as Q1 decided; see P6 below.
+
+### P6 (2026-10-11)
+
+P6 lands after the tag, with P7's pin commit (Q1).
+
+**Files.** `README.md`, `AGENTS.md`, `docs/README.md`,
+`docs/architecture.md`, the three guides,
+`docs/reports/0016-REPORT-precheck-gofmt-errors.md`, and
+`docs/decisions/0021-PLAN-task-scheduler-lifecycle-and-windowless-children.md`.
+No Go file changes.
+
+**The findings, closed:**
+
+* **A5:** the `make` targets list `gate`, and `help`, which `make` alone
+  runs (`Makefile:14`).
+* **A6:** a "Run, but not required" line for the Task Scheduler live
+  tests.
+* **X1:** the six titles are their H1s; the index's titles now all match
+  (`same=52 differ=0`).
+* **X2:** "§6 to §15". **X3:** "or a per-user Task Scheduler task".
+  **X4:** AGENTS.md's Dependencies and 0008-MADR.
+* **G1:** the scope paragraph names `internal/winproc`; `other-packages`
+  covers an `internal/` helper with no rule of its own,
+  `internal/cmd/selfupdate-release` today. **G2:** the parity test, with
+  `python3` and `sh`. **G3:** "changed and untracked". **G4:**
+  `GOLANGCI_LINT=<path>`.
+* **R1:** a dated addendum naming 0020-MADR and its PLAN; the report's
+  text is unchanged.
+* **E1, E6:** the start rule per manager, as a list: systemd's
+  `UnitFileState`, launchd's keys, the SCM's start type with
+  `TriggerStartEnabled`, Task Scheduler's triggers.
+* **E2:** "on the SCM", and Task Scheduler's rewrite sets the `Exec` path.
+* **E3:** the stop condition and bound per manager.
+* **E4:** `schtasks /change /tn <folder>\<name> /enable`.
+* **E5:** an `Options.Folder` bullet, and one for `Restore` on a rollback.
+* **E7:** a Task Scheduler repeating trigger in the restart caveat.
+* **E8:** a "Without `cli`" bullet: `HandOffIfInside`, `Detached`,
+  `ReportFunc` or `WriteHandOffResult`, and `HandOffFunc`.
+* **E9:** `Status`, `Stopping`, `Reloading`, `Available`,
+  `TemplateInstance`, `Escape` and `ValidUnitName`.
+* **E10:** "unless `Policy.AllowSelfHostedRunners` is set".
+* **E11:** `service.ExecRunner` and the tools it serves, `ErrBatchFile`,
+  and the spellings H2 refuses.
+* **The disabled task (MADR Amendment A1):** the guide's "A task you had
+  disabled is run, and stays disabled" is replaced by what P1 measured
+  and P3 built.
+* **B1:** `-Product a,b` for `install.ps1`. **B2:** the floor, and that
+  the plan step does not check the requirement against the pin.
+  **B3:** the `toolchain` line, or else the `go` line. **B4:** a
+  rehearsal's `{tag}` and how the extras job names its files. **B5:** exit
+  0, and an environment of `PATH` and `SystemRoot`. **B6:** the default
+  artifact names, `retention-days`, the outputs. **B7:** `SHA256SUMS` and
+  this platform's asset of each selected product.
+* **M1:** the archive check runs the pinned commit's unpacker, tightened
+  in `v1.11.0` and `v1.11.1`. **M2:** each patch subsection's `go get`
+  and check are marked "only if you stop at" that patch. **M3:** "§7 to
+  §15". **M4:** §14's batch list names `service.ExecRunner`, the tools
+  that use it and `gh.cmd`, and points to §15.
+* **N1:** a dated annotation on 0021-PLAN's release notes.
+* **§15** "From v1.14 to v1.15", in §14's form, and a pointer to it in
+  §2.
+
+**The pin commit (P7 step 4).**
+
+* **Candidates:** `git grep -n 'v1\.14\.0\|81dae60' -- README.md
+  docs/architecture.md docs/guides`, 44 lines with P6's text in place.
+* **Preconditions:** `git diff v1.14.0 v1.15.0` of `.github/workflows/`,
+  `internal/cmd/` and `scripts/` changes `ci.yml`, `check-docs.sh`,
+  `gate.sh` and their tests; neither release workflow, the release tool
+  nor the installer templates. So "`v1.11.0` to `v1.15.0` change nothing
+  in it" holds.
+* **Changed,** 34 lines, to `ac4ef550… # v1.15.0` or `v1.15.0`, by a
+  script that changed only the listed lines and asserted each one
+  changed: `README.md:24`, `:28`, `:126`; `docs/architecture.md:23-24`;
+  the building guide `:26`, `:164`, `:175`, `:186`, `:261`; the migration
+  guide `:23`, `:26`, `:97`, `:115`, `:117`, `:125`, `:171`, nine
+  `go get` lines (`:390`, `:474`, `:518`, `:570`, `:615`, `:722`, `:836`,
+  `:929`, `:974`) and eight `go list` checks (`:513`, `:565`, `:609`,
+  `:714`, `:830`, `:924`, `:969`, `:1026`).
+* **Kept,** 10 lines that state what `v1.14.0` itself did, or that §15
+  compares with: the extending guide `:482`, `:553`, `:566`, `:747`; the
+  migration guide `:42`, `:977`, `:1006`, `:1037`, `:1050`, `:1054`.
+
+**Checks.** On the nine files: `scripts/check-docs.sh --links` `201 links
+in 9 files, 0 broken`; `--ids` `9 files, 16 deny-list rules, 0
+findings`; markdownlint `0 issues`; `--arch` `0 differ`. `make gate`:
+every step `rc=0`, `apicheck` `compatible with v1.15.0`, the newest tag
+now, `overall=0`.
+
+### Release notes for v1.15.0 (2026-10-11)
+
+`v1.15.0` hardens the Windows batch-file refusal and the Task Scheduler
+backend, and corrects the documentation. `make apicheck` reports it
+compatible with `v1.14.0`; the exported changes are two new errors.
+
+* **`selfupdate.ErrBatchFile`:** the error a refused `.bat` or `.cmd`
+  program wraps, from the version probe, `service.ExecRunner`,
+  `service.DetachProcess` and the handoff, so `errors.Is` can match it.
+  A static test holds the `%w` chain from `internal/winproc` to the
+  exported entry points, on every OS.
+* **Batch-file spellings closed:** on Windows, `v1.14.0`'s check read the
+  extension as written. A trailing dot (`x.bat.`) put an argument under
+  `cmd.exe`'s parser, and a trailing space ran the script; both were
+  measured. The check now reads the name as Windows normalizes it, and
+  cuts an alternate data stream suffix.
+* **`taskscheduler.ErrTaskDisabled`:** Task Scheduler refuses to run a
+  disabled task (`SCHED_E_TASK_DISABLED`, measured). `Stop` now refuses a
+  disabled task whose program runs, before it changes anything, instead
+  of ending the program and failing at `Start`; `Start` maps the refusal
+  to the same error.
+* **Documentation:** 50 corrections across the guides, `go doc`,
+  `AGENTS.md` and the records index. `make gate` and CI check the
+  architecture page's file counts (`check-docs.sh --arch`).
+* **Tests:** the source-reading tests fail when they find no source,
+  instead of passing on nothing.
+* **Records:**
+  [0022-MADR-documentation-pass-after-v1-14-0.md](0022-MADR-documentation-pass-after-v1-14-0.md)
+  and this PLAN, with Amendment A1.

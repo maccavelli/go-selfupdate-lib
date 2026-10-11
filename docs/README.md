@@ -8,12 +8,12 @@ name, and the files they cite moved with the rename
 
 | Number | Kind | Record | Status |
 | :--- | :--- | :--- | :--- |
-| 0001 | MADR | [Scaffold go-core-lib as a Go 1.27.1 shared library](decisions/0001-MADR-scaffold-shared-go-library.md) | accepted |
-| 0001 | PLAN | [Implement the library scaffold](decisions/0001-PLAN-scaffold-shared-go-library.md) | complete |
-| 0002 | MADR | [Re-home `selfupdate` and its release tooling from mcplib as v1.0.0](decisions/0002-MADR-rehome-selfupdate-from-mcplib.md) | accepted |
-| 0002 | PLAN | [Implement the `selfupdate` re-home](decisions/0002-PLAN-rehome-selfupdate-from-mcplib.md) | complete |
-| 0003 | MADR | [Fix every debugging-pass finding before v1.0.0](decisions/0003-MADR-remediate-debugging-pass-findings.md) | accepted |
-| 0003 | PLAN | [Implement the debugging-pass fixes](decisions/0003-PLAN-remediate-debugging-pass-findings.md) | complete |
+| 0001 | MADR | [Scaffold go-core-lib as a Go 1.27.1 shared library to the go-llmprovider-sdk standard, with honest gates until the first package lands](decisions/0001-MADR-scaffold-shared-go-library.md) | accepted |
+| 0001 | PLAN | [Implement the go-core-lib Go 1.27.1 library scaffold](decisions/0001-PLAN-scaffold-shared-go-library.md) | complete |
+| 0002 | MADR | [Re-home `selfupdate` and its release tooling from mcplib into go-core-lib as v1.0.0, without history](decisions/0002-MADR-rehome-selfupdate-from-mcplib.md) | accepted |
+| 0002 | PLAN | [Implement the re-home of `selfupdate` and its release tooling into go-core-lib](decisions/0002-PLAN-rehome-selfupdate-from-mcplib.md) | complete |
+| 0003 | MADR | [Fix every debugging-pass finding before tagging v1.0.0](decisions/0003-MADR-remediate-debugging-pass-findings.md) | accepted |
+| 0003 | PLAN | [Implement the fixes for every debugging-pass finding](decisions/0003-PLAN-remediate-debugging-pass-findings.md) | complete |
 | 0004 | MADR | [Evolve `selfupdate` into a layered, framework-neutral update toolkit](decisions/0004-MADR-evolve-selfupdate-api-and-tui-support.md) | accepted |
 | 0004 | PLAN | [Implement Phase 0: the `v1.0.1` defect release](decisions/0004-PLAN-v1-0-1-defect-release.md) | complete |
 | 0004 | PLAN | [Implement Phase 1: the `v1.1.0` core API](decisions/0004-PLAN-v1-1-0-core-api.md) | complete |
@@ -67,7 +67,7 @@ name, and the files they cite moved with the rename
 | :--- | :--- |
 | see what is in this repository today | [architecture.md](architecture.md) |
 | move a program from `mcplib/selfupdate` to this module | [guides/migrating-from-mcplib-selfupdate.md](guides/migrating-from-mcplib-selfupdate.md) |
-| move to the current release from an earlier one of this module | [guides/migrating-from-mcplib-selfupdate.md, §6 to §11](guides/migrating-from-mcplib-selfupdate.md#6-from-v15-to-v16) |
+| move to the current release from an earlier one of this module | [guides/migrating-from-mcplib-selfupdate.md, §6 to §15](guides/migrating-from-mcplib-selfupdate.md#6-from-v15-to-v16) |
 | add the update command to my program | [guides/migrating-from-mcplib-selfupdate.md, §5](guides/migrating-from-mcplib-selfupdate.md#5-adopt-the-canonical-update-command) |
 | stamp a release build so `update` knows it is one | `buildinfo.LDFlags`; [0004-PLAN-v1-4-0, Step 2](decisions/0004-PLAN-v1-4-0-command-surface.md#step-2-buildinfo-buildinfobuildinfogo-new) |
 | show an update banner | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#show-an-update-banner) |
@@ -88,13 +88,13 @@ name, and the files they cite moved with the rename
 | know why a release build failed a check | [guides/building-releases.md, §9](guides/building-releases.md#9-when-a-check-fails) |
 | give my users `curl … \| sh` and `irm … \| iex` installers without writing them | [guides/building-releases.md, §12](guides/building-releases.md#12-installers) |
 | re-sign my macOS binary on update, or require its signature | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#sign-on-macos) |
-| run my program as a systemd, launchd or Windows service, and update it from inside | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#run-as-a-service) |
+| run my program as a systemd, launchd or Windows service, or a per-user Task Scheduler task, and update it from inside | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#run-as-a-service) |
 | write my own installer, or test a program that self-updates | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#write-your-own-installer) |
 | know why `selfupdate` moved here, and what changed on the way | [0002-MADR](decisions/0002-MADR-rehome-selfupdate-from-mcplib.md) |
 | know why `bridge-release` is gone | [0002-MADR, §3](decisions/0002-MADR-rehome-selfupdate-from-mcplib.md#3-what-changes-in-transit-and-nothing-else) |
 | know why lint runs three times | [0002-MADR, §5](decisions/0002-MADR-rehome-selfupdate-from-mcplib.md#5-lint-covers-every-target-the-code-builds-for) |
 | contribute: checks, records and commit rules | [AGENTS.md](../AGENTS.md) |
-| know what may be imported here, and what never may | [0001-MADR, §3](decisions/0001-MADR-scaffold-shared-go-library.md#3-toolchain-and-dependencies) |
+| know what may be imported here, and what never may | [AGENTS.md, Dependencies](../AGENTS.md#dependencies), enforced by depguard ([0008-MADR](decisions/0008-MADR-enforce-import-rules-with-depguard.md)) |
 | know why the gates were never taught to pass on an empty module | [0001-MADR, §6](decisions/0001-MADR-scaffold-shared-go-library.md#6-gates-are-not-taught-to-pass-on-nothing) |
 | see what the debugging pass found, and how each finding is fixed | [0003-MADR](decisions/0003-MADR-remediate-debugging-pass-findings.md) |
 | see where `selfupdate` is going: API growth, TUI support, the canonical CLI, and what is still open | [0004-MADR, amendment P3](decisions/0004-MADR-evolve-selfupdate-api-and-tui-support.md#p3-2026-10-07-phase-4-is-built-the-open-work-in-one-place) |

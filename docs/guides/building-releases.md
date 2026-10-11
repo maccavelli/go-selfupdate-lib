@@ -23,7 +23,7 @@ The pieces:
   12).
 
 Both workflows are pinned to the same commit of this repository; the
-examples below pin `v1.14.0`'s.
+examples below pin `v1.15.0`'s.
 
 ## 1. Write the spec
 
@@ -139,7 +139,10 @@ case "version":
 and name it in the spec: `"identity_args": ["version"]`. The workflow runs
 the staged program on each platform that has a GitHub-hosted runner
 (linux/amd64, linux/arm64, darwin/arm64, windows/amd64 and windows/arm64)
-and requires exactly `<tag> (release)`, optionally followed by the commit.
+and requires exactly `<tag> (release)`, optionally followed by the commit,
+as the first line, and an exit status of 0. The run's environment holds
+`PATH` alone, and `SystemRoot` on Windows, so a command that reads `HOME`
+or a configuration file fails there, with its output in the error.
 A product without `identity_args` is built and checked without being run,
 and the job summary says so. The installers run the same command after an
 install, with no standard input.
@@ -158,7 +161,7 @@ permissions:
 
 jobs:
   build:
-    uses: maccavelli/go-selfupdate-lib/.github/workflows/build-selfupdate-release.yml@81dae60060274260e6f500f383aa1b79cee460d1 # v1.14.0
+    uses: maccavelli/go-selfupdate-lib/.github/workflows/build-selfupdate-release.yml@ac4ef550916f9c18af0947441f4ab55f7cf3c49a # v1.15.0
     with:
       spec-path: internal/updateclient/selfupdate-release.json
 
@@ -169,7 +172,7 @@ jobs:
       contents: write
       id-token: write
       attestations: write
-    uses: maccavelli/go-selfupdate-lib/.github/workflows/publish-selfupdate-release.yml@81dae60060274260e6f500f383aa1b79cee460d1 # v1.14.0
+    uses: maccavelli/go-selfupdate-lib/.github/workflows/publish-selfupdate-release.yml@ac4ef550916f9c18af0947441f4ab55f7cf3c49a # v1.15.0
     with:
       artifact-name: ${{ needs.build.outputs.artifact-name }}
       products-json: ${{ needs.build.outputs.products-json }}
@@ -180,18 +183,26 @@ jobs:
 
 - **Pin both to the full commit SHA of a release tag,** as the publish
   workflow has always required. Tags are annotated; resolve the commit with
-  `git ls-remote https://github.com/maccavelli/go-selfupdate-lib 'refs/tags/v1.14.0^{}'`.
+  `git ls-remote https://github.com/maccavelli/go-selfupdate-lib 'refs/tags/v1.15.0^{}'`.
 - **The build job needs only `contents: read`.** A called workflow cannot
   raise its token beyond what the calling workflow grants, so grant at
   least that.
 - **`module-dir`** names the Go module when it is not the repository root.
-  The Go version is that module's `go` line. Since `v1.11.0` the plan
+  The Go version is that module's `toolchain` line, or its `go` line
+  when it has none (`setup-go`'s `go-version-file`). Since `v1.11.0` the plan
   step also checks that module's requirement of this library: a spec
   that uses a field an older release refuses, such as `installer`
   (`v1.10.0`), needs a module that requires a release that reads it. A
   `replace` with a directory is not checked, and the job summary says so.
 - **`artifact-name`** overrides the staged artifact's name. Set it when one
-  run calls the build workflow twice.
+  run calls the build workflow twice. Without it, the name is
+  `selfupdate-release-<tag>-<attempt>`, or
+  `selfupdate-rehearsal-<first 12 hex of the commit>-<attempt>` in a
+  rehearsal.
+- **`retention-days`** keeps the staged artifact that many days, 7 by
+  default.
+- **Its outputs** are `artifact-name`; `tag`, empty in a rehearsal;
+  `rehearsal`, `'true'` or `'false'`; and the four publish inputs.
 - **One publish at a time:** the publish job runs in the concurrency group
   `go-selfupdate-lib-publish-<owner>/<repo>`, without cancelling one in
   progress, so two tags never race the latest flag. Do not give another
@@ -247,14 +258,18 @@ in its own job, and name the artifact:
 
   build:
     needs: apk
-    uses: maccavelli/go-selfupdate-lib/.github/workflows/build-selfupdate-release.yml@81dae60060274260e6f500f383aa1b79cee460d1 # v1.14.0
+    uses: maccavelli/go-selfupdate-lib/.github/workflows/build-selfupdate-release.yml@ac4ef550916f9c18af0947441f4ab55f7cf3c49a # v1.15.0
     with:
       spec-path: internal/updateclient/selfupdate-release.json
       extras-artifact-name: extras
 ```
 
 The artifact must hold exactly the extras without a `path`, under their
-names after `{tag}` is replaced, as regular files.
+names after `{tag}` is replaced, as regular files. In a rehearsal `{tag}`
+is the stamp, `rehearsal-<first 12 hex of the commit>`, so the extras job
+names its files from `github.ref_name` on a tag and from the first 12
+characters of `github.sha` otherwise; the build workflow does not output
+the stamp.
 
 ## 7. Archives
 
@@ -360,10 +375,11 @@ repository's templates with your products, platforms, formats, channels,
 repository and tag. They are extras: published and attested with the
 release, and not listed in `SHA256SUMS`.
 
-Your program's module must require the version the workflow is pinned
-to, at least `v1.10.0`, and since `v1.11.0` the plan step refuses an
-older one: an older `releasespec.Parse` refuses the spec's
-`installer` field, and the shipped program cannot update itself. Move
+Your program's module should require the version the workflow is pinned
+to, and must require at least `v1.10.0`: an older `releasespec.Parse`
+refuses the spec's `installer` field, and the shipped program cannot
+update itself. Since `v1.11.0` the plan step refuses a requirement below
+that floor; it does not check that the requirement matches the pin. Move
 `go.mod` and both pins together.
 
 ```json
@@ -402,7 +418,8 @@ is no race and no rate limit.
 
 ### What they do
 
-- **Download** every file of the release by its tag, over HTTPS only:
+- **Download** `SHA256SUMS` and this platform's asset of each selected
+  product, from the release's tag, over HTTPS only:
   `curl --proto '=https'`, or a `wget` that has `--https-only` (BusyBox's
   does not, and is refused); `Invoke-WebRequest` on Windows, with TLS 1.2
   added on Windows PowerShell 5.1.
@@ -433,7 +450,7 @@ is no race and no rate limit.
 | :--- | :--- | :--- | :--- |
 | `--version TAG` | `-Version TAG` | `<PREFIX>_VERSION` | install another release, with or without its `v`: a stable tag, or a prerelease on a channel the spec lists. A release whose asset names differ, such as a raw release from an archive release's installer, is refused (exit 1) with its own installer's URL |
 | `--dir DIR` | `-InstallDir DIR` | `<PREFIX>_INSTALL_DIR` | install there; a relative folder is made absolute first |
-| `--product NAME` | `-Product NAME` | | install only that product; repeat it for more (a name given twice counts once) |
+| `--product NAME` | `-Product NAME` | | install only that product. For more, repeat `--product`, or give `install.ps1` a list, `-Product a,b`: PowerShell refuses a parameter given twice. A name given twice counts once |
 | `--verify-attestation` | `-VerifyAttestation` | | also verify each download's attestation with `gh` (below) |
 | `--no-hooks` | `-NoHooks` | `<PREFIX>_NO_HOOKS=1` | skip the hooks |
 | | `-NoPathUpdate` | `<PREFIX>_NO_PATH_UPDATE=1` | print PATH advice instead of updating it |

@@ -20,8 +20,8 @@ The module requires Go 1.27.1 and three modules: `golang.org/x/mod v0.40.0`,
 build with Go 1.27.2, which fixes ten advisories in 1.27.1's standard
 library ([0018-MADR](decisions/0018-MADR-move-toolchain-to-go-1-27-2.md)).
 Its current
-release is `v1.14.0`, an annotated tag on commit
-`81dae60060274260e6f500f383aa1b79cee460d1`. `v1.5.0`, the first under this
+release is `v1.15.0`, an annotated tag on commit
+`ac4ef550916f9c18af0947441f4ab55f7cf3c49a`. `v1.5.0`, the first under this
 path, is the annotated tag on commit
 `6deaa524cfb28aad90bea97a6d9162e5b4257204`.
 
@@ -428,7 +428,8 @@ interpolated into shell.
 ## Tooling
 
 - **`make` targets:** `test`, `test-sum`, `fmt`, `vet`, `lint`, `tidy`,
-  `vuln`, `apicheck`, `fuzz`, `pre-add-check`, `help`.
+  `vuln`, `apicheck`, `fuzz`, `pre-add-check`, `gate`, and `help`, which
+  `make` alone runs.
 - **`make fuzz`** runs `scripts/go-fuzz.sh` on `selfupdate`,
   `selfupdate/archive` and `selfupdate/releasespec`. In each it finds every
   fuzz target, refuses fewer than the package holds (five, three and one),
@@ -517,6 +518,10 @@ interpolated into shell.
     - macOS: the launchd live tests (`SELFUPDATE_REQUIRE_LAUNCHD`) and the
       codesign live tests (`SELFUPDATE_REQUIRE_CODESIGN`);
     - Windows: the SCM live tests (`SELFUPDATE_REQUIRE_SCM`).
+    - Run, but not required: the Task Scheduler live tests, on
+      `windows-2025` without `SELFUPDATE_REQUIRE_TASKSCHED`, skip with the
+      reason that a GitHub runner has no interactive console session. The
+      Windows test host runs them with it set.
     - Not in CI: `ghattest`'s `TestLiveVerify`
       (`SELFUPDATE_REQUIRE_GHATTEST`), which needs `gh` logged in; CI has
       no token.

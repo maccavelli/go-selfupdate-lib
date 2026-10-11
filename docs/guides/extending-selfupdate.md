@@ -309,7 +309,8 @@ cfg.ManifestVerifiers = append(cfg.ManifestVerifiers, v)
 - **What it checks:** the attestation's source is your repository at the
   release's tag (`refs/tags/<tag>`), its signer is this module's publish
   workflow (`Policy.SignerWorkflow`, optionally pinned to commits by
-  `SignerDigests`), it was made on a GitHub-hosted runner, and it names
+  `SignerDigests`), it was made on a GitHub-hosted runner unless
+  `Policy.AllowSelfHostedRunners` is set, and it names
   the downloaded `SHA256SUMS`, which pins every asset's digest. It runs
   before any binary is downloaded. `ghattest.NewVerifier` checks the asset
   itself instead.
@@ -447,9 +448,17 @@ install.
 - **A stopped service:** since `v1.6.0` the managed installer starts a
   service after the update only when it was running, or when your
   `Lifecycle` also implements `EnabledLifecycle` and `Enabled` reports it
-  configured to start (systemd `is-enabled`, launchd `RunAtLoad` or
-  `KeepAlive`, a Windows automatic start type). Otherwise the binary is
-  replaced and the service stays stopped. An `Enabled` error fails the
+  configured to start:
+  - systemd: a `UnitFileState` of `enabled` or `enabled-runtime`, not
+    `static` or `indirect`, though `systemctl is-enabled` succeeds for
+    them;
+  - launchd: `RunAtLoad` or `KeepAlive`;
+  - the SCM: an automatic start type, or a demand start with start
+    triggers when `scm.Options.TriggerStartEnabled` is set;
+  - Task Scheduler: an enabled task with an enabled logon, boot or
+    repeating time trigger.
+
+  Otherwise the binary is replaced and the service stays stopped. An `Enabled` error fails the
   install before anything changes. `InstallResult.ServiceStarted`,
   `Result.ServiceStarted` and the document's `service_started` say whether
   it was started. Before `v1.6.0`, a stopped service was always started.
@@ -490,10 +499,14 @@ for Task Scheduler,
   - `Stop` returns once the service has stopped, not when the stop was
     asked for: systemd `inactive` or `failed`; launchd out of the domain
     with its process gone; the SCM's `STOPPED`, by Microsoft's wait-hint
-    loop. Once the stop is issued, the wait does not end with your context:
-    it runs to the service manager's own kill bound, the longer of
-    `Options.Poll.Timeout` and launchd's `ExitTimeOut` (5 s when unset) or
-    systemd's `TimeoutStopUSec`, plus 30 s.
+    loop; for Task Scheduler, the recorded process gone, by its process ID
+    and creation time. Once the stop is issued, the wait does not end with
+    your context. On systemd and launchd it runs to the service manager's
+    own kill bound, the longer of `Options.Poll.Timeout` and launchd's
+    `ExitTimeOut` (5 s when unset) or systemd's `TimeoutStopUSec`, plus
+    30 s. On the SCM it is `Options.Poll.Timeout`; on Task Scheduler too,
+    after up to `Options.StopGrace` for a program asked to exit by
+    `Options.RequestStop`.
   - A stop that fails after the service stopped, such as a wait that timed
     out, starts the service again; the update fails with
     `ErrManagedInstall`, and the binary is not replaced.
@@ -513,9 +526,10 @@ for Task Scheduler,
       drop-in;
     - on launchd, reloads a job that is loaded but not running, so
       launchd reads the new plist, and refuses a job that is running;
-    - on Windows, reads an unquoted command line whose path holds a
+    - on the SCM, reads an unquoted command line whose path holds a
       space the way the SCM runs it, and refuses one that could name two
-      programs: quote it.
+      programs: quote it. Task Scheduler's rewrite sets the `Exec`
+      action's path field, and parses no command line.
   - Since `v1.11.0`, `New` refuses `Options.Poll` whose settle window is
     not shorter than its timeout, launchd's at least 10 s, since every
     wait would time out (`PollOptions.Validate`); and on Windows the
@@ -530,13 +544,22 @@ for Task Scheduler,
   start fails `systemctl start`. With `Type=simple`, it succeeds before the
   program has run. Under `Type=notify`, call `systemd.Ready()` once the
   program serves; `systemd.WatchdogInterval` and `systemd.Watchdog` serve
-  `WatchdogSec=`.
+  `WatchdogSec=`, and `systemd.Status`, `Stopping` and `Reloading` send the
+  other notifications. `systemd.Available` reports whether systemd runs
+  here, for a program that picks its backend at run time;
+  `TemplateInstance`, `Escape` and `ValidUnitName` build and check a
+  template unit's instance name, such as `relay@main.service`.
 - **No library process start runs a `.bat` or `.cmd` file** (since
   `v1.14.0`). On Windows, `cmd.exe` parses a batch file's arguments by
   rules no quoting can make safe (the BatBadBut class), so the version
-  probe, `service.NewExecReconciler` and the handoff refuse one with an
-  error that wraps it, even when the path names no extension and Windows
-  would find `x.cmd`. Point them at an `.exe`.
+  probe, `service.ExecRunner`, and so `service.NewExecReconciler`,
+  `ghattest`, `codesign` and the backends' tools, and the handoff refuse
+  one. The error wraps `selfupdate.ErrBatchFile` (since `v1.15.0`), so
+  `errors.Is` tells it from any other failure. The check reads the name
+  Windows will run: `x.cmd`, found for a path with no extension; `x.bat.`
+  or `x.bat` with a trailing space, which Windows reads as `x.bat`; and
+  `x.bat::$DATA` (since `v1.15.0`). Point them at an `.exe`: a `gh.cmd`
+  shim as `ghattest.Options.GH` is refused too.
 
 ### Task Scheduler
 
@@ -557,6 +580,9 @@ m, err := selfupdate.NewManagedInstaller(inner, task, task)
 
 Off Windows, `New` returns `service.ErrUnsupported`.
 
+- **`Options.Folder`** is the task's folder, from the root: `\` (the
+  default) or a path such as `\Vendor\Product`. The task is
+  `<Folder>\<Name>`.
 - **What the setup registers:**
   - exactly one `Exec` action, the program; `Reconcile` refuses any other
     shape;
@@ -580,13 +606,27 @@ Off Windows, `New` returns `service.ErrUnsupported`.
   ends only the program's own process: children it started keep running,
   so stop them in your `RequestStop` handler.
 - **`Start`** enables the task again when `Stop` disabled it, and runs it.
-  A task you had disabled is run, and stays disabled.
+- **A task you disabled yourself** cannot be run: Task Scheduler refuses
+  to run a disabled task, even with `TASK_RUN_IGNORE_CONSTRAINTS`
+  (`SCHED_E_TASK_DISABLED`, measured). So since `v1.15.0`, `Stop` refuses
+  a disabled task whose program runs, before it changes anything, with an
+  error wrapping `taskscheduler.ErrTaskDisabled`: the program keeps
+  running, and nothing is replaced. Enable the task, or stop the program,
+  then update. A disabled task whose program does not run is left alone,
+  and not started after the update. `Start` on a disabled task returns
+  `ErrTaskDisabled` too. Before `v1.15.0`, such an update ended the
+  program and left it stopped
+  ([0022-MADR](../decisions/0022-MADR-documentation-pass-after-v1-14-0.md),
+  Amendment A1).
 - **If the update crashes between the two,** the task stays disabled and
   the watchdog does not run it. Your setup's repair registers it again, or
-  `schtasks /change /tn <name> /enable` re-enables it.
+  `schtasks /change /tn <folder>\<name> /enable` re-enables it.
 - **`WaitHealthy`** needs a new process running for `Options.Poll.Settle`,
   then runs `Options.Probe`. A program that exits first fails the check at
   once, with its exit code in the detail.
+- **A rollback after a rewrite** calls `Restore`, which registers the
+  definition `Reconcile` saved, its `DefinitionBackup`, again, byte for
+  byte, from the process that ran the update.
 - **Updating from inside the task** works as for the other backends:
   `service.HandOffFunc(task, service.HandOff{Args: os.Args[1:]})`. The
   detached run stays in the task's job, which does not allow it to leave,
@@ -622,8 +662,9 @@ m, err := selfupdate.NewManagedInstallerWith(inner, b, b,
   - no stop hook runs the program, such as systemd's `ExecStop=` or
     `ExecStopPost=`: it would run the new binary against the old instance;
   - an unplanned restart between the replace and the stop, by systemd's
-    `Restart=`, launchd's `KeepAlive` or an SCM failure action, may start
-    the new binary before its health check. The planned stop, start and
+    `Restart=`, launchd's `KeepAlive`, an SCM failure action or a Task
+    Scheduler repeating trigger (the task is disabled only inside `Stop`),
+    may start the new binary before its health check. The planned stop, start and
     health check then follow as usual.
 - **Recovery:** a stop that fails rolls the binary back too: under a
   service that still runs, which is not restarted, or before a service
@@ -658,6 +699,13 @@ func main() {
 
 - **The handoff needs the name** in `Options.Unit`, `Options.Label` or
   `Options.Name`.
+- **Without `cli`,** call `service.HandOffIfInside(ctx, backend,
+  service.HandOff{Args: os.Args[1:]})` before the update: when it reports
+  that it handed off, the returned `Detached` names the run and its
+  `ResultPath`, and this process does not update. In the detached run,
+  write the outcome with the function `service.ReportFunc` returns, or
+  `service.WriteHandOffResult`. `service.HandOffFunc` is the same call,
+  shaped for `cli.HandOff.Detach`.
 - **The agent's session sees** one line on stderr, and exit 0:
 
   ```text

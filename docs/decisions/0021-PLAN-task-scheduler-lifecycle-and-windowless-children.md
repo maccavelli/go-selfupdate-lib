@@ -1958,6 +1958,11 @@ starts processes on Windows. `make apicheck` reports it compatible with
   `service.NewExecReconciler` and the handoff refuse a `.bat` or `.cmd`
   program on Windows, including one found for a path with no extension
   (BatBadBut, CVE-2024-24576).
+  *(Annotated 2026-10-11: `service.ExecRunner`, and so `ghattest`'s and
+  `codesign`'s default runner, refuses one too. A trailing dot or space
+  passed the guard in `v1.14.0`;
+  [0022-PLAN-documentation-pass-after-v1-14-0.md](0022-PLAN-documentation-pass-after-v1-14-0.md)
+  P1 measured it, and `v1.15.0` closes it.)*
 * **Internal:** `internal/winproc` is the one constructor for process
   starts, with a static test that refuses any other in `selfupdate/`; the
   SCM backend's ancestor walk moved there unchanged.

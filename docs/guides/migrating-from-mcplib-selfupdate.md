@@ -20,10 +20,10 @@ at least that. Move it deliberately first, and run your full test suite at
 ## 2. The Go import
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.14.0
+go get github.com/maccavelli/go-selfupdate-lib@v1.15.0
 ```
 
-`v1.14.0` is the current release. `v1.6.0` changed a few behaviours that
+`v1.15.0` is the current release. `v1.6.0` changed a few behaviours that
 `v1.5.x` had; they are listed in [6. From v1.5 to v1.6](#6-from-v15-to-v16).
 `v1.7.0`, `v1.8.0`, `v1.9.0` and `v1.10.0` only add to the API: see
 [7. From v1.6 to v1.7](#7-from-v16-to-v17),
@@ -41,6 +41,9 @@ API; its fix is in [From v1.12.0 to v1.12.1](#from-v1120-to-v1121).
 [13. From v1.12 to v1.13](#13-from-v112-to-v113).
 `v1.14.0` adds a package and changes two Windows behaviours: see
 [14. From v1.13 to v1.14](#14-from-v113-to-v114).
+`v1.15.0` adds two errors, refuses more batch-file spellings, and refuses
+a disabled task it cannot start again: see
+[15. From v1.14 to v1.15](#15-from-v114-to-v115).
 
 Replace every `github.com/maccavelli/mcplib/selfupdate` import with
 `github.com/maccavelli/go-selfupdate-lib/selfupdate`. No identifier or signature
@@ -91,7 +94,7 @@ In the job that publishes your release, change the `uses:` line and delete
 
 ```diff
 -    uses: maccavelli/mcplib/.github/workflows/publish-selfupdate-release.yml@<mcplib SHA> # mcplib v1.x.y
-+    uses: maccavelli/go-selfupdate-lib/.github/workflows/publish-selfupdate-release.yml@81dae60060274260e6f500f383aa1b79cee460d1 # v1.14.0
++    uses: maccavelli/go-selfupdate-lib/.github/workflows/publish-selfupdate-release.yml@ac4ef550916f9c18af0947441f4ab55f7cf3c49a # v1.15.0
      with:
        artifact-name: …
        products-json: …
@@ -109,12 +112,17 @@ In the job that publishes your release, change the `uses:` line and delete
   current call passes. `v1.10.0` reads each tar.gz and gz asset to its
   end before publishing, and changes nothing a call passes either.
   `v1.10.1` runs one publish at a time per repository and names the
-  immutable releases setting on a timeout. `v1.11.0` to `v1.14.0` change
+  immutable releases setting on a timeout. `v1.11.0` to `v1.15.0` change
   nothing in it, though from `v1.11.1` its release tools build with Go
-  1.27.2, `go.mod`'s `toolchain` line; the example pins `v1.14.0`.
+  1.27.2, `go.mod`'s `toolchain` line; the example pins `v1.15.0`. Its
+  check of a release of archives runs the pinned commit's own unpacker,
+  though, which `v1.11.0` and `v1.11.1` tighten
+  ([11](#11-from-v110-to-v111), [its `v1.11.1` part](#from-v1110-to-v1111)):
+  an archive that passed under a `v1.10.1` pin can be refused under a
+  later one.
   Tags are annotated, so the tag ref names a tag object, not the commit
   `uses:` needs. Resolve the commit with the peeled ref:
-  `git ls-remote https://github.com/maccavelli/go-selfupdate-lib 'refs/tags/v1.14.0^{}'`.
+  `git ls-remote https://github.com/maccavelli/go-selfupdate-lib 'refs/tags/v1.15.0^{}'`.
 - **`bridge-release` must go,** even when it is `false`. The workflow no
   longer declares it, and GitHub rejects an input the called workflow does
   not define. It only ever permitted `magic-cli-remote` `v0.16.0`, which is
@@ -160,7 +168,7 @@ The steps below are prepare-commit-msg's, proven on a scratch copy of it at
 `selfupdate/cli/testdata/migration` files byte for byte, with exit codes 0,
 10 and 1.
 
-**`go.mod`.** Require go-selfupdate-lib `v1.14.0`, with `go 1.27.1`. The steps
+**`go.mod`.** Require go-selfupdate-lib `v1.15.0`, with `go 1.27.1`. The steps
 were proven at `v1.5.0`; every later release only adds to the API, so
 they still build, and §6 lists the behaviour `v1.6.0` changed. `mcplib` stays
 only if something else still imports it; in prepare-commit-msg,
@@ -379,15 +387,12 @@ the real stdout in `o.Stdout` when `--json` is given.
 ## 6. From v1.5 to v1.6
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.14.0
+go get github.com/maccavelli/go-selfupdate-lib@v1.15.0
 ```
 
-This takes the current release; what `v1.7.0`, `v1.8.0`, `v1.9.0` and
-`v1.10.0` add is in [7. From v1.6 to v1.7](#7-from-v16-to-v17),
-[8. From v1.7 to v1.8](#8-from-v17-to-v18),
-[9. From v1.8 to v1.9](#9-from-v18-to-v19) and
-[10. From v1.9 to v1.10](#10-from-v19-to-v110). Every exported change is an
-addition, so a program that built on `v1.5.x` builds unchanged. These are
+This takes the current release; what each later release adds is in §7
+to §15, from [7. From v1.6 to v1.7](#7-from-v16-to-v17) on. Every
+exported change is an addition, so a program that built on `v1.5.x` builds unchanged. These are
 the behaviours that change, and what to do about each. Why, and how, is in
 [0010-MADR](../decisions/0010-MADR-remediate-second-debugging-pass-findings.md)
 §3 and its amendments A2 to A5.
@@ -466,7 +471,7 @@ and group, when the updater may give them.
 ## 7. From v1.6 to v1.7
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.14.0
+go get github.com/maccavelli/go-selfupdate-lib@v1.15.0
 ```
 
 `v1.7.0` only adds: `make apicheck` reports it compatible with `v1.6.0`, it
@@ -505,12 +510,12 @@ is in
 ### Check
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
-- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.14.0`.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.0`.
 
 ## 8. From v1.7 to v1.8
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.14.0
+go get github.com/maccavelli/go-selfupdate-lib@v1.15.0
 ```
 
 `v1.8.0` only adds. `make apicheck` reports it compatible with `v1.7.0`, it
@@ -557,12 +562,12 @@ runs unless you configure it. Why, and how, is in
 ### Check
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
-- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.14.0`.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.0`.
 
 ## 9. From v1.8 to v1.9
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.14.0
+go get github.com/maccavelli/go-selfupdate-lib@v1.15.0
 ```
 
 `v1.9.0` only adds. `make apicheck` reports it compatible with `v1.8.0`,
@@ -601,13 +606,13 @@ that use none of the new pieces behave as they did. Why, and how, is in
 ### Check
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
-- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.14.0`.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.0`.
 - A pull request runs the build workflow as a rehearsal, and it passes.
 
 ## 10. From v1.9 to v1.10
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.14.0
+go get github.com/maccavelli/go-selfupdate-lib@v1.15.0
 ```
 
 `v1.10.0` only adds. `make apicheck` reports it compatible with `v1.9.0`,
@@ -654,6 +659,9 @@ stages exactly what `v1.9.0` staged. Why, and how, is in
 
 ### From v1.10.0 to v1.10.1
 
+Only if you stop at `v1.10.1`; the section's `go get` above already takes the
+current release, and this command would move you back:
+
 ```bash
 go get github.com/maccavelli/go-selfupdate-lib@v1.10.1
 ```
@@ -697,13 +705,13 @@ why, is in
   releases setting when it times out, and accepts a repository whose
   current latest release is not `vX.Y.Z`.
 
-**Check:** `go list -m github.com/maccavelli/go-selfupdate-lib` gives
-`v1.10.1`.
+**Check,** if you stopped at `v1.10.1`: `go list -m
+github.com/maccavelli/go-selfupdate-lib` gives `v1.10.1`.
 
 ### Check
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
-- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.14.0`.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.0`.
 - A pull request's rehearsal stages `install.sh` and `install.ps1`, and a
   dry run of the released one-liner (`… | sh -s -- --dry-run`) names the
   assets you expect.
@@ -711,7 +719,7 @@ why, is in
 ## 11. From v1.10 to v1.11
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.14.0
+go get github.com/maccavelli/go-selfupdate-lib@v1.15.0
 ```
 
 `v1.11.0` settles the contracts the third debugging pass left open.
@@ -778,6 +786,9 @@ may need a change. Why, and how, is in
 
 ### From v1.11.0 to v1.11.1
 
+Only if you stop at `v1.11.1`; the section's `go get` above already takes the
+current release, and this command would move you back:
+
 ```bash
 go get github.com/maccavelli/go-selfupdate-lib@v1.11.1
 ```
@@ -810,19 +821,19 @@ why, is in
   hosts' Go
   ([0018-MADR](../decisions/0018-MADR-move-toolchain-to-go-1-27-2.md)).
 
-**Check:** `go list -m github.com/maccavelli/go-selfupdate-lib` gives
-`v1.11.1`.
+**Check,** if you stopped at `v1.11.1`: `go list -m
+github.com/maccavelli/go-selfupdate-lib` gives `v1.11.1`.
 
 ### Check
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
-- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.14.0`.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.0`.
 - A pull request's rehearsal passes the plan step's module check.
 
 ## 12. From v1.11 to v1.12
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.14.0
+go get github.com/maccavelli/go-selfupdate-lib@v1.15.0
 ```
 
 `v1.12.0` adds a build-provenance check, and keeps the previous binary of
@@ -883,6 +894,9 @@ an update that was interrupted. `make apicheck` reports it compatible with
 
 ### From v1.12.0 to v1.12.1
 
+Only if you stop at `v1.12.1`; the section's `go get` above already takes the
+current release, and this command would move you back:
+
 ```bash
 go get github.com/maccavelli/go-selfupdate-lib@v1.12.1
 ```
@@ -901,18 +915,18 @@ reports it compatible with `v1.12.0`. What changed, and why, is in
   installers from `v1.10.0` to `v1.12.0` carry the defect; move both
   workflows' pins to `v1.12.1` so your releases ship the fixed one.
 
-**Check:** `go list -m github.com/maccavelli/go-selfupdate-lib` gives
-`v1.12.1`.
+**Check,** if you stopped at `v1.12.1`: `go list -m
+github.com/maccavelli/go-selfupdate-lib` gives `v1.12.1`.
 
 ### Check
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
-- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.14.0`.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.0`.
 
 ## 13. From v1.12 to v1.13
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.14.0
+go get github.com/maccavelli/go-selfupdate-lib@v1.15.0
 ```
 
 `v1.13.0` lets a managed install replace the binary before it stops the
@@ -952,12 +966,12 @@ how, is in
 ### Check
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
-- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.14.0`.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.0`.
 
 ## 14. From v1.13 to v1.14
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.14.0
+go get github.com/maccavelli/go-selfupdate-lib@v1.15.0
 ```
 
 `v1.14.0` adds a Task Scheduler backend, starts the library's own Windows
@@ -983,10 +997,14 @@ change is the new package. Why, and how, is in
   console programs it starts do not open one either. Nothing changes for
   a program that already has a console.
 - **Batch files are refused.** On Windows, the version probe,
-  `service.NewExecReconciler` and the handoff refuse a `.bat` or `.cmd`
-  file, including one Windows would find for a path with no extension,
-  with an error that names BatBadBut (CVE-2024-24576). Before, `cmd.exe`
-  would have run it.
+  `service.ExecRunner`, and so `service.NewExecReconciler`, `ghattest`,
+  `codesign` and the backends' tools, and the handoff refuse a `.bat` or
+  `.cmd` file, including one Windows would find for a path with no
+  extension, with an error that names BatBadBut (CVE-2024-24576). A
+  `gh.cmd` given as `ghattest.Options.GH` is refused too. Before,
+  `cmd.exe` would have run it. `v1.15.0` exports the error as
+  `selfupdate.ErrBatchFile`, and refuses the spellings `v1.14.0` let
+  through ([15](#15-from-v114-to-v115)).
 
 ### Adopting it
 
@@ -1005,4 +1023,53 @@ change is the new package. Why, and how, is in
 ### Check
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
-- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.14.0`.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.0`.
+
+## 15. From v1.14 to v1.15
+
+```bash
+go get github.com/maccavelli/go-selfupdate-lib@v1.15.0
+```
+
+`v1.15.0` exports the batch-file refusal and closes the spellings that
+passed it, makes the Task Scheduler backend refuse a disabled task it
+cannot start again, and corrects the documentation. `make apicheck`
+reports it compatible with `v1.14.0`: the only exported changes are two
+new errors. Why, and how, is in
+[0022-MADR](../decisions/0022-MADR-documentation-pass-after-v1-14-0.md).
+
+### What is new
+
+- **`selfupdate.ErrBatchFile`:** the error a refused `.bat` or `.cmd`
+  program wraps, from the version probe, `service.ExecRunner`,
+  `service.DetachProcess` and so the handoff. Before, it lived in an
+  internal package, and a program could match it only by its text.
+- **More batch-file spellings refused.** On Windows the check now reads
+  the name Windows will run. `x.bat.` and `x.cmd.`, with a trailing dot,
+  put an argument under `cmd.exe`'s parser, and `x.bat` with a trailing
+  space ran the script; `v1.14.0` let all of them through. They, and an
+  alternate data stream such as `x.bat::$DATA`, are refused.
+- **`taskscheduler.ErrTaskDisabled`.** Task Scheduler refuses to run a
+  disabled task, so a task you disabled while its program runs could not
+  be started again after an update: `v1.14.0` ended the program, replaced
+  the binary, failed to start it, and left it stopped. `Stop` now refuses
+  such a task before it changes anything, with `ErrTaskDisabled`, and the
+  program keeps running. `Start` on a disabled task returns it too.
+- **Documentation:** the guides, `go doc` and the records index were
+  checked against the code, and 50 errors fixed. `make gate` now fails
+  when `docs/architecture.md`'s file counts differ from the tree.
+
+### Adopting it
+
+- **To tell a refused batch file from other failures,** test
+  `errors.Is(err, selfupdate.ErrBatchFile)`.
+- **If a Task Scheduler update now fails with `ErrTaskDisabled`,** the
+  task is disabled while its program runs: enable it, or stop the
+  program, and update again. Nothing was changed.
+- **If a path you give the library ends in a dot or a space,** remove
+  it: Windows reads it as the name without them.
+
+### Check
+
+- `go build ./...`, `go vet ./...` and `go test ./...` pass.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.0`.
