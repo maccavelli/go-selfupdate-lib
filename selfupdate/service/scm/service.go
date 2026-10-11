@@ -27,7 +27,8 @@ import (
 // Options configure a Service.
 type Options struct {
 	// Name is the service's name, not its display name. Empty means the
-	// product.
+	// product, except for the handoff: Inside, and so Detach through
+	// service.HandOffIfInside, needs it set.
 	Name string
 	// Probe, when set, is an application readiness check WaitHealthy runs
 	// once the SCM reports the service healthy.

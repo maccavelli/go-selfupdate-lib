@@ -57,7 +57,9 @@ const waitDelay = 5 * time.Second
 
 // ExecRunner returns the Runner the backends use by default. It runs the
 // program with os/exec, kills it when the context ends, and keeps at most
-// 1 MiB of each output stream.
+// 1 MiB of each output stream. On Windows it refuses a .bat or .cmd program
+// with an error wrapping selfupdate.ErrBatchFile, and a child of a process
+// with no console gets no window (0021-MADR D7, D8).
 func ExecRunner() Runner {
 	return RunnerFunc(runExec)
 }

@@ -560,8 +560,10 @@ type Lifecycle interface {
 }
 
 // EnabledLifecycle is a Lifecycle that can report whether a service is
-// configured to start: systemd is-enabled, launchd RunAtLoad or KeepAlive,
-// a Windows SCM automatic start type. A managed update starts a service
+// configured to start: a systemd UnitFileState of enabled or
+// enabled-runtime, launchd RunAtLoad or KeepAlive, a Windows SCM automatic
+// start type, or an enabled Task Scheduler task with an enabled logon,
+// boot or repeating time trigger. A managed update starts a service
 // that was stopped only when Enabled reports true; without this interface,
 // it starts only a service that was running (0010-MADR Q2).
 type EnabledLifecycle interface {

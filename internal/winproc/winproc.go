@@ -1,6 +1,7 @@
-// Package winproc builds every process this module starts, so that on
-// Windows a child of a process with no console gets a console with no
-// window, and no batch file is started
+// Package winproc builds every process the library's packages under
+// selfupdate/ start, so that on Windows a child of a process with no
+// console gets a console with no window, and no batch file is started. The
+// release tool under internal/cmd starts its own, and is outside it
 // (docs/decisions/0021-MADR-task-scheduler-lifecycle-and-windowless-children.md
 // D7, D8). Off Windows it adds nothing but the Unix handoff's new session.
 //

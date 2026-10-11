@@ -43,7 +43,8 @@ var ErrTaskDisabled = errors.New("selfupdate: taskscheduler: the task is disable
 // Options configure a Task.
 type Options struct {
 	// Name is the task's name, without its folder. Empty means the
-	// product.
+	// product, except for the handoff: Inside, and so Detach through
+	// service.HandOffIfInside, needs it set.
 	Name string
 	// Folder is the task's folder, from the root: `\` or `\Vendor\Product`.
 	// Empty means the root folder, `\`.

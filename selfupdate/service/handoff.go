@@ -272,8 +272,8 @@ func ReadHandOffResult(path string) (HandOffResult, error) {
 }
 
 // ProcessDetacher is a Detacher for a lifecycle with no backend in this
-// module, such as a Task Scheduler task: inside is the caller's own check,
-// and Detach is DetachProcess.
+// module: inside is the caller's own check, and Detach is DetachProcess. A
+// Task Scheduler task has a backend, taskscheduler.Task.
 func ProcessDetacher(inside func(context.Context) (bool, error)) Detacher {
 	return processDetacher{inside: inside}
 }

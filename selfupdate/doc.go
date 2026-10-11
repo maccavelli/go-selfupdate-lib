@@ -138,6 +138,11 @@
 // still runs, and Result.ReplacedBeforeStop reports that order. A custom
 // session used with a Transformer must implement StagingOwner.
 //
+// Package selfupdate/service holds the reference Lifecycles for
+// NewManagedInstaller: systemd, launchd, scm and taskscheduler, each in its
+// own subpackage, and the handoff an update started inside the service
+// needs (docs/decisions/0011-MADR-reference-service-lifecycles.md).
+//
 // # The canonical update command
 //
 // Package selfupdate/cli is the update subcommand every program shares: the

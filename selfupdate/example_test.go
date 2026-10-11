@@ -69,8 +69,8 @@ func ExampleNewTextReporter() {
 	// Output: selfupdate: selected product=demo target=v1.1.0 asset=demo-linux-amd64
 }
 
-// exampleService is a stand-in service manager. A real program binds its
-// systemd, launchd or Windows service adapter here.
+// exampleService is a stand-in service manager. A real program binds a
+// selfupdate/service backend here: systemd, launchd, scm or taskscheduler.
 type exampleService struct{}
 
 func (exampleService) Installed(context.Context, string) (bool, error) { return true, nil }

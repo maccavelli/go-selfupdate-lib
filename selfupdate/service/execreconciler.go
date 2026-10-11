@@ -104,7 +104,9 @@ func NewExecReconciler(o ExecOptions) (*ExecReconciler, error) {
 // Reconcile implements selfupdate.Reconciler. It runs executable, the new
 // binary, with the reconcile arguments, and decodes its Receipt. A child
 // that fails after printing a receipt returns that receipt with the error,
-// so the managed installer can still Restore it.
+// so the managed installer can still Restore it. With the default runner,
+// ExecRunner, a .bat or .cmd executable is refused on Windows with an error
+// wrapping selfupdate.ErrBatchFile.
 func (r *ExecReconciler) Reconcile(ctx context.Context, product, executable string) (selfupdate.ReconcileResult, error) {
 	out, err := r.o.Runner.Run(ctx, Command{Path: executable, Args: r.o.Reconcile, Env: r.env()})
 	if err != nil {

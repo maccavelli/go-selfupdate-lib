@@ -14,7 +14,8 @@ import (
 // the real detached run and exits, so the real run's recorded parent is a
 // process that has exited. A walk up its ancestors then stops there, and a
 // tree kill that follows parent links misses it, as after a Unix double
-// fork. scm.Service.Detach sets it (0011-MADR amendment A4).
+// fork. scm.Service.Detach and taskscheduler.Task.Detach set it (0011-MADR
+// amendment A4; 0021-MADR D6).
 const EnvHandOffHop = "SELFUPDATE_HANDOFF_HOP"
 
 // EnvHandOffHopParent carries the hop's process ID to the real run, which

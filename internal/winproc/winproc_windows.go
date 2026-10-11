@@ -21,7 +21,9 @@ var getConsoleProcessList = windows.NewLazySystemDLL("kernel32.dll").NewProc("Ge
 // GetConsoleProcessList returns how many processes share it, and 0 when
 // there is none. GetConsoleWindow is not used, because it returns 0 under
 // ConPTY for a process that has a console (0021-MADR D7, from
-// magic-cli-remote's 0159 D17). The answer is read once.
+// magic-cli-remote's
+// docs/decisions/0159-MADR-the-windows-service-path-is-half-wired.md D17).
+// The answer is read once.
 var hasConsole = sync.OnceValue(func() bool {
 	var pids [1]uint32
 	n, _, _ := getConsoleProcessList.Call(uintptr(unsafe.Pointer(&pids[0])), uintptr(len(pids))) //nolint:errcheck,gosec // a fixed buffer for a Win32 call; 0 on any failure already means no console to inherit

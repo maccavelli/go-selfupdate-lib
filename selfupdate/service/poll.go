@@ -12,8 +12,8 @@ type Health struct {
 	// Ready reports that the instance counts as up.
 	Ready bool `json:"ready"`
 	// Instance identifies the running instance, and changes with each
-	// start: a systemd InvocationID, a launchd or SCM process ID. Empty
-	// means the probe cannot tell instances apart.
+	// start: a systemd InvocationID, a launchd, SCM or Task Scheduler
+	// process ID. Empty means the probe cannot tell instances apart.
 	Instance string `json:"instance,omitempty"`
 	// Failed reports that the instance failed: the wait ends at once.
 	Failed bool `json:"failed"`

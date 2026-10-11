@@ -106,7 +106,8 @@ func switches(r registered) (bool, []trigger, error) {
 //  2. it records the instance, so WaitHealthy can require a new one;
 //  3. it disables an enabled task, and records that it did, so a
 //     repeating trigger cannot start the task while its binary is replaced:
-//     ending the task alone does not stop the trigger (magic-cli-remote 0159
+//     ending the task alone does not stop the trigger (magic-cli-remote's
+//     docs/decisions/0159-MADR-the-windows-service-path-is-half-wired.md,
 //     probe 8);
 //  4. it calls Options.RequestStop, when set, and waits up to
 //     Options.StopGrace for the program to exit on its own;

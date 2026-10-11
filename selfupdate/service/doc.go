@@ -3,10 +3,10 @@
 // runner, the typed errors, PollHealthy, ExecReconciler, and the handoff
 // that keeps an updater from stopping the service it runs inside.
 //
-// The lifecycles themselves are in the subpackages systemd, launchd and
-// scm. Each implements selfupdate.Lifecycle, selfupdate.EnabledLifecycle,
-// selfupdate.Reconciler and Detacher, compiles on every OS, and returns
-// ErrUnsupported on the wrong one.
+// The lifecycles themselves are in the subpackages systemd, launchd, scm
+// and taskscheduler. Each implements selfupdate.Lifecycle,
+// selfupdate.EnabledLifecycle, selfupdate.Reconciler and Detacher, compiles
+// on every OS, and returns ErrUnsupported on the wrong one.
 //
 // # The handoff
 //

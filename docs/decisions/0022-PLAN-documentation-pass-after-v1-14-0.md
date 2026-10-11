@@ -911,3 +911,42 @@ fifteen steps, and its link case now also requires `arch rc=1` and the
   broken; markdownlint, 0 issues.
 * `make gate`: every step `rc=0`, among them `arch rc=0 check-docs: 15
   rows in docs/architecture.md, 0 differ`; `overall=0`.
+
+### P5 (2026-10-11)
+
+The owner committed P4 as `cea264e`, and said "proceed".
+
+**Files,** 17, comments only:
+
+| ID | Changed |
+| :--- | :--- |
+| C1 | `selfupdate/service/doc.go`: the backends are systemd, launchd, scm and taskscheduler |
+| C2 | `selfupdate/service/detach.go`: `DetachProcess` gives the run "a console of its own and no window" |
+| C3 | `selfupdate/service/handoff.go`: `ProcessDetacher` no longer names Task Scheduler as having no backend, and points to `taskscheduler.Task` |
+| C4 | `selfupdate/service/handoffhop.go`: `taskscheduler.Task.Detach` sets `EnvHandOffHop` too (0021-MADR D6) |
+| C5 | `selfupdate/service/poll.go`: `Health.Instance` names a Task Scheduler process ID |
+| C6 | `selfupdate/service/runner.go` (`ExecRunner`), `selfupdate/probe.go` (`NewVersionProber`), `selfupdate/service/detach.go` (`DetachProcess`), `selfupdate/service/execreconciler.go` (`ExecReconciler.Reconcile`): the batch refusal, with `ErrBatchFile`, and the window rule |
+| C7 | `selfupdate/types.go`: `EnabledLifecycle` reads systemd's `UnitFileState` and names the Task Scheduler rule |
+| C8 | `selfupdate/service/taskscheduler/task.go` and `selfupdate/service/scm/service.go`: `Options.Name` is needed by the handoff |
+| C9 | `taskscheduler/lifecycle.go`, `internal/winproc/winproc_windows.go`: magic-cli-remote's `docs/decisions/0159-MADR-the-windows-service-path-is-half-wired.md`; `selfupdate/github.go`: mcplib's `docs/0005-PLAN-canonicalize-cli-self-update-in-mcplib.md` §4.2. Each was checked to exist there, with the cited probe, decision or section |
+| C10 | `internal/winproc/winproc.go`: the library's packages under `selfupdate/`, with the release tool outside |
+| C11 | `selfupdate/doc.go`: a paragraph naming `selfupdate/service` and its four backends |
+| C12 | `selfupdate/example_test.go`: "a `selfupdate/service` backend" |
+
+**As built, beyond the rows:** C2 also corrected `DetachProcess`'s second
+paragraph, "It is for a lifecycle with no backend in this module": the
+`scm` and `taskscheduler` backends detach through it. That sentence was
+as stale as the first, in the same comment.
+
+**Checks.**
+
+* `git diff -U0 -- '*.go'`: every added and removed line is a comment.
+* `go doc` read for `ExecRunner`, `EnabledLifecycle`,
+  `taskscheduler.Options`, and the `selfupdate`, `service` and `winproc`
+  package docs.
+* `make pre-add-check FILES="<the 17 Go files>"`: `go-precheck: 17
+  file(s) clean`, the Example tests included.
+* `make gate`: every step `rc=0`, `apicheck` `compatible with v1.14.0`,
+  `arch` `15 rows …, 0 differ`, `overall=0`.
+
+No test was added, so there was no fail-first run.

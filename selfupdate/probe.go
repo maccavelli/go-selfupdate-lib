@@ -78,6 +78,9 @@ type versionProber struct {
 // exit 0 within timeout with stdout containing want(TargetVersion). A nil
 // want is the identity: the output must contain the tag itself. A probe the
 // caller's deadline or cancellation ends fails wrapping that context error.
+// On Windows a .bat or .cmd binary is refused with an error wrapping
+// ErrBatchFile, and a probe from a process with no console opens no window
+// (0021-MADR D7, D8).
 func NewVersionProber(args []string, want func(tag string) string, timeout time.Duration) (Prober, error) {
 	if len(args) == 0 {
 		return nil, fmt.Errorf("selfupdate: version prober needs arguments")
