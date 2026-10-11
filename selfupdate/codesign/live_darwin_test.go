@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 )
 
@@ -51,17 +52,8 @@ func fixture(t *testing.T) string {
 	if err := os.WriteFile(filepath.Join(src, "main.go"), []byte("package main\n\nfunc main() {}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	goBin, err := exec.LookPath("go")
-	if err != nil {
-		t.Fatalf("the go command is required to build the fixture: %v", err)
-	}
 	out := filepath.Join(dir, ".relay.selfupdate-12345")
-	cmd := exec.Command(goBin, "build", "-o", out, ".") //nolint:gosec // the go command, building a fixture
-	cmd.Dir = src
-	cmd.Env = append(os.Environ(), "GOOS=darwin", "GOARCH=arm64", "CGO_ENABLED=0", "GOWORK=off", "GOFLAGS=")
-	if b, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("build: %v\n%s", err, b)
-	}
+	testproc.GoBuild(t, src, out, []string{"GOOS=darwin", "GOARCH=arm64", "CGO_ENABLED=0", "GOWORK=off", "GOFLAGS="})
 	return out
 }
 

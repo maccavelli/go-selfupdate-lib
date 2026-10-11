@@ -2,10 +2,16 @@ package testproc
 
 import (
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -159,4 +165,133 @@ func TestGoBuildIgnoresParentGit(t *testing.T) {
 	if err != nil || !strings.Contains(string(got), "fixture") {
 		t.Fatalf("the fixture: %v, %q", err, got)
 	}
+}
+
+// TestNoDirectFixtureBuild: no _test.go file in the module runs
+// "go build" itself; each builds its fixture through GoBuild or Build,
+// which pass -buildvcs=false (0023-MADR D1-A). A call counts when its
+// program is the literal "go", or a variable assigned from
+// exec.LookPath("go") in the same file, and an argument is the literal
+// "build".
+func TestNoDirectFixtureBuild(t *testing.T) {
+	root := filepath.Join("..", "..")
+	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
+		t.Fatalf("no module root at %s: run the test from its package directory: %v", root, err)
+	}
+	var found []string
+	files := 0
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if name := d.Name(); name == "testdata" || name == ".git" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		files++
+		calls, err := directBuilds(path)
+		found = append(found, calls...)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if files == 0 {
+		t.Fatal("no _test.go file found: the test reads the module's source")
+	}
+	sort.Strings(found)
+	for _, f := range found {
+		t.Errorf("%s: build the fixture with testproc.GoBuild or testproc.Build (0023-MADR D1-A)", f)
+	}
+}
+
+// directBuilds returns "file:line" for each direct go build in path.
+func directBuilds(path string) ([]string, error) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
+	if err != nil {
+		return nil, err
+	}
+	execName := ""
+	for _, imp := range f.Imports {
+		if p, _ := strconv.Unquote(imp.Path.Value); p == "os/exec" {
+			execName = "exec"
+			if imp.Name != nil {
+				execName = imp.Name.Name
+			}
+		}
+	}
+	if execName == "" {
+		return nil, nil
+	}
+	isExec := func(e ast.Expr, names ...string) bool {
+		sel, ok := e.(*ast.SelectorExpr)
+		if !ok {
+			return false
+		}
+		id, ok := sel.X.(*ast.Ident)
+		if !ok || id.Name != execName {
+			return false
+		}
+		for _, n := range names {
+			if sel.Sel.Name == n {
+				return true
+			}
+		}
+		return false
+	}
+	isLit := func(e ast.Expr, s string) bool {
+		lit, ok := e.(*ast.BasicLit)
+		if !ok || lit.Kind != token.STRING {
+			return false
+		}
+		v, err := strconv.Unquote(lit.Value)
+		return err == nil && v == s
+	}
+	goVars := map[string]bool{}
+	ast.Inspect(f, func(n ast.Node) bool {
+		as, ok := n.(*ast.AssignStmt)
+		if !ok || len(as.Rhs) != 1 {
+			return true
+		}
+		call, ok := as.Rhs[0].(*ast.CallExpr)
+		if !ok || !isExec(call.Fun, "LookPath") || len(call.Args) != 1 || !isLit(call.Args[0], "go") {
+			return true
+		}
+		if id, ok := as.Lhs[0].(*ast.Ident); ok {
+			goVars[id.Name] = true
+		}
+		return true
+	})
+	var found []string
+	ast.Inspect(f, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok || !isExec(call.Fun, "Command", "CommandContext") {
+			return true
+		}
+		args := call.Args
+		if isExec(call.Fun, "CommandContext") && len(args) > 0 {
+			args = args[1:]
+		}
+		if len(args) < 2 {
+			return true
+		}
+		prog, ok := args[0].(*ast.Ident)
+		if !isLit(args[0], "go") && (!ok || !goVars[prog.Name]) {
+			return true
+		}
+		for _, a := range args[1:] {
+			if isLit(a, "build") {
+				found = append(found, fset.Position(call.Pos()).String())
+				break
+			}
+		}
+		return true
+	})
+	return found, nil
 }

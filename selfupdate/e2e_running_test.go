@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/selfupdatetest"
 )
@@ -66,10 +67,6 @@ var runtimePlatform = selfupdate.Platform{OS: runtime.GOOS, Arch: runtime.GOARCH
 // version stamped, and returns its bytes.
 func buildHelper(t *testing.T, version, goos string) []byte {
 	t.Helper()
-	goBin, err := exec.LookPath("go")
-	if err != nil {
-		t.Fatalf("the go command is required to build the helper: %v", err)
-	}
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/demo\n\ngo 1.27.1\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -78,12 +75,8 @@ func buildHelper(t *testing.T, version, goos string) []byte {
 		t.Fatal(err)
 	}
 	out := filepath.Join(dir, "demo.bin")
-	cmd := exec.Command(goBin, "build", "-ldflags", stampFlag+version, "-o", out, ".")
-	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "GOOS="+goos, "GOARCH="+runtime.GOARCH, "CGO_ENABLED=0", "GOWORK=off", "GOFLAGS=")
-	if b, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("build the %s helper for %s: %v\n%s", version, goos, err, b)
-	}
+	testproc.GoBuild(t, dir, out, []string{"GOOS=" + goos, "GOARCH=" + runtime.GOARCH, "CGO_ENABLED=0", "GOWORK=off", "GOFLAGS="},
+		"-ldflags", stampFlag+version)
 	b, err := os.ReadFile(out)
 	if err != nil {
 		t.Fatal(err)

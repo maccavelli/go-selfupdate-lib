@@ -8,10 +8,11 @@ import (
 	"errors"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 )
 
 // Tests for docs/decisions/0004-PLAN-v1-1-0-core-api.md Step 7 (image
@@ -19,17 +20,8 @@ import (
 
 func buildFixture(t *testing.T, dir, goos, goarch string) string {
 	t.Helper()
-	goBin, err := exec.LookPath("go")
-	if err != nil {
-		t.Fatalf("the go command is required to build fixtures: %v", err)
-	}
 	out := filepath.Join(dir, goos+"-"+goarch)
-	cmd := exec.Command(goBin, "build", "-o", out, ".")
-	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "GOOS="+goos, "GOARCH="+goarch, "CGO_ENABLED=0", "GOWORK=off", "GOFLAGS=")
-	if b, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("build %s/%s: %v\n%s", goos, goarch, err, b)
-	}
+	testproc.GoBuild(t, dir, out, []string{"GOOS=" + goos, "GOARCH=" + goarch, "CGO_ENABLED=0", "GOWORK=off", "GOFLAGS="})
 	return out
 }
 

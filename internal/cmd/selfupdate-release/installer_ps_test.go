@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/releasespec"
 )
 
@@ -532,12 +533,10 @@ func standInExe(t *testing.T, role, version string) []byte {
 			}
 		}
 		for _, v := range standInVariants {
-			cmd := exec.Command("go", "build", "-trimpath", "-ldflags", "-X main.role="+v[0]+" -X main.version="+v[1],
-				"-o", v[0]+"-"+v[1]+".exe", ".")
-			cmd.Dir = dir
-			cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOWORK=off", "GOFLAGS=")
-			if out, err := cmd.CombinedOutput(); err != nil {
-				standInsErr = fmt.Errorf("building the stand-in: %w\n%s", err, out)
+			out := filepath.Join(dir, v[0]+"-"+v[1]+".exe")
+			if err := testproc.Build(dir, out, []string{"CGO_ENABLED=0", "GOWORK=off", "GOFLAGS="},
+				"-trimpath", "-ldflags", "-X main.role="+v[0]+" -X main.version="+v[1]); err != nil {
+				standInsErr = fmt.Errorf("building the stand-in: %w", err)
 				return
 			}
 		}

@@ -406,3 +406,93 @@ failed on the two revive findings above; after the rename, `go-precheck:
   every step `rc=0`, `apicheck` `compatible with v1.15.1`, `arch` `16
   rows in docs/architecture.md, 0 differ` with the package still
   uncommitted, `overall=0`.
+
+### S3 (2026-10-11)
+
+The owner committed S2 and D1 as `599ae94`, and said "proceed".
+
+**Files.** Changed: `internal/testproc/testproc.go`,
+`internal/testproc/testproc_test.go`, `selfupdate/archive/main_test.go`,
+`selfupdate/imageverify_test.go`, `selfupdate/e2e_running_test.go`,
+`buildinfo/stamp_test.go`, `selfupdate/codesign/live_darwin_test.go`,
+`internal/cmd/selfupdate-release/installer_ps_test.go`. No file is added.
+
+**As built:**
+
+* **`testproc.Build`**, added: `GoBuild` for a caller with no
+  `testing.TB`, returning the error. `archive`'s fixtures are built in
+  `TestMain`, and the PowerShell stand-ins under a `sync.Once`, so neither
+  has a `t` to fail. `GoBuild` wraps it. MADR decision 1 named `GoBuild`
+  alone.
+* **The six sites** keep their environments and flags: `archive` and the
+  stand-ins call `Build`; the image verifier, the E2E helper (with
+  `-ldflags`), `buildinfo`'s stamp test (with `GOFLAGS=-mod=mod`,
+  `GOPROXY=off` and `-ldflags`) and the `codesign` live fixture call
+  `GoBuild`. The stand-ins' `-o` is now an absolute path in their
+  directory, where it was relative to it. `os/exec` imports that no
+  longer serve a build were removed from `archive` and the image
+  verifier's tests.
+* **`TestNoDirectFixtureBuild`**, in `testproc_test.go`: it walks the
+  module from `../..`, skipping `testdata` and `.git`, parses each
+  `_test.go` file, and reports an `exec.Command` or `exec.CommandContext`
+  whose program is the literal `"go"`, or a variable assigned from
+  `exec.LookPath("go")` in that file, with a literal `"build"` argument.
+  It fails when it reads no `_test.go` file.
+* **Before step 1, on the tree at `599ae94`,** it reported exactly the six
+  sites, so it is not vacuous:
+
+```text
+buildinfo/stamp_test.go:65:13
+internal/cmd/selfupdate-release/installer_ps_test.go:535:11
+selfupdate/archive/main_test.go:90:9
+selfupdate/codesign/live_darwin_test.go:59:9
+selfupdate/e2e_running_test.go:81:9
+selfupdate/imageverify_test.go:27:9
+```
+
+**The stray `.git`, after the change** (S1 step 1's reproduction, on the
+tree):
+
+On this Mac:
+
+```text
+./selfupdate/archive/ -run '.': rc=0 fails=0 vcs_errors=0
+./selfupdate/ -run 'Image|TestE2E': rc=0 fails=0 vcs_errors=0
+./buildinfo/ -run '.': rc=0 fails=0 vcs_errors=0
+./internal/cmd/selfupdate-release/ -run '.': rc=0 fails=0 vcs_errors=0
+```
+
+On the Linux test host, a clone at `d396052` with the diff applied (15
+files, SHA-256 matched), from a login shell with its own `TMPDIR` (which
+holds an empty `.git`) and `BASH_ENV`: every package `rc=0`, 0 VCS
+errors, `internal/testproc` included; before the change, `archive` failed
+there.
+
+**Seen failing (step 3),** a `scripts/plant-copy.sh` copy with
+`buildinfo/stamp_test.go`'s build put back to a direct `go build`:
+
+* under the stray `.git` on this Mac: `--- FAIL: TestStampedBinary`,
+  `TestStampedBinary/release` and `/unstamped`, each with `error obtaining
+  VCS status: exit status 128`;
+* `TestNoDirectFixtureBuild`: `testproc_test.go:209:
+  buildinfo/stamp_test.go:67:13: build the fixture with testproc.GoBuild
+  or testproc.Build (0023-MADR D1-A)`.
+
+**Step 4, the platform-only sites:**
+
+* `codesign`, on this Mac, `SELFUPDATE_REQUIRE_CODESIGN=1 -run TestLive`:
+  `TestLiveSignAdHoc` and `TestLiveCheckerExitCodes` `PASS`, plainly and
+  under the stray `.git`; `TestLiveSignIdentity` skips, as before, with no
+  signing identity set.
+* The Windows test host, a clone at `d396052` with the diff applied (15
+  files, SHA-256 matched), Go 1.27.2: `-run '^TestInstallPs1$'
+  ./internal/cmd/selfupdate-release/` `ok` in 24.488 s (the stand-ins
+  built and used); `-run 'Image|TestE2E' ./selfupdate/` `ok`;
+  `./internal/testproc/` `ok`.
+
+**Checks.** Vet for darwin, linux and windows: clean. `make
+pre-add-check FILES="<the 8 Go files>"`: `go-precheck: 8 file(s) clean`.
+`make gate` on this Mac, load average 11.93 before and 60.76 after: every
+step `rc=0`, `arch` `0 differ`, `overall=0`.
+
+**Host cleanup.** Both hosts' run directories were removed.

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/maccavelli/go-selfupdate-lib/buildinfo"
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 )
 
 // stampMain prints Identity as JSON.
@@ -62,12 +63,7 @@ func TestStampedBinary(t *testing.T) {
 			if runtime.GOOS == "windows" {
 				bin += ".exe"
 			}
-			build := exec.Command("go", "build", "-o", bin, "-ldflags", tc.ldflags, ".")
-			build.Dir = dir
-			build.Env = append(os.Environ(), "GOFLAGS=-mod=mod", "GOPROXY=off", "GOWORK=off")
-			if out, err := build.CombinedOutput(); err != nil {
-				t.Fatalf("go build: %v\n%s", err, out)
-			}
+			testproc.GoBuild(t, dir, bin, []string{"GOFLAGS=-mod=mod", "GOPROXY=off", "GOWORK=off"}, "-ldflags", tc.ldflags)
 			out, err := exec.Command(bin).Output()
 			if err != nil {
 				t.Fatalf("run %s: %v", bin, err)

@@ -11,12 +11,12 @@ import (
 	"io"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
 	"testing"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 )
 
@@ -82,16 +82,10 @@ func buildFixture(dir string, p selfupdate.Platform) ([]byte, error) {
 	if err := os.WriteFile(filepath.Join(src, "main.go"), []byte("package main\n\nfunc main() {}\n"), 0o600); err != nil {
 		return nil, err
 	}
-	goBin, err := exec.LookPath("go")
-	if err != nil {
-		return nil, fmt.Errorf("the go command is required to build fixtures: %w", err)
-	}
 	out := filepath.Join(dir, p.OS+"-"+p.Arch)
-	cmd := exec.Command(goBin, "build", "-o", out, ".") //nolint:gosec // the go command, building a fixture
-	cmd.Dir = src
-	cmd.Env = append(os.Environ(), "GOOS="+p.OS, "GOARCH="+p.Arch, "CGO_ENABLED=0", "GOWORK=off", "GOFLAGS=")
-	if b, err := cmd.CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("build %s/%s: %w\n%s", p.OS, p.Arch, err, b)
+	env := []string{"GOOS=" + p.OS, "GOARCH=" + p.Arch, "CGO_ENABLED=0", "GOWORK=off", "GOFLAGS="}
+	if err := testproc.Build(src, out, env); err != nil {
+		return nil, fmt.Errorf("build %s/%s: %w", p.OS, p.Arch, err)
 	}
 	return os.ReadFile(out) //nolint:gosec // the fixture just built
 }

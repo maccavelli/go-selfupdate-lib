@@ -29,9 +29,17 @@ import (
 // the build fails.
 func GoBuild(t testing.TB, dir, out string, env []string, args ...string) {
 	t.Helper()
+	if err := Build(dir, out, env, args...); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Build is GoBuild for a caller with no testing.TB, such as TestMain or a
+// fixture built once: it returns the error, with the go command's output.
+func Build(dir, out string, env []string, args ...string) error {
 	goBin, err := exec.LookPath("go")
 	if err != nil {
-		t.Fatalf("the go command is required to build a fixture: %v", err)
+		return fmt.Errorf("the go command is required to build a fixture: %w", err)
 	}
 	full := append([]string{"build", "-buildvcs=false"}, args...)
 	full = append(full, "-o", out, ".")
@@ -39,8 +47,9 @@ func GoBuild(t testing.TB, dir, out string, env []string, args ...string) {
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), env...)
 	if b, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("go %s in %s: %v\n%s", strings.Join(full, " "), dir, err, b)
+		return fmt.Errorf("go %s in %s: %w\n%s", strings.Join(full, " "), dir, err, b)
 	}
+	return nil
 }
 
 // Proc is a helper process Start started.
