@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strconv"
 	"time"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/winproc"
 )
 
 var (
@@ -46,6 +48,14 @@ var (
 	// ErrLatestOlder is returned when the latest stable release is older
 	// than the running release build (0004-MADR G4).
 	ErrLatestOlder = errors.New("selfupdate: latest release is older than the running version")
+	// ErrBatchFile is returned, wrapped, on Windows when the program to
+	// start is a .bat or .cmd file, in any spelling Windows resolves to
+	// one: a trailing dot or space, an alternate data stream, or no
+	// extension at all. The version probe, service.ExecRunner and
+	// service.DetachProcess, and so the handoff, refuse it, because
+	// cmd.exe would parse its arguments (BatBadBut, CVE-2024-24576;
+	// 0021-MADR D8, 0022-MADR H2). It is never returned elsewhere.
+	ErrBatchFile = winproc.ErrBatchFile
 )
 
 // RateLimitError retains GitHub rate-limit guidance. Missing or malformed

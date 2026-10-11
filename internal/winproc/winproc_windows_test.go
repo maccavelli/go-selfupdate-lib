@@ -132,11 +132,16 @@ func TestNoConsoleWindowThreeDeep(t *testing.T) {
 
 // TestBatchFileRefused: Command and Detached refuse a .bat or .cmd
 // program, whatever its case, and an extensionless path that os/exec
-// resolves to one through PATHEXT (0021-MADR D8).
+// resolves to one through PATHEXT (0021-MADR D8). They refuse it too in
+// each spelling the Win32 layer reads as one: a trailing dot or space,
+// which 0022-PLAN P1 measured reaching cmd.exe, and an alternate data
+// stream (0022-MADR H2).
 func TestBatchFileRefused(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "shim.cmd"), []byte("@echo off\r\n"), 0o600); err != nil {
-		t.Fatal(err)
+	for _, f := range []string{"shim.cmd", "run.bat", "run.cmd"} {
+		if err := os.WriteFile(filepath.Join(dir, f), []byte("@echo off\r\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	for _, c := range []struct {
 		name    string
@@ -147,8 +152,22 @@ func TestBatchFileRefused(t *testing.T) {
 		{"x.Bat", true},
 		{"x.exe", false},
 		{"shim", true},
+		{"run.bat.", true},
+		{"run.bat..", true},
+		{"run.bat ", true},
+		{"run.bat. .", true},
+		{"run.cmd.", true},
+		{"run.cmd ", true},
+		{"RUN.BAT.", true},
+		{"run.bat::$DATA", true},
+		{"run.bat:s", true},
+		{"x.exe.", false},
+		{"x.exe ", false},
+		{"x.bat.exe", false},
+		{"x.batch", false},
 	} {
-		path := filepath.Join(dir, c.name)
+		// Joined by hand: the spelling must reach the guard as written.
+		path := dir + `\` + c.name
 		_, err := Command(context.Background(), path)
 		if got := errors.Is(err, ErrBatchFile); got != c.refused {
 			t.Errorf("Command(%s): refused %t (%v), want %t", c.name, got, err, c.refused)

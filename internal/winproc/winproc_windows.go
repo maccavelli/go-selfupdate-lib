@@ -34,6 +34,11 @@ var hasConsole = sync.OnceValue(func() bool {
 // the same search Start makes, and C:\dir\shim with only shim.cmd beside
 // it is refused too (0021-MADR D8, Amendment A2). Every caller passes an
 // absolute path.
+//
+// The extension is read from the name Windows will open, not the name as
+// written: run.bat. and run.cmd. put an argument under cmd.exe's parser,
+// and run.bat with a trailing space runs the script (measured, 0022-PLAN
+// P1). runName normalizes those spellings first.
 func checkProgram(cmd *exec.Cmd) error {
 	path := cmd.Path
 	if filepath.IsAbs(path) {
@@ -41,11 +46,47 @@ func checkProgram(cmd *exec.Cmd) error {
 			path = lp
 		}
 	}
-	switch strings.ToLower(filepath.Ext(path)) {
+	name := runName(path)
+	switch strings.ToLower(filepath.Ext(name)) {
 	case ".bat", ".cmd":
-		return fmt.Errorf("%w: %s", ErrBatchFile, filepath.Base(path))
+		return fmt.Errorf("%w: %s", ErrBatchFile, name)
 	}
 	return nil
+}
+
+// runName is the final component of path as the Win32 layer reads it:
+// GetFullPathName drops its trailing dots and spaces, and an alternate data
+// stream suffix (run.bat::$DATA) is cut at the first colon (0022-MADR H2).
+// When GetFullPathName fails, the path is read as written.
+func runName(path string) string {
+	if full, err := fullPathName(path); err == nil {
+		path = full
+	}
+	name := filepath.Base(path)
+	if i := strings.IndexByte(name, ':'); i >= 0 {
+		name = name[:i]
+	}
+	return name
+}
+
+// fullPathName is windows.GetFullPathName, with a buffer as long as the
+// call asks for.
+func fullPathName(path string) (string, error) {
+	p, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return "", err
+	}
+	buf := make([]uint16, windows.MAX_PATH)
+	for {
+		n, err := windows.GetFullPathName(p, uint32(len(buf)), &buf[0], nil) //nolint:gosec // len(buf) is at most the length the call asked for
+		if err != nil {
+			return "", err
+		}
+		if int(n) < len(buf) {
+			return windows.UTF16ToString(buf[:n]), nil
+		}
+		buf = make([]uint16, n)
+	}
 }
 
 // attachedAttr gives a child CREATE_NO_WINDOW when this process has no

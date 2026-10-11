@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/maccavelli/go-selfupdate-lib/internal/winproc"
+	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 )
 
 // TestBatchFileRefusedAtStartSites: runExec and DetachProcess refuse a
@@ -25,5 +26,13 @@ func TestBatchFileRefusedAtStartSites(t *testing.T) {
 	}
 	if _, err := DetachProcess(context.Background(), HandOff{ID: "x", Executable: shim}); !errors.Is(err, winproc.ErrBatchFile) {
 		t.Errorf("DetachProcess: %v, want ErrBatchFile", err)
+	}
+	// The exported name a program matches (0022-MADR D3), through the
+	// exported entry points.
+	if _, err := ExecRunner().Run(context.Background(), Command{Path: shim}); !errors.Is(err, selfupdate.ErrBatchFile) {
+		t.Errorf("ExecRunner: %v, want selfupdate.ErrBatchFile", err)
+	}
+	if _, err := DetachProcess(context.Background(), HandOff{ID: "x", Executable: shim}); !errors.Is(err, selfupdate.ErrBatchFile) {
+		t.Errorf("DetachProcess: %v, want selfupdate.ErrBatchFile", err)
 	}
 }

@@ -28,4 +28,7 @@ func TestVersionProberRefusesBatchFile(t *testing.T) {
 	if !errors.Is(err, winproc.ErrBatchFile) {
 		t.Fatalf("Probe: %v, want ErrBatchFile", err)
 	}
+	if !errors.Is(err, ErrBatchFile) {
+		t.Fatalf("Probe: %v, want the exported selfupdate.ErrBatchFile (0022-MADR D3)", err)
+	}
 }

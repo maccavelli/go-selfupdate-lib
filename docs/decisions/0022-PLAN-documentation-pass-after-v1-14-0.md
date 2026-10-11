@@ -592,3 +592,112 @@ false in `v1.14.0`.
   for the guides.
 * **As planned:** tag after P6. The release waits for the whole
   Markdown pass.
+
+### P2 (2026-10-11)
+
+The owner committed P0 and P1 as `dfa481b` and said "proceed". Deviation
+D1 and Q1 are still open; P2 depends on neither.
+
+**Files.** Changed: `selfupdate/errors.go`, `selfupdate/spawn_test.go`,
+`selfupdate/probe_batch_windows_test.go`,
+`selfupdate/service/batch_windows_test.go`,
+`internal/winproc/winproc_windows.go`,
+`internal/winproc/winproc_windows_test.go`. No file is added, so the
+architecture table's counts do not change.
+
+**As built, against the steps:**
+
+* **D3.** `selfupdate.ErrBatchFile = winproc.ErrBatchFile`, with the doc
+  comment of step 1, which also names the spellings H2 refuses.
+  `make apicheck`'s full report against `v1.14.0`, without
+  `-incompatible`: one line under "Compatible changes",
+  `./selfupdate.ErrBatchFile: added`; the incompatible report is empty.
+* **The Windows tests** assert the exported name too. The service test
+  checks it through `ExecRunner().Run` and `DetachProcess`, the two
+  exported entry points, besides the unexported `runExec`.
+* **H1 follows the chain further than step 3 says.** Step 3 asked for the
+  error to reach a `return` in the function that calls `winproc`. The
+  test also follows it out: a plain function that returns the error
+  becomes a source in turn, and its callers are judged the same way,
+  across packages. So the walk covers `startWith` → `startDetached` →
+  `DetachProcess` → `scm` and `taskscheduler`'s `Detach`, and `runExec`.
+  A method, or a call inside a function literal, ends the walk, since its
+  callers cannot be named statically. `chainWant` lists the four
+  functions the walk must reach, so a walk that follows nothing fails.
+  The test is split into `chainLoad`, `chainWalk.pass` and
+  `chainWalk.function` (`gocognit` refused one function at 54).
+* **The identity test** compares `any(ErrBatchFile) != any(winproc.ErrBatchFile)`.
+  A two-way `errors.Is` was refused by staticcheck (SA1032, "arguments
+  have the wrong order"), and `errorlint` refuses `!=` on two errors. It
+  also checks that `errors.Is` finds `ErrBatchFile` in a `%w`-wrapped
+  winproc error.
+* **H2.** `checkProgram` resolves with `exec.LookPath` as before, then
+  takes `runName(path)`: `windows.GetFullPathName` (the path as written
+  when it fails), its final component, cut at the first `:`. The error
+  names that normalized name. `fullPathName` grows its buffer to the
+  length the call asks for.
+* **`TestBatchFileRefused`** gains the rows `run.bat.`, `run.bat..`,
+  `run.bat `, `run.bat. .`, `run.cmd.`, `run.cmd `, `RUN.BAT.`,
+  `run.bat::$DATA` and `run.bat:s` (refused), and `x.exe.`, `x.exe `,
+  `x.bat.exe` and `x.batch` (not refused). Its paths are joined by hand,
+  so each spelling reaches the guard as written.
+
+**Fail first, on this Mac,** each a `scripts/plant-copy.sh` copy, checked
+to have landed:
+
+| Plant | Failing line |
+| :--- | :--- |
+| `runExec`'s wrap `%w` → `%v` | `spawn_test.go:199: service/runner.go:72:14: fmt.Errorf formats err without %w, so errors.Is cannot reach it` |
+| `DetachProcess`'s wrap `%w` → `%v`, the second link | `spawn_test.go:199: service/detach.go:26:14: fmt.Errorf formats err without %w, …` |
+| `taskscheduler.Task.Detach` returns `errors.New(err.Error())`, another package | `spawn_test.go:199: service/taskscheduler/detach.go:70:14: err is returned through a call the walk does not follow` |
+| `startWith` discards `winproc.Detached`'s error | `spawn_test.go:199: service/detach_windows.go:28:12: the call's error is discarded` |
+| `ErrBatchFile = fmt.Errorf("plant: %w", winproc.ErrBatchFile)` | `spawn_test.go:141: selfupdate.ErrBatchFile "plant: …" is not winproc.ErrBatchFile "…"` |
+| the walk's `Command` source renamed, so it follows less | `spawn_test.go:203: the walk did not reach …/selfupdate/service.runExec: it follows less than it should` |
+
+The sentinel plant wraps winproc's value rather than making a new one
+(step 5 said `errors.New("plant")`): `errors.New` would leave the
+`winproc` import unused, and the copy would not compile. A wrapper is
+the harder case, since `errors.Is` still finds winproc's value through
+it.
+
+**The Windows test host,** cross-compiled test binaries, run from the
+ssh shell:
+
+* `internal/winproc`: `TestBatchFileRefused`, `TestNoConsoleWindowThreeDeep`
+  (both subtests), `TestDescends`, `TestCommandPassesProgramAndArgs`,
+  `TestDetachedPassesProgramAndArgs`: `PASS`.
+* `selfupdate`, `-test.run 'Batch|ErrBatchFile|Prob|NoDirectProcessStart'`:
+  `TestVersionProberRefusesBatchFile` and the 14 prober tests pass, as
+  do `TestNoDirectProcessStart` and `TestErrBatchFileIsWinproc`.
+  `TestBatchErrorChain` fails there: the binary runs away from its
+  source tree and finds no file to read, as the tests that read
+  `testdata` do (0021-PLAN T2). The test now says so
+  (`no source file under selfupdate/: … run it from its package
+  directory`). CI's Windows job runs it from source.
+* `selfupdate/service`, `-test.run 'Batch|Detach'`:
+  `TestBatchFileRefusedAtStartSites`, `TestDetachProcessLeavesJob` (both
+  subtests), `TestDetachedRunNeverHandsOffAgain`,
+  `TestProcessDetacherNeedsInside`: `PASS`.
+* **Plant, today's guard** (`name := filepath.Base(path)` in place of
+  `runName`): `TestBatchFileRefused` fails on each of the nine new
+  refused rows, for `Command` and `Detached`, for example
+  `winproc_windows_test.go:173: Command(run.bat.): refused false (<nil>), want true`.
+  The four rows that must not be refused pass.
+* **Plant, the wrapped sentinel:**
+  `probe_batch_windows_test.go:32: Probe: … want the exported selfupdate.ErrBatchFile (0022-MADR D3)`;
+  `batch_windows_test.go:33: ExecRunner: … want selfupdate.ErrBatchFile`;
+  `batch_windows_test.go:36: DetachProcess: … want selfupdate.ErrBatchFile`.
+
+**Found, and not changed:** `TestNoDirectProcessStart` passes when it
+finds no file, as on the host above. That is how it was written in 0021,
+and outside P2's steps. The same "no source file" guard would make it fail
+there instead; it is listed for the owner rather than added here.
+
+**Host cleanup.** The run directory was removed; 0 `selfupdate-p2-`
+directories and 0 `.test.exe` processes remain.
+
+**Checks.** `make pre-add-check FILES="<the 6 Go files>"`: `go-precheck: 6
+file(s) clean (gofmt, golangci-lint, go vet, go test, govulncheck)`. Its
+first run failed on the two lint findings above, which the as-built notes
+answer. `make gate`: every step `rc=0`, `apicheck` `compatible with
+v1.14.0`, `overall=0`.
