@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 date: 2026-10-11
 associated-madr: "0022-MADR-documentation-pass-after-v1-14-0.md"
 ---
@@ -558,3 +558,56 @@ exited, and adds tests. `make apicheck` reports it compatible with
     differ`; `overall=0`.
   * The run directory was removed afterwards; the host's `.git` and
     `BASH_ENV` were not touched.
+
+### Q6: Verification, at closing (2026-10-11)
+
+The owner committed the pin commit as `2cadf13`. It is not pushed yet, so
+CI has not run on it; it changes Markdown only.
+
+* **V1 (measured): met.** Q1's outputs are recorded verbatim. A process
+  that has exited, with a handle held, still opens and keeps its creation
+  time, and is signalled; the snapshot drops it. Task Scheduler's engine
+  held no handle past the exit. Both [unverified] facts in Amendment A2
+  carry these answers.
+* **V2 (liveness): met.** `TestAlive` failed on both plants on the
+  Windows test host (no wait: `want both false`; `born` ignored: `a reused
+  ID`), and passes there. CI's Windows job ran `internal/winproc` at
+  `fa74db4` (runs 38162672238 and 38163532071). The Task Scheduler live
+  tests passed `-count=3` on the host at Q2.
+* **V3 (chain): met.** Every case in Q3's table passes on every OS, in
+  CI's three jobs and on this Mac; each of the ten planted `%v` layers
+  failed its own case and no other.
+* **V4 (no API change): met.** `apidiff`'s full report of the tree
+  against `v1.15.0`, at Q2, was empty; `make apicheck` reported
+  `compatible with v1.15.0` at every phase.
+* **V5 (release): met.** `v1.15.1` is an annotated tag on `fa74db4`; its
+  CI (38163532071) passed 17 of 17 jobs with ten identity legs; the proxy
+  serves it, and `@latest` resolves to it. The pins name it in `2cadf13`,
+  whose `make gate` passed on a Linux test host (Q5's checks).
+
+### Closing (2026-10-11)
+
+Every phase, Q0 to Q6, is recorded above, and V1 to V5 are met. This plan
+is `complete`, here and in the index; Amendment A2 stands as decided.
+
+**Open at closing:**
+
+* **A medium-integrity caller's `SYNCHRONIZE` open** of a task's program
+  is [derived], not measured: every run was from the elevated ssh shell
+  (0021-PLAN Deviation D1). `Alive` falls back to the snapshot if it is
+  refused.
+* **`make gate` on this Mac** could not pass under the load recorded in
+  Q5; the Linux test host's run stands for it. Nothing in the tree
+  explains the timeouts.
+* **From 0021, unchanged:** where `0x8004130B` arises, and whether a
+  GitHub runner can run an interactive-token task.
+* **CI on `2cadf13`** runs once it is pushed.
+
+**Checks.** On this plan and `docs/README.md`: `scripts/check-docs.sh
+--links` `95 links in 2 files, 0 broken`; `--ids` `2 files, 16 deny-list
+rules, 0 findings`; markdownlint `0 issues` on `docs/README.md`. This
+Mac's load average was still about 50, so `make gate` ran on the Linux
+test host as in Q5: a clone at `fa74db4` with the diff from `fa74db4`
+applied (the pin commit and this record; the six files' SHA-256
+matched), `env -u BASH_ENV`, a clean `TMPDIR`, `GATE_SKIP=ids`. Every
+other step `rc=0`, `overall=0`. The run directory was removed.
