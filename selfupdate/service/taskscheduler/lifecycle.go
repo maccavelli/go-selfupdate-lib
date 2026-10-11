@@ -99,6 +99,10 @@ func switches(r registered) (bool, []trigger, error) {
 //
 //  1. it refuses with service.ErrInsideService when this process descends
 //     from the instance: the update must be handed off (0011-MADR §3);
+//     and with ErrTaskDisabled when the task is disabled but its program
+//     runs: Task Scheduler would not run it again, so the update would
+//     leave the program stopped (0022-MADR Amendment A1). Nothing is
+//     changed before either refusal;
 //  2. it records the instance, so WaitHealthy can require a new one;
 //  3. it disables an enabled task, and records that it did, so a
 //     repeating trigger cannot start the task while its binary is replaced:
@@ -142,6 +146,13 @@ func (t *Task) Stop(ctx context.Context, product string) (err error) {
 	if err != nil {
 		return mapError("list the instances of", path, err)
 	}
+	on, err := r.enabled()
+	if err != nil {
+		return mapError("query", path, err)
+	}
+	if !on && len(pids) > 0 {
+		return fmt.Errorf("%w: %s runs while disabled: enable the task, or stop its program, then update", ErrTaskDisabled, path)
+	}
 	var inst instance
 	if len(pids) > 0 {
 		inst = instance{pid: pids[0], born: t.s.created(pids[0])}
@@ -149,7 +160,7 @@ func (t *Task) Stop(ctx context.Context, product string) (err error) {
 		t.previous[path] = inst
 		t.mu.Unlock()
 	}
-	if err := t.disable(r, path); err != nil {
+	if err := t.disable(r, path, on); err != nil {
 		return err
 	}
 	if len(pids) == 0 {
@@ -177,12 +188,9 @@ func (t *Task) Stop(ctx context.Context, product string) (err error) {
 	return nil
 }
 
-// disable disables an enabled task and records that it did.
-func (t *Task) disable(r registered, path string) error {
-	on, err := r.enabled()
-	if err != nil {
-		return mapError("query", path, err)
-	}
+// disable disables the task when on, its state as Stop read it, and
+// records that it did.
+func (t *Task) disable(r registered, path string, on bool) error {
 	if !on {
 		return nil
 	}
@@ -229,7 +237,9 @@ func (t *Task) waitGone(ctx context.Context, path string, inst instance, limit t
 // Start enables the task again when Stop disabled it, then runs it. A task
 // that already runs is left alone. The instance Stop recorded does not
 // count once its process has exited, though Task Scheduler may still list
-// it (0021-MADR Amendment A4, Q7).
+// it (0021-MADR Amendment A4, Q7). A task disabled by anyone but Stop is
+// not enabled, and Task Scheduler refuses to run it: Start returns
+// ErrTaskDisabled (0022-MADR Amendment A1).
 func (t *Task) Start(_ context.Context, product string) (err error) {
 	name, path, err := t.task(product)
 	if err != nil {

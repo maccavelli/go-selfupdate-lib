@@ -211,26 +211,74 @@ func TestStopRequestFails(t *testing.T) {
 	}
 }
 
-// TestStopWithoutRequest: without RequestStop, Stop ends the task at once.
-// A task already disabled is not disabled again, and Start leaves it
-// disabled, as it found it.
+// TestStopWithoutRequest: without RequestStop, Stop ends the task at once,
+// after disabling it, and Start enables it again and runs it.
 func TestStopWithoutRequest(t *testing.T) {
 	f := newFake()
 	ft := f.add(`\demo`, 4242)
+	task, _ := testTask(t, f, Options{})
+	if err := task.Stop(context.Background(), "demo"); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"enable false", "stop"}; !slices.Equal(f.verbs(), want) {
+		t.Fatalf("calls %q, want %q", f.verbs(), want)
+	}
+	err := task.Start(context.Background(), "demo")
+	if want := []string{"enable false", "stop", "enable true", "run"}; err != nil || !slices.Equal(f.verbs(), want) {
+		t.Fatalf("Start: %v, calls %q, want %q", err, f.verbs(), want)
+	}
+	if !ft.on {
+		t.Fatal("Start left disabled the task Stop disabled")
+	}
+}
+
+// TestStopRefusesDisabled: a task the user disabled while its program runs
+// is refused before anything changes, and the program keeps running:
+// Task Scheduler would not run the task again after the update
+// (0022-MADR Amendment A1).
+func TestStopRefusesDisabled(t *testing.T) {
+	f := newFake()
+	ft := f.add(`\demo`, 4242)
+	ft.on = false
+	task, _ := testTask(t, f, Options{})
+	err := task.Stop(context.Background(), "demo")
+	if !errors.Is(err, ErrTaskDisabled) || !strings.Contains(err.Error(), "enable the task") {
+		t.Fatalf("Stop: %v, want ErrTaskDisabled with the remedy", err)
+	}
+	if len(f.verbs()) != 0 || !f.alive[4242] || ft.on {
+		t.Fatalf("calls %q, alive %t, enabled %t; want no call, the program running, the task disabled", f.verbs(), f.alive[4242], ft.on)
+	}
+}
+
+// TestStopDisabledIdle: a disabled task with no program running is left
+// as it is; the update starts nothing, since Enabled reports false.
+func TestStopDisabledIdle(t *testing.T) {
+	f := newFake()
+	ft := f.add(`\demo`, 0)
 	ft.on = false
 	task, _ := testTask(t, f, Options{})
 	if err := task.Stop(context.Background(), "demo"); err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"stop"}; !slices.Equal(f.verbs(), want) {
-		t.Fatalf("calls %q, want %q", f.verbs(), want)
+	if len(f.verbs()) != 0 || ft.on {
+		t.Fatalf("calls %q, enabled %t; want no call, the task disabled", f.verbs(), ft.on)
 	}
+}
+
+// TestStartDisabled: Start on a task Stop did not disable does not enable
+// it, and Task Scheduler's refusal is ErrTaskDisabled (0022-MADR
+// Amendment A1).
+func TestStartDisabled(t *testing.T) {
+	f := newFake()
+	ft := f.add(`\demo`, 0)
+	ft.on = false
+	task, _ := testTask(t, f, Options{})
 	err := task.Start(context.Background(), "demo")
-	if want := []string{"stop", "run"}; err != nil || !slices.Equal(f.verbs(), want) {
-		t.Fatalf("Start: %v, calls %q, want %q", err, f.verbs(), want)
+	if !errors.Is(err, ErrTaskDisabled) || !strings.Contains(err.Error(), "HRESULT 0x80041326") {
+		t.Fatalf("Start: %v, want ErrTaskDisabled", err)
 	}
-	if ft.on {
-		t.Fatal("Start enabled a task Stop did not disable")
+	if want := []string{"run"}; !slices.Equal(f.verbs(), want) || ft.on {
+		t.Fatalf("calls %q, enabled %t; want %q and the task disabled", f.verbs(), ft.on, want)
 	}
 }
 

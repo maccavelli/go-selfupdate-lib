@@ -408,6 +408,37 @@ for the reasons below.
 * Bad, because magic-cli-remote adopts the backend now, and the owner
   asked for it here.
 
+## Amendments
+
+### A1 (2026-10-11): `Stop` refuses a disabled task whose program runs
+
+* **Found in PLAN P1:** Task Scheduler refuses `Run`, and `RunEx` with
+  `TASK_RUN_IGNORE_CONSTRAINTS`, on a disabled task with `0x80041326`
+  (`SCHED_E_TASK_DISABLED`) [measured]. In `v1.14.0`, an update of a
+  program whose task the user disabled while it ran ends the program,
+  replaces the binary, fails at `Start`, fails again at recovery's
+  `Start`, and leaves the program stopped (PLAN Deviation D1).
+* **Decision (the owner, 2026-10-11, "follow recommendations"):**
+  * `Stop` reads the task's enabled state before it changes anything. A
+    disabled task with a running instance is refused with
+    `taskscheduler.ErrTaskDisabled`, whose message names the remedy:
+    enable the task, or stop the program, then update. Nothing is
+    stopped, disabled or replaced, and the program keeps running. A
+    disabled task with no instance is left as it is, as before.
+  * `Start` maps `0x80041326` to `ErrTaskDisabled`, for a task found
+    disabled when `Stop` did not disable it.
+  * `ErrTaskDisabled` is exported, so a program can match the refusal as
+    it matches `selfupdate.ErrBatchFile`; it is a compatible addition in
+    `v1.15.0`.
+* **What this changes:** decision 6's first branch ("if `Run` runs it")
+  did not arise. P3's live test becomes `TestLiveTaskStopRefusesDisabled`,
+  which holds the refusal, the running program, and `Start`'s mapping.
+  The extending guide's line 583 is replaced, not kept.
+* **Not chosen:** `Start` enabling, running and disabling again (the
+  triggers are live in between, and a failed re-disable loses the user's
+  setting during an update that worked); a clearer error at `Start`
+  alone (the program is still left stopped).
+
 ## More Information
 
 * The audit ran read-only at `cf0664c`. Its scratch checkers and example

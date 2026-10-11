@@ -184,6 +184,10 @@ func (r *fakeReg) run() error {
 	if r.t.runErr != nil {
 		return r.t.runErr
 	}
+	if !r.t.on {
+		// Task Scheduler refuses to run a disabled task (0022-PLAN P1).
+		return hrTaskDisabled
+	}
 	r.t.last.Time = r.f.now()
 	if r.t.runExits != nil {
 		r.t.last.Result = *r.t.runExits

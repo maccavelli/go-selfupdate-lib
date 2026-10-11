@@ -683,6 +683,55 @@ func (r countedStop) stop() error {
 	return r.registered.stop()
 }
 
+// TestLiveTaskStopRefusesDisabled: Task Scheduler refuses to run a
+// disabled task (0x80041326, 0022-PLAN P1). So Stop refuses a task the user
+// disabled while its program runs, and leaves the program running and the
+// task disabled; and Start, on the disabled task once its program has
+// ended, reports ErrTaskDisabled and starts nothing (0022-MADR Amendment
+// A1). The task is disabled and ended with schtasks, as a user would.
+func TestLiveTaskStopRefusesDisabled(t *testing.T) {
+	cfg := newLiveTask(t)
+	s := liveSvc(t, cfg)
+	ctx := context.Background()
+	pid := waitReady(t, cfg, 0)
+	if out, err := exec.Command("schtasks", "/change", "/tn", cfg.Name, "/disable").CombinedOutput(); err != nil {
+		t.Fatal(err, string(out))
+	}
+	err := s.Stop(ctx, "demo")
+	if !errors.Is(err, ErrTaskDisabled) {
+		t.Fatalf("Stop: %v, want ErrTaskDisabled", err)
+	}
+	if !s.s.running(uint32(pid), 0) { //nolint:gosec // test PID; 0 reads the process snapshot
+		t.Fatal("Stop ended the program of a disabled task")
+	}
+	r, err := s.s.open(`\`, cfg.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	on, err := r.enabled()
+	_ = r.close()
+	if err != nil || on {
+		t.Fatalf("enabled after the refusal: %t, %v; want the task still disabled", on, err)
+	}
+	if out, err := exec.Command("schtasks", "/end", "/tn", cfg.Name).CombinedOutput(); err != nil {
+		t.Fatal(err, string(out))
+	}
+	for deadline := time.Now().Add(15 * time.Second); s.s.running(uint32(pid), 0); time.Sleep(100 * time.Millisecond) { //nolint:gosec // test PID
+		if time.Now().After(deadline) {
+			t.Fatal("the program did not end on schtasks /end")
+		}
+	}
+	err = s.Start(ctx, "demo")
+	if !errors.Is(err, ErrTaskDisabled) {
+		t.Fatalf("Start: %v, want ErrTaskDisabled", err)
+	}
+	t.Logf("Start on the disabled task: %v", err)
+	time.Sleep(2 * time.Second)
+	if got := starts(t, cfg); len(got) != 1 {
+		t.Fatalf("starts: %v, want only the first", got)
+	}
+}
+
 func TestLiveTaskzCleanup(t *testing.T) {
 	requireLive(t)
 	out, err := exec.Command("schtasks", "/query", "/fo", "csv", "/nh").CombinedOutput()

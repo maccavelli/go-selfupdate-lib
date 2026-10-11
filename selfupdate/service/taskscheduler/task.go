@@ -31,6 +31,15 @@ import (
 // exit after Options.RequestStop before ending it.
 const DefaultStopGrace = 10 * time.Second
 
+// ErrTaskDisabled is returned, wrapped, when the task is disabled where the
+// update needs it to run: Task Scheduler refuses to run a disabled task
+// (SCHED_E_TASK_DISABLED), so Stop refuses a disabled task whose program
+// runs before it changes anything, and Start returns it for a disabled task
+// that Stop did not disable
+// (docs/decisions/0022-MADR-documentation-pass-after-v1-14-0.md Amendment
+// A1).
+var ErrTaskDisabled = errors.New("selfupdate: taskscheduler: the task is disabled, and Task Scheduler does not run a disabled task")
+
 // Options configure a Task.
 type Options struct {
 	// Name is the task's name, without its folder. Empty means the
@@ -188,6 +197,8 @@ func mapError(step, path string, err error) error {
 		return fmt.Errorf("%w: %w", service.ErrNotInstalled, e)
 	case errors.Is(err, hrAccessDenied):
 		return fmt.Errorf("%w: %w", service.ErrPermission, e)
+	case errors.Is(err, hrTaskDisabled):
+		return fmt.Errorf("%w: %w", ErrTaskDisabled, e)
 	}
 	return e
 }

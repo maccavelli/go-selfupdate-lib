@@ -38,6 +38,7 @@ var spawnAllowlist = map[string]string{}
 // the bypass one layer down.
 func TestNoDirectProcessStart(t *testing.T) {
 	var found []string
+	read := 0
 	err := filepath.WalkDir(".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -51,12 +52,16 @@ func TestNoDirectProcessStart(t *testing.T) {
 		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
 			return nil
 		}
+		read++
 		calls, err := directCalls(path)
 		found = append(found, calls...)
 		return err
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if read == 0 {
+		t.Fatal("no source file under selfupdate/: the test reads the source, so run it from its package directory")
 	}
 	used := map[string]bool{}
 	for _, f := range found {

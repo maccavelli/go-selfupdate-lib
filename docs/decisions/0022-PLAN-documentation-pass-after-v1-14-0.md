@@ -284,6 +284,11 @@ the host.
 Runs only if P1 showed `Run` running a disabled task. Otherwise P3 stops
 before any change, and the owner decides (MADR decision 6).
 
+*(Superseded 2026-10-11: P1 showed `Run` refusing a disabled task. The
+steps below are struck; P3 as executed is in the execution record,
+"Owner decisions on D1, Q1 and the source guard", and MADR Amendment
+A1.)*
+
 1. `selfupdate/service/taskscheduler/live_windows_test.go` gains
    `TestLiveTaskStartDisabled`, before `TestLiveTaskzCleanup`, with the
    file's helpers:
@@ -701,3 +706,132 @@ file(s) clean (gofmt, golangci-lint, go vet, go test, govulncheck)`. Its
 first run failed on the two lint findings above, which the as-built notes
 answer. `make gate`: every step `rc=0`, `apicheck` `compatible with
 v1.14.0`, `overall=0`.
+
+### Owner decisions on D1, Q1 and the source guard (2026-10-11)
+
+The owner committed P2 as `c787cf2`, and said: "open questions: 1. follow
+recommendations. 2. as recommended. i committed, proceed, and add the
+guard."
+
+* **Deviation D1:** `Stop` refuses a disabled task whose program runs,
+  with an exported `taskscheduler.ErrTaskDisabled`, and `Start` maps
+  `0x80041326` to it. MADR Amendment A1 records it. P3 is rewritten
+  below; its original step 1 (`TestLiveTaskStartDisabled`, `Start`
+  succeeding on a disabled task) is struck, since Windows refuses it.
+* **Q1:** `v1.15.0` is tagged once P2 to P5 land. P6's Markdown and the
+  pins follow the tag. The phase order becomes P3, P4, P5, P7 (the tag),
+  then P6 with P7's pin commit, then P8.
+* **The guard:** `TestNoDirectProcessStart` fails, as
+  `TestBatchErrorChain` does, when it finds no source file, instead of
+  passing. Added to P3's scope, with its own fail-first run.
+
+**P3, as now planned:**
+
+1. `selfupdate/service/taskscheduler`:
+   * `api.go`: `hrTaskDisabled = hresult(0x80041326)`, measured in P1;
+   * `task.go`: `ErrTaskDisabled`, and `mapError` wraps it for
+     `0x80041326`;
+   * `lifecycle.go`: `Stop` reads `enabled()` after it lists the
+     instances and before it records or disables anything; a disabled
+     task with an instance returns `ErrTaskDisabled` with the remedy.
+     `disable` takes the state already read. The doc comments of `Stop`
+     and `Start` say so.
+2. The fake's `run` returns `0x80041326` for a disabled task, as P1
+   measured. `TestStopWithoutRequest`, which asserted a disabled running
+   task is ended and run again, now uses an enabled task.
+   `TestStopRefusesDisabled` (refused, no call made, the process alive),
+   `TestStopDisabledIdle` (nil, no call) and `TestStartDisabled` (`Start`
+   on a disabled task gives `ErrTaskDisabled`) are added.
+3. `live_windows_test.go` gains `TestLiveTaskStopRefusesDisabled`: the
+   task's program runs; the test disables the task with
+   `schtasks /change /disable`, as a user would; `Stop` returns
+   `ErrTaskDisabled`, the program still runs, and the task is still
+   disabled; the test ends the program with `schtasks /end`; `Start`
+   returns `ErrTaskDisabled`, and no new start is recorded.
+4. `selfupdate/spawn_test.go`: `TestNoDirectProcessStart` fails when it
+   reads no file.
+5. **Seen failing,** on `plant-copy.sh` copies: `Stop` without the
+   refusal (the fake test on this Mac, the live test on the Windows test
+   host); `mapError` without the `0x80041326` case (`TestStartDisabled`,
+   and the live test's `Start`); the guard run from an empty directory.
+6. The live tests pass `-count=3` on the Windows test host, the console
+   sign-in measured.
+7. `make apicheck`'s full report against `v1.14.0` lists `ErrBatchFile`
+   and `ErrTaskDisabled`, as added, and nothing else. Checks; commit.
+
+### P3 (2026-10-11)
+
+**Files.** Changed, in `selfupdate/service/taskscheduler/`: `api.go`,
+`task.go`, `lifecycle.go`, `fake_test.go`, `lifecycle_test.go`,
+`live_windows_test.go`; and `selfupdate/spawn_test.go`. No file is added.
+
+**As built:**
+
+* `hrTaskDisabled = hresult(0x80041326)`. `ErrTaskDisabled` is exported
+  from `task.go`; `mapError` wraps it for that HRESULT, beside
+  `ErrNotInstalled` and `ErrPermission`.
+* `Stop` lists the instances, then reads `enabled()` once. A disabled task
+  with an instance returns `ErrTaskDisabled: \<task> runs while disabled:
+  enable the task, or stop its program, then update`, before anything is
+  recorded, disabled or ended. `disable` takes the state `Stop` read, so
+  the task is queried once. The doc comments of `ErrTaskDisabled`, `Stop`
+  (its step 1) and `Start` say so.
+* The fake's `run` returns `0x80041326` for a disabled task.
+  `TestStopWithoutRequest` now uses an enabled task: `["enable false"
+  "stop"]`, then `["enable false" "stop" "enable true" "run"]`.
+  `TestStopRefusesDisabled`, `TestStopDisabledIdle` and `TestStartDisabled`
+  are added.
+* `TestLiveTaskStopRefusesDisabled` disables and ends the task with
+  `schtasks`, and checks the program by the process snapshot
+  (`running(pid, 0)`), not `pidRunning`, whose `OpenProcess` can succeed
+  on a process that has exited while a handle to it stays open.
+* `TestNoDirectProcessStart` counts the files it reads and fails on none.
+
+**Fail first:**
+
+| Plant | Where | Failing line |
+| :--- | :--- | :--- |
+| `Stop` without the refusal (`if false && !on && …`) | this Mac | `lifecycle_test.go:246: Stop: <nil>, want ErrTaskDisabled with the remedy` |
+| the same | the Windows test host | `live_windows_test.go:702: Stop: <nil>, want ErrTaskDisabled` |
+| `mapError` without the `0x80041326` case | this Mac | `lifecycle_test.go:278: Start: selfupdate: taskscheduler: run \demo: HRESULT 0x80041326, want ErrTaskDisabled` |
+| the same | the Windows test host | `live_windows_test.go:726: Start: selfupdate: taskscheduler: run \selfupdate-live-<random>: HRESULT 0x80041326, want ErrTaskDisabled` |
+| the source guard, run from an empty directory | this Mac | `spawn_test.go:64: no source file under selfupdate/: the test reads the source, so run it from its package directory` |
+| the guard planted away (`read < 0`), same directory | this Mac | `--- PASS: TestNoDirectProcessStart (0.00s)`: the vacuous pass the guard removes |
+
+**The Windows test host.** Cross-compiled on this Mac, run from the ssh
+shell with `SELFUPDATE_REQUIRE_TASKSCHED=1 ./tree-ts.test.exe -test.run
+'^TestCOMLayout$|^TestLiveTask' -test.count=3 -test.v`, exit 0. The
+console check, run from a script a few minutes after (the inline run
+printed nothing, a quoting fault): `console_user_present=True`,
+`explorer_sessions=1`, `logonui=False`. The first pass, verbatim:
+
+```text
+    com_windows_test.go:30: CoInitializeEx HRESULT 0x00000000
+    com_windows_test.go:35: never-run DATE 1999-11-30 00:00:00 -0600 CST LastTaskResult 0x00041303
+    com_windows_test.go:38: never-run GetInstances HRESULT 0x00000000
+    com_windows_test.go:49: idle Stop HRESULT 0x00000001
+--- PASS: TestCOMLayout (0.34s)
+    live_windows_test.go:521: the update's integrity RID 0x2000
+--- PASS: TestLiveTaskUpdate (7.53s)
+    live_windows_test.go:557: instance pids before Stop: [37048]
+    live_windows_test.go:561: start pid 37048 running after Stop: false; pids []
+--- PASS: TestLiveTaskStopHoldsDisabled (72.31s)
+--- PASS: TestLiveTaskRollback (5.41s)
+--- PASS: TestLiveTaskRequestStop (1.12s)
+    live_windows_test.go:728: Start on the disabled task: selfupdate: taskscheduler: the task is disabled, and Task Scheduler does not run a disabled task: selfupdate: taskscheduler: run \selfupdate-live-a8d2f7e8013694ae: HRESULT 0x80041326
+--- PASS: TestLiveTaskStopRefusesDisabled (4.06s)
+--- PASS: TestLiveTaskzCleanup (0.61s)
+```
+
+The later passes match, each test passing, with their own PIDs, task
+names and times: `TestLiveTaskStopRefusesDisabled` 4.04s and 4.07s.
+
+**Host cleanup.** The run directory was removed; 0 `selfupdate-p3-`
+directories, 0 `selfupdate-` tasks, 0 `.test.exe` or `demo.exe`
+processes.
+
+**Checks.** `make apicheck`'s full report against `v1.14.0`:
+`./selfupdate.ErrBatchFile: added` and
+`./selfupdate/service/taskscheduler.ErrTaskDisabled: added`, nothing
+incompatible. `make pre-add-check FILES="<the 7 Go files>"`: `go-precheck:
+7 file(s) clean`. `make gate`: every step `rc=0`, `overall=0`.
