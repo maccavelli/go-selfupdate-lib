@@ -44,8 +44,9 @@ Makefile                    development targets (below)
 scripts/
   gate.sh                   the full pre-commit gate, one line per step
                             (make gate)
-  check-docs.sh             link and anchor check, and the identifier
-                            check against the pre-push guard's deny list
+  check-docs.sh             link and anchor check, the identifier check
+                            against the pre-push guard's deny list, and
+                            the check of this page's file counts
   plant-copy.sh             copies the tree with one planted break, so a
                             new test is seen to fail outside the tree
   go-precheck.sh            the pre-add check
@@ -119,12 +120,12 @@ docs/
 | `selfupdate/verify/ghattest/` | `ghattest` | 2 | 3, plus a `testdata/` capture of `gh attestation verify --format json` | none (`selfupdate`, `service`) |
 | `selfupdate/releasespec/` | `releasespec` | 4 | 5, including a fuzz target, plus 4 `testdata/` specs | none (`selfupdate`, `archive`) |
 | `selfupdate/service/` | `service` | 16 | 14 | `x/sys/windows` (and `selfupdate`, `internal/winproc`) |
-| `selfupdate/service/systemd/` | `systemd` | 8 | 12, plus 3 `testdata/` captures of `systemctl show` | none (`selfupdate`, `service`) |
-| `selfupdate/service/launchd/` | `launchd` | 6 | 11, plus 7 `testdata/` captures of `launchctl print` and `list` | none (`selfupdate`, `service`) |
-| `selfupdate/service/scm/` | `scm` | 7 | 9 | `x/sys/windows`, `x/sys/windows/svc`, `x/sys/windows/svc/mgr` (and `selfupdate`, `service`, `internal/winproc`) |
+| `selfupdate/service/systemd/` | `systemd` | 9 | 17, plus 3 `testdata/` captures of `systemctl show` | none (`selfupdate`, `service`) |
+| `selfupdate/service/launchd/` | `launchd` | 7 | 13, plus 7 `testdata/` captures of `launchctl print` and `list` | none (`selfupdate`, `service`) |
+| `selfupdate/service/scm/` | `scm` | 7 | 12 | `x/sys/windows`, `x/sys/windows/svc`, `x/sys/windows/svc/mgr` (and `selfupdate`, `service`, `internal/winproc`) |
 | `selfupdate/service/taskscheduler/` | `taskscheduler` | 9 | 10 | `x/sys/windows` (and `selfupdate`, `service`, `internal/winproc`) |
 | `internal/winproc/` | `winproc` | 5 | 4 | `x/sys/windows` |
-| `internal/cmd/selfupdate-release/` | `main` | 11, plus the 2 `installer/` templates | 10, plus the `testdata/fixture/` module (2 programs, 2 specs, an extra) | none (`buildinfo`, `selfupdate`, `archive`, `releasespec`) |
+| `internal/cmd/selfupdate-release/` | `main` | 12, plus the 2 `installer/` templates | 11, plus the `testdata/fixture/` module (2 programs, 2 specs, an extra) | none (`buildinfo`, `selfupdate`, `archive`, `releasespec`) |
 
 - `selfupdate` began as `mcplib` `v1.6.0`'s `selfupdate` (commit
   `4e1f9a53e265`), and its `v1.0.x` API is that package's. It differs from
@@ -484,8 +485,10 @@ interpolated into shell.
   order: `gofmt`, `make lint`, `go vet`, `go test -race`, `go test
   -shuffle=on -count=2`, `go mod tidy -diff`, `make apicheck`, `make fuzz`,
   `make vuln`, every script test, `shellcheck`, the cross-target `go vet`,
-  the link check over every tracked Markdown file, and the identifier check
-  on the changed files. Each step's output goes to `GATE_OUT`, and it prints
+  the link check over every tracked Markdown file, the check of this page's
+  package table against the tracked `.go` files
+  ([0022-MADR](decisions/0022-MADR-documentation-pass-after-v1-14-0.md)
+  D2), and the identifier check on the changed files. Each step's output goes to `GATE_OUT`, and it prints
   one `<step> rc=<N>` line; `GATE_SKIP` skips named steps. Records cite it
   in place of the session gate the 0010–0014 PLANs ran
   ([0015-PLAN](decisions/0015-PLAN-remediate-third-debugging-pass-findings.md)
@@ -534,7 +537,8 @@ interpolated into shell.
     every rule on both reusable workflows and `expressions`,
     `permissions` and `pins` on `ci.yml`, its test, and the workflow shape
     test; the full gate's test, the document checker's and the plant
-    helper's, and the link check over every tracked Markdown file.
+    helper's, the link check over every tracked Markdown file, and the
+    check of this page's package table.
   - **The release rehearsal:** two calls of `build-selfupdate-release.yml`
     by its local path on the release tool's fixture, one of raw binaries
     and one of archives, each with its identity runs on the five runners;

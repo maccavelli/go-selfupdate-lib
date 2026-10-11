@@ -21,6 +21,10 @@
 # The ids step runs scripts/check-docs.sh --ids on the changed and untracked
 # files, and needs the pre-push guard's deny list (DISCLOSURE_DENY, or
 # ~/.config/git/disclosure-deny).
+#
+# The arch step runs scripts/check-docs.sh --arch on docs/architecture.md:
+# its package table's file counts against the tracked files
+# (docs/decisions/0022-MADR-documentation-pass-after-v1-14-0.md D2).
 # shellcheck disable=SC2329 # the step functions run through step's "$@"
 set -uo pipefail
 
@@ -132,6 +136,12 @@ doc_links() {
 	return "$rc"
 }
 
+# doc_arch: the architecture page's package table against the tree.
+doc_arch() {
+	need git || return
+	scripts/check-docs.sh --arch docs/architecture.md
+}
+
 # doc_ids: the files changed since HEAD, and the untracked ones.
 doc_ids() {
 	local files rc
@@ -162,6 +172,7 @@ step scripts script_tests
 step shellcheck shell_check
 step crossvet cross_vet
 step links doc_links
+step arch doc_arch
 step ids doc_ids
 
 echo "overall=$overall"

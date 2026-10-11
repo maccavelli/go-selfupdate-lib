@@ -242,6 +242,7 @@ jobs:
           ./scripts/check-docs_test.sh
           ./scripts/plant-copy_test.sh
           git ls-files -z '*.md' | xargs -0 ./scripts/check-docs.sh --links
+          ./scripts/check-docs.sh --arch docs/architecture.md
       # The workflow checker parses YAML with PyYAML, which the runner image
       # does not ship; it is installed hash-pinned into a venv. Like the
       # release fixtures above it runs on Linux: its verdict depends on the

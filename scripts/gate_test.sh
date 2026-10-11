@@ -103,10 +103,10 @@ if [ "$rc" -eq 0 ] && has '^overall=0$' && ! has 'rc=[1-9]'; then
 else
 	bad "all green: rc=$rc out=[$out]"
 fi
-steps="gofmt lint vet race shuffle tidy apicheck fuzz vuln scripts shellcheck crossvet links ids"
+steps="gofmt lint vet race shuffle tidy apicheck fuzz vuln scripts shellcheck crossvet links arch ids"
 missing=""
 for s in $steps; do has "^$s +rc=0" || missing="$missing $s"; done
-if [ -z "$missing" ]; then ok "all fourteen steps report"; else bad "steps not reported:$missing"; fi
+if [ -z "$missing" ]; then ok "all fifteen steps report"; else bad "steps not reported:$missing"; fi
 if [ -f "$WORK/out/lint.txt" ] && [ -f "$WORK/out/ids.txt" ]; then
 	ok "each step's output is kept in GATE_OUT"
 else
@@ -158,8 +158,9 @@ else
 fi
 
 run "$r" "$STUBS" STUB_RC_docs=1
-if [ "$rc" -eq 1 ] && has '^links +rc=1'; then
-	ok "a broken link fails the gate"
+if [ "$rc" -eq 1 ] && has '^links +rc=1' && has '^arch +rc=1' &&
+	grep -q '^check-docs --arch docs/architecture.md$' "$WORK/calls"; then
+	ok "a broken link fails the gate, and so does a table that differs from the tree"
 else
 	bad "links: rc=$rc out=[$out]"
 fi

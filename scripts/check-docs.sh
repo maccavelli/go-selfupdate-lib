@@ -24,11 +24,22 @@
 #                    readable deny list it exits 2, unless --ids-optional,
 #                    which checks home paths alone.
 #
-# Exit 0 when clean, 1 on a finding, 2 on a usage or deny-list error.
+#   --arch FILE      the package table under FILE's "## Go code" heading
+#                    states each directory's number of non-test and test .go
+#                    files as the tree holds them: the first integer in its
+#                    "Non-test files" and "Test files" cells against
+#                    git ls-files in that directory alone
+#                    (docs/decisions/0022-MADR-documentation-pass-after-v1-14-0.md
+#                    D2). A row that differs prints the file, the line and
+#                    both counts. A missing table or a directory with no
+#                    tracked .go file exits 2. Run it from inside the
+#                    repository.
+#
+# Exit 0 when clean, 1 on a finding, 2 on a usage, deny-list or table error.
 set -euo pipefail
 
 usage() {
-	echo "usage: check-docs.sh --links FILE... | --ids [--ids-optional] FILE..." >&2
+	echo "usage: check-docs.sh --links FILE... | --ids [--ids-optional] FILE... | --arch FILE" >&2
 	exit 2
 }
 
@@ -38,6 +49,7 @@ shift
 OPTIONAL=0
 case "$MODE" in
 --links) ;;
+--arch) [ $# -eq 1 ] || usage ;;
 --ids)
 	if [ "${1:-}" = "--ids-optional" ]; then
 		OPTIONAL=1
@@ -51,6 +63,7 @@ DENY="${DISCLOSURE_DENY:-$HOME/.config/git/disclosure-deny}"
 python3 -I - "$MODE" "$OPTIONAL" "$DENY" "$@" <<'PY'
 import os
 import re
+import subprocess
 import sys
 from urllib.parse import unquote
 
@@ -178,9 +191,92 @@ def check_ids():
     return 1 if bad else 0
 
 
+# A table row: its first cell a backquoted directory, such as `buildinfo/`.
+ROW = re.compile(r"^\|\s*`([^`]+?)/?`\s*\|")
+FIRST_INT = re.compile(r"\d+")
+
+
+def cells(line):
+    return [c.strip() for c in line.strip().strip("|").split("|")]
+
+
+def tracked_go():
+    """Map each directory, from the repository's root, to its non-test and
+    test .go counts."""
+    top = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True,
+                         text=True, check=True).stdout.strip()
+    out = subprocess.run(["git", "-C", top, "ls-files", "-z", "--", "*.go"],
+                         capture_output=True, text=True, check=True).stdout
+    counts = {}
+    for name in filter(None, out.split("\0")):
+        d = os.path.dirname(name)
+        plain, test = counts.get(d, (0, 0))
+        counts[d] = (plain, test + 1) if name.endswith("_test.go") else (plain + 1, test)
+    return counts
+
+
+def check_arch():
+    if len(files) != 1:
+        print("check-docs: --arch takes one file", file=sys.stderr)
+        return 2
+    f = files[0]
+    lines = read_lines(f)
+    try:
+        start = next(n for n, line in prose(lines) if line.strip() == "## Go code")
+    except StopIteration:
+        print(f"check-docs: {f}: no \"## Go code\" heading", file=sys.stderr)
+        return 2
+    header, rows = None, []
+    for n in range(start, len(lines)):
+        line = lines[n]
+        if line.startswith("#"):
+            break
+        if not line.startswith("|"):
+            if header is not None:
+                break
+            continue
+        if header is None:
+            header = cells(line)
+            continue
+        m = ROW.match(line)
+        if m:
+            rows.append((n + 1, m.group(1), cells(line)))
+    if header is None or "Non-test files" not in header or "Test files" not in header or not rows:
+        print(f"check-docs: {f}: no package table under \"## Go code\"", file=sys.stderr)
+        return 2
+    ip, it = header.index("Non-test files"), header.index("Test files")
+    counts = tracked_go()
+    bad, broken = [], []
+    for n, d, row in rows:
+        try:
+            want = (int(FIRST_INT.search(row[ip]).group()), int(FIRST_INT.search(row[it]).group()))
+        except (AttributeError, IndexError):
+            broken.append(f"{f}:{n}: {d}: no count in its file cells")
+            continue
+        if d not in counts:
+            broken.append(f"{f}:{n}: {d}: no tracked .go file in that directory")
+            continue
+        got = counts[d]
+        if got != want:
+            bad.append(f"{f}:{n}: {d}: table {want[0]}/{want[1]}, tree {got[0]}/{got[1]}")
+    for b in broken:
+        print(b, file=sys.stderr)
+    for b in bad:
+        print(b)
+    print(f"check-docs: {len(rows)} rows in {f}, {len(bad)} differ")
+    if broken:
+        return 2
+    return 1 if bad else 0
+
+
 try:
-    sys.exit(check_links() if mode == "--links" else check_ids())
+    if mode == "--links":
+        sys.exit(check_links())
+    sys.exit(check_arch() if mode == "--arch" else check_ids())
 except OSError as err:
     print(f"check-docs: {err.filename}: {err.strerror}", file=sys.stderr)
+    sys.exit(2)
+except subprocess.CalledProcessError as err:
+    print(f"check-docs: {' '.join(err.cmd)}: {err.stderr.strip()}", file=sys.stderr)
     sys.exit(2)
 PY

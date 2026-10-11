@@ -835,3 +835,79 @@ processes.
 `./selfupdate/service/taskscheduler.ErrTaskDisabled: added`, nothing
 incompatible. `make pre-add-check FILES="<the 7 Go files>"`: `go-precheck:
 7 file(s) clean`. `make gate`: every step `rc=0`, `overall=0`.
+
+### P4 (2026-10-11)
+
+The owner committed P3 as `687fce6`, and said "proceed".
+
+**Files.** Changed: `scripts/check-docs.sh`, `scripts/check-docs_test.sh`,
+`scripts/gate.sh`, `scripts/gate_test.sh`, `.github/workflows/ci.yml`,
+`docs/architecture.md`, `AGENTS.md`.
+
+**As built:**
+
+* `check-docs.sh --arch FILE`, in the script's Python:
+  * the table is the first one under `## Go code`, up to the next
+    heading. Its header names the "Non-test files" and "Test files"
+    columns, and a row is one whose first cell is a backquoted directory;
+  * the counts are `git ls-files -z -- '*.go'`, from the repository's
+    root, split by directory and on `_test.go`;
+  * a row that differs prints `<file>:<line>: <dir>: table N/M, tree N/M`
+    and the mode exits 1. A missing heading or table, a row with no
+    count, or a directory with no tracked `.go` file exits 2. `--arch`
+    takes one file.
+* `gate.sh`: `step arch doc_arch` after `links`, which runs the mode on
+  `docs/architecture.md`; its header says so.
+* `ci.yml`, "Verify the gate and document tools": the mode after the
+  `--links` line.
+* `AGENTS.md`'s `make gate` paragraph names the step, and says that a
+  change adding or removing a `.go` file updates the table in the same
+  commit. `docs/architecture.md` names it in the tree's `check-docs.sh`
+  line, the `make gate` bullet and the CI bullet. G3 in the same AGENTS.md
+  paragraph is P6's.
+
+**Seen failing on the real table first (step 2),** the mode on
+`cf0664c`'s rows, unchanged until step 3:
+
+```text
+docs/architecture.md:122: selfupdate/service/systemd: table 8/12, tree 9/17
+docs/architecture.md:123: selfupdate/service/launchd: table 6/11, tree 7/13
+docs/architecture.md:124: selfupdate/service/scm: table 7/9, tree 7/12
+docs/architecture.md:127: internal/cmd/selfupdate-release: table 11/10, tree 12/11
+check-docs: 15 rows in docs/architecture.md, 4 differ
+```
+
+Exactly A1 to A4, exit 1. P2 and P3 added no file, so no other row
+moved. After step 3: `check-docs: 15 rows in docs/architecture.md, 0
+differ`, exit 0.
+
+**Tests.** `check-docs_test.sh` gains five cases, in a throwaway
+repository: a matching table passes, with an untracked `.go` file not
+counted; a wrong count fails with its line and both counts; no table is
+exit 2; a row for a directory with no tracked file is exit 2; two files
+are a usage error. `16 passed, 0 failed`. `gate_test.sh` lists the
+fifteen steps, and its link case now also requires `arch rc=1` and the
+`check-docs --arch docs/architecture.md` call: `10 passed, 0 failed`.
+
+**Seen failing,** `plant-copy.sh` copies run through each test's
+`SCRIPT`:
+
+* `check-docs.sh` with `if False and got != want:`:
+  `FAIL arch drift: rc=0 out=[check-docs: 2 rows in docs/drift.md, 0 differ]`,
+  `15 passed, 1 failed`;
+* `gate.sh` without `step arch doc_arch`: `FAIL steps not reported: arch`,
+  and the link case fails; `8 passed, 2 failed`.
+
+**Checks.**
+
+* `shellcheck` on the four scripts: clean.
+* `actionlint` v1.7.12 on `ci.yml`: clean.
+* `check-workflows.sh` with `expressions`, `permissions` and `pins` on
+  `ci.yml`, and with every rule on the reusable workflows: each exit 0.
+  The hash-pinned PyYAML in `requirements-workflow-check.txt` lists only
+  CI's Linux wheels, so this Mac's venv refused the macOS wheel; the runs
+  used the host's PyYAML, the same 6.0.3.
+* `check-docs.sh --links` on `AGENTS.md` and `docs/architecture.md`, 0
+  broken; markdownlint, 0 issues.
+* `make gate`: every step `rc=0`, among them `arch rc=0 check-docs: 15
+  rows in docs/architecture.md, 0 differ`; `overall=0`.
