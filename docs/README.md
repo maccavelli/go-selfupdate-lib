@@ -59,7 +59,7 @@ name, and the files they cite moved with the rename
 | 0021 | MADR | [Add a Task Scheduler reference lifecycle built on magic-cli-remote's measured Windows behaviour, and start the library's own Windows children without a window](decisions/0021-MADR-task-scheduler-lifecycle-and-windowless-children.md) | accepted |
 | 0021 | PLAN | [Implement a Task Scheduler reference lifecycle and windowless Windows children](decisions/0021-PLAN-task-scheduler-lifecycle-and-windowless-children.md) | complete |
 | 0022 | MADR | [Correct the documentation against v1.14.0, check the architecture table in the gate, export and harden the batch-file refusal, and measure Task Scheduler's run of a disabled task](decisions/0022-MADR-documentation-pass-after-v1-14-0.md) | accepted |
-| 0022 | PLAN | [Implement the documentation pass after v1.14.0, the architecture-table check, a hardened `selfupdate.ErrBatchFile`, and the disabled-task measurement](decisions/0022-PLAN-documentation-pass-after-v1-14-0.md) | in-progress |
+| 0022 | PLAN | [Implement the documentation pass after v1.14.0, the architecture-table check, a hardened `selfupdate.ErrBatchFile`, and the disabled-task measurement](decisions/0022-PLAN-documentation-pass-after-v1-14-0.md) | complete |
 
 ## I want to…
 

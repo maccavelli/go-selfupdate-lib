@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 date: 2026-10-11
 associated-madr: "0022-MADR-documentation-pass-after-v1-14-0.md"
 ---
@@ -1094,3 +1094,72 @@ compatible with `v1.14.0`; the exported changes are two new errors.
 * **Records:**
   [0022-MADR-documentation-pass-after-v1-14-0.md](0022-MADR-documentation-pass-after-v1-14-0.md)
   and this PLAN, with Amendment A1.
+
+### P8: Verification, at closing (2026-10-11)
+
+The owner committed P6 and the pin commit as `eb36b56`. It is not pushed
+yet, so CI has not run on it; P6 changed no Go file, and `make gate`
+passed on its tree.
+
+* **V1 (findings): met.** All 50 are closed, each with its change named
+  in a phase record: A1 to A4 in P4; C1 to C12 in P5; A5, A6, X1 to X4,
+  G1 to G4, R1, E1 to E11, B1 to B7, M1 to M4 and N1 in P6. None was left
+  undone.
+* **V2 (table): met.** `--arch` on `cf0664c`'s table reported exactly A1
+  to A4, exit 1, and reports `15 rows …, 0 differ` on the tree. Its test
+  failed on the `if False and …` plant, and the gate's test on a gate
+  without the step. `make gate`'s `arch` step and CI's (run 38149442253,
+  Linux job) both ran it.
+* **V3 (sentinel and chain): met, with one name more than planned.** The
+  probe, `ExecRunner` and `DetachProcess` tests failed on the wrapped
+  sentinel on the Windows test host, and pass there and in CI's Windows
+  job. `TestBatchErrorChain` failed on each of five plants, naming the
+  line, and passes on every OS from source. `apicheck` lists
+  `ErrBatchFile` and, by Amendment A1, `ErrTaskDisabled`; the plan's "only
+  `ErrBatchFile`" predates A1.
+* **V4 (spellings): met.** P1's table is recorded verbatim. Each spelling
+  that ran a script or put an argument under `cmd.exe` is refused, and
+  `TestBatchFileRefused`'s nine new rows failed on `v1.14.0`'s guard on
+  the Windows test host.
+* **V5 (disabled task): met, by the plan's second branch.** P1's task
+  probe is recorded; P3 stopped, and the owner's decision is recorded as
+  Deviation D1 and MADR Amendment A1. `TestLiveTaskStopRefusesDisabled`,
+  which replaced the planned `TestLiveTaskStartDisabled`, passed
+  `-count=3` on the Windows test host, and failed on both of its plants
+  there.
+* **V6 (no unplanned change): met.** P5's diff is comments only, by
+  `git diff -U0`. P6 changed no Go file. `apicheck` shows two additions,
+  as in V3.
+* **V7 (release): met.** `v1.15.0` is an annotated tag on `ac4ef55`; its
+  CI (38150539554) passed 17 of 17 jobs, with ten identity legs; the
+  proxy serves it, and `@latest` resolves to it. The pins name it in
+  `eb36b56`.
+
+### Closing (2026-10-11)
+
+Every phase, P0 to P8, is recorded above, and V1 to V7 are met as stated.
+This PLAN is `complete`, here and in the index. The MADR stays
+`accepted`, with Amendment A1.
+
+**Open at closing:**
+
+* **From 0021, unchanged:** where `0x8004130B` arises is [unverified],
+  so no test reaches its mapping; and whether a GitHub Windows runner can
+  run an interactive-token task is [unverified], so CI skips the live
+  Task Scheduler tests and the Windows test host is their evidence.
+* **`TestBatchErrorChain`'s reach:** it follows the error through plain
+  functions. A method, or a function literal, ends the walk, so a future
+  site that returns the error through one is judged only up to there.
+  Today's exported entry points are reached.
+* **`pidRunning`** in `live_windows_test.go` opens a process handle,
+  which can succeed on a process that has exited. Only a log line in
+  `TestLiveTaskStopHoldsDisabled` uses it now; the new test uses the
+  process snapshot.
+* **CI on `eb36b56`** runs once it is pushed.
+
+**Checks.** On this PLAN and `docs/README.md`: `scripts/check-docs.sh
+--links` `93 links in 2 files, 0 broken`; `--ids` `2 files, 16 deny-list
+rules, 0 findings`; markdownlint `0 issues` on `docs/README.md`, the
+only one of the two its configuration lints. `make gate`: every step
+`rc=0`, `apicheck` `compatible with v1.15.0`, `arch` `0 differ`,
+`overall=0`.
