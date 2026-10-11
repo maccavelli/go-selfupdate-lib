@@ -256,8 +256,11 @@ docs/
   starts (0021-MADR D7 and D8): on Windows, `CREATE_NO_WINDOW` for a child
   of a process with no console, a windowless console for the detached
   handoff run, and a refusal of a `.bat` or `.cmd` program. It holds the
-  ancestor walk `scm` and `taskscheduler` share, `Descends`.
-  `TestNoDirectProcessStart` (`selfupdate/spawn_test.go`) refuses any
+  ancestor walk `scm` and `taskscheduler` share, `Descends`, and `Alive`,
+  the one check of whether a process still runs: a process that has
+  exited is gone, though another process holds a handle to it
+  ([0022-MADR](decisions/0022-MADR-documentation-pass-after-v1-14-0.md)
+  Amendment A2). `TestNoDirectProcessStart` (`selfupdate/spawn_test.go`) refuses any
   other process start in a non-test file under `selfupdate/`.
 - `cli.Options.HandOff` (`run.go`) runs `Detach` before an apply and
   `Report` after an update that ran.

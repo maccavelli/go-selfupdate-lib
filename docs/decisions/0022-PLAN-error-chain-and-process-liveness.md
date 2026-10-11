@@ -443,3 +443,18 @@ fixed with `gofmt -w`; then `go-precheck: 5 file(s) clean`. `make gate`:
 every step `rc=0`, `apicheck` `compatible with v1.15.0`, `overall=0`.
 The cases need no Windows host: they run on every OS, CI's three
 included.
+
+### Q4 (2026-10-11)
+
+The owner committed Q3 as `d40b429`, and said "proceed".
+
+* `docs/architecture.md`: the `internal/winproc` bullet names `Alive`, the
+  one check of whether a process still runs, with Amendment A2.
+* The migration guide: `### From v1.15.0 to v1.15.1` in §15, before its
+  `### Check`, in the earlier patch parts' form: what `Stop`, `Start` and
+  the hop wait read now, the tests, and no API change. §2's list of
+  releases gains `v1.15.1`. The guide's pins move with Q5's pin commit.
+* **Checks.** `scripts/check-docs.sh --links` `60 links in 2 files, 0
+  broken`; `--ids` `2 files, 16 deny-list rules, 0 findings`; markdownlint
+  `0 issues`; `--arch` `0 differ`. `make gate`: every step `rc=0`,
+  `overall=0`.

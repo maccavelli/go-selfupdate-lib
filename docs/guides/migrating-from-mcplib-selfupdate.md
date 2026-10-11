@@ -43,7 +43,8 @@ API; its fix is in [From v1.12.0 to v1.12.1](#from-v1120-to-v1121).
 [14. From v1.13 to v1.14](#14-from-v113-to-v114).
 `v1.15.0` adds two errors, refuses more batch-file spellings, and refuses
 a disabled task it cannot start again: see
-[15. From v1.14 to v1.15](#15-from-v114-to-v115).
+[15. From v1.14 to v1.15](#15-from-v114-to-v115). `v1.15.1` changes no API;
+its fix is in [From v1.15.0 to v1.15.1](#from-v1150-to-v1151).
 
 Replace every `github.com/maccavelli/mcplib/selfupdate` import with
 `github.com/maccavelli/go-selfupdate-lib/selfupdate`. No identifier or signature
@@ -1068,6 +1069,25 @@ new errors. Why, and how, is in
   program, and update again. Nothing was changed.
 - **If a path you give the library ends in a dot or a space,** remove
   it: Windows reads it as the name without them.
+
+### From v1.15.0 to v1.15.1
+
+`v1.15.1` is a fix, and changes no API: `make apicheck` reports it
+compatible with `v1.15.0`. §15's `go get` above takes the current
+release. What changed,
+and why, is in
+[0022-MADR](../decisions/0022-MADR-documentation-pass-after-v1-14-0.md),
+Amendment A2.
+
+- **Task Scheduler reads an exited program as gone.** `Stop` waited for
+  the program's process by its creation time, which Windows keeps for as
+  long as any process holds a handle to it, so a monitor or an antivirus
+  that held one could make `Stop` wait to its timeout and fail with
+  `ErrTimeout`, or make `Start` skip its run. Both now wait on the
+  process itself, which Windows signals when it exits (measured). The
+  handoff's wait for its hop uses the same check.
+- **Tests:** `errors.Is(err, selfupdate.ErrBatchFile)` is now held at
+  each entry point a program calls, on every OS.
 
 ### Check
 
