@@ -1869,3 +1869,98 @@ in 4 files, 0 broken`; `--ids` with this PLAN `5 files, 16 deny-list
 rules, 0 findings`; markdownlint `0 issues`. `make gate`: every step
 `rc=0`, `links` `443 links in 60 files, 0 broken`, `apicheck`
 `compatible with v1.13.0`, `overall=0`.
+
+### T8, `v1.14.0` (2026-10-10)
+
+* **The release commit** is `81dae60060274260e6f500f383aa1b79cee460d1`,
+  T7's, which the owner committed and pushed.
+* **Step 1:** CI run 38107353156 on `main` at `81dae60` passed all 17
+  jobs. T5's and T6's steps are as in "CI for T6 and T6a": the
+  `TestLiveTask*` skip with their stated reason.
+* **Step 2:** the live records are T2 step 9's, T3's, T6's re-run and
+  T6a's.
+* **Step 3, the tag,** was made and pushed by the owner. Verified:
+  * `v1.14.0` is an annotated tag (`git cat-file -t` gives `tag`), object
+    `40298f8592b1920a482809b7d2c94bd2e6927c10`, peeled to `81dae60`;
+  * `scripts/check-release-tag.sh v1.14.0` exits 0.
+* **Step 4:**
+  * `git ls-remote origin` gives `81dae60…` for `refs/tags/v1.14.0^{}`
+    and for `refs/heads/main`;
+  * the tag's CI run, 38108021224, passed all 17 jobs; all ten identity
+    legs print `v1.14.0 (release) 81dae6006027`.
+* **Step 6:**
+  * `GOPROXY=https://proxy.golang.org GOFLAGS=-mod=mod go list -m -json
+    github.com/maccavelli/go-selfupdate-lib@v1.14.0` gives `v1.14.0`,
+    `Time` `2026-10-11T03:06:48Z` (UTC), `Origin.Hash` the release commit
+    and `Ref` `refs/tags/v1.14.0`;
+  * `@latest` resolves to `v1.14.0`.
+* **Step 5, the pin commit.**
+  * **Candidates:** 37 lines, from
+    `git grep -n 'v1\.13\.0\|5e199c8' -- README.md docs/architecture.md docs/guides`.
+  * **Preconditions:** `git diff v1.13.0 v1.14.0` of `.github/workflows/`,
+    `internal/cmd/` and `scripts/` changes only `ci.yml`; neither release
+    workflow nor the installer templates changed.
+  * **Changed,** 32 lines, to `81dae600… # v1.14.0` or `v1.14.0`, by a
+    script that changed only the listed lines and asserted each one
+    changed:
+    * `README.md:24` (the current release), `:28` (`go get`), `:126` (the
+      publish pin);
+    * `docs/architecture.md:23-24`, the current release and its commit;
+    * the building guide: `:26` ("the examples below pin"), `:161`,
+      `:172` and `:250` (the workflow pins), `:183` (the `ls-remote`
+      example);
+    * the migration guide:
+      * `:23` (`go get`) and `:26` (current release);
+      * after `:41`, "`v1.14.0` adds a package and changes two Windows
+        behaviours: see [14. …]";
+      * `:92` (§3's pin), `:110` ("`v1.11.0` to `v1.14.0` change nothing
+        in it"), `:112` ("the example pins") and `:115` (`ls-remote`);
+      * `:161` (§5's `go.mod`);
+      * eight `go get` lines (`:380`, `:467`, `:511`, `:563`, `:608`,
+        `:712`, `:823`, `:913`);
+      * seven `go list` checks (`:506`, `:558`, `:602`, `:704`, `:817`,
+        `:908`, `:953`).
+  * **Kept,** 5 lines that state what `v1.13.0` itself changed, or that
+    §14 compares with: the extending guide `:100` (schema 4 "since
+    `v1.13.0`") and `:603` (replace-before-stop "since `v1.13.0`"); the
+    migration guide `:40` (the summary of `v1.13.0`), §13's "`v1.13.0`
+    lets a managed install…", and §14's "compatible with `v1.13.0`".
+* **Step 7:** the release notes below.
+* **Checks on the pin commit:** links, identifiers and markdownlint on
+  its five files, clean; `make gate` `overall=0`, `apicheck` `compatible
+  with v1.14.0`, the newest tag now.
+
+### Release notes for v1.14.0 (2026-10-10)
+
+`v1.14.0` adds a Task Scheduler backend, and changes how the library
+starts processes on Windows. `make apicheck` reports it compatible with
+`v1.13.0`; the only exported change is the new package.
+
+* **`selfupdate/service/taskscheduler`:** a `Lifecycle`,
+  `EnabledLifecycle`, `Reconciler` and `service.Detacher` for one task the
+  program's setup registered, such as a per-user task started at logon,
+  through Task Scheduler's COM API.
+  * `Stop` disables the task first, so a repeating watchdog trigger
+    cannot restart the program mid-update; then `Options.RequestStop`,
+    when set, and up to `Options.StopGrace` for the program to exit; then
+    it ends the task and waits for the process.
+  * `Start` enables only what `Stop` disabled. `WaitHealthy` needs a new
+    process, and reports a run that exits with its exit code.
+  * `Reconcile` with `RewritePath` rewrites the one `Exec` action's path,
+    for an `InteractiveToken` task only, and `Restore` puts back the saved
+    definition byte for byte.
+  * Updating from inside the task hands off as the `scm` backend does.
+* **Windows children without a console window:** a process the library
+  starts from a program with no console gets `CREATE_NO_WINDOW`, and the
+  handoff's detached run gets a console with no window in place of
+  `DETACHED_PROCESS`.
+* **Batch files refused:** the version probe,
+  `service.NewExecReconciler` and the handoff refuse a `.bat` or `.cmd`
+  program on Windows, including one found for a path with no extension
+  (BatBadBut, CVE-2024-24576).
+* **Internal:** `internal/winproc` is the one constructor for process
+  starts, with a static test that refuses any other in `selfupdate/`; the
+  SCM backend's ancestor walk moved there unchanged.
+* **Tests:** live tests against Task Scheduler, run on a Windows host;
+  on a GitHub runner they skip, since it has no console session.
+* **Records:** this PLAN and its MADR, with Amendments A1 to A4.
