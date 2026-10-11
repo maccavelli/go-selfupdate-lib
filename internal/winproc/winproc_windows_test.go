@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -77,6 +78,9 @@ func helper(mode, dir string) int {
 		if err := report(dir, "grandchild"); err != nil {
 			return 9
 		}
+	case "until-eof":
+		// TestAlive's child: it runs until its standard input closes.
+		_, _ = io.Copy(io.Discard, os.Stdin)
 	default:
 		return 2
 	}
@@ -176,5 +180,57 @@ func TestBatchFileRefused(t *testing.T) {
 		if got := errors.Is(err, ErrBatchFile); got != c.refused {
 			t.Errorf("Detached(%s): refused %t (%v), want %t", c.name, got, err, c.refused)
 		}
+	}
+}
+
+// TestAlive: a running child is alive; with another creation time it is a
+// reused ID, not alive; once it exits it is not alive, though this test
+// still holds a handle to it, which a creation-time check alone missed;
+// and with no process left it is not alive (0022-MADR Amendment A2).
+func TestAlive(t *testing.T) {
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(self, helperArg, "until-eof", t.TempDir())
+	in, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	pid := uint32(cmd.Process.Pid) //nolint:gosec // a process ID fits in a DWORD
+	held, err := windows.OpenProcess(windows.SYNCHRONIZE|windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	closed := false
+	defer func() {
+		if !closed {
+			_ = windows.CloseHandle(held)
+		}
+	}()
+	born := createdTime(held)
+	if born == 0 {
+		t.Fatal("no creation time for the child")
+	}
+	if !Alive(pid, 0) || !Alive(pid, born) {
+		t.Errorf("running child: Alive(pid, 0) %t, Alive(pid, born) %t; want both true", Alive(pid, 0), Alive(pid, born))
+	}
+	if Alive(pid, born+1) {
+		t.Error("running child with another creation time: alive, want a reused ID to read as gone")
+	}
+	_ = in.Close()
+	if err := cmd.Wait(); err != nil {
+		t.Fatal(err)
+	}
+	if Alive(pid, 0) || Alive(pid, born) {
+		t.Errorf("exited child, its handle held: Alive(pid, 0) %t, Alive(pid, born) %t; want both false", Alive(pid, 0), Alive(pid, born))
+	}
+	_ = windows.CloseHandle(held)
+	closed = true
+	if Alive(pid, 0) {
+		t.Error("exited child, no handle left: alive")
 	}
 }

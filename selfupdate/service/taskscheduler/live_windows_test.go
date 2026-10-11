@@ -558,7 +558,7 @@ func TestLiveTaskStopHoldsDisabled(t *testing.T) {
 	if err := s.Stop(context.Background(), "demo"); err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("start pid %d running after Stop: %t; pids %v", first, pidRunning(uint32(first)), instancePIDs(t, s, cfg.Name)) //nolint:gosec // test PID
+	t.Logf("start pid %d running after Stop: %t; pids %v", first, s.s.running(uint32(first), 0), instancePIDs(t, s, cfg.Name)) //nolint:gosec // test PID
 	time.Sleep(holdWait)
 	if got = starts(t, cfg); len(got) != 1 {
 		t.Fatalf("a start ran while disabled: %v", got)
@@ -585,15 +585,6 @@ func instancePIDs(t *testing.T, s *Task, name string) []uint32 {
 		t.Fatal(err)
 	}
 	return pids
-}
-
-func pidRunning(pid uint32) bool {
-	h, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
-	if err != nil {
-		return false
-	}
-	_ = windows.CloseHandle(h)
-	return true
 }
 
 // TestLiveTaskRollback: the task runs a copy under old\, so the install

@@ -54,20 +54,11 @@ func (sysSched) created(pid uint32) uint64 {
 	return uint64(created.HighDateTime)<<32 | uint64(created.LowDateTime)
 }
 
-func (s sysSched) running(pid uint32, born uint64) bool {
-	if born != 0 {
-		return s.created(pid) == born
-	}
-	procs, err := s.processes()
-	if err != nil {
-		return false
-	}
-	for _, p := range procs {
-		if p.PID == pid {
-			return true
-		}
-	}
-	return false
+// running is winproc.Alive: a process that has exited reads as gone even
+// while another process holds a handle to it, which a creation-time check
+// alone missed (0022-MADR Amendment A2).
+func (sysSched) running(pid uint32, born uint64) bool {
+	return winproc.Alive(pid, born)
 }
 
 type sysReg struct {

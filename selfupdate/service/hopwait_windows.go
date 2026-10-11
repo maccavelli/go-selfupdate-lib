@@ -3,10 +3,11 @@
 package service
 
 import (
-	"errors"
 	"time"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/winproc"
 )
 
 // waitHopExit waits, up to d, for process pid to exit. A process created
@@ -34,10 +35,5 @@ func created(h windows.Handle) uint64 {
 
 // processRunning reports whether process pid exists and has not exited.
 func processRunning(pid int) bool {
-	h, err := windows.OpenProcess(windows.SYNCHRONIZE, false, uint32(pid)) //nolint:gosec // a process ID fits in a DWORD
-	if err != nil {
-		return false
-	}
-	ev, err := windows.WaitForSingleObject(h, 0)
-	return errors.Join(err, windows.CloseHandle(h)) == nil && ev == uint32(windows.WAIT_TIMEOUT)
+	return winproc.Alive(uint32(pid), 0) //nolint:gosec // a process ID fits in a DWORD
 }

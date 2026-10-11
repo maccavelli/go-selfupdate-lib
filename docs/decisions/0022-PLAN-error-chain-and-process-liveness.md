@@ -307,3 +307,77 @@ removed; 0 `selfupdate-q1-` directories, 0 `selfupdate-` tasks, 0
 `aliveprobe` processes.
 
 The MADR's two [unverified] facts carry these answers.
+
+### Q2 (2026-10-11)
+
+The owner committed Q0 and Q1 as `9e59f0e`, and said "proceed".
+
+**Files.** Changed: `internal/winproc/winproc_windows.go`,
+`internal/winproc/winproc_windows_test.go`,
+`selfupdate/service/taskscheduler/scheduler_windows.go`,
+`selfupdate/service/taskscheduler/live_windows_test.go`,
+`selfupdate/service/hopwait_windows.go`. No file is added, so the
+architecture table's counts do not change.
+
+**As built:**
+
+* `winproc.Alive(pid uint32, born uint64) bool`, in
+  `winproc_windows.go`, as step 1 says: an open with `SYNCHRONIZE |
+  PROCESS_QUERY_LIMITED_INFORMATION`; `ERROR_ACCESS_DENIED` falls back to
+  the snapshot (`inSnapshot`) without checking `born`; any other open
+  error is not alive; a `born` that differs from `GetProcessTimes`'s
+  creation time is not alive; alive only on `WAIT_TIMEOUT`. It is
+  Windows-only, as every caller is.
+* `sysSched.running` is `winproc.Alive(pid, born)`; with `born` 0 it now
+  waits on the process rather than reading the snapshot, which Q1 showed
+  right for an exited process too. `sysSched.processes` stays, for the
+  ancestor walk; `created` stays, for the `born` that `Stop` records.
+* `service.processRunning` is `winproc.Alive(uint32(pid), 0)`; its own
+  `SYNCHRONIZE` open and wait are gone.
+* `pidRunning` is removed; `TestLiveTaskStopHoldsDisabled`'s log line uses
+  `s.s.running`.
+* `TestAlive` uses a new helper mode, `until-eof`, so the test chooses
+  when the child exits, and holds its own handle across the exit.
+
+**Fail first, on the Windows test host,** each a `scripts/plant-copy.sh`
+copy, checked to have landed:
+
+| Plant | Failing line |
+| :--- | :--- |
+| `Alive` without the wait (`return true` after the `born` check) | `winproc_windows_test.go:229: exited child, its handle held: Alive(pid, 0) true, Alive(pid, born) true; want both false` |
+| `Alive` ignoring `born` | `winproc_windows_test.go:222: running child with another creation time: alive, want a reused ID to read as gone` |
+
+**The Windows test host,** cross-compiled here, run from the elevated ssh
+shell; the console sign-in `console_user_present=True`,
+`explorer_sessions=1`, `logonui=False`:
+
+* `internal/winproc`: every test `PASS`, `TestAlive` among them.
+* `selfupdate/service`, `-test.run 'Hop|Detach|Batch'`: nine tests
+  `PASS`, among them `TestWaitHopExit` and `TestHandOffHopProcess`, which
+  read `processRunning`.
+* `taskscheduler`, `SELFUPDATE_REQUIRE_TASKSCHED=1 -test.run
+  '^TestCOMLayout$|^TestLiveTask' -test.count=3`, exit 0. The first pass,
+  verbatim, with the `TestCOMLayout` HRESULT lines left out (unchanged
+  from 0021-PLAN T6a) and the PID log lines left out:
+
+```text
+--- PASS: TestCOMLayout (0.21s)
+    live_windows_test.go:521: the update's integrity RID 0x2000
+--- PASS: TestLiveTaskUpdate (5.22s)
+--- PASS: TestLiveTaskStopHoldsDisabled (71.93s)
+--- PASS: TestLiveTaskRollback (5.45s)
+--- PASS: TestLiveTaskRequestStop (1.12s)
+    live_windows_test.go:719: Start on the disabled task: selfupdate: taskscheduler: the task is disabled, and Task Scheduler does not run a disabled task: selfupdate: taskscheduler: run \selfupdate-live-d570709f0edf5099: HRESULT 0x80041326
+--- PASS: TestLiveTaskStopRefusesDisabled (4.08s)
+--- PASS: TestLiveTaskzCleanup (0.90s)
+```
+
+  The later passes match.
+
+**Host cleanup.** 0 `selfupdate-q2-` directories, 0 `selfupdate-`
+tasks, 0 `.test.exe` or `demo.exe` processes.
+
+**Checks.** `make pre-add-check FILES="<the 5 Go files>"`: `go-precheck: 5
+file(s) clean`. `make gate`: every step `rc=0`, `apicheck` `compatible
+with v1.15.0`, `overall=0`. The full `apidiff` report against `v1.15.0`
+is empty: `winproc` is internal.

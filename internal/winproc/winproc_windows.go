@@ -3,6 +3,7 @@
 package winproc
 
 import (
+	"errors"
 	"fmt"
 	"os/exec"
 	"path/filepath"
@@ -112,4 +113,54 @@ func detachedAttr(breakaway bool) *syscall.SysProcAttr {
 		flags |= windows.CREATE_BREAKAWAY_FROM_JOB
 	}
 	return &syscall.SysProcAttr{CreationFlags: flags}
+}
+
+// Alive reports whether process pid runs, and, when born is not 0, is the
+// process created at born rather than a later one with a reused ID. A
+// process that has exited is not alive, though another process still
+// holds a handle to it: its object, its creation time and a query open all
+// outlive the exit then, and only the object's signalled state tells
+// (0022-MADR Amendment A2, measured in its plan's Q1). A process this
+// process may not open is looked up in the process snapshot, which lists
+// only running processes, and born is not checked.
+func Alive(pid uint32, born uint64) bool {
+	h, err := windows.OpenProcess(windows.SYNCHRONIZE|windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
+	if errors.Is(err, windows.ERROR_ACCESS_DENIED) {
+		return inSnapshot(pid)
+	}
+	if err != nil {
+		return false
+	}
+	defer windows.CloseHandle(h) //nolint:errcheck // a query handle: nothing to report
+	if born != 0 && createdTime(h) != born {
+		return false
+	}
+	ev, err := windows.WaitForSingleObject(h, 0)
+	return err == nil && ev == uint32(windows.WAIT_TIMEOUT)
+}
+
+// createdTime is a process's creation time, or 0 when it cannot be read.
+func createdTime(h windows.Handle) uint64 {
+	var c, e, k, u windows.Filetime
+	if err := windows.GetProcessTimes(h, &c, &e, &k, &u); err != nil {
+		return 0
+	}
+	return uint64(c.HighDateTime)<<32 | uint64(c.LowDateTime)
+}
+
+// inSnapshot reports whether the process snapshot lists pid.
+func inSnapshot(pid uint32) bool {
+	snap, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
+	if err != nil {
+		return false
+	}
+	defer windows.CloseHandle(snap) //nolint:errcheck // a snapshot handle: nothing to report
+	var e windows.ProcessEntry32
+	e.Size = uint32(unsafe.Sizeof(e)) //nolint:gosec // the size of a fixed struct
+	for err = windows.Process32First(snap, &e); err == nil; err = windows.Process32Next(snap, &e) {
+		if e.ProcessID == pid {
+			return true
+		}
+	}
+	return false
 }
