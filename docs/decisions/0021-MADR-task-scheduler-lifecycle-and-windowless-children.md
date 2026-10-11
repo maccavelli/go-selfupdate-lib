@@ -404,6 +404,10 @@ restore pass `TASK_UPDATE | TASK_IGNORE_REGISTRATION_TRIGGERS`.)*
   * whether `IRegisteredTask::Stop` kills the instance's descendants;
   * whether a process inside a task's job may break away.
 
+  *(Both settled by Amendment A1: `Stop` ends the action's process only,
+  and breakaway is refused, but the hop's run survives inside the job, so
+  D6 stands [measured]. Annotated at closing, 2026-10-11.)*
+
   The PLAN measures both before it implements D6.
   * If `Stop` kills only the action's process, and the hop breaks away,
     D6 stands.
@@ -870,6 +874,11 @@ and leaked ([docs], `GetTask`, `GetInstances`,
   versus `Start`; a sentinel in 1899 or 1999 is before `Start`, so
   `SCHED_S_TASK_HAS_NOT_RUN` (`0x00041303` [docs]) is not treated as a
   failed exit.
+  *(Settled by T5 and T6a: a never-run task reads `1999-11-30 00:00:00`,
+  converted as local time, with `LastTaskResult` `0x00041303`
+  [measured]. That local time is the right zone is [derived]: the live
+  tests' `WaitHealthy`, which compares the run time with `Start`, passes.
+  Annotated at closing, 2026-10-11.)*
 
 #### Task Scheduler call contracts T5 must honour
 

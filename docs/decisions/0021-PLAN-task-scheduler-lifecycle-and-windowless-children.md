@@ -1,6 +1,6 @@
 ---
-status: in-progress
-date: 2026-10-10
+status: complete
+date: 2026-10-11
 associated-madr: "0021-MADR-task-scheduler-lifecycle-and-windowless-children.md"
 ---
 # Implement a Task Scheduler reference lifecycle and windowless Windows children
@@ -1964,3 +1964,119 @@ starts processes on Windows. `make apicheck` reports it compatible with
 * **Tests:** live tests against Task Scheduler, run on a Windows host;
   on a GitHub runner they skip, since it has no console session.
 * **Records:** this PLAN and its MADR, with Amendments A1 to A4.
+
+### T9: Verification, at closing (2026-10-11)
+
+The owner committed T8's pin commit as `2230b6e` and pushed it. CI run
+38139047484 on `main` at `2230b6e`: `success`, 17 of 17 jobs. The CI
+lines quoted below are from run 38107353156, at the release commit
+`81dae60`, in the `validate (windows-2025)` job.
+
+* **V1 (facts): met.** T1's record holds run 6's output verbatim, and
+  Amendment A1 states each of the five results. A `grep` of the MADR for
+  `[unverified]` found ten marks. Six already carried A1's "Settled"
+  annotation. Two did not, and were annotated at closing:
+  * D6's "Two facts decide whether this is enough", which A1 settles;
+  * A3's `DATE` paragraph, which T5 and T6a measured. The zone it
+    converts in is marked [derived].
+
+  T1 could not settle the other two, and both stay open at closing:
+  whether a GitHub runner can run an interactive-token task (V8), and
+  where `0x8004130B` arises, which Amendment A4 raised after T1.
+* **V2 (D7): met.** T2's plants of today's flags failed on the Windows
+  test host:
+  * `attachedAttr` without `CREATE_NO_WINDOW` gave `child has a console
+    window`;
+  * `detachedAttr` with `DETACHED_PROCESS` gave `grandchild has a console
+    window`.
+
+  `TestNoConsoleWindowThreeDeep` and both its subtests pass there after
+  T2. The `internal/winproc` tests have no skip, and CI's line is
+  `ok …/internal/winproc 0.975s`. T6's D7 revert also failed
+  `TestLiveTaskUpdate` live (`…handoff.console has no console`).
+* **V3 (D8): met.** With the `.bat`/`.cmd` case removed, all eight
+  refusal cases of `TestBatchFileRefused` failed, and so did the
+  `runExec`, `DetachProcess` and `Probe` cases. With `exec.LookPath`'s
+  result ignored, the extensionless `shim` case failed (Deviation D2).
+  Everything passes on the Windows test host and in CI's Windows job.
+* **V4 (static ban): met.** The planted `exec.Command` was reported as
+  `service/runner.go:77:6: … start the process through internal/winproc
+  (0021-MADR D7)`. `TestNoDirectProcessStart` is in `selfupdate`'s
+  suite, which passes on all three OSes in CI.
+* **V5 (T3): met.** `scm`'s test files are unchanged in T3's commit, and
+  pass:
+  * on this Mac;
+  * on the Windows test host, where all eight `TestLive*` passed with
+    `SELFUPDATE_REQUIRE_SCM=1`;
+  * in CI, where the `^TestLive` step on `scm` ran all eight, each
+    `--- PASS`, and ended `ok … 35.236s`.
+
+  T3's six `tree.go` plants each failed.
+* **V6 (backend logic): met.** T4's 28 plants left no test unfailed
+  (`tests: 29 never failed: none`). T6a's three plants on the fake each
+  failed `TestStopStaleInstance` or `TestStartStaleInstance`.
+* **V7 (COM): met, with CI unknown.** On the Windows test host:
+  * the `get_State` slot 9→10 plant failed `TestCOMLayout`, and so did
+    the 0-based `Item` plant;
+  * T6a's `S_FALSE`-as-error plant failed it;
+  * it passes `-count=3`.
+
+  The backend's calls ran at medium integrity (RID `0x2000`) inside
+  `TestLiveTaskUpdate` (Deviation D3). In CI, `TestCOMLayout` runs
+  without `-v`, so its line `ok …/taskscheduler 0.483s` reads the same
+  for a pass and a skip. Its `register` step skips on failure
+  (`com_windows_test.go:88`). CI's result is "passed or skipped; not
+  distinguishable".
+* **V8 (live): met on the host; CI skips.** The four live tests and
+  `TestLiveTaskzCleanup` passed `-count=3` at T6a's tree. T6a's plants on
+  the Windows test host each failed, except the two that Amendment A4
+  accepts. CI's step at `ac542d1` and at `81dae60` ran all five, and each was `--- SKIP` with the
+  stated reason. It does not set `SELFUPDATE_REQUIRE_TASKSCHED`, as the
+  plan says it must not until a runner is shown to work.
+* **V9 (API and release): met.**
+  * `apidiff`'s full report of `2230b6e` against `v1.13.0`, run as
+    `check-api-compat.sh` builds it but without `-incompatible`, is one
+    line under "Compatible changes":
+    `package …/selfupdate/service/taskscheduler: added`. The incompatible
+    report is empty.
+  * `v1.14.0` is tagged at `81dae60`, T7's commit. Its CI run,
+    38108021224, passed 17 of 17 jobs.
+  * The pins name it (`2230b6e`, CI green).
+  * The proxy serves it, and `@latest` resolves to it (T8 step 6).
+
+### Closing (2026-10-11)
+
+Every phase, T0 to T9 with T6a, is recorded above, and V1 to V9 are met
+as stated. This PLAN is `complete`, here and in the index. The MADR stays
+`accepted`.
+
+**Open at closing**, each recorded where it arose:
+
+* **`0x8004130B`:** where `SCHED_E_TASK_NOT_RUNNING` arises is
+  [unverified]. A never-run task's `GetInstances` returns `S_OK`, so no
+  test reaches the transport's mapping of it (MADR Amendment A4; T6a's
+  plant passed).
+* **The stale listing:** `026faaa` reported that `GetInstances` can list
+  an exited process. It was not seen in nine `Stop`s across T6 and T6a,
+  so `Start`'s `current` filter is tested over the fake only (A4).
+* **CI and Task Scheduler:** whether a GitHub Windows runner can run an
+  interactive-token task is [unverified]. CI skips the live tests, and
+  its `TestCOMLayout` result is not distinguishable. The Windows test
+  host is the evidence for V7 and V8.
+* **Plants that cannot distinguish:**
+  * `put_Enabled(1)`: Windows reads any non-zero `VARIANT_BOOL` as true;
+  * `CoInitializeEx` on `S_FALSE`: every run returned `S_OK`.
+* **Logon types other than `InteractiveToken`** were not measured.
+  `Reconcile` refuses them under `RewritePath` (Q6).
+* **Outside this PLAN:** four rows of `docs/architecture.md`'s package
+  table were already wrong at `31cce88`, as T7 found: `systemd`,
+  `launchd`, `scm`'s test count and `internal/cmd/selfupdate-release`.
+  They are unchanged. Correcting them needs a record of its own.
+
+**Checks.** On the MADR, this PLAN and `docs/README.md`:
+`scripts/check-docs.sh --links` `97 links in 3 files, 0 broken`; `--ids`
+`3 files, 16 deny-list rules, 0 findings`; markdownlint `0 issues`, which
+covers `docs/README.md` only, since the repository's markdownlint
+configuration excludes MADR and PLAN files. `make gate`: every step
+`rc=0`, `apicheck` `compatible with v1.14.0`, `links` `444 links in 60
+files, 0 broken`, `overall=0`.
