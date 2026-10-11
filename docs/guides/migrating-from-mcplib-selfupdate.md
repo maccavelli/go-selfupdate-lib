@@ -20,10 +20,10 @@ at least that. Move it deliberately first, and run your full test suite at
 ## 2. The Go import
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.15.0
+go get github.com/maccavelli/go-selfupdate-lib@v1.15.1
 ```
 
-`v1.15.0` is the current release. `v1.6.0` changed a few behaviours that
+`v1.15.1` is the current release. `v1.6.0` changed a few behaviours that
 `v1.5.x` had; they are listed in [6. From v1.5 to v1.6](#6-from-v15-to-v16).
 `v1.7.0`, `v1.8.0`, `v1.9.0` and `v1.10.0` only add to the API: see
 [7. From v1.6 to v1.7](#7-from-v16-to-v17),
@@ -95,7 +95,7 @@ In the job that publishes your release, change the `uses:` line and delete
 
 ```diff
 -    uses: maccavelli/mcplib/.github/workflows/publish-selfupdate-release.yml@<mcplib SHA> # mcplib v1.x.y
-+    uses: maccavelli/go-selfupdate-lib/.github/workflows/publish-selfupdate-release.yml@ac4ef550916f9c18af0947441f4ab55f7cf3c49a # v1.15.0
++    uses: maccavelli/go-selfupdate-lib/.github/workflows/publish-selfupdate-release.yml@fa74db4b292baaa14df6e057886102cc712bbeeb # v1.15.1
      with:
        artifact-name: …
        products-json: …
@@ -113,9 +113,9 @@ In the job that publishes your release, change the `uses:` line and delete
   current call passes. `v1.10.0` reads each tar.gz and gz asset to its
   end before publishing, and changes nothing a call passes either.
   `v1.10.1` runs one publish at a time per repository and names the
-  immutable releases setting on a timeout. `v1.11.0` to `v1.15.0` change
+  immutable releases setting on a timeout. `v1.11.0` to `v1.15.1` change
   nothing in it, though from `v1.11.1` its release tools build with Go
-  1.27.2, `go.mod`'s `toolchain` line; the example pins `v1.15.0`. Its
+  1.27.2, `go.mod`'s `toolchain` line; the example pins `v1.15.1`. Its
   check of a release of archives runs the pinned commit's own unpacker,
   though, which `v1.11.0` and `v1.11.1` tighten
   ([11](#11-from-v110-to-v111), [its `v1.11.1` part](#from-v1110-to-v1111)):
@@ -123,7 +123,7 @@ In the job that publishes your release, change the `uses:` line and delete
   later one.
   Tags are annotated, so the tag ref names a tag object, not the commit
   `uses:` needs. Resolve the commit with the peeled ref:
-  `git ls-remote https://github.com/maccavelli/go-selfupdate-lib 'refs/tags/v1.15.0^{}'`.
+  `git ls-remote https://github.com/maccavelli/go-selfupdate-lib 'refs/tags/v1.15.1^{}'`.
 - **`bridge-release` must go,** even when it is `false`. The workflow no
   longer declares it, and GitHub rejects an input the called workflow does
   not define. It only ever permitted `magic-cli-remote` `v0.16.0`, which is
@@ -169,7 +169,7 @@ The steps below are prepare-commit-msg's, proven on a scratch copy of it at
 `selfupdate/cli/testdata/migration` files byte for byte, with exit codes 0,
 10 and 1.
 
-**`go.mod`.** Require go-selfupdate-lib `v1.15.0`, with `go 1.27.1`. The steps
+**`go.mod`.** Require go-selfupdate-lib `v1.15.1`, with `go 1.27.1`. The steps
 were proven at `v1.5.0`; every later release only adds to the API, so
 they still build, and §6 lists the behaviour `v1.6.0` changed. `mcplib` stays
 only if something else still imports it; in prepare-commit-msg,
@@ -388,7 +388,7 @@ the real stdout in `o.Stdout` when `--json` is given.
 ## 6. From v1.5 to v1.6
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.15.0
+go get github.com/maccavelli/go-selfupdate-lib@v1.15.1
 ```
 
 This takes the current release; what each later release adds is in §7
@@ -472,7 +472,7 @@ and group, when the updater may give them.
 ## 7. From v1.6 to v1.7
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.15.0
+go get github.com/maccavelli/go-selfupdate-lib@v1.15.1
 ```
 
 `v1.7.0` only adds: `make apicheck` reports it compatible with `v1.6.0`, it
@@ -511,12 +511,12 @@ is in
 ### Check
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
-- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.0`.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.1`.
 
 ## 8. From v1.7 to v1.8
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.15.0
+go get github.com/maccavelli/go-selfupdate-lib@v1.15.1
 ```
 
 `v1.8.0` only adds. `make apicheck` reports it compatible with `v1.7.0`, it
@@ -563,12 +563,12 @@ runs unless you configure it. Why, and how, is in
 ### Check
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
-- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.0`.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.1`.
 
 ## 9. From v1.8 to v1.9
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.15.0
+go get github.com/maccavelli/go-selfupdate-lib@v1.15.1
 ```
 
 `v1.9.0` only adds. `make apicheck` reports it compatible with `v1.8.0`,
@@ -607,13 +607,13 @@ that use none of the new pieces behave as they did. Why, and how, is in
 ### Check
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
-- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.0`.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.1`.
 - A pull request runs the build workflow as a rehearsal, and it passes.
 
 ## 10. From v1.9 to v1.10
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.15.0
+go get github.com/maccavelli/go-selfupdate-lib@v1.15.1
 ```
 
 `v1.10.0` only adds. `make apicheck` reports it compatible with `v1.9.0`,
@@ -712,7 +712,7 @@ github.com/maccavelli/go-selfupdate-lib` gives `v1.10.1`.
 ### Check
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
-- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.0`.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.1`.
 - A pull request's rehearsal stages `install.sh` and `install.ps1`, and a
   dry run of the released one-liner (`… | sh -s -- --dry-run`) names the
   assets you expect.
@@ -720,7 +720,7 @@ github.com/maccavelli/go-selfupdate-lib` gives `v1.10.1`.
 ## 11. From v1.10 to v1.11
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.15.0
+go get github.com/maccavelli/go-selfupdate-lib@v1.15.1
 ```
 
 `v1.11.0` settles the contracts the third debugging pass left open.
@@ -828,13 +828,13 @@ github.com/maccavelli/go-selfupdate-lib` gives `v1.11.1`.
 ### Check
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
-- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.0`.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.1`.
 - A pull request's rehearsal passes the plan step's module check.
 
 ## 12. From v1.11 to v1.12
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.15.0
+go get github.com/maccavelli/go-selfupdate-lib@v1.15.1
 ```
 
 `v1.12.0` adds a build-provenance check, and keeps the previous binary of
@@ -922,12 +922,12 @@ github.com/maccavelli/go-selfupdate-lib` gives `v1.12.1`.
 ### Check
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
-- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.0`.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.1`.
 
 ## 13. From v1.12 to v1.13
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.15.0
+go get github.com/maccavelli/go-selfupdate-lib@v1.15.1
 ```
 
 `v1.13.0` lets a managed install replace the binary before it stops the
@@ -967,12 +967,12 @@ how, is in
 ### Check
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
-- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.0`.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.1`.
 
 ## 14. From v1.13 to v1.14
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.15.0
+go get github.com/maccavelli/go-selfupdate-lib@v1.15.1
 ```
 
 `v1.14.0` adds a Task Scheduler backend, starts the library's own Windows
@@ -1024,12 +1024,12 @@ change is the new package. Why, and how, is in
 ### Check
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
-- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.0`.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.1`.
 
 ## 15. From v1.14 to v1.15
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.15.0
+go get github.com/maccavelli/go-selfupdate-lib@v1.15.1
 ```
 
 `v1.15.0` exports the batch-file refusal and closes the spellings that
@@ -1092,4 +1092,4 @@ Amendment A2.
 ### Check
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
-- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.0`.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.1`.

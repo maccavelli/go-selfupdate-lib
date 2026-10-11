@@ -458,3 +458,103 @@ The owner committed Q3 as `d40b429`, and said "proceed".
   broken`; `--ids` `2 files, 16 deny-list rules, 0 findings`; markdownlint
   `0 issues`; `--arch` `0 differ`. `make gate`: every step `rc=0`,
   `overall=0`.
+
+### Q5, `v1.15.1` (2026-10-11)
+
+* **The release commit** is `fa74db4b292baaa14df6e057886102cc712bbeeb`,
+  Q4's, which the owner committed and pushed.
+* **Step 1:** CI run 38162672238 on `main` at `fa74db4`: `success`, 17 of
+  17 jobs.
+* **Step 2, the tag,** made and pushed by the owner. Verified:
+  * `v1.15.1` is an annotated tag (`git cat-file -t` gives `tag`), object
+    `82c83f7aefb5b7fae2522e4abdead245942f45a3`, peeled to `fa74db4`;
+  * `git ls-remote origin` gives `fa74db4…` for `refs/tags/v1.15.1^{}`
+    and for `refs/heads/main`;
+  * `scripts/check-release-tag.sh v1.15.1` exits 0.
+* **Step 3:** the tag's CI run, 38163532071, passed all 17 jobs; all ten
+  identity legs print `v1.15.1 (release) fa74db4b292b`.
+* **Step 4, the pin commit.**
+  * **Candidates:** `git grep -n 'v1\.15\.0\|ac4ef55' -- README.md
+    docs/architecture.md docs/guides`, 46 lines.
+  * **Preconditions:** `git diff v1.15.0 v1.15.1` of
+    `.github/workflows/`, `internal/cmd/`, `scripts/` and
+    `selfupdate/archive/` is empty. So "`v1.11.0` to `v1.15.1` change
+    nothing in it" holds, and the publish workflow's archive check is as
+    at `v1.15.0`.
+  * **Changed,** 36 lines, to `fa74db4b… # v1.15.1` or `v1.15.1`, by a
+    script that changed only the listed lines and asserted each one
+    changed: `README.md:24`, `:28`, `:126`; `docs/architecture.md:23-24`;
+    the building guide `:26`, `:164`, `:175`, `:186`, `:261`; the migration
+    guide `:23`, `:26`, `:98`, `:116`, `:118`, `:126`, `:172`, ten
+    `go get` lines (`:391`, `:475`, `:519`, `:571`, `:616`, `:723`,
+    `:837`, `:930`, `:975`, `:1032`) and nine `go list` checks (`:514`,
+    `:566`, `:610`, `:715`, `:831`, `:925`, `:970`, `:1027`, `:1095`).
+  * **Kept,** 10 lines that state what `v1.15.0` itself did, or name the
+    patch part: the extending guide `:557`, `:561`, `:611`, `:617`; the
+    migration guide `:44`, `:47`, `:1006`, `:1035`, `:1073`, `:1076`.
+* **Step 5:** `GOPROXY=https://proxy.golang.org GOFLAGS=-mod=mod go list
+  -m -json github.com/maccavelli/go-selfupdate-lib@v1.15.1` gives
+  `v1.15.1`, `Time` `2026-10-11T18:09:09Z`, `Origin.Hash` the release
+  commit and `Ref` `refs/tags/v1.15.1`; `@latest` resolves to `v1.15.1`.
+* **Checks on the pin commit:** see "Checks on the pin commit" below the
+  release notes.
+
+### Release notes for v1.15.1 (2026-10-11)
+
+`v1.15.1` fixes how the library reads whether a Windows process has
+exited, and adds tests. `make apicheck` reports it compatible with
+`v1.15.0`, with no exported change.
+
+* **Task Scheduler reads an exited program as gone.** `Stop`'s wait and
+  `Start`'s check of a stale instance compared the process's creation
+  time, which Windows keeps while any process holds a handle to it, so a
+  handle held by a monitor or an antivirus could make `Stop` time out
+  with `ErrTimeout` or `Start` skip its run. Both now wait on the process
+  object, which Windows signals at the exit (measured on a Windows host).
+  The handoff's wait for its hop uses the same check,
+  `internal/winproc.Alive`.
+* **Tests:** a case at each exported entry point, on every OS, holds
+  `errors.Is(err, selfupdate.ErrBatchFile)` past the interfaces that the
+  static chain test cannot follow.
+* **Records:**
+  [0022-MADR-documentation-pass-after-v1-14-0.md](0022-MADR-documentation-pass-after-v1-14-0.md)
+  Amendment A2, and this plan.
+
+### Checks on the pin commit (2026-10-11)
+
+* On the five changed files, on this Mac: `scripts/check-docs.sh --links`
+  `96 links in 5 files, 0 broken`; `--ids` `5 files, 16 deny-list rules,
+  0 findings`; markdownlint `0 issues`.
+* **`make gate` on this Mac failed in `race` and `shuffle`,** on timeouts
+  in tests that build and start a fresh binary:
+  `TestE2EUpdateRunningCopyOnChannel` and `TestE2ERunningCopyRefusals`
+  (`the running copy never signalled ready`, 10 s), and `TestIdentity`
+  (`version did not finish within 5s`). They failed again run alone.
+  * The Mac was saturated: load average 54 to 77 on 10 cores, with
+    another workload's `go test` binaries running (none of them this
+    repository's packages) beside a management daemon and Spotlight
+    indexing. A fresh hello-world binary took 0.86 s and 1.52 s on its
+    first start, and 0.05 s after.
+  * The Go code is `fa74db4`'s (`git diff --stat fa74db4 -- '*.go'` is
+    empty), where CI passed these tests in runs 38162672238 and
+    38163532071, 17 of 17 jobs each.
+  * The other workload's processes were left alone.
+* **`make gate` on a Linux test host,** on the owner's word ("the …
+  host is idle. you can ssh to it"):
+  * a clone of the public repository at `fa74db4`, with this commit's
+    diff applied; the five files' SHA-256 matched this Mac's, and
+    `git status --short` listed those five alone;
+  * `GATE_SKIP=ids`: the host has no deny list. The step reads only
+    text, and passed on this Mac on the same files (above);
+  * the host's `TMPDIR` holds an empty `.git` directory, so every build
+    in a temporary directory failed to read its VCS status (exit 128),
+    and its `BASH_ENV` resets `TMPDIR` in every bash script, so setting
+    it alone did not reach `go test`. The run that counts used `env -u
+    BASH_ENV` and a `TMPDIR` beside the clone. Two earlier runs, without
+    that, failed only in the `archive` tests and the fuzz step that lists
+    them, on that VCS error; they are not evidence either way;
+  * the result: every step `rc=0` but `ids skipped`; `race` 15 packages
+    `ok`, 0 `FAIL`; `apicheck` `compatible with v1.15.1`; `arch` `0
+    differ`; `overall=0`.
+  * The run directory was removed afterwards; the host's `.git` and
+    `BASH_ENV` were not touched.
