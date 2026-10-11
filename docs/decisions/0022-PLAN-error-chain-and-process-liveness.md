@@ -381,3 +381,65 @@ tasks, 0 `.test.exe` or `demo.exe` processes.
 file(s) clean`. `make gate`: every step `rc=0`, `apicheck` `compatible
 with v1.15.0`, `overall=0`. The full `apidiff` report against `v1.15.0`
 is empty: `winproc` is internal.
+
+### Q3 (2026-10-11)
+
+The owner committed Q2 as `9895966` and said "proceed".
+
+**Files.** Changed, tests only: `selfupdate/spawn_test.go`,
+`selfupdate/service/handoff_test.go`,
+`selfupdate/verify/ghattest/ghattest_test.go`,
+`selfupdate/codesign/codesign_test.go`, `selfupdate/cli/handoff_test.go`.
+No file is added, so the architecture table's counts do not change.
+
+**As built, against step 1's table:**
+
+| Entry point | Test | Fake |
+| :--- | :--- | :--- |
+| `Updater.Run`, staged probe | `TestBatchErrorReachesCallers/staged_probe` | a `ProberFunc` in the updater's probes |
+| `Updater.Run`, manifest verifier | `…/manifest_verifier` | a `ManifestVerifierFunc` in `Config.ManifestVerifiers` |
+| an install session's post-install probe | `…/post-install_probe` | `InstallOptions.PostInstall` |
+| a managed install's reconcile | `…/managed_reconcile` | a `Reconciler` (`ranRec`) under `NewManagedInstaller` |
+| `ExecReconciler.Reconcile` and `Restore` | `TestBatchErrorReachesServiceCallers` | `ExecOptions.Runner` (`refusingRunner`) |
+| `HandOffIfInside` and `HandOffFunc` | the same | a `Detacher` (`refusingDetacher`) |
+| `ghattest`'s manifest verifier and verifier | `TestBatchErrorReachesCaller` (ghattest) | `Options.Runner` |
+| `codesign`'s checker and signer | `TestBatchErrorReachesCaller` (codesign) | `CheckOptions.Runner`, `SignOptions.Runner` |
+| `cli.Run`, the handoff failing | `TestBatchErrorReachesCaller` (cli) | `HandOff.Detach` |
+
+* The managed install is held at two layers: in `selfupdate`, through a
+  fake `Reconciler`, and in `service`, through `ExecReconciler` itself.
+  Step 1 named only the second, as one case.
+* Each fake returns `fmt.Errorf("fake: %w", selfupdate.ErrBatchFile)`,
+  the exported name, where step 1 said `winproc.ErrBatchFile`: they are
+  one value (`TestErrBatchFileIsWinproc`), and the exported name keeps
+  `internal/winproc` out of four more packages' tests.
+* Each case asserts its fake ran, so a case that never reaches the fake
+  fails instead of passing.
+* `TestBatchErrorChain`'s doc says the walk stops at a method or a
+  function literal, that every method on the chain is reached through an
+  interface, and names these tests as the hold past it.
+
+**Fail first, on this Mac,** each a `scripts/plant-copy.sh` copy with one
+layer's `%w` broken, then every chain test of that package run:
+
+| Plant | Fails |
+| :--- | :--- |
+| `runProbes` `%w` → `%v` | `TestBatchErrorReachesCallers/staged_probe` alone: `spawn_test.go:554` |
+| `runManifestVerifiers` joins `errors.New(err.Error())` | `…/manifest_verifier` alone: `spawn_test.go:575: … manifest verification failed: selfupdate: integrity check failed` |
+| `probeInstalled` `%w` → `%v` | `…/post-install_probe` alone: `spawn_test.go:581` |
+| managed `recover` joins `errors.New(origin.Error())` | `…/managed_reconcile` alone: `spawn_test.go:604` |
+| `ExecReconciler.Reconcile` `%w` → `%v` | its line alone: `handoff_test.go:227` |
+| `ExecReconciler.Restore` `%w` → `%v` | its line alone: `handoff_test.go:230` |
+| `HandOffIfInside` `%w` → `%v` | `handoff_test.go:234` and `:237`: `HandOffFunc` calls `HandOffIfInside`, the same layer |
+| `ghattest`'s `running gh` `%w` → `%v` | both verifiers, `ghattest_test.go:433` and `:448`: they share that wrap |
+| `codesign`'s `run` `%w` → `%v` | the checker and the signer, `codesign_test.go:323` and `:329`: they share `tool.run` |
+| `cli.Run` joins `errors.New(err.Error())` for a failed handoff | `handoff_test.go:172: Detach ran true, exit 1, err fake: …; want … ErrBatchFile` |
+
+No plant failed another layer's case.
+
+**Checks.** `make pre-add-check FILES="<the 5 test files>"`: its first run
+failed gofmt on a trailing blank line in `service/handoff_test.go`,
+fixed with `gofmt -w`; then `go-precheck: 5 file(s) clean`. `make gate`:
+every step `rc=0`, `apicheck` `compatible with v1.15.0`, `overall=0`.
+The cases need no Windows host: they run on every OS, CI's three
+included.

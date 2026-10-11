@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -152,5 +153,22 @@ func TestHandOffWriteFails(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("an unwritten handoff notice succeeded")
+	}
+}
+
+// TestBatchErrorReachesCaller: a handoff refused as a batch file, as
+// service.DetachProcess refuses one on Windows, fails Run with an error
+// that wraps selfupdate.ErrBatchFile (0022-MADR Amendment A2, D5-A).
+func TestBatchErrorReachesCaller(t *testing.T) {
+	ran := false
+	sc := scenario{latest: "v1.1.0", id: releaseID, flags: Flags{Yes: true}, handOff: HandOff{
+		Detach: func(context.Context, selfupdate.Request) (bool, string, error) {
+			ran = true
+			return false, "", fmt.Errorf("fake: %w", selfupdate.ErrBatchFile)
+		},
+	}}
+	out := sc.run(t, false)
+	if !ran || !errors.Is(out.err, selfupdate.ErrBatchFile) || out.code != 1 {
+		t.Fatalf("Detach ran %t, exit %d, err %v; want a run, exit 1 and ErrBatchFile", ran, out.code, out.err)
 	}
 }

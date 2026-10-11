@@ -3,6 +3,7 @@ package codesign
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -306,5 +307,25 @@ func TestPublicConstructorsFollowTheOS(t *testing.T) {
 	onMac := errors.Is(sErr, service.ErrUnsupported) || errors.Is(cErr, service.ErrUnsupported)
 	if wantUnsupported := !isDarwin(); onMac != wantUnsupported {
 		t.Fatalf("NewSigner %v, NewChecker %v", sErr, cErr)
+	}
+}
+
+// TestBatchErrorReachesCaller: when the runner refuses the tool as a batch
+// file, as service.ExecRunner would on Windows, the checker and the signer
+// return an error that wraps selfupdate.ErrBatchFile (0022-MADR Amendment
+// A2, D5-A).
+func TestBatchErrorReachesCaller(t *testing.T) {
+	refused := fmt.Errorf("fake: %w", selfupdate.ErrBatchFile)
+	c, f := mustChecker(t, CheckOptions{})
+	f.err = refused
+	err := c.Probe(context.Background(), staged())
+	if len(f.calls) != 1 || !errors.Is(err, selfupdate.ErrBatchFile) {
+		t.Errorf("checker: runs %d, err %v; want one run and ErrBatchFile", len(f.calls), err)
+	}
+	s, f := mustSigner(t, SignOptions{Identity: "-", Identifier: "com.example.relay"})
+	f.err = refused
+	err = s.Transform(context.Background(), signReq())
+	if len(f.calls) != 1 || !errors.Is(err, selfupdate.ErrBatchFile) {
+		t.Errorf("signer: runs %d, err %v; want one run and ErrBatchFile", len(f.calls), err)
 	}
 }

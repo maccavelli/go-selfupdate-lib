@@ -1,6 +1,7 @@
 package selfupdate
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"go/ast"
@@ -181,6 +182,13 @@ var chainWant = []chainFunc{
 // where the refusal can happen. A call site must read
 // "x, err := f(…); if err != nil { return …, err }" (or wrap with %w), or
 // "return f(…)"; a form the walk cannot follow fails with its line.
+//
+// The walk stops at a method or a function literal, and every method on
+// the chain is reached through an interface (Prober, Runner, Detacher),
+// which no syntax walk can follow. TestBatchErrorReachesCallers, and its
+// cases in the service, ghattest, codesign and cli packages, hold the
+// chain past that boundary, at the entry points a program calls
+// (0022-MADR Amendment A2).
 func TestBatchErrorChain(t *testing.T) {
 	w := chainWalk{
 		fset: token.NewFileSet(),
@@ -517,4 +525,93 @@ func chainInLiteral(stack []ast.Node) bool {
 		}
 	}
 	return false
+}
+
+// TestBatchErrorReachesCallers: a batch-file refusal from behind an
+// interface reaches the program as ErrBatchFile, through Updater.Run and
+// through an install session, managed or not. Each fake returns it
+// wrapped, as winproc's callers do, and must have run (0022-MADR
+// Amendment A2, D5-A).
+func TestBatchErrorReachesCallers(t *testing.T) {
+	refused := fmt.Errorf("fake: %w", ErrBatchFile)
+	is := func(t *testing.T, ran bool, err error) {
+		t.Helper()
+		if !ran {
+			t.Fatal("the fake never ran, so the case proves nothing")
+		}
+		if !errors.Is(err, ErrBatchFile) {
+			t.Fatalf("err = %v, want it to wrap ErrBatchFile", err)
+		}
+	}
+	req := applyReq()
+	req.Yes = true
+
+	t.Run("staged probe", func(t *testing.T) {
+		ran := false
+		u := newContractEnv(t).build(t)
+		u.probes = []Prober{ProberFunc(func(context.Context, ProbeRequest) error { ran = true; return refused })}
+		_, err := u.Run(context.Background(), req)
+		is(t, ran, err)
+	})
+	t.Run("manifest verifier", func(t *testing.T) {
+		ran := false
+		_, exe := withTempHome(t)
+		inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		rel, bodies, plats := fixtureRelease(t, "demo")
+		sel, _ := NewExactAssetSelector(plats)
+		u, err := New(Config{Source: &scriptSource{rel: rel, bodies: bodies}, Versions: NewStrictVersionPolicy(), Assets: sel,
+			Installer: inst, Reporter: &recReporter{}, Confirmer: &recConfirmer{}, Limits: DefaultLimits(),
+			ManifestVerifiers: []ManifestVerifier{ManifestVerifierFunc(func(context.Context, ManifestVerification) error {
+				ran = true
+				return refused
+			})}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = u.Run(context.Background(), req)
+		is(t, ran, err)
+	})
+	t.Run("post-install probe", func(t *testing.T) {
+		ran := false
+		sess, _ := postInstallSession(t, ProberFunc(func(context.Context, ProbeRequest) error { ran = true; return refused }))
+		_, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: stageNew(t, sess)}})
+		is(t, ran, err)
+	})
+	t.Run("managed reconcile", func(t *testing.T) {
+		_, exe := withTempHome(t)
+		inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		rec := &ranRec{fakeRec: fakeRec{err: refused}}
+		m, err := NewManagedInstaller(inner, &fakeLife{installed: true, running: true}, rec)
+		if err != nil {
+			t.Fatal(err)
+		}
+		target, err := m.ResolveTarget(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		sess, err := m.Begin(context.Background(), target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = sess.Close() })
+		_, err = sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: stageNew(t, sess)}})
+		is(t, rec.ran, err)
+	})
+}
+
+// ranRec is fakeRec that records that Reconcile ran.
+type ranRec struct {
+	fakeRec
+	ran bool
+}
+
+func (r *ranRec) Reconcile(ctx context.Context, product, exe string) (ReconcileResult, error) {
+	r.ran = true
+	return r.fakeRec.Reconcile(ctx, product, exe)
 }

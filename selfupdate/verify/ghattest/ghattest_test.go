@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -417,5 +418,33 @@ func TestVerifierChecksDigest(t *testing.T) {
 				t.Fatalf("gh read %q", f.read[0])
 			}
 		})
+	}
+}
+
+// TestBatchErrorReachesCaller: when the runner refuses gh as a batch file,
+// as service.ExecRunner refuses a gh.cmd on Windows, both verifiers return
+// an error that wraps selfupdate.ErrBatchFile (0022-MADR Amendment A2,
+// D5-A).
+func TestBatchErrorReachesCaller(t *testing.T) {
+	refused := fmt.Errorf("fake: %w", selfupdate.ErrBatchFile)
+	f := &fakeTool{err: refused}
+	err := manifestCheck(t, options(aquaPolicy(), f), "v2.64.0", []byte("sums\n"))
+	if len(f.calls) != 1 || !errors.Is(err, selfupdate.ErrBatchFile) {
+		t.Errorf("manifest verifier: runs %d, err %v; want one run and ErrBatchFile", len(f.calls), err)
+	}
+	body := []byte("the staged asset")
+	sum := sha256.Sum256(body)
+	f = &fakeTool{err: refused}
+	v, err := NewVerifier(options(aquaPolicy(), f))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = v.Verify(context.Background(), selfupdate.Verification{
+		Product: "aqua", Release: selfupdate.Release{Tag: "v2.64.0"},
+		Size: int64(len(body)), SHA256: hex.EncodeToString(sum[:]),
+		Open: func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(body)), nil },
+	})
+	if len(f.calls) != 1 || !errors.Is(err, selfupdate.ErrBatchFile) {
+		t.Errorf("verifier: runs %d, err %v; want one run and ErrBatchFile", len(f.calls), err)
 	}
 }

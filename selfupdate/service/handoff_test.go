@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -181,4 +182,57 @@ func TestProcessDetacherNeedsInside(t *testing.T) {
 	if err != nil || !inside {
 		t.Fatalf("inside %t, err %v", inside, err)
 	}
+}
+
+// refusingRunner is a Runner whose every run is refused as a batch file,
+// as ExecRunner refuses one on Windows.
+type refusingRunner struct{ runs int }
+
+func (r *refusingRunner) Run(context.Context, Command) (Output, error) {
+	r.runs++
+	return Output{}, fmt.Errorf("fake: %w", selfupdate.ErrBatchFile)
+}
+
+// refusingDetacher is inside the service, and its Detach is refused as a
+// batch file, as DetachProcess refuses one on Windows.
+type refusingDetacher struct{ detached bool }
+
+func (*refusingDetacher) Inside(context.Context) (bool, error) { return true, nil }
+
+func (d *refusingDetacher) Detach(context.Context, HandOff) (Detached, error) {
+	d.detached = true
+	return Detached{}, fmt.Errorf("fake: %w", selfupdate.ErrBatchFile)
+}
+
+// TestBatchErrorReachesServiceCallers: a batch-file refusal from behind
+// Runner or Detacher reaches the program as selfupdate.ErrBatchFile,
+// through ExecReconciler's Reconcile and Restore, and through
+// HandOffIfInside and HandOffFunc (0022-MADR Amendment A2, D5-A).
+func TestBatchErrorReachesServiceCallers(t *testing.T) {
+	t.Setenv(EnvHandOff, "")
+	is := func(t *testing.T, name string, ran bool, err error) {
+		t.Helper()
+		if !ran {
+			t.Errorf("%s: the fake never ran, so the case proves nothing", name)
+		} else if !errors.Is(err, selfupdate.ErrBatchFile) {
+			t.Errorf("%s: err = %v, want it to wrap ErrBatchFile", name, err)
+		}
+	}
+	run := &refusingRunner{}
+	r, err := NewExecReconciler(ExecOptions{Reconcile: []string{"setup-service"}, Restore: []string{"setup-service", "--restore"}, Runner: run})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = r.Reconcile(context.Background(), "demo", selfExe(t))
+	is(t, "ExecReconciler.Reconcile", run.runs == 1, err)
+	err = r.Restore(context.Background(), "demo", selfupdate.ReconcileResult{Changed: true,
+		State: ExecState{Executable: selfExe(t), Receipt: Receipt{SchemaVersion: 1, Verdict: VerdictRefreshed, Changed: true}}})
+	is(t, "ExecReconciler.Restore", run.runs == 2, err)
+
+	d := &refusingDetacher{}
+	_, _, err = HandOffIfInside(context.Background(), d, HandOff{Args: []string{"update", "--yes"}})
+	is(t, "HandOffIfInside", d.detached, err)
+	d = &refusingDetacher{}
+	_, _, err = HandOffFunc(d, HandOff{Args: []string{"update", "--yes"}})(context.Background(), selfupdate.Request{Product: "demo", Yes: true})
+	is(t, "HandOffFunc", d.detached, err)
 }
