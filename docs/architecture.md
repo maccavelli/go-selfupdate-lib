@@ -89,6 +89,9 @@ selfupdate/                 the self-update package
     systemd/                the systemd lifecycle, and sd_notify
     launchd/                the launchd lifecycle
     scm/                    the Windows SCM lifecycle
+    taskscheduler/          the Windows Task Scheduler lifecycle, over COM
+internal/winproc/           every process start: no console window, no
+                            batch file; the ancestor walk
 internal/cmd/selfupdate-release/  the workflows' logic: plan, build, stage,
                             check, identity, installer; never released
   installer/                the install.sh and install.ps1 templates, each a
@@ -108,17 +111,19 @@ docs/
 | Directory | Package | Non-test files | Test files | Non-standard imports |
 | :--- | :--- | :--- | :--- | :--- |
 | `buildinfo/` | `buildinfo` | 1 | 2 | none |
-| `selfupdate/` | `selfupdate` | 45 | 81, including five fuzz targets, plus `testdata/SHA256SUMS.{valid,invalid}`, 23 `testdata/manifest-parity/` cases and 14 `testdata/golden/` files | `x/mod/semver`, `x/sys/unix`, `x/sys/windows`, `x/term` |
+| `selfupdate/` | `selfupdate` | 45 | 83, including five fuzz targets, plus `testdata/SHA256SUMS.{valid,invalid}`, 23 `testdata/manifest-parity/` cases and 14 `testdata/golden/` files | `x/mod/semver`, `x/sys/unix`, `x/sys/windows`, `x/term` (and `internal/winproc`) |
 | `selfupdate/cli/` | `cli` | 4 | 9, plus 53 `testdata/golden/` and 9 `testdata/migration/` files | `x/term` (and `selfupdate`, `buildinfo`) |
 | `selfupdate/selfupdatetest/` | `selfupdatetest` | 2 | 1 | none (`selfupdate` itself) |
 | `selfupdate/archive/` | `archive` | 3 | 8, including three fuzz targets, plus a real GoReleaser `testdata/` checksum file | none (`selfupdate`) |
 | `selfupdate/codesign/` | `codesign` | 2 | 4 | none (`selfupdate`, `service`) |
 | `selfupdate/verify/ghattest/` | `ghattest` | 2 | 3, plus a `testdata/` capture of `gh attestation verify --format json` | none (`selfupdate`, `service`) |
 | `selfupdate/releasespec/` | `releasespec` | 4 | 5, including a fuzz target, plus 4 `testdata/` specs | none (`selfupdate`, `archive`) |
-| `selfupdate/service/` | `service` | 16 | 13 | `x/sys/windows` (and `selfupdate`) |
+| `selfupdate/service/` | `service` | 16 | 14 | `x/sys/windows` (and `selfupdate`, `internal/winproc`) |
 | `selfupdate/service/systemd/` | `systemd` | 8 | 12, plus 3 `testdata/` captures of `systemctl show` | none (`selfupdate`, `service`) |
 | `selfupdate/service/launchd/` | `launchd` | 6 | 11, plus 7 `testdata/` captures of `launchctl print` and `list` | none (`selfupdate`, `service`) |
-| `selfupdate/service/scm/` | `scm` | 7 | 9 | `x/sys/windows`, `x/sys/windows/svc`, `x/sys/windows/svc/mgr` (and `selfupdate`, `service`) |
+| `selfupdate/service/scm/` | `scm` | 7 | 9 | `x/sys/windows`, `x/sys/windows/svc`, `x/sys/windows/svc/mgr` (and `selfupdate`, `service`, `internal/winproc`) |
+| `selfupdate/service/taskscheduler/` | `taskscheduler` | 9 | 10 | `x/sys/windows` (and `selfupdate`, `service`, `internal/winproc`) |
+| `internal/winproc/` | `winproc` | 5 | 4 | `x/sys/windows` |
 | `internal/cmd/selfupdate-release/` | `main` | 11, plus the 2 `installer/` templates | 10, plus the `testdata/fixture/` module (2 programs, 2 specs, an extra) | none (`buildinfo`, `selfupdate`, `archive`, `releasespec`) |
 
 - `selfupdate` began as `mcplib` `v1.6.0`'s `selfupdate` (commit
@@ -229,11 +234,30 @@ docs/
     Microsoft's wait-hint and checkpoint loop; an unquoted command line
     read as `CreateProcess` reads it; `Inside` by an ancestor
     walk that checks creation times; the handoff by `DetachProcess`
-    through a hop.
+    through a hop;
+  - **`taskscheduler`**
+    ([0021-MADR](decisions/0021-MADR-task-scheduler-lifecycle-and-windowless-children.md)):
+    the COM API by vtable calls (`com_windows.go`), behind unexported
+    `scheduler` and `registered` interfaces that the tests fake; `Stop`
+    disables the task, asks `RequestStop`, ends the task and waits for the
+    recorded process; `Start` enables only what `Stop` disabled;
+    `WaitHealthy` by a new `EnginePID`, with the last run's exit code on a
+    failure; a rewrite and restore of the `Exec` path by
+    `RegisterTaskDefinition` and `RegisterTask` with the saved XML;
+    `Inside` and the handoff as `scm`'s.
 
   Each backend compiles on every OS and returns `ErrUnsupported` on the
   wrong one. Each has live tests against its real service manager, which
-  CI runs on its OS.
+  CI runs on its OS; `taskscheduler`'s skip there, since a GitHub runner
+  has no console session for an interactive-token task, and run on a
+  Windows host with `SELFUPDATE_REQUIRE_TASKSCHED=1`.
+- `internal/winproc` is the one constructor for every process the module
+  starts (0021-MADR D7 and D8): on Windows, `CREATE_NO_WINDOW` for a child
+  of a process with no console, a windowless console for the detached
+  handoff run, and a refusal of a `.bat` or `.cmd` program. It holds the
+  ancestor walk `scm` and `taskscheduler` share, `Descends`.
+  `TestNoDirectProcessStart` (`selfupdate/spawn_test.go`) refuses any
+  other process start in a non-test file under `selfupdate/`.
 - `cli.Options.HandOff` (`run.go`) runs `Detach` before an apply and
   `Report` after an update that ran.
 - Archive assets and macOS signing
@@ -437,16 +461,17 @@ interpolated into shell.
   `BASE=`), and any incompatible change fails it.
 - **`make lint`** runs `golangci-lint run -c .golangci.yml ./...` three
   times: `GOOS=linux`, `darwin` and `windows`, each with `CGO_ENABLED=0`.
-- **Import rules** are 15 `depguard` rules in `.golangci.yml`
+- **Import rules** are 17 `depguard` rules in `.golangci.yml`
   ([0008-MADR](decisions/0008-MADR-enforce-import-rules-with-depguard.md)):
   - `banned`: mcplib, the MCP go-sdk, go-llmprovider-sdk and Charm, in
     every file;
   - `module`: only the standard library, this module, `x/mod`, `x/sys`
     and `x/term`, in every file;
-  - `buildinfo`, `selfupdate`, `selfupdate-cli`, `selfupdatetest`,
-    `service`, `service-launchd`, `service-scm`, `service-systemd`,
-    `selfupdate-archive`, `selfupdate-codesign`, `selfupdate-releasespec`
-    and `selfupdate-verify-ghattest`: each package's own allowed imports,
+  - `buildinfo`, `internal-winproc`, `selfupdate`, `selfupdate-cli`,
+    `selfupdatetest`, `service`, `service-launchd`, `service-scm`,
+    `service-taskscheduler`, `service-systemd`, `selfupdate-archive`,
+    `selfupdate-codesign`, `selfupdate-releasespec` and
+    `selfupdate-verify-ghattest`: each package's own allowed imports,
     outside its tests;
   - `other-packages`: any other package, `internal/` included, only the
     standard library and this module.

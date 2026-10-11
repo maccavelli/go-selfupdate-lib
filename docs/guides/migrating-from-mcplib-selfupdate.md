@@ -951,3 +951,56 @@ how, is in
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
 - `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.13.0`.
+
+## 14. From v1.13 to v1.14
+
+```bash
+go get github.com/maccavelli/go-selfupdate-lib@v1.14.0
+```
+
+`v1.14.0` adds a Task Scheduler backend, starts the library's own Windows
+children without a console window, and refuses to start a batch file.
+`make apicheck` reports it compatible with `v1.13.0`: the only exported
+change is the new package. Why, and how, is in
+[0021-MADR](../decisions/0021-MADR-task-scheduler-lifecycle-and-windowless-children.md).
+
+### What is new
+
+- **`selfupdate/service/taskscheduler`:** a `Lifecycle`,
+  `EnabledLifecycle`, `Reconciler` and `service.Detacher` for one task
+  your setup registered, such as a per-user task started at logon. It
+  disables the task before it stops it, so a repeating trigger cannot
+  restart the program mid-update, and can ask the program to exit first
+  through `Options.RequestStop`. Off Windows, `New` returns
+  `service.ErrUnsupported`.
+- **No console window from the library's children.** On Windows, a
+  process the library starts from a program with no console, such as the
+  version probe of the new binary or `service.NewExecReconciler`'s
+  command, starts with `CREATE_NO_WINDOW`. The handoff's detached run
+  gets a console with no window, in place of `DETACHED_PROCESS`, so the
+  console programs it starts do not open one either. Nothing changes for
+  a program that already has a console.
+- **Batch files are refused.** On Windows, the version probe,
+  `service.NewExecReconciler` and the handoff refuse a `.bat` or `.cmd`
+  file, including one Windows would find for a path with no extension,
+  with an error that names BatBadBut (CVE-2024-24576). Before, `cmd.exe`
+  would have run it.
+
+### Adopting it
+
+- **A program with its own Task Scheduler adapter** can construct
+  `taskscheduler.New` in its place, pass it as the managed install's
+  lifecycle and reconciler, and to `service.HandOffFunc` for updates from
+  inside the task. Its setup keeps registering the task, with a
+  repeating time trigger as the watchdog: the extending guide's
+  [Task Scheduler](extending-selfupdate.md#task-scheduler) says what the
+  backend needs and what it does.
+- **If a target, a staged binary or a reconciler command is a `.bat` or
+  `.cmd` file,** point it at the `.exe` it runs.
+- **If your detached update run checked for a missing console,** it now
+  has one, with no window.
+
+### Check
+
+- `go build ./...`, `go vet ./...` and `go test ./...` pass.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.14.0`.

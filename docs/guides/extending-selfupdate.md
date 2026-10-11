@@ -467,17 +467,22 @@ Pointers:
 
 ## Run as a service
 
-Since `v1.7.0`, `selfupdate/service` and its three backends are the
-`Lifecycle` a managed install needs, written once for each service manager.
-Why each behaves as it does is in
-[0011-MADR](../decisions/0011-MADR-reference-service-lifecycles.md).
+Since `v1.7.0`, `selfupdate/service` and its backends are the
+`Lifecycle` a managed install needs, written once for each service manager:
+systemd, launchd and the SCM since `v1.7.0`, Task Scheduler since
+`v1.14.0`. Why each behaves as it does is in
+[0011-MADR](../decisions/0011-MADR-reference-service-lifecycles.md) and,
+for Task Scheduler,
+[0021-MADR](../decisions/0021-MADR-task-scheduler-lifecycle-and-windowless-children.md).
 
 - **Pick the backend:**
   - `systemd.New(systemd.Options{Unit: "relay.service"})`, with
     `Scope: systemd.User` for a user unit;
   - `launchd.New(launchd.Options{Label: …, Domain: launchd.System(),
     Plist: …})`, or `launchd.GUI(uid)` or `launchd.User(uid)` for an agent;
-  - `scm.New(scm.Options{Name: "relay"})`.
+  - `scm.New(scm.Options{Name: "relay"})`;
+  - `taskscheduler.New(taskscheduler.Options{Name: "relay"})`, for a
+    per-user task ([Task Scheduler](#task-scheduler)).
 - **Use it twice.** Each is a `selfupdate.Lifecycle`, an
   `EnabledLifecycle` and a `Reconciler`:
   `selfupdate.NewManagedInstaller(inner, b, b)`.
@@ -526,6 +531,71 @@ Why each behaves as it does is in
   program has run. Under `Type=notify`, call `systemd.Ready()` once the
   program serves; `systemd.WatchdogInterval` and `systemd.Watchdog` serve
   `WatchdogSec=`.
+- **No library process start runs a `.bat` or `.cmd` file** (since
+  `v1.14.0`). On Windows, `cmd.exe` parses a batch file's arguments by
+  rules no quoting can make safe (the BatBadBut class), so the version
+  probe, `service.NewExecReconciler` and the handoff refuse one with an
+  error that wraps it, even when the path names no extension and Windows
+  would find `x.cmd`. Point them at an `.exe`.
+
+### Task Scheduler
+
+Since `v1.14.0`, `selfupdate/service/taskscheduler` manages one task your
+program's setup registered: typically a per-user task that starts the
+program at logon and needs no administrator. It drives Task Scheduler
+through its COM API, never `schtasks.exe`, and it never creates, changes
+the triggers of, or deletes a task.
+
+```go
+task, err := taskscheduler.New(taskscheduler.Options{
+    Name:        "relay",              // in Folder; `\` when empty
+    RewritePath: true,                 // follow a binary that moved
+    RequestStop: askRelayToExit,       // optional: a polite stop
+})
+m, err := selfupdate.NewManagedInstaller(inner, task, task)
+```
+
+Off Windows, `New` returns `service.ErrUnsupported`.
+
+- **What the setup registers:**
+  - exactly one `Exec` action, the program; `Reconcile` refuses any other
+    shape;
+  - a logon trigger;
+  - a time trigger that repeats, every minute or so, with
+    `MultipleInstancesPolicy` `IgnoreNew`, as the watchdog that starts the
+    program again after it exits. `RestartOnFailure` is not a watchdog: it
+    was measured not to restart a program that exits, whatever its
+    documentation says (magic-cli-remote's
+    `docs/decisions/0159-MADR-the-windows-service-path-is-half-wired.md`,
+    probe 8);
+  - an `InteractiveToken` principal, if you set `RewritePath`: a rewrite of
+    a task with any other logon type is refused, since only that one was
+    measured to keep its principal.
+- **`Stop`** disables the task first, so the watchdog cannot start the
+  program while its binary is replaced. It then calls
+  `Options.RequestStop`, when set, and waits up to `Options.StopGrace` (10 s
+  by default) for the program to exit on its own; then it ends the task,
+  and waits for the program's process to exit. Without `RequestStop`, the
+  program is ended at once, with no chance to clean up. Ending the task
+  ends only the program's own process: children it started keep running,
+  so stop them in your `RequestStop` handler.
+- **`Start`** enables the task again when `Stop` disabled it, and runs it.
+  A task you had disabled is run, and stays disabled.
+- **If the update crashes between the two,** the task stays disabled and
+  the watchdog does not run it. Your setup's repair registers it again, or
+  `schtasks /change /tn <name> /enable` re-enables it.
+- **`WaitHealthy`** needs a new process running for `Options.Poll.Settle`,
+  then runs `Options.Probe`. A program that exits first fails the check at
+  once, with its exit code in the detail.
+- **Updating from inside the task** works as for the other backends:
+  `service.HandOffFunc(task, service.HandOff{Args: os.Args[1:]})`. The
+  detached run stays in the task's job, which does not allow it to leave,
+  and survives the task's end.
+- **The console window.** A console program run by a task has a visible
+  console window in your session. Building with `-H windowsgui` removes
+  it, but breaks a CLI's output in PowerShell: redirected output is empty,
+  and the exit code is lost (0159, probe 7). The library's own children
+  never add a window of their own (see the handoff's Windows line below).
 
 ### Replace before the stop
 
@@ -625,21 +695,27 @@ func main() {
   - **launchd:** a one-shot job, `<label>.selfupdate.<id>`. Call
     `Job.CleanupHandOffs` at start-up to remove finished ones; the next
     handoff does it too.
-  - **Windows:** a detached process, out of the service's job where the job
-    allows it.
-  - **A service manager with no backend here,** such as a Task Scheduler
-    task: `service.ProcessDetacher(inside)`, with your own check of
-    whether this process is inside. On Unix it is no defence against a
-    cgroup kill or a launchd job's reap.
+  - **Windows (SCM):** a detached process, out of the service's job where
+    the job allows it. Since `v1.14.0` it has a console with no window,
+    in place of no console at all, so console programs it starts do not
+    open a window either.
+  - **Task Scheduler:** the `taskscheduler` backend, the same detached
+    process. Task Scheduler's job does not allow it to leave; it survives
+    the task's end all the same.
+  - **A service manager with no backend here:**
+    `service.ProcessDetacher(inside)`, with your own check of whether this
+    process is inside. On Unix it is no defence against a cgroup kill or a
+    launchd job's reap.
 
 Pointers:
 
 - `ExampleHandOff` in `selfupdate/cli`
 - `selfupdate/service/systemd/live_linux_test.go`,
   `selfupdate/service/launchd/live_darwin_test.go`,
-  `selfupdate/service/scm/live_windows_test.go`: each runs an update from a
-  process the service started, end to end, against the real service
-  manager
+  `selfupdate/service/scm/live_windows_test.go`,
+  `selfupdate/service/taskscheduler/live_windows_test.go`: each runs an
+  update from a process the service started, end to end, against the real
+  service manager
 
 ## Test a program that self-updates
 

@@ -1792,3 +1792,80 @@ gate`: every step `rc=0`, `apicheck` `compatible with v1.13.0`,
 
 **Host cleanup.** The run's directory was removed. Afterwards: 0
 directories, 0 `selfupdate-` tasks, 0 `.test.exe` processes.
+
+### CI for T6 and T6a (2026-10-10)
+
+The owner committed T6a as `ac542d1` and pushed. CI run 38104218144 on
+`main` at `ac542d1`: `completed success`, 17 jobs, each `success`.
+
+* **T6 step 8, the "Task Scheduler live test" step** on
+  `validate (windows-2025)` ran all five `TestLiveTask*` and each
+  skipped, with the reason `live_windows_test.go:481: set
+  SELFUPDATE_REQUIRE_TASKSCHED=1 to run against this host's Task
+  Scheduler; GitHub runners have no interactive console session`. CI has
+  not shown that the runner can run an interactive-token task, so the
+  step keeps `SELFUPDATE_REQUIRE_TASKSCHED` unset, as step 8 says.
+* **`TestCOMLayout` in CI** runs in the job's `go test ./...`, without
+  `-v`. The package line is `ok …/selfupdate/service/taskscheduler
+  0.448s`, which a pass and a skip both print, so the log does not say
+  which it was. V7 records CI's result as "passed or skipped; not
+  distinguishable from the log". The Windows test host is V7's evidence.
+
+### T7 (2026-10-10)
+
+The owner said "ci is green" after CI run 38104218144; T7 is the approved
+PLAN's next phase.
+
+**Files.** `docs/guides/extending-selfupdate.md`,
+`docs/guides/migrating-from-mcplib-selfupdate.md`, `docs/architecture.md`,
+`README.md`.
+
+* **`extending-selfupdate.md`, "Run as a service":**
+  * the opening names Task Scheduler since `v1.14.0` and cites
+    0021-MADR; "Pick the backend" gains `taskscheduler.New`;
+  * a bullet: no library process start runs a `.bat` or `.cmd` file, and
+    why;
+  * `### Task Scheduler`: `New` and its options; what the setup
+    registers (one `Exec` action, a logon trigger, a repeating time
+    trigger with `IgnoreNew` as the watchdog, `InteractiveToken` for
+    `RewritePath`); that `RestartOnFailure` is no watchdog (0159 probe
+    8); `Stop` and `RequestStop`, and that ending the task leaves the
+    program's children running (Amendment A1, probe 2); `Start`; the
+    recovery from a crash between them; `WaitHealthy`; the handoff; and
+    `-H windowsgui` (0159 probe 7);
+  * the handoff's per-platform list: the Windows line is "Windows (SCM)"
+    and says the run has a console with no window; a Task Scheduler line
+    names the backend; the line for a manager with no backend no longer
+    names Task Scheduler;
+  * the pointers name `taskscheduler/live_windows_test.go`.
+* **Migration guide:** `## 14. From v1.13 to v1.14`, in §13's form.
+  The header's "current release" lines and their pointer list move in
+  T8's pin commit, as step 2 says.
+* **`docs/architecture.md`:**
+  * the tree gains `taskscheduler/` and `internal/winproc/`;
+  * the package table gains both rows, counted with `ls <dir>/*.go`, split
+    on `_test.go`: `taskscheduler` 9 and 10, `winproc` 5 and 4. Their
+    imports were read with `go list` for the host and `GOOS=windows`;
+  * three rows this PLAN changed are corrected: `selfupdate` tests 81 to
+    83 and `service` tests 13 to 14 (T2's new test files), and
+    `internal/winproc` added to the imports of `selfupdate`, `service`
+    and `scm`;
+  * the backend bullets gain `taskscheduler`, and the CI sentence says its
+    live tests skip on a GitHub runner;
+  * a bullet for `internal/winproc` and `TestNoDirectProcessStart`;
+  * the depguard paragraph: 17 rules, counted in `.golangci.yml`, with
+    `internal-winproc` and `service-taskscheduler`.
+* **`README.md`:** the backends' row names `taskscheduler`, "a per-user
+  Task Scheduler task".
+
+**Found, and not changed (outside T7):** four rows of the package table
+were already wrong at `31cce88`, before this PLAN: `systemd` says 8 and
+12 (the tree has 9 and 17), `launchd` 6 and 11 (7 and 13), `scm`'s test
+count 9 (12), and `internal/cmd/selfupdate-release` 11 and 10 (12 and
+11). They wait for the owner's word.
+
+**Checks.** On the four files: `scripts/check-docs.sh --links` `94 links
+in 4 files, 0 broken`; `--ids` with this PLAN `5 files, 16 deny-list
+rules, 0 findings`; markdownlint `0 issues`. `make gate`: every step
+`rc=0`, `links` `443 links in 60 files, 0 broken`, `apicheck`
+`compatible with v1.13.0`, `overall=0`.
