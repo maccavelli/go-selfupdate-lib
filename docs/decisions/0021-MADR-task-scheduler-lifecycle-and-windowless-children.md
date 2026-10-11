@@ -470,6 +470,12 @@ restore pass `TASK_UPDATE | TASK_IGNORE_REGISTRATION_TRIGGERS`.)*
   `os/exec` keeps `cmd.Path` as given and resolves the extension
   privately for `Start`. The check resolves the path itself with
   `exec.LookPath`.)*
+  *(Annotated 2026-10-11: the check compares the extension as written.
+  Measured on the Windows test host, `run.bat.` and `run.cmd.` put an
+  argument under `cmd.exe`'s parser, and `run.bat ` and `run.cmd `, with a
+  trailing space, run the script, and `v1.14.0`'s guard allows all four.
+  [0022-MADR-documentation-pass-after-v1-14-0.md](0022-MADR-documentation-pass-after-v1-14-0.md)
+  H2 normalizes the path as Win32 does before the comparison.)*
 * Every path these functions receive is this module's own staging file or a
   target binary, so nothing legitimate is refused [derived]. The guard stops
   a misconfigured target from putting an argument under `cmd.exe`'s parser
