@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-11
 decision-makers: go-selfupdate-lib maintainers
 consulted: "the tree at 773dd0b; make gate runs on this Mac and on a Linux test host, 2026-10-11 (0022-PLAN-error-chain-and-process-liveness.md, Q5's checks); a reproduction in the session scratchpad; Go 1.27.2's src/internal/testenv/exec.go"
@@ -147,7 +147,8 @@ step.
 
 ## Decision Outcome
 
-Proposed: **D1-A, D2-A, D3-A and D4-A.**
+Chosen on 2026-10-11 by the owner ("committed, proceed"): **D1-A, D2-A,
+D3-A and D4-A.**
 
 * **D1-A,** because a fixture build that cannot read a stray `.git` is
   correct on any machine, and none of the fixtures uses VCS information.

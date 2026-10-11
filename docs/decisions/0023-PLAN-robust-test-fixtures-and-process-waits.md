@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: in-progress
 date: 2026-10-11
 associated-madr: "0023-MADR-robust-test-fixtures-and-process-waits.md"
 ---
@@ -227,4 +227,81 @@ Nothing in the tree changes.
 
 ## Execution record
 
-*(Empty until approval.)*
+### Approval (2026-10-11)
+
+The owner committed the pair and its index rows, and said "committed,
+proceed". The MADR is `accepted` with D1-A, D2-A, D3-A and D4-A.
+
+### S0 (2026-10-11)
+
+The owner committed the pair and its rows as `745328e`. This plan is
+`in-progress`, the MADR `accepted`, here and in the index.
+
+### S1 (2026-10-11)
+
+**Step 1, a stray `.git`, before the change.**
+
+On this Mac, `TMPDIR` set to a scratch directory holding an empty `.git`,
+`go test -count=1`, at `745328e` (the tests are `773dd0b`'s):
+
+```text
+./selfupdate/archive/ -run '.': rc=1 fails=0 vcs_errors=1 last=FAIL
+./selfupdate/ -run 'Image|TestE2E': rc=1 fails=4 vcs_errors=4 last=FAIL
+./buildinfo/ -run '.': rc=1 fails=4 vcs_errors=3 last=FAIL
+./internal/cmd/selfupdate-release/ -run '.': rc=0 fails=0 vcs_errors=0 last=ok  	github.com/maccavelli/go-selfupdate-lib/internal/cmd/selfupdate-release	181.565s
+```
+
+(`fails` counts `--- FAIL` lines, `vcs_errors` "error obtaining VCS
+status" lines. `archive`'s failure is in `TestMain`, so no test line is
+printed.)
+
+On the Linux test host, a clone at `773dd0b`, run from a login shell with
+the host's own `TMPDIR` (which holds an empty `.git`) and `BASH_ENV`:
+
+```text
+head=773dd0b tmpdir_has_git=yes bash_env_set=yes
+./selfupdate/archive/ -run '.': rc=1 fails=0 vcs_errors=1
+./selfupdate/ -run 'Image|TestE2E': rc=0 fails=0 vcs_errors=0
+./buildinfo/ -run '.': rc=0 fails=0 vcs_errors=0
+./internal/cmd/selfupdate-release/ -run '.': rc=0 fails=0 vcs_errors=0
+```
+
+Only `archive` fails there, as in 0022's gate runs; why the image,
+E2E and `buildinfo` builds do not is [unverified]. Every fix of S3 covers
+both behaviours.
+
+**Step 2, first start of a fresh binary** (a hello-world, `-buildvcs=false`,
+three fresh copies, first start then second, bash's `time`):
+
+| Host | Load average | First starts | Second starts |
+| :--- | :--- | :--- | :--- |
+| this Mac | 44.24, 38.72, 27.40 | 4.284 s, 1.499 s, 0.808 s | 0.010 s, 0.067 s, 0.055 s |
+| the Linux test host | 0.29, 0.23, 0.40 | 0.003 s, 0.003 s, 0.003 s | 0.002 s, 0.003 s, 0.002 s |
+| the Windows test host | — | 0.026 s, 0.022 s, 0.021 s | 0.036 s, 0.019 s, 0.037 s |
+
+A first start on this Mac, under that load, takes up to 4.3 s of a 10 s
+budget before the helper runs a line; the second start of the same file
+does not. The helper waits each start a freshly copied binary.
+
+**Step 3, the helpers' own life bounds,** read:
+
+* the E2E helper (`serve`, `e2e_running_test.go:40-52`) returns after 60 s
+  without its done file;
+* the other five waits start a copy of the test binary with
+  `SELFUPDATE_NATIVE_HELPER=1`, whose `nativeHelper`
+  (`replace_native_test.go:34-49`) returns after 15 s without its done
+  file.
+
+So a helper that hangs alive ends on its own, well before a test's
+deadline.
+
+**Host cleanup.** The Linux run's directory and the timing copies on both
+hosts were removed; 0 `selfupdate-s1` directories remain there.
+
+**Checks (S0 and S1).** On the three records: `scripts/check-docs.sh
+--links` `98 links in 3 files, 0 broken`; `--ids` `3 files, 16 deny-list
+rules, 0 findings`; markdownlint `0 issues` on `docs/README.md`. With this
+Mac's load average above 40, `make gate` ran on the Linux test host as the
+Rules allow: a clone at `773dd0b` with the diff applied (three files,
+SHA-256 matched), `env -u BASH_ENV`, a clean `TMPDIR`, `GATE_SKIP=ids`;
+every other step `rc=0`, `overall=0`.
