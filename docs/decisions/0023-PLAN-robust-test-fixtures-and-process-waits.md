@@ -496,3 +496,58 @@ pre-add-check FILES="<the 8 Go files>"`: `go-precheck: 8 file(s) clean`.
 step `rc=0`, `arch` `0 differ`, `overall=0`.
 
 **Host cleanup.** Both hosts' run directories were removed.
+
+### S4 (2026-10-11)
+
+The owner committed S3 as `014eec1`, and said "proceed".
+
+**Files.** Changed: `selfupdate/e2e_running_test.go`,
+`selfupdate/lifecycle_windows_test.go` (two sites),
+`selfupdate/replace_native_test.go`, `selfupdate/journal_windows_test.go`,
+`selfupdate/cleanup_busy_windows_test.go`,
+`internal/cmd/selfupdate-release/identity_test.go`. No file is added.
+
+**As built:**
+
+* Each of the six waits calls `testproc.Start(t, cmd, ready)` in place of
+  `cmd.Start` and its polling loop; each cleanup, and `helperService.Stop`
+  and `runningCopy.stop`, call `Proc.Wait`. `helperService` and
+  `runningCopy` hold a `*testproc.Proc` where they held the `*exec.Cmd`.
+  `TestNativeReplaceRunningCopy`, which waited twice (explicitly, then in
+  its defer), now gets the same result from both.
+* The helpers, their ready and done files, and their own life bounds are
+  unchanged. `lifecycle_windows_test.go` no longer imports `time`.
+* `TestIdentity`'s shared input leaves `Timeout` unset, with a comment;
+  "a hang" sets its own 1 s, as before.
+
+**Seen failing (step 3), on this Mac:**
+
+| Plant | Run | Result |
+| :--- | :--- | :--- |
+| the E2E helper's `serve` exits 9 before its ready file, on the tree | `-run '^TestE2EUpdateRunningCopy$'` | `--- FAIL (0.80s)`: `e2e_running_test.go:281: demo exited (exit status 9) before it was ready, after 417ms` |
+| the same plant on `014eec1` (`git archive`, before this phase) | the same | `--- FAIL (10.36s)`: `e2e_running_test.go:293: the running copy never signalled ready` |
+| `TestIdentity`'s "a hang" without its own 1 s | `-run '^TestIdentity$'` | `--- FAIL: TestIdentity/a_hang (30.00s)`: `identity: relay-darwin-arm64 hang did not finish within 30s; want "did not finish within 1s"` |
+
+The first two rows are V4: a crash is reported in under half a second,
+with its status, where the old wait spent its whole budget and named the
+wrong cause. The third shows "a hang" depends on its own budget, so the
+shared default does not weaken it.
+
+**The hosts (step 4),** a clone at `d396052` with the diff applied (20
+files, SHA-256 matched):
+
+* the Windows test host: `-run 'TestReplaceBeforeStopRunningImage|TestKeepPreviousRunningImage|TestNativeReplaceRunningCopy|TestWindows|TestE2E'
+  ./selfupdate/`: 19 tests `PASS`, among them all five Windows-only
+  sites' tests and the E2E tests; `TestIdentity` `ok`;
+* the Linux test host, its own `TMPDIR` and `BASH_ENV`:
+  `TestNativeReplaceRunningCopy` and the four `TestE2E*` `PASS`;
+  `TestIdentity` `ok`;
+* this Mac: the same `selfupdate` tests and `TestIdentity` (4.35 s) `ok`.
+
+**Checks.** Vet for darwin, linux and windows: clean. `make
+pre-add-check FILES="<the 6 Go files>"`: `go-precheck: 6 file(s) clean`.
+`make gate` on this Mac, load average 45.69 before and 53.87 (1 min),
+63.51 (5 min) after, the conditions in which it failed on 2026-10-11:
+every step `rc=0`, `overall=0`.
+
+**Host cleanup.** Both hosts' run directories were removed.

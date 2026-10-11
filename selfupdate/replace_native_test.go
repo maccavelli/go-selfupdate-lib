@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 )
 
 func TestMain(m *testing.M) {
@@ -74,23 +76,11 @@ func TestNativeReplaceRunningCopy(t *testing.T) {
 		"SELFUPDATE_READY="+ready,
 		"SELFUPDATE_DONE="+done,
 	)
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
+	proc := testproc.Start(t, cmd, ready)
 	defer func() {
 		_ = os.WriteFile(done, []byte("x"), 0o600)
-		_ = cmd.Wait()
+		_ = proc.Wait()
 	}()
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		if _, err := os.Stat(ready); err == nil {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("helper did not start")
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
 
 	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
 	if err != nil {
@@ -140,7 +130,7 @@ func TestNativeReplaceRunningCopy(t *testing.T) {
 		t.Fatalf("target is neither old nor new (%d bytes)", len(got))
 	}
 	_ = os.WriteFile(done, []byte("x"), 0o600)
-	waitErr := cmd.Wait()
+	waitErr := proc.Wait()
 	if waitErr != nil {
 		t.Logf("helper exit: %v (allowed while replacing a running image)", waitErr)
 	}

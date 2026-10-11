@@ -45,9 +45,11 @@ func TestIdentity(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(staging, packedName), packed(t, archive.TarGz, programName("relay", host), prog), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// No Timeout: each run gets identityTimeout, the budget the tool ships;
+	// "a hang" sets its own (0023-MADR D3-A).
 	in := func(asset, args, version string) identityInput {
 		return identityInput{Staging: staging, Asset: asset, Product: "relay", Platform: host,
-			ArgsJSON: args, WantVersion: version, WantKind: "release", SHA: b.sha, Timeout: 5 * time.Second}
+			ArgsJSON: args, WantVersion: version, WantKind: "release", SHA: b.sha}
 	}
 	for _, asset := range []string{raw, packedName} {
 		first, err := identity(context.Background(), in(asset, `["version"]`, fixtureTag))

@@ -86,7 +86,7 @@ func buildHelper(t *testing.T, version, goos string) []byte {
 
 // runningCopy is the old program, started from the target and still running.
 type runningCopy struct {
-	cmd  *exec.Cmd
+	proc *testproc.Proc
 	done string
 	once sync.Once
 	err  error
@@ -97,21 +97,9 @@ func startCopy(t *testing.T, path string) *runningCopy {
 	signals := t.TempDir()
 	ready, done := filepath.Join(signals, "ready"), filepath.Join(signals, "done")
 	cmd := exec.Command(path, "serve", ready, done)
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
-	c := &runningCopy{cmd: cmd, done: done}
+	c := &runningCopy{proc: testproc.Start(t, cmd, ready), done: done}
 	t.Cleanup(func() { _ = c.stop() })
-	deadline := time.Now().Add(10 * time.Second)
-	for {
-		if _, err := os.Stat(ready); err == nil {
-			return c
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("the running copy never signalled ready")
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+	return c
 }
 
 // stop asks the copy to exit and returns its exit error, once.
@@ -121,7 +109,7 @@ func (c *runningCopy) stop() error {
 			c.err = err
 			return
 		}
-		c.err = c.cmd.Wait()
+		c.err = c.proc.Wait()
 	})
 	return c.err
 }

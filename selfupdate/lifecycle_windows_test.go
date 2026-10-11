@@ -8,7 +8,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
-	"time"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 )
 
 // plantPendingCleanup leaves a backup under a cleanup receipt, as a commit
@@ -33,7 +34,7 @@ func plantPendingCleanup(t *testing.T, target Target) []string {
 // helperService is a "service" whose process is a running copy of the
 // target: Stop ends it and waits, and records what the target held then.
 type helperService struct {
-	cmd       *exec.Cmd
+	proc      *testproc.Proc
 	done      string
 	target    string
 	running   bool
@@ -51,7 +52,7 @@ func (h *helperService) Stop(context.Context, string) error {
 	if err := os.WriteFile(h.done, []byte("x"), 0o600); err != nil {
 		return err
 	}
-	err := h.cmd.Wait()
+	err := h.proc.Wait()
 	h.running = false
 	return err
 }
@@ -86,26 +87,13 @@ func TestReplaceBeforeStopRunningImage(t *testing.T) {
 	ready, done := filepath.Join(home, "ready"), filepath.Join(home, "done")
 	cmd := exec.Command(exe)
 	cmd.Env = append(os.Environ(), "SELFUPDATE_NATIVE_HELPER=1", "SELFUPDATE_READY="+ready, "SELFUPDATE_DONE="+done)
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
-	svc := &helperService{cmd: cmd, done: done, target: exe, running: true}
+	svc := &helperService{proc: testproc.Start(t, cmd, ready), done: done, target: exe, running: true}
 	defer func() {
 		if svc.running {
 			_ = os.WriteFile(done, []byte("x"), 0o600)
-			_ = cmd.Wait()
+			_ = svc.proc.Wait()
 		}
 	}()
-	deadline := time.Now().Add(10 * time.Second)
-	for {
-		if _, err := os.Stat(ready); err == nil {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("helper did not start")
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
 
 	inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
 	if err != nil {
@@ -171,23 +159,11 @@ func TestKeepPreviousRunningImage(t *testing.T) {
 	ready, done := filepath.Join(home, "ready"), filepath.Join(home, "done")
 	cmd := exec.Command(exe)
 	cmd.Env = append(os.Environ(), "SELFUPDATE_NATIVE_HELPER=1", "SELFUPDATE_READY="+ready, "SELFUPDATE_DONE="+done)
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
+	proc := testproc.Start(t, cmd, ready)
 	defer func() {
 		_ = os.WriteFile(done, []byte("x"), 0o600)
-		_ = cmd.Wait()
+		_ = proc.Wait()
 	}()
-	deadline := time.Now().Add(10 * time.Second)
-	for {
-		if _, err := os.Stat(ready); err == nil {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("helper did not start")
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
 	running, err := os.Stat(exe)
 	if err != nil {
 		t.Fatal(err)

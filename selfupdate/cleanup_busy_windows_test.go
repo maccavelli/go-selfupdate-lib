@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 )
 
 // Regression tests for docs/decisions/0010-MADR-remediate-second-debugging-pass-findings.md
@@ -204,28 +206,16 @@ func TestWindowsKeepPreviousRunningPrevious(t *testing.T) {
 	ready, done := filepath.Join(home, "ready"), filepath.Join(home, "done")
 	cmd := exec.Command(exe)
 	cmd.Env = append(os.Environ(), "SELFUPDATE_NATIVE_HELPER=1", "SELFUPDATE_READY="+ready, "SELFUPDATE_DONE="+done)
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
+	proc := testproc.Start(t, cmd, ready)
 	stopped := false
 	stop := func() {
 		if !stopped {
 			stopped = true
 			_ = os.WriteFile(done, []byte("x"), 0o600)
-			_ = cmd.Wait()
+			_ = proc.Wait()
 		}
 	}
 	defer stop()
-	deadline := time.Now().Add(10 * time.Second)
-	for {
-		if _, err := os.Stat(ready); err == nil {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("helper did not start")
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
 
 	inst, err := NewStandaloneInstaller(InstallOptions{
 		TargetPolicy: TargetPolicy{ExecutablePath: exe}, KeepPrevious: true, LockTimeout: 300 * time.Millisecond,

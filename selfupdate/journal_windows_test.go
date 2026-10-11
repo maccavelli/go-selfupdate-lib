@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 )
 
 // TestWindowsInterruptedApplyRunningImage: the previous binary still runs
@@ -35,22 +37,11 @@ func TestWindowsInterruptedApplyRunningImage(t *testing.T) {
 	ready, done := filepath.Join(home, "ready"), filepath.Join(home, "done")
 	cmd := exec.Command(exe)
 	cmd.Env = append(os.Environ(), "SELFUPDATE_NATIVE_HELPER=1", "SELFUPDATE_READY="+ready, "SELFUPDATE_DONE="+done)
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
+	proc := testproc.Start(t, cmd, ready)
 	defer func() {
 		_ = os.WriteFile(done, []byte("x"), 0o600)
-		_ = cmd.Wait()
+		_ = proc.Wait()
 	}()
-	for deadline := time.Now().Add(10 * time.Second); ; {
-		if _, err := os.Stat(ready); err == nil {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("helper did not start")
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
 
 	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}, LockTimeout: 300 * time.Millisecond})
 	if err != nil {
