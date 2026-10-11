@@ -40,6 +40,9 @@ type fakeTask struct {
 	exitIn int
 	// stopKeeps makes a stop take effect only after a few virtual sleeps.
 	stopKeeps bool
+	// staleList keeps an ended instance listed, its process gone, as Task
+	// Scheduler can (0021-MADR Amendment A4).
+	staleList bool
 	stopErr   error
 	runErr    error
 	// runExits makes a run end at once with this result.
@@ -140,6 +143,9 @@ func (f *fakeSched) tick() {
 func (f *fakeSched) end(ft *fakeTask) {
 	for _, pid := range ft.pids {
 		f.alive[pid] = false
+	}
+	if ft.staleList {
+		return
 	}
 	ft.pids = nil
 	ft.st = stateReady

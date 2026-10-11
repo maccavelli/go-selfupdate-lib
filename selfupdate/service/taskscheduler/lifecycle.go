@@ -106,8 +106,10 @@ func switches(r registered) (bool, []trigger, error) {
 //     probe 8);
 //  4. it calls Options.RequestStop, when set, and waits up to
 //     Options.StopGrace for the program to exit on its own;
-//  5. it ends the task (IRegisteredTask::Stop), and waits until no instance
-//     runs and the recorded process has exited.
+//  5. it ends the task (IRegisteredTask::Stop), and waits until the
+//     recorded process has exited, by PID and creation time. It does not
+//     wait on Task Scheduler's instance list, which can still name the
+//     process after it has exited (0021-MADR Amendment A4).
 //
 // Once the task is being stopped, the wait is bounded by Options.Poll's
 // timeout alone, and the caller's context error is returned after
@@ -156,7 +158,7 @@ func (t *Task) Stop(ctx context.Context, product string) (err error) {
 	var asked error
 	if t.o.RequestStop != nil {
 		if asked = t.o.RequestStop(ctx, inst.pid); asked == nil {
-			gone, err := t.waitGone(ctx, r, path, inst, t.o.StopGrace)
+			gone, err := t.waitGone(ctx, path, inst, t.o.StopGrace)
 			if err != nil || gone {
 				return err
 			}
@@ -165,7 +167,7 @@ func (t *Task) Stop(ctx context.Context, product string) (err error) {
 	if err := r.stop(); err != nil {
 		return errors.Join(mapError("stop", path, err), requestError(asked))
 	}
-	gone, err := t.waitGone(ctx, r, path, inst, t.o.Poll.Timeout)
+	gone, err := t.waitGone(ctx, path, inst, t.o.Poll.Timeout)
 	if err == nil && !gone {
 		err = fmt.Errorf("%w: %s still runs after it was stopped", service.ErrTimeout, path)
 	}
@@ -202,31 +204,17 @@ func requestError(err error) error {
 	return fmt.Errorf("selfupdate: taskscheduler: Options.RequestStop: %w", err)
 }
 
-// waitGone waits, for at most limit by this Task's clock, until the task
-// has no running instance and inst's process has exited. It reports
-// whether they had; the error is a query failure, or ctx ending.
-func (t *Task) waitGone(ctx context.Context, r registered, path string, inst instance, limit time.Duration) (bool, error) {
+// waitGone waits, for at most limit by this Task's clock, until inst's
+// process has exited, checked by PID and creation time. It reports whether
+// it had; the error is ctx ending. Stop calls it only with a recorded
+// instance.
+func (t *Task) waitGone(ctx context.Context, path string, inst instance, limit time.Duration) (bool, error) {
 	if limit <= 0 {
 		limit = service.DefaultPollTimeout
 	}
 	end := t.now().Add(limit)
 	for {
-		pids, err := r.instances()
-		if err != nil {
-			var hr hresult
-			if errors.As(err, &hr) && hr == hrTaskNotRunning {
-				pids = nil
-			} else {
-				return false, mapError("list the instances of", path, err)
-			}
-		}
-		// The recorded process is what Stop must wait for. GetInstances can
-		// still list a PID after the program has exited (T6 live run).
-		if inst.pid != 0 {
-			if !t.s.running(inst.pid, inst.born) {
-				return true, nil
-			}
-		} else if len(pids) == 0 {
+		if !t.s.running(inst.pid, inst.born) {
 			return true, nil
 		}
 		if !t.now().Before(end) {
@@ -239,7 +227,9 @@ func (t *Task) waitGone(ctx context.Context, r registered, path string, inst ins
 }
 
 // Start enables the task again when Stop disabled it, then runs it. A task
-// that already runs is left alone.
+// that already runs is left alone. The instance Stop recorded does not
+// count once its process has exited, though Task Scheduler may still list
+// it (0021-MADR Amendment A4, Q7).
 func (t *Task) Start(_ context.Context, product string) (err error) {
 	name, path, err := t.task(product)
 	if err != nil {
@@ -265,7 +255,10 @@ func (t *Task) Start(_ context.Context, product string) (err error) {
 	if err != nil {
 		return mapError("list the instances of", path, err)
 	}
-	if len(pids) > 0 {
+	t.mu.Lock()
+	prev := t.previous[path]
+	t.mu.Unlock()
+	if len(t.current(pids, prev)) > 0 {
 		return nil
 	}
 	at := t.now()
@@ -276,6 +269,22 @@ func (t *Task) Start(_ context.Context, product string) (err error) {
 	t.started[path] = at
 	t.mu.Unlock()
 	return nil
+}
+
+// current is pids without prev, the instance Stop recorded, once prev's
+// process has exited: Task Scheduler can still list it (0021-MADR
+// Amendment A4).
+func (t *Task) current(pids []uint32, prev instance) []uint32 {
+	if prev.pid == 0 || t.s.running(prev.pid, prev.born) {
+		return pids
+	}
+	var out []uint32
+	for _, pid := range pids {
+		if pid != prev.pid {
+			out = append(out, pid)
+		}
+	}
+	return out
 }
 
 // runClockSlack allows for Task Scheduler's last-run time being recorded

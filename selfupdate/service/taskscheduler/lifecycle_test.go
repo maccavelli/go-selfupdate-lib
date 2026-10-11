@@ -306,6 +306,47 @@ func TestStartRunning(t *testing.T) {
 	}
 }
 
+// TestStopStaleInstance: Stop waits for the recorded process, not for Task
+// Scheduler's list, which can still name it after it has exited
+// (0021-MADR Amendment A4).
+func TestStopStaleInstance(t *testing.T) {
+	f := newFake()
+	f.add(`\demo`, 4242).staleList = true
+	task, _ := testTask(t, f, Options{Poll: service.PollOptions{Timeout: 50 * time.Millisecond}})
+	if err := task.Stop(context.Background(), "demo"); err != nil {
+		t.Fatalf("Stop: %v, want nil once the process has exited", err)
+	}
+}
+
+// TestStartStaleInstance: after Stop, Start runs the task though Task
+// Scheduler still lists the stopped instance, whose process has exited.
+// A recorded instance whose process still runs is counted (0021-MADR
+// Amendment A4, Q7).
+func TestStartStaleInstance(t *testing.T) {
+	f := newFake()
+	f.add(`\demo`, 4242).staleList = true
+	task, _ := testTask(t, f, Options{})
+	if err := task.Stop(context.Background(), "demo"); err != nil {
+		t.Fatal(err)
+	}
+	err := task.Start(context.Background(), "demo")
+	if want := []string{"enable false", "stop", "enable true", "run"}; err != nil || !slices.Equal(f.verbs(), want) {
+		t.Fatalf("Start after a stale listing: %v, calls %q, want %q", err, f.verbs(), want)
+	}
+
+	f = newFake()
+	ft := f.add(`\demo`, 4242)
+	ft.stopKeeps, ft.exitIn = true, -1
+	task, _ = testTask(t, f, Options{Poll: service.PollOptions{Timeout: 50 * time.Millisecond}})
+	if err := task.Stop(context.Background(), "demo"); !errors.Is(err, service.ErrTimeout) {
+		t.Fatalf("Stop: %v, want ErrTimeout", err)
+	}
+	err = task.Start(context.Background(), "demo")
+	if want := []string{"enable false", "stop", "enable true"}; err != nil || !slices.Equal(f.verbs(), want) {
+		t.Fatalf("Start with the recorded process alive: %v, calls %q, want %q", err, f.verbs(), want)
+	}
+}
+
 // TestWaitHealthyNewInstance: after Stop and Start, the new instance is
 // healthy; the probe runs after it.
 func TestWaitHealthyNewInstance(t *testing.T) {

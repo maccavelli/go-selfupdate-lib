@@ -43,7 +43,7 @@ Associated MADR: [0021-MADR-task-scheduler-lifecycle-and-windowless-children.md]
 | T4 | `taskscheduler`: options, probes, stop, start, health, reconcile, restore, inside, detach, all over a fake | one commit |
 | T5 | `taskscheduler`: the COM transport, and its layout test on the Windows test host | one commit |
 | T6 | `taskscheduler`: the live test, and CI's step | one commit |
-| T6a | Deviations D3 to D5: the live tests that did not fail first, the wait and `S_FALSE` changes made in T6, the medium-integrity evidence | one commit (proposed, 2026-10-10) |
+| T6a | Deviations D3 to D5: the live tests that did not fail first, the wait and `S_FALSE` changes made in T6, the medium-integrity evidence | one commit (approved, 2026-10-10) |
 | T7 | guides, architecture, README, migration guide | docs only |
 | T8 | `v1.14.0`: the release procedure, and the pin commit | the tag, one commit |
 | T9 | the closing record | records only |
@@ -779,12 +779,11 @@ FILES="<the phase's Go files>"`. `make gate` `overall=0`. Commit.
    (`-count=3`), and the record quotes the `--- PASS` lines.
 10. **Checks** (rule 2). Commit.
 
-### Phase T6a: the checks T6 did not prove, and T6's code changes (proposed)
+### Phase T6a: the checks T6 did not prove, and T6's code changes
 
 Added 2026-10-10 by Deviations D3, D4 and D5 (Execution record), after
-T6's commit `026faaa`. **Not approved:** nothing here is done until the
-owner approves the phase, and answers Q7 (MADR Amendment A4) and Q8
-(Deviation D5).
+T6's commit `026faaa`. **Approved by the owner on 2026-10-10**, with Q7
+(MADR Amendment A4) and Q8 (Deviation D5) answered as recommended.
 
 **Files:** `selfupdate/service/taskscheduler/`: `lifecycle.go`,
 `lifecycle_test.go`, `fake_test.go`, `com_windows_test.go`,
@@ -833,8 +832,8 @@ owner approves the phase, and answers Q7 (MADR Amendment A4) and Q8
    (step 5) and on `waitGone` say what it waits for.
    `TestStopStaleInstance` (fake): the fake keeps the PID listed after
    the process exits, and `Stop` returns nil, not `ErrTimeout`.
-7. **`Start` after a stale listing** (Amendment A4 Q7, if the owner takes
-   the recommendation). `Start` does not count a listed instance whose
+7. **`Start` after a stale listing** (Amendment A4 Q7, the owner's
+   choice). `Start` does not count a listed instance whose
    PID is the one `Stop` recorded and whose process has exited.
    `TestStartStaleInstance` (fake): `Start` runs the task.
 8. **Fail first** (rule 3), each in a `scripts/plant-copy.sh` copy:
@@ -1620,7 +1619,7 @@ alone.
 assertion on `stop` is missing; step 8's CI run waits for a push. T6a
 holds the remedies.
 
-### Deviation D3, resolution (proposed 2026-10-10)
+### Deviation D3, resolution (2026-10-10)
 
 * **Found.** T5's Deviation D3: the medium-integrity `TestCOMLayout` run,
   from inside a least-privilege task, was refused at registration
@@ -1682,9 +1681,114 @@ holds the remedies.
   * Recommended: keep it from the test process (T6a step 2 fixes what it
     proves). The handoff's rollback path does not depend on the backend,
     and `scm`'s `TestLiveHandOffHealthFailureReportsRollback` runs it
-    from inside a real service. Cost: none beyond step 2.
+    from inside a real service. Cost: none beyond step 2. **The owner
+    chose this on 2026-10-10.**
   * Alternative: run it through the agent, as `TestLiveTaskUpdate` does.
     Cost: one more agent mode and a longer test; it adds a
     backend-specific check of the handoff's result on a rollback.
 * **Doing nothing:** `Stop`'s disable and `Restore` ship with no live
   evidence, and V8 cannot be met.
+
+### Owner decisions on T6a (2026-10-10)
+
+Q7: the recommendation (MADR Amendment A4). Q8: keep the rollback test in
+the test process (Deviation D5). T6a approved. The owner committed the
+records above as `eb6c47e`, and commits T6a.
+
+### T6a (2026-10-10)
+
+**Files.** Changed, in `selfupdate/service/taskscheduler/`:
+`lifecycle.go`, `lifecycle_test.go`, `fake_test.go`,
+`com_windows_test.go`, `live_windows_test.go`. No exported API changed.
+
+**As built:**
+
+* `waitGone(ctx, path, inst, limit)` polls `running(pid, born)` alone; the
+  `registered` argument, the instance listing and both unreachable
+  branches are gone. `Stop`'s step 5 and `waitGone`'s comments say what
+  it waits for.
+* `Start` filters the listing through `current(pids, prev)`, which drops
+  the instance `Stop` recorded once its process has exited (Q7).
+  `hrTaskNotRunning` stays in `api.go`; only the transport uses it.
+* The fake's `staleList` keeps an ended instance listed.
+  `TestStopStaleInstance` and `TestStartStaleInstance` (with a second case:
+  a recorded process that still runs is counted).
+* `TestCOMLayout` logs the raw `GetInstances` HRESULT of the never-run
+  task and the raw `Stop` HRESULT of the idle task, through
+  `rawTaskCall`, and asserts `instances()` empty and `stop()` nil there.
+  `toggleEnabled` reads `enabled` back after enabling.
+* `liveXML`'s time trigger starts at registration and has no `Duration`.
+  `newLiveTaskIn(t, "old")` puts the task's `Command` at
+  `<dir>\old\demo.exe` for `TestLiveTaskRollback`.
+* `TestLiveTaskRequestStop` wraps the scheduler in `stopCounter`, which
+  counts `registered.stop`, and asserts zero.
+* The detached update writes its integrity RID (`TokenIntegrityLevel`,
+  the label's last subauthority) beside the handoff result;
+  `TestLiveTaskUpdate` asserts `0x2000`.
+
+**The Windows test host.** Console sign-in measured, as for T6:
+`console_user_present=True`, `explorer_sessions=1`, `logonui=False`.
+Binaries cross-compiled on this Mac from the T6a tree, run from the
+elevated ssh shell. `TestCOMLayout` and the four live tests,
+`-test.count=3`, exit 0. The first of the three passes, verbatim; the
+other two match, with their own PIDs and times:
+
+```text
+    com_windows_test.go:30: CoInitializeEx HRESULT 0x00000000
+    com_windows_test.go:35: never-run DATE 1999-11-30 00:00:00 -0600 CST LastTaskResult 0x00041303
+    com_windows_test.go:38: never-run GetInstances HRESULT 0x00000000
+    com_windows_test.go:49: idle Stop HRESULT 0x00000001
+--- PASS: TestCOMLayout (0.21s)
+    live_windows_test.go:521: the update's integrity RID 0x2000
+--- PASS: TestLiveTaskUpdate (4.97s)
+    live_windows_test.go:557: instance pids before Stop: [26960]
+    live_windows_test.go:561: start pid 26960 running after Stop: false; pids []
+--- PASS: TestLiveTaskStopHoldsDisabled (71.89s)
+--- PASS: TestLiveTaskRollback (5.44s)
+--- PASS: TestLiveTaskRequestStop (1.12s)
+--- PASS: TestLiveTaskzCleanup (0.98s)
+```
+
+The later passes: `TestCOMLayout` 0.34s and 0.34s; `TestLiveTaskUpdate`
+5.36s and 5.47s; `TestLiveTaskStopHoldsDisabled` 71.89s and 72.00s;
+`TestLiveTaskRollback` 5.50s and 5.31s; `TestLiveTaskRequestStop` 1.11s
+and 1.11s; `TestLiveTaskzCleanup` 0.88s and 0.99s. Every pass logged the
+same four HRESULT lines and RID `0x2000`.
+
+**Fail first (step 8),** each a `scripts/plant-copy.sh` copy, checked to
+have landed:
+
+| Plant | Where | Result |
+| :--- | :--- | :--- |
+| `Stop` without the disable | the Windows test host | failed: `live_windows_test.go:564: a start ran while disabled: [7504 41020]` |
+| `Restore` a no-op | the Windows test host | failed: `live_windows_test.go:638: xml after rollback differs: len 1303 vs 1307, <nil>` |
+| `Stop` calls `stop` after the program exited in the grace period | the Windows test host | failed: `live_windows_test.go:658: IRegisteredTask::Stop called 1 times after the program exited on RequestStop` |
+| the task's `RunLevel` `HighestAvailable` | the Windows test host | failed: `live_windows_test.go:519: the update ran at integrity 0x3000, want 0x2000 (medium)` |
+| `instances` without the `0x8004130B` mapping | the Windows test host | **passed**: not reachable. The never-run task's `GetInstances` returns `S_OK`, so no test reaches the mapping (MADR Amendment A4) |
+| `stop` with `S_FALSE` an error again | the Windows test host | failed: `com_windows_test.go:51: stop of an idle task: plant: S_FALSE is an error` |
+| `put_Enabled(1)` | the Windows test host | **passed**: not distinguishing. The read-back sees `true`; Windows reads any non-zero `VARIANT_BOOL` as true (MADR Amendment A4) |
+| `Stop` requires an empty listing after the wait | this Mac | failed: `lifecycle_test.go:317: Stop: selfupdate: service: timed out: \demo still runs after it was stopped, want nil once the process has exited` |
+| `current` keeps the stale instance | this Mac | failed: `lifecycle_test.go:334: Start after a stale listing: <nil>, calls ["enable false" "stop" "enable true"], want [… "run"]` |
+| `current` drops a recorded instance that still runs | this Mac | failed: `lifecycle_test.go:346: Start with the recorded process alive: <nil>, calls [… "enable true" "run"], want [… "enable true"]` |
+
+**What T6a settles:**
+
+* Deviation D3: the backend's calls ran at medium integrity (`0x2000`),
+  from inside a least-privilege task. T5 step 4 is met this way, not by a
+  registration from inside a task.
+* Deviation D4: the idle `Stop` returns `S_FALSE`, so `026faaa`'s change
+  is needed, and is now tested. The stale listing was not seen in 9
+  `Stop`s across T6 and T6a; `Start`'s filter is tested over the fake
+  only.
+* Deviation D5: the disable and `Restore` plants now fail.
+
+**Not settled:** where `0x8004130B` arises, so its mapping is untested
+(MADR Amendment A4). CI's step has still not run, and waits for a push.
+
+**Checks.** `make pre-add-check FILES="<the 5 Go files>"`: `go-precheck: 5
+file(s) clean (gofmt, golangci-lint, go vet, go test, govulncheck)`. `make
+gate`: every step `rc=0`, `apicheck` `compatible with v1.13.0`,
+`overall=0`.
+
+**Host cleanup.** The run's directory was removed. Afterwards: 0
+directories, 0 `selfupdate-` tasks, 0 `.test.exe` processes.

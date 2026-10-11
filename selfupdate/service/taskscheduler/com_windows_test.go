@@ -34,13 +34,44 @@ func TestCOMLayout(t *testing.T) {
 	}
 	t.Logf("never-run DATE %v LastTaskResult 0x%08X", never.Time, uint32(never.Result)) //nolint:gosec // log the HRESULT-shaped result
 	saved := checkDefinition(t, r, exe)
+	// An idle task's instances (0021-MADR Amendment A4).
+	t.Logf("never-run GetInstances HRESULT 0x%08X", uint32(rawTaskCall(t, name, taskGetInstances)))
+	if pids, err := r.instances(); err != nil || len(pids) != 0 {
+		t.Fatalf("instances of a never-run task: %v, %v; want none", pids, err)
+	}
 	waitInstances(t, r, 1)
 	toggleEnabled(t, r)
 	if err := r.stop(); err != nil {
 		t.Fatalf("stop: %v", err)
 	}
 	waitInstances(t, r, 0)
+	// Stop with nothing left to stop (0021-MADR Amendment A4).
+	t.Logf("idle Stop HRESULT 0x%08X", uint32(rawTaskCall(t, name, taskStop)))
+	if err := r.stop(); err != nil {
+		t.Fatalf("stop of an idle task: %v", err)
+	}
 	rewriteAndRestore(t, r, dir, exe, saved)
+}
+
+// rawTaskCall calls GetInstances or Stop on the task with flags 0, and
+// returns its HRESULT unmapped.
+func rawTaskCall(t *testing.T, name string, slot int) hresult {
+	t.Helper()
+	var hr hresult
+	err := withTask(`\`, name, func(task, _ *comObj) error {
+		if slot == taskStop {
+			hr = task.call(taskStop, 0)
+			return nil
+		}
+		var col *comObj
+		hr = task.call(slot, 0, ptr(&col))
+		col.release()
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return hr
 }
 
 func newLayoutTask(t *testing.T) (exe, name, dir string, r registered) {
@@ -143,6 +174,10 @@ func toggleEnabled(t *testing.T, r registered) {
 	}
 	if err := r.setEnabled(true); err != nil {
 		t.Fatal(err)
+	}
+	on, err = r.enabled()
+	if err != nil || !on {
+		t.Fatalf("enabled again: %t, %v", on, err)
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 	"unsafe"
@@ -141,6 +142,10 @@ func liveUpdate() int {
 		_ = done(selfupdate.Result{}, err)
 		return 1
 	}
+	if err := writeIntegrity(os.Getenv("SELFUPDATE_HANDOFF_RESULT") + ".integrity"); err != nil {
+		_ = done(selfupdate.Result{}, err)
+		return 1
+	}
 	if err := spawnProbe(); err != nil {
 		_ = done(selfupdate.Result{}, err)
 		return 1
@@ -185,6 +190,31 @@ func writeConsole(path string) error {
 	}
 	line := fmt.Sprintf("procs=%d hwnd=%#x visible=%t", n, hwnd, visible != 0)
 	return os.WriteFile(path, []byte(line), 0o600)
+}
+
+// mediumRID is SECURITY_MANDATORY_MEDIUM_RID, the integrity of an
+// unelevated process.
+const mediumRID = 0x2000
+
+// writeIntegrity records this process's integrity RID, the last
+// subauthority of its token's mandatory label: the detached update runs
+// the backend's calls, and the owner asked for them at medium integrity
+// (0021-PLAN Deviation D3).
+func writeIntegrity(path string) error {
+	tok := windows.GetCurrentProcessToken()
+	var n uint32
+	_ = windows.GetTokenInformation(tok, windows.TokenIntegrityLevel, nil, 0, &n) //nolint:errcheck // sizes the buffer
+	if n == 0 {
+		return errors.New("TokenIntegrityLevel: no size")
+	}
+	buf := make([]byte, n)
+	if err := windows.GetTokenInformation(tok, windows.TokenIntegrityLevel, &buf[0], n, &n); err != nil {
+		return err
+	}
+	label := (*windows.Tokenmandatorylabel)(unsafe.Pointer(&buf[0])) //nolint:gosec // TOKEN_MANDATORY_LABEL in its own buffer
+	sid := label.Label.Sid
+	rid := sid.SubAuthority(uint32(sid.SubAuthorityCount()) - 1)
+	return os.WriteFile(path, fmt.Appendf(nil, "%#x", rid), 0o600)
 }
 
 var (
@@ -277,6 +307,14 @@ func requireLive(t *testing.T) {
 
 func newLiveTask(t *testing.T) liveConfig {
 	t.Helper()
+	return newLiveTaskIn(t, "")
+}
+
+// newLiveTaskIn registers and starts the live task. With sub set, the
+// task runs a copy of the program in that directory, not the install
+// target, so an install rewrites the task's path.
+func newLiveTaskIn(t *testing.T, sub string) liveConfig {
+	t.Helper()
 	requireLive(t)
 	name := "selfupdate-live-" + randomHex()
 	dir := t.TempDir()
@@ -290,7 +328,15 @@ func newLiveTask(t *testing.T) liveConfig {
 		t.Fatal(err)
 	}
 	build(t, cfg.Target, "\nold build\n")
-	xml := liveXML(cfg.Target, `tasksched-live serve "`+cfg.Path+`"`)
+	command := cfg.Target
+	if sub != "" {
+		if err := os.Mkdir(filepath.Join(dir, sub), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		command = filepath.Join(dir, sub, "demo.exe")
+		build(t, command, "\nold build\n")
+	}
+	xml := liveXML(command, `tasksched-live serve "`+cfg.Path+`"`)
 	if err := comRegister(name, xml); err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +354,11 @@ func newLiveTask(t *testing.T) liveConfig {
 	return cfg
 }
 
+// liveXML is the live task: a logon trigger, and a watchdog time trigger
+// that starts now and repeats every minute with no end, so a task left
+// enabled while stopped is started again within the hold wait.
 func liveXML(exe, args string) string {
+	start := time.Now().Format("2006-01-02T15:04:05")
 	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <Triggers>
@@ -318,9 +368,8 @@ func liveXML(exe, args string) string {
     <TimeTrigger>
       <Repetition>
         <Interval>PT1M</Interval>
-        <Duration>P1D</Duration>
       </Repetition>
-      <StartBoundary>2020-01-01T00:00:00</StartBoundary>
+      <StartBoundary>%s</StartBoundary>
       <Enabled>true</Enabled>
     </TimeTrigger>
   </Triggers>
@@ -341,7 +390,7 @@ func liveXML(exe, args string) string {
     </Exec>
   </Actions>
 </Task>
-`, exe, args)
+`, start, exe, args)
 }
 
 func build(t *testing.T, dst, marker string) {
@@ -462,6 +511,14 @@ func TestLiveTaskUpdate(t *testing.T) {
 	}
 	assertNoWindow(t, result+".console")
 	assertNoWindow(t, filepath.Join(filepath.Dir(result), "probe-console"))
+	rid, err := os.ReadFile(result + ".integrity") //nolint:gosec // the live test's own file
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := fmt.Sprintf("%#x", mediumRID); string(rid) != want {
+		t.Fatalf("the update ran at integrity %s, want %s (medium)", rid, want)
+	}
+	t.Logf("the update's integrity RID %s", rid)
 }
 
 func waitHandOff(t *testing.T, cfg liveConfig, result string) {
@@ -539,8 +596,11 @@ func pidRunning(pid uint32) bool {
 	return true
 }
 
+// TestLiveTaskRollback: the task runs a copy under old\, so the install
+// rewrites its path to the target; the new build fails, and the rollback
+// must restore the definition as it was.
 func TestLiveTaskRollback(t *testing.T) {
-	cfg := newLiveTask(t)
+	cfg := newLiveTaskIn(t, "old")
 	s := liveSvc(t, cfg)
 	r, err := s.s.open(`\`, cfg.Name)
 	if err != nil {
@@ -586,12 +646,41 @@ func TestLiveTaskRequestStop(t *testing.T) {
 		return os.WriteFile(filepath.Join(cfg.Dir, "please-stop"), nil, 0o600)
 	}
 	s.o.StopGrace = 5 * time.Second
+	var stops atomic.Int32
+	s.s = stopCounter{scheduler: s.s, stops: &stops}
 	if err := s.Stop(context.Background(), "demo"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(cfg.Dir, "graceful")); err != nil {
-		t.Fatal("the program did not exit on RequestStop; IRegisteredTask.Stop was used")
+		t.Fatal("the program did not exit on RequestStop")
 	}
+	if n := stops.Load(); n != 0 {
+		t.Fatalf("IRegisteredTask::Stop called %d times after the program exited on RequestStop", n)
+	}
+}
+
+// stopCounter counts the transport's stop calls.
+type stopCounter struct {
+	scheduler
+	stops *atomic.Int32
+}
+
+func (c stopCounter) open(folder, name string) (registered, error) {
+	r, err := c.scheduler.open(folder, name)
+	if err != nil {
+		return nil, err
+	}
+	return countedStop{registered: r, stops: c.stops}, nil
+}
+
+type countedStop struct {
+	registered
+	stops *atomic.Int32
+}
+
+func (r countedStop) stop() error {
+	r.stops.Add(1)
+	return r.registered.stop()
 }
 
 func TestLiveTaskzCleanup(t *testing.T) {
