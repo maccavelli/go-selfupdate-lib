@@ -439,6 +439,136 @@ for the reasons below.
   setting during an update that worked); a clearer error at `Start`
   alone (the program is still left stopped).
 
+### A2 (2026-10-11, proposed): the error chain past interfaces, and a process check that sees an exit
+
+The owner asked, after `v1.15.0`, to remedy two items
+[0022-PLAN-documentation-pass-after-v1-14-0.md](0022-PLAN-documentation-pass-after-v1-14-0.md)
+left open at closing, and to ground the remedy in the code. Its plan is
+[0022-PLAN-error-chain-and-process-liveness.md](0022-PLAN-error-chain-and-process-liveness.md).
+
+**Facts [observed 2026-10-11, `main` at `78dde39`]:**
+
+* **`TestBatchErrorChain` stops at the first interface.** It follows
+  `winproc`'s error through plain functions, by name, and stops at a
+  method or a function literal (`selfupdate/spawn_test.go`,
+  `chainWalk.function`). Every method on today's chain sits behind an
+  interface, and the exported outcome is reached only through one:
+  * `versionProber.Probe` is called as `Prober.Probe` by
+    `Updater.runProbes` (`updater.go:488`) and the installed probe
+    (`session.go:290`);
+  * `ExecRunner` is called as `Runner.Run` by `ghattest`
+    (`ghattest.go:239`), `codesign` (`codesign.go:98`),
+    `ExecReconciler` (`execreconciler.go:111`, `:160`) and the systemd and
+    launchd backends;
+  * `DetachProcess` is reached as `Detacher.Detach`, from
+    `HandOffIfInside`, and a failed handoff is `cli.Run`'s error,
+    joined (`cli/run.go:143-144`).
+
+  A syntax walk cannot follow an interface call. Each of those callers
+  wraps with `%w` today (each line read); nothing holds that.
+* **Every boundary has an exported injection point:** `Config.Probes` and
+  `ManifestVerifiers`, `InstallOptions.PostInstall`,
+  `ghattest.Options.Runner`, `codesign.CheckOptions.Runner` and
+  `SignOptions`, `service.ExecOptions.Runner`, a `service.Detacher`, and
+  `cli.HandOff.Detach`.
+* **`pidRunning` is not only a test's weakness.** The live test's
+  `pidRunning` (`live_windows_test.go:590`) opens the process with
+  `PROCESS_QUERY_LIMITED_INFORMATION` and calls a successful open
+  "running". The backend's own check, `sysSched.running(pid, born)`
+  (`scheduler_windows.go:57-60`), calls `created`
+  (`OpenProcess` and `GetProcessTimes`) and compares the creation time.
+  Both succeed on a process that has exited, for as long as any process
+  holds a handle to it: "the objects themselves exist until all open
+  handles to them are closed" [docs: Terminating a Process]. `running`
+  decides `Stop`'s wait (`waitGone`, `lifecycle.go:226`) and `Start`'s
+  filter of a stale instance (`current`, `lifecycle.go:289`, 0021
+  Amendment A4). A handle held after the exit, by Task Scheduler's engine
+  or by any other process, would make `Stop` wait to its timeout and fail
+  with `ErrTimeout`, or make `Start` skip the run. Whether Task
+  Scheduler's engine holds one, and for how long, is [unverified]; the
+  live tests have passed, so it is not long in the cases they reach.
+* **The module already has the documented check:**
+  `service.processRunning` (`hopwait_windows.go:35-43`) opens with
+  `SYNCHRONIZE` and calls the process running only while
+  `WaitForSingleObject(h, 0)` returns `WAIT_TIMEOUT`. "When a process
+  terminates, the state of the process object becomes signaled" [docs].
+  It is unexported in `service`, and only the hop's test helper uses it.
+* **The other readings are unreliable** [docs]: `GetExitCodeProcess`
+  returns `STILL_ACTIVE` (259) for a running process, which a process
+  can also exit with; `GetProcessTimes`'s exit time "is undefined" while
+  the process runs.
+* **The Toolhelp snapshot** (`running(pid, 0)`, which
+  `TestLiveTaskStopRefusesDisabled` uses) lists live processes; whether it
+  still lists one that has exited while a handle is held is [unverified].
+
+**Options for the chain (D5):**
+
+* **D5-A. A behavioural test at each exported entry point, on every OS:**
+  a fake at the interface boundary returns an error wrapping
+  `winproc.ErrBatchFile`, and the test asserts
+  `errors.Is(err, selfupdate.ErrBatchFile)` where a program sees the
+  error: `Updater.Run`'s result for a staged probe and a manifest
+  verifier, `Install`'s for a post-install probe and a managed install's
+  `ExecReconciler`, `ghattest` and `codesign` through their `Runner`,
+  `HandOffIfInside`, and `cli.Run`'s error when the handoff fails.
+  `TestBatchErrorChain` keeps the concrete layer, and its doc names the
+  boundary and the test past it. Cost: one table of cases per package,
+  no production change.
+* **D5-B. A type-aware static walk** (`go/types` with the source
+  importer): methods resolve, but an interface call still needs a rule
+  that any implementation may return the error, and the importer reads
+  one build context, so Windows-only files need a second pass. Cost: a
+  larger test that judges forms, not outcomes.
+* **D5-C. A call graph from `golang.org/x/tools`:** a new module
+  requirement, which AGENTS.md admits only with a record, for a test.
+* **D5-D. Keep the limit, documented.**
+
+**Options for the process check (D6):**
+
+* **D6-A. One check in `internal/winproc`, used by every caller:**
+  `winproc.Alive(pid uint32, born uint64) bool`: open with `SYNCHRONIZE |
+  PROCESS_QUERY_LIMITED_INFORMATION`; no such process is not alive; when
+  `born` is set, a different creation time is a reused ID, not alive;
+  alive only while `WaitForSingleObject(h, 0)` returns `WAIT_TIMEOUT`.
+  An open refused with `ERROR_ACCESS_DENIED` means a process exists that
+  the caller may not open; it falls back to the snapshot, as `running`
+  does today without `born`. `sysSched.running`, `service.processRunning`
+  and the live tests use it; `pidRunning` is removed. Cost: one function
+  and its Windows test, three call sites, and a patch release.
+* **D6-B. Fix `sysSched.running` alone,** copying `processRunning`'s
+  pattern. Cost: lower, but two copies of one check, and the test helper
+  stays wrong.
+* **D6-C. `GetExitCodeProcess` against `STILL_ACTIVE`:** ambiguous for a
+  program that exits with 259 [docs].
+* **D6-D. `GetProcessTimes`'s exit time:** undefined while running
+  [docs].
+* **D6-E. Keep it:** the test helper only logs.
+
+**Proposed: D5-A and D6-A,** because:
+
+* D5-A checks the outcome a program sees, at the exported entry points,
+  on every OS, where D5-B and D5-C would still be judging the shape of
+  the code. A planted `%v` at any layer fails a named case.
+* D6-A uses the check Windows documents for "has it exited", which the
+  module already uses in one place, and puts it where both backends'
+  process code already lives. It fixes the backend, not only the test.
+* A measurement comes first, on the Windows test host: whether a
+  process that exited while a handle is held still opens, keeps its
+  creation time, appears in the snapshot, and signals; and whether Task
+  Scheduler's engine holds a handle after the task's program ends, and
+  for how long. The plan stops if the measurement contradicts the docs.
+
+**Consequences:**
+
+* Good, because `errors.Is(err, ErrBatchFile)` is held where programs
+  read it, not only up to the first interface.
+* Good, because `Stop` and `Start` read a process as gone when it is,
+  whoever still holds a handle to it.
+* Neutral, because D6-A asks for `SYNCHRONIZE` as well as the query
+  right. That a task's program grants it to the updater is [unverified]
+  until the measurement; an open refused falls back to the snapshot.
+* Bad, because the backend fix needs `v1.15.1`.
+
 ## More Information
 
 * The audit ran read-only at `cf0664c`. Its scratch checkers and example
