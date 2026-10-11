@@ -345,7 +345,8 @@ restore pass `TASK_UPDATE | TASK_IGNORE_REGISTRATION_TRIGGERS`.)*
   5. Calls `IRegisteredTask::Stop`, then waits until no instance runs and
      the recorded process has exited. The wait is bounded by `Poll`'s
      timeout, and once begun it runs whatever the caller's context does,
-     as `scm` does (0015-MADR B3).
+     as `scm` does (0015-MADR B3). *(Amended 2026-10-10 by Amendment A4,
+     proposed: the wait is for the recorded process alone.)*
 * **`Start`** re-enables the task when this `Task` disabled it, then calls
   `Run`. A task that is already running is left alone.
 * **Residual, documented.** A process killed between the disable and the
@@ -887,7 +888,8 @@ and leaked ([docs], `GetTask`, `GetInstances`,
 * **`Stop`:** `flags` must be 0 ([docs]). `S_OK`: instances the user may
   stop were stopped. **`S_FALSE`: the user cannot stop the instances**
   ([docs]). `S_FALSE` is a failed `Stop` for this backend, even though
-  `SUCCEEDED(S_FALSE)` is true.
+  `SUCCEEDED(S_FALSE)` is true. *(Amended 2026-10-10 by Amendment A4,
+  proposed: `S_FALSE` with no instance left is a success.)*
 * **`Run`:** params `VT_EMPTY`. Returns `S_OK` without starting the task
   when `AllowDemandStart` is false ([docs]). T6's throwaway XML leaves
   that setting at its default (true). `TestCOMLayout` asserts an
@@ -943,7 +945,8 @@ UTF-16 buffer after the call. HRESULT is the low 32 bits of `r0`.
    index after `IDispatch`'s seven. Unused slots still occupy a
    `uintptr` so later slots land.
 6. `stop` returns an error on `S_FALSE`. `open` maps `0x80070002` /
-   `0x80070005` as D2.
+   `0x80070005` as D2. *(Amended 2026-10-10 by Amendment A4, proposed:
+   not when no instance is left.)*
 7. `setPath` / `restore` use `TASK_UPDATE |
    TASK_IGNORE_REGISTRATION_TRIGGERS`, `VT_EMPTY` credentials, existing
    logon type.
@@ -960,6 +963,46 @@ D1, D3–D9 unchanged. D2's transport is the same API, with the wrapper,
 `S_FALSE`/`Stop`, and registration-trigger flag spelled out. T4's fake
 already matches these method shapes; no T4 Go change.
 
+### Amendment A4 (2026-10-10, proposed): what T6's live run changed
+
+T6's commit (`026faaa`) changed three behaviours that A3 and D4 had pinned.
+The PLAN's Deviation D4 records how they were found. **This amendment is
+proposed:** the owner accepts or rejects it with T6a. Tags as in Context;
+[reported] means stated in that commit and not yet measured by a kept
+run.
+
+* **An idle task's instances.** `IRegisteredTask::GetInstances` returns
+  `SCHED_E_TASK_NOT_RUNNING` (`0x8004130B`) when no instance runs
+  [reported]. The transport reads it as no instances. T6a's
+  `TestCOMLayout` logs the HRESULT on a never-run task.
+* **`Stop`'s `S_FALSE`.** *(Amends A3's `Stop` contract and its rule 6.)*
+  `S_FALSE` is still "the user cannot stop the instances" ([docs]). It
+  also arrives when nothing is left to stop: after `RequestStop` the
+  program had already exited [reported]. The transport now lists the
+  instances on `S_FALSE`. With none left, or `0x8004130B`, the stop
+  succeeded; with one still listed, it is an error, as A3 said. T6a's
+  `TestCOMLayout` logs the HRESULT of `Stop` on an idle task.
+* **What `Stop` waits for.** *(Amends D4 step 5's "waits until no
+  instance runs and the recorded process has exited".)* `GetInstances` can still list an instance
+  after its process has exited [reported]. T6's re-run did not see it:
+  three runs listed no PID right after `Stop` [measured]. `Stop` now waits
+  for the process it recorded, by PID and creation time, and does not
+  wait on the listing.
+
+#### Owner question Q7
+
+* **Q7. `Start` and a stale listing.** If the stale listing above is
+  real, `Start`'s "unless an instance already runs" can read the stopped
+  instance as running and not start the task. `WaitHealthy` would then
+  time out on a stopped program. Recommended: `Start` does not count a
+  listed instance whose PID is the one `Stop` recorded and whose process
+  has exited, by creation time. The alternative is to leave `Start` as
+  it is until a kept run shows the listing outliving `Stop`.
+
+#### Effect on earlier decisions
+
+D4's `Stop` order is unchanged; only what its last wait observes changes.
+D3's identity rule (`get_EnginePID`) is unchanged. A3's other rules stand.
 
 ### Not chosen, recorded so it is not re-proposed blind
 
