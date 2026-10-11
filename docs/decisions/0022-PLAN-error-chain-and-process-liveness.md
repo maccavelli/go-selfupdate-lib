@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: in-progress
 date: 2026-10-11
 associated-madr: "0022-MADR-documentation-pass-after-v1-14-0.md"
 ---
@@ -234,4 +234,76 @@ Nothing in the tree changes; the probes live in the scratchpad.
 
 ## Execution record
 
-*(Empty until approval.)*
+### Approval (2026-10-11)
+
+The owner committed Amendment A2, this plan and its index row, and said
+"committed, approved, proceed". Amendment A2 records the decision.
+
+### Q0 (2026-10-11)
+
+The owner committed the records as `ea08716`. This plan is `in-progress`,
+here and in the index; Amendment A2 records the owner's words.
+
+### Q1 (2026-10-11)
+
+**The probes.** `aliveprobe.exe`, the standard library and
+`golang.org/x/sys/windows` v0.47.0, `go vet` clean, cross-compiled on
+this Mac; `taskend.ps1`. Both ran from the Windows test host's elevated
+ssh shell, in a new `selfupdate-q1-<random>` directory. The
+task probe's own lines give the console sign-in.
+
+**Step 1, a child that exits while a handle is held** (`aliveprobe
+zombie`), verbatim:
+
+```text
+running open_query=ok created_equal=true snapshot=true wait=timeout exitcode=259
+exited_handle_held open_query=ok created_equal=true snapshot=false wait=signaled exitcode=0
+exited_execs_handle_released_ours_held open_query=ok created_equal=true snapshot=false wait=signaled exitcode=0
+exited_all_released open_query=errno87 created_equal=false snapshot=false wait=open:errno87 exitcode=open:errno87
+```
+
+**Step 2, Task Scheduler ending a task** (`taskend.ps1`: a throwaway
+`selfupdate-probe-<random>` task, `InteractiveToken`, `LeastPrivilege`,
+whose action is `aliveprobe sleep 120`; `aliveprobe sample` read the
+instance's `EnginePID` every 50 ms for 10 s after `schtasks /end`),
+verbatim:
+
+```text
+console_user_present=True
+explorer_sessions=1
+logonui=False
+engine_pid_found=True
+before_end open_query=ok created_equal=true snapshot=true wait=timeout exitcode=259
+schtasks_end_err=<nil> out_bytes=91
+last_read_running_after_end created_equal=966.0887ms snapshot=966.0887ms wait_timeout=966.0887ms
+after_10s open_query=errno87 created_equal=false snapshot=false wait=open:errno87 exitcode=open:errno87
+cleanup.task=removed
+```
+
+**Reading it:**
+
+* **Today's `running(pid, born)` is wrong for an exited process with a
+  handle held:** the open succeeds and the creation time matches, so it
+  reads "running" until the last handle closes. Then the open fails
+  with `ERROR_INVALID_PARAMETER` (`errno87`).
+* **The snapshot** stops listing a process once it exits, handle or not,
+  so `running(pid, 0)` was right.
+* **The wait** reads `timeout` while the process runs and `signaled` once
+  it has exited, handle or not. `GetExitCodeProcess` reads 259 while it
+  runs.
+* **Task Scheduler's engine** held no handle past the exit in this run:
+  the three checks stopped reading "running" in the same sample, 966 ms
+  after `schtasks /end`. The defect is real, and reached when another
+  process holds a handle; the engine was not seen to.
+* **Stop condition (step 3):** not met. The exited process signals, and
+  the `SYNCHRONIZE` open of the task's program succeeded. That open was
+  made from the elevated shell (0021-PLAN Deviation D1); from a
+  medium-integrity caller of the same user it is [derived] to succeed,
+  and `Alive` falls back to the snapshot if it is refused. Q2's live
+  tests run the backend from the same shell as before.
+
+**Host cleanup.** Each probe removed its own task. The run directory was
+removed; 0 `selfupdate-q1-` directories, 0 `selfupdate-` tasks, 0
+`aliveprobe` processes.
+
+The MADR's two [unverified] facts carry these answers.

@@ -439,7 +439,7 @@ for the reasons below.
   setting during an update that worked); a clearer error at `Start`
   alone (the program is still left stopped).
 
-### A2 (2026-10-11, proposed): the error chain past interfaces, and a process check that sees an exit
+### A2 (2026-10-11): the error chain past interfaces, and a process check that sees an exit
 
 The owner asked, after `v1.15.0`, to remedy two items
 [0022-PLAN-documentation-pass-after-v1-14-0.md](0022-PLAN-documentation-pass-after-v1-14-0.md)
@@ -487,6 +487,11 @@ left open at closing, and to ground the remedy in the code. Its plan is
   with `ErrTimeout`, or make `Start` skip the run. Whether Task
   Scheduler's engine holds one, and for how long, is [unverified]; the
   live tests have passed, so it is not long in the cases they reach.
+  *(Measured in the plan's Q1, 2026-10-11: with a handle held after the
+  exit, the open and the creation time still read "running", and the
+  wait reads "signaled". After `schtasks /end`, all three checks stopped
+  reading "running" in the same 50 ms sample, 966 ms after the end: the
+  engine held no handle past the exit in that run [measured].)*
 * **The module already has the documented check:**
   `service.processRunning` (`hopwait_windows.go:35-43`) opens with
   `SYNCHRONIZE` and calls the process running only while
@@ -500,6 +505,7 @@ left open at closing, and to ground the remedy in the code. Its plan is
 * **The Toolhelp snapshot** (`running(pid, 0)`, which
   `TestLiveTaskStopRefusesDisabled` uses) lists live processes; whether it
   still lists one that has exited while a handle is held is [unverified].
+  *(Measured in Q1: it does not [measured].)*
 
 **Options for the chain (D5):**
 
@@ -544,7 +550,7 @@ left open at closing, and to ground the remedy in the code. Its plan is
   [docs].
 * **D6-E. Keep it:** the test helper only logs.
 
-**Proposed: D5-A and D6-A,** because:
+**Decision (the owner, 2026-10-11, "committed, approved, proceed"): D5-A and D6-A,** because:
 
 * D5-A checks the outcome a program sees, at the exported entry points,
   on every OS, where D5-B and D5-C would still be judging the shape of
