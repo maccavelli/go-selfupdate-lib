@@ -55,8 +55,9 @@ pre-add check and CI fail on a breach
   `service`, `service-launchd`, `service-scm`, `service-systemd`,
   `service-taskscheduler`,
   `selfupdate-archive`, `selfupdate-codesign`, `selfupdate-releasespec`,
-  `selfupdate-verify-ghattest` and `internal-winproc` allow each package,
-  outside its tests, only the imports its record names;
+  `selfupdate-verify-ghattest`, `internal-winproc` and
+  `internal-testproc` allow each package, outside its tests, only the
+  imports its record names;
 - `other-packages` allows any other package, an `internal/` helper with
   no rule of its own included (`internal/cmd/selfupdate-release` today),
   only the standard library and this module
@@ -194,6 +195,12 @@ a new test fail without dirtying
 the tree, `scripts/plant-copy.sh FILE OLD NEW` makes a scratch copy with one
 planted break
 (`docs/decisions/0015-PLAN-remediate-third-debugging-pass-findings.md` R1).
+
+A test that builds a Go fixture, or starts a helper process and waits for
+it, uses `internal/testproc`: `GoBuild` builds with `-buildvcs=false`, so a
+`.git` above a temporary directory cannot fail it, and `Start` waits until
+the test's deadline and reports a helper that exits first at once
+(`docs/decisions/0023-MADR-robust-test-fixtures-and-process-waits.md`).
 
 Cross-target commands set `CGO_ENABLED=0` explicitly: a host `go env` may
 set `CGO_ENABLED=1`, and cgo cannot cross-compile to another OS here.

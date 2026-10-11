@@ -107,14 +107,17 @@ run -- --nonsense a.md
 if [ "$rc" -eq 2 ]; then ok "an unknown mode is a usage error"; else bad "usage: rc=$rc out=[$out]"; fi
 
 # --arch runs in a throwaway repository: pkg holds one file and one test,
-# pkg/sub one file, and untracked.go is not counted.
+# pkg/sub one tracked file and one untracked, which counts, and
+# pkg/ignored.go, which .gitignore excludes, does not.
 A="$WORK/arch"
 mkdir -p "$A/pkg/sub" "$A/docs"
 for f in pkg/a.go pkg/a_test.go pkg/sub/b.go; do printf 'package x\n' >"$A/$f"; done
+printf 'pkg/ignored.go\n' >"$A/.gitignore"
 git -C "$A" init -q
 git -C "$A" add .
 git -C "$A" -c user.name=t -c user.email=t@example.invalid commit -q -m init
-printf 'package x\n' >"$A/pkg/untracked.go"
+printf 'package x\n' >"$A/pkg/ignored.go"
+printf 'package x\n' >"$A/pkg/sub/new.go"
 table() { # NAME PKG_COUNTS SUB_COUNTS: a page whose table states them
 	printf '%s\n' '# Architecture' '' '## Go code' '' \
 		'| Directory | Package | Non-test files | Test files | Imports |' \
@@ -122,9 +125,10 @@ table() { # NAME PKG_COUNTS SUB_COUNTS: a page whose table states them
 		"| \`pkg/\` | \`x\` | ${2% *} | ${2#* }, plus a note | none |" \
 		"| \`pkg/sub/\` | \`x\` | ${3% *} | ${3#* } | none |" '' '## Next' >"$A/docs/$1"
 }
-table good.md "1 1" "1 0"
-table drift.md "1 2" "1 0"
-table gone.md "1 1" "1 0"
+table good.md "1 1" "2 0"
+table drift.md "1 2" "2 0"
+table gone.md "1 1" "2 0"
+table untracked.md "1 1" "1 0"
 sed 's#pkg/sub/#pkg/none/#' "$A/docs/gone.md" >"$A/docs/nodir.md"
 printf '%s\n' '# Architecture' '' 'No table here.' >"$A/docs/notable.md"
 runarch() {
@@ -134,7 +138,7 @@ runarch() {
 
 runarch docs/good.md
 if [ "$rc" -eq 0 ] && has '2 rows in docs/good.md, 0 differ'; then
-	ok "--arch: a table that matches the tracked files passes, untracked ones aside"
+	ok "--arch: a table that matches the files passes, an untracked one counted and an ignored one not"
 else
 	bad "arch good: rc=$rc out=[$out]"
 fi
@@ -146,12 +150,19 @@ else
 	bad "arch drift: rc=$rc out=[$out]"
 fi
 
+runarch docs/untracked.md
+if [ "$rc" -eq 1 ] && has 'docs/untracked.md:8: pkg/sub: table 1/0, tree 2/0'; then
+	ok "--arch: an untracked file a row leaves out fails, before its first commit"
+else
+	bad "arch untracked: rc=$rc out=[$out]"
+fi
+
 runarch docs/notable.md
 if [ "$rc" -eq 2 ] && has 'no "## Go code" heading'; then ok "--arch: a page with no table is an error"; else bad "arch no table: rc=$rc out=[$out]"; fi
 
 runarch docs/nodir.md
-if [ "$rc" -eq 2 ] && has 'pkg/none: no tracked .go file'; then
-	ok "--arch: a row for a directory with no tracked .go file is an error"
+if [ "$rc" -eq 2 ] && has 'pkg/none: no .go file'; then
+	ok "--arch: a row for a directory with no .go file is an error"
 else
 	bad "arch no dir: rc=$rc out=[$out]"
 fi

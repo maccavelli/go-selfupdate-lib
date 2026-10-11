@@ -211,6 +211,11 @@ for the reasons below.
      cells;
    * counts `git ls-files '<dir>/*.go'` in that directory alone, split on
      `_test.go`;
+     *(Annotated 2026-10-11: untracked files that `.gitignore` does not
+     exclude count too, so a new package's row is checked before its first
+     commit;
+     [0023-PLAN-robust-test-fixtures-and-process-waits.md](0023-PLAN-robust-test-fixtures-and-process-waits.md)
+     Deviation D1.)*
    * reports each row that differs, with both numbers, and exits 1.
 
    `scripts/gate.sh` gains an `arch` step, and CI runs the mode where it

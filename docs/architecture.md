@@ -93,6 +93,8 @@ selfupdate/                 the self-update package
     taskscheduler/          the Windows Task Scheduler lifecycle, over COM
 internal/winproc/           every process start: no console window, no
                             batch file; the ancestor walk
+internal/testproc/          test support: fixture builds that ignore the
+                            git state around them, helper-process waits
 internal/cmd/selfupdate-release/  the workflows' logic: plan, build, stage,
                             check, identity, installer; never released
   installer/                the install.sh and install.ps1 templates, each a
@@ -125,6 +127,7 @@ docs/
 | `selfupdate/service/scm/` | `scm` | 7 | 12 | `x/sys/windows`, `x/sys/windows/svc`, `x/sys/windows/svc/mgr` (and `selfupdate`, `service`, `internal/winproc`) |
 | `selfupdate/service/taskscheduler/` | `taskscheduler` | 9 | 10 | `x/sys/windows` (and `selfupdate`, `service`, `internal/winproc`) |
 | `internal/winproc/` | `winproc` | 5 | 4 | `x/sys/windows` |
+| `internal/testproc/` | `testproc` | 1 | 1 | none |
 | `internal/cmd/selfupdate-release/` | `main` | 12, plus the 2 `installer/` templates | 11, plus the `testdata/fixture/` module (2 programs, 2 specs, an extra) | none (`buildinfo`, `selfupdate`, `archive`, `releasespec`) |
 
 - `selfupdate` began as `mcplib` `v1.6.0`'s `selfupdate` (commit
@@ -260,8 +263,15 @@ docs/
   the one check of whether a process still runs: a process that has
   exited is gone, though another process holds a handle to it
   ([0022-MADR](decisions/0022-MADR-documentation-pass-after-v1-14-0.md)
-  Amendment A2). `TestNoDirectProcessStart` (`selfupdate/spawn_test.go`) refuses any
-  other process start in a non-test file under `selfupdate/`.
+  Amendment A2). `TestNoDirectProcessStart` (`selfupdate/spawn_test.go`)
+  refuses any other process start in a non-test file under `selfupdate/`.
+- `internal/testproc` is test support, which only `_test.go` files
+  import
+  ([0023-MADR](decisions/0023-MADR-robust-test-fixtures-and-process-waits.md)):
+  `GoBuild` builds a fixture with `-buildvcs=false`, so a `.git` above a
+  temporary directory cannot fail it, and `Start` starts a helper and
+  waits for its ready file until the test's deadline, less a grace
+  period, failing at once if the helper exits first.
 - `cli.Options.HandOff` (`run.go`) runs `Detach` before an apply and
   `Report` after an update that ran.
 - Archive assets and macOS signing
@@ -466,17 +476,17 @@ interpolated into shell.
   `BASE=`), and any incompatible change fails it.
 - **`make lint`** runs `golangci-lint run -c .golangci.yml ./...` three
   times: `GOOS=linux`, `darwin` and `windows`, each with `CGO_ENABLED=0`.
-- **Import rules** are 17 `depguard` rules in `.golangci.yml`
+- **Import rules** are 18 `depguard` rules in `.golangci.yml`
   ([0008-MADR](decisions/0008-MADR-enforce-import-rules-with-depguard.md)):
   - `banned`: mcplib, the MCP go-sdk, go-llmprovider-sdk and Charm, in
     every file;
   - `module`: only the standard library, this module, `x/mod`, `x/sys`
     and `x/term`, in every file;
-  - `buildinfo`, `internal-winproc`, `selfupdate`, `selfupdate-cli`,
-    `selfupdatetest`, `service`, `service-launchd`, `service-scm`,
-    `service-taskscheduler`, `service-systemd`, `selfupdate-archive`,
-    `selfupdate-codesign`, `selfupdate-releasespec` and
-    `selfupdate-verify-ghattest`: each package's own allowed imports,
+  - `buildinfo`, `internal-testproc`, `internal-winproc`, `selfupdate`,
+    `selfupdate-cli`, `selfupdatetest`, `service`, `service-launchd`,
+    `service-scm`, `service-taskscheduler`, `service-systemd`,
+    `selfupdate-archive`, `selfupdate-codesign`, `selfupdate-releasespec`
+    and `selfupdate-verify-ghattest`: each package's own allowed imports,
     outside its tests;
   - `other-packages`: any other package, `internal/` included, only the
     standard library and this module.

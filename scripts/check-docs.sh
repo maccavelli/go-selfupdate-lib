@@ -28,7 +28,8 @@
 #                    states each directory's number of non-test and test .go
 #                    files as the tree holds them: the first integer in its
 #                    "Non-test files" and "Test files" cells against
-#                    git ls-files in that directory alone
+#                    the .go files in that directory alone, tracked or
+#                    untracked and not ignored, as a commit would hold them
 #                    (docs/decisions/0022-MADR-documentation-pass-after-v1-14-0.md
 #                    D2). A row that differs prints the file, the line and
 #                    both counts. A missing table or a directory with no
@@ -205,7 +206,11 @@ def tracked_go():
     test .go counts."""
     top = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True,
                          text=True, check=True).stdout.strip()
-    out = subprocess.run(["git", "-C", top, "ls-files", "-z", "--", "*.go"],
+    # Untracked files count too, unless ignored, so a new package's row
+    # is checked before its first commit
+    # (docs/decisions/0023-PLAN-robust-test-fixtures-and-process-waits.md D1).
+    out = subprocess.run(["git", "-C", top, "ls-files", "-z", "--cached", "--others",
+                          "--exclude-standard", "--", "*.go"],
                          capture_output=True, text=True, check=True).stdout
     counts = {}
     for name in filter(None, out.split("\0")):
@@ -254,7 +259,7 @@ def check_arch():
             broken.append(f"{f}:{n}: {d}: no count in its file cells")
             continue
         if d not in counts:
-            broken.append(f"{f}:{n}: {d}: no tracked .go file in that directory")
+            broken.append(f"{f}:{n}: {d}: no .go file in that directory")
             continue
         got = counts[d]
         if got != want:

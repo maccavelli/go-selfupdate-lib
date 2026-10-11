@@ -305,3 +305,104 @@ Mac's load average above 40, `make gate` ran on the Linux test host as the
 Rules allow: a clone at `773dd0b` with the diff applied (three files,
 SHA-256 matched), `env -u BASH_ENV`, a clean `TMPDIR`, `GATE_SKIP=ids`;
 every other step `rc=0`, `overall=0`.
+
+### S2 (2026-10-11)
+
+The owner committed S0 and S1 as `d396052`, and said "proceed".
+
+**Files.** New: `internal/testproc/testproc.go`,
+`internal/testproc/testproc_test.go`. Changed: `.golangci.yml`,
+`AGENTS.md`, `docs/architecture.md`.
+
+**As built:**
+
+* `GoBuild`, `Start`, `Proc.Wait` and `Budget`, as step 1 says. The
+  unexported forms are `startWithin` (Start with an explicit budget) and
+  `budgetAt` (the arithmetic, with the clock passed in): revive's
+  `confusing-naming` refused `start` and `budget` beside `Start` and
+  `Budget`. `Start` kills a helper whose budget runs out, and waits for
+  it, before failing the test.
+* The tests use the test binary as the helper, through
+  `TESTPROC_HELPER`'s three modes. `TestBudget`'s cases: 100 s left gives
+  95 s; 10 s gives 9 s (the 1 s floor); 0.5 s gives 0; no deadline gives
+  5 minutes.
+* depguard: `internal-testproc`, `$gostd`, after `internal-winproc`;
+  `other-packages` excludes the package. AGENTS.md's rule list, and a
+  paragraph after the gate's that says when a test uses the package.
+  `docs/architecture.md`: the tree, a table row (1 and 1), the rule count
+  (18) and a bullet.
+
+**Seen failing, on this Mac,** each a `scripts/plant-copy.sh` copy of
+`testproc.go`:
+
+| Plant | Failing line |
+| :--- | :--- |
+| `GoBuild` without `-buildvcs=false` | `testproc_test.go:157: go build -o …/fixture.bin . in …: exit status 1`, with `error obtaining VCS status: exit status 128` |
+| `Start` without its exit check | `testproc_test.go:86: start = testproc.test not ready after 30.001s` (the test took 30 s, where the tree reports the exit in 0.02 s) |
+| `Budget` without the grace | `testproc_test.go:125: budgetAt(1m40s left, deadline true) = 1m40s, want 1m35s`, and the 10 s and 0.5 s cases |
+| `golang.org/x/mod/semver` imported into `testproc.go` | `internal/testproc/testproc.go:17:2: import 'golang.org/x/mod/semver' is not allowed from list 'internal-testproc' (depguard)` |
+
+**Checks so far.** On the tree: the package's five tests pass (`ok …
+1.909s`). `make pre-add-check FILES="<the 2 Go files>"`: its first run
+failed on the two revive findings above; after the rename, `go-precheck:
+2 file(s) clean`.
+
+### Deviation D1 (2026-10-11): the table check cannot see an uncommitted package
+
+* **Found.** `scripts/check-docs.sh --arch docs/architecture.md`, with the
+  new row in place: `docs/architecture.md:130: internal/testproc: no
+  tracked .go file in that directory`, exit 2. `--arch` counts
+  `git ls-files` (`check-docs.sh`, `tracked_go`), which lists tracked
+  files only, so the gate's `arch` step fails for any change that adds a
+  package, until its files are committed or staged. The `ids` step, by
+  contrast, already reads the changed and the untracked files
+  (`gate.sh:21`). The gap is 0022's check's, not new code's; S2 is the
+  first phase since 0022 to add a package.
+* **Recommended:** `--arch` counts tracked files and untracked ones that
+  `.gitignore` does not exclude (`git ls-files --cached --others
+  --exclude-standard`), so the table describes the tree as it will be
+  committed. Cost: one line in `check-docs.sh`, a `check-docs_test.sh`
+  case (an untracked file counts, an ignored one does not), and its
+  fail-first run. Files added to S2: `scripts/check-docs.sh`,
+  `scripts/check-docs_test.sh`.
+* **Alternative:** stage the new files (`git add`) before each gate run.
+  Cost: no code; but the gate's verdict then depends on what is staged,
+  and every later phase that adds a package meets the same failure.
+* **Doing nothing:** S2's gate fails on `arch` until the package is
+  committed, so the rule "gate before commit" cannot be met for it.
+
+### Deviation D1, resolution (2026-10-11)
+
+* **Decision (the owner, "option 1"):** `--arch` counts tracked files and
+  untracked ones `.gitignore` does not exclude.
+* **As built:** `tracked_go` lists `git ls-files -z --cached --others
+  --exclude-standard -- '*.go'`; the header comment says so; the error
+  for an empty directory reads "no .go file in that directory".
+  `check-docs_test.sh`'s fixture repository gains a committed
+  `.gitignore` naming `pkg/ignored.go`, that file, and an untracked
+  `pkg/sub/new.go`: the matching table now counts `pkg/sub` as 2 and 0, and
+  a new case, `untracked.md`, which leaves the untracked file out, fails
+  with `docs/untracked.md:8: pkg/sub: table 1/0, tree 2/0`. `17 passed, 0
+  failed`.
+* **Seen failing:** a `plant-copy.sh` copy of `check-docs.sh` with the old
+  tracked-only listing, run through the test's `SCRIPT`: `FAIL arch good:
+  … pkg/sub: table 2/0, tree 1/0`, `FAIL arch drift`, and `FAIL arch
+  untracked: rc=0 … 0 differ`; `14 passed, 3 failed`.
+* **On the tree:** `check-docs: 16 rows in docs/architecture.md, 0 differ`,
+  with `internal/testproc` still uncommitted. `shellcheck` on both
+  scripts: clean.
+* **Records:** 0022-MADR D2 carries an annotation; its decision stands.
+
+### S2, checks (2026-10-11)
+
+* `internal/testproc`'s five tests, cross-compiled: `PASS` on the Windows
+  test host, and on the Linux test host from a login shell with its own
+  `TMPDIR` (which holds an empty `.git`) and `BASH_ENV`.
+  `TestGoBuildIgnoresParentGit` passes on both.
+* `make pre-add-check FILES="<the 2 Go files>"`: `go-precheck: 2 file(s)
+  clean`.
+* On the changed Markdown: links and identifiers clean.
+* `make gate` on this Mac, load average 12.32 before and 50.90 after:
+  every step `rc=0`, `apicheck` `compatible with v1.15.1`, `arch` `16
+  rows in docs/architecture.md, 0 differ` with the package still
+  uncommitted, `overall=0`.

@@ -79,6 +79,16 @@ linters:
           allow:
             - $gostd
             - golang.org/x/sys/windows$
+        # Test support that only _test.go files import: the standard
+        # library only
+        # (docs/decisions/0023-MADR-robust-test-fixtures-and-process-waits.md).
+        internal-testproc:
+          list-mode: strict
+          files:
+            - "**/internal/testproc/*.go"
+            - "!$test"
+          allow:
+            - $gostd
         selfupdate:
           list-mode: strict
           files:
@@ -237,6 +247,7 @@ linters:
             - "!**/selfupdate/releasespec/*.go"
             - "!**/selfupdate/verify/ghattest/*.go"
             - "!**/internal/winproc/*.go"
+            - "!**/internal/testproc/*.go"
           allow:
             - $gostd
             - github.com/maccavelli/go-selfupdate-lib

@@ -1,0 +1,194 @@
+// Package testproc is test support: it builds a Go fixture program without
+// reading the git state around the build, and starts a helper process and
+// waits for it to be ready without a fixed time budget
+// (docs/decisions/0023-MADR-robust-test-fixtures-and-process-waits.md).
+// Only _test.go files import it.
+//
+// A fixture built in a temporary directory with Go's default -buildvcs=auto
+// fails when a .git above that directory cannot be read, though no fixture
+// uses VCS information. A helper's first start can take seconds on a
+// loaded machine, which a fixed budget turns into a failure, while a helper
+// that crashes should be reported at once, with its exit status.
+package testproc
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+)
+
+// GoBuild builds the main package in dir to out, with
+// "go build -buildvcs=false args… -o out .", env appended to this
+// process's environment. It fails t, with the go command's output, when
+// the build fails.
+func GoBuild(t testing.TB, dir, out string, env []string, args ...string) {
+	t.Helper()
+	goBin, err := exec.LookPath("go")
+	if err != nil {
+		t.Fatalf("the go command is required to build a fixture: %v", err)
+	}
+	full := append([]string{"build", "-buildvcs=false"}, args...)
+	full = append(full, "-o", out, ".")
+	cmd := exec.Command(goBin, full...) //nolint:gosec // the go command, building a test fixture
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), env...)
+	if b, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("go %s in %s: %v\n%s", strings.Join(full, " "), dir, err, b)
+	}
+}
+
+// Proc is a helper process Start started.
+type Proc struct {
+	cmd  *exec.Cmd
+	out  *tail
+	done chan struct{}
+	err  error
+}
+
+// Start starts cmd and waits until the file ready exists. It fails t at
+// once when the process exits first, with its exit status and the last
+// lines of its output, and when Budget(t) runs out. cmd's standard output
+// and error, when unset, are kept for that message. The caller ends the
+// process its own way, and waits for it with Proc.Wait, never cmd.Wait.
+func Start(t testing.TB, cmd *exec.Cmd, ready string) *Proc {
+	t.Helper()
+	p, err := startWithin(cmd, ready, Budget(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// tailLines is how many of a helper's last output lines a failure quotes.
+const tailLines = 20
+
+// startWithin is Start with an explicit budget, which the package's tests use.
+func startWithin(cmd *exec.Cmd, ready string, budget time.Duration) (*Proc, error) {
+	p := &Proc{cmd: cmd, out: &tail{max: 64 << 10}, done: make(chan struct{})}
+	if cmd.Stdout == nil {
+		cmd.Stdout = p.out
+	}
+	if cmd.Stderr == nil {
+		cmd.Stderr = p.out
+	}
+	name := filepath.Base(cmd.Path)
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("start %s: %w", name, err)
+	}
+	go func() {
+		p.err = cmd.Wait()
+		close(p.done)
+	}()
+	began := time.Now()
+	timer := time.NewTimer(budget)
+	defer timer.Stop()
+	tick := time.NewTicker(10 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		if _, err := os.Stat(ready); err == nil {
+			return p, nil
+		}
+		select {
+		case <-p.done:
+			if _, err := os.Stat(ready); err == nil {
+				return p, nil
+			}
+			return nil, fmt.Errorf("%s exited (%s) before it was ready, after %s; its output ended:\n%s",
+				name, status(p.err), time.Since(began).Round(time.Millisecond), p.out.last(tailLines))
+		case <-timer.C:
+			_ = cmd.Process.Kill() //nolint:errcheck // ending a helper the test gives up on
+			<-p.done
+			return nil, fmt.Errorf("%s not ready after %s; its output ended:\n%s",
+				name, time.Since(began).Round(time.Millisecond), p.out.last(tailLines))
+		case <-tick.C:
+		}
+	}
+}
+
+// Wait waits for the process to exit and returns cmd.Wait's error. Every
+// call returns the same.
+func (p *Proc) Wait() error {
+	<-p.done
+	return p.err
+}
+
+// status describes how a process ended.
+func status(err error) string {
+	if err == nil {
+		return "exit status 0"
+	}
+	if exit, ok := errors.AsType[*exec.ExitError](err); ok {
+		return exit.Error()
+	}
+	return err.Error()
+}
+
+// The budget's limits.
+const (
+	// noDeadline is the budget for a test run without a deadline
+	// (go test -timeout 0).
+	noDeadline = 5 * time.Minute
+	// minGrace is the least time left to the test after a budget, to
+	// report and clean up.
+	minGrace = time.Second
+)
+
+// Budget is how long a test may wait on a helper: until the test's
+// deadline, less a grace period of 5 % of the time left and at least 1 s,
+// as Go's internal/testenv bounds a test's subprocesses; without a
+// deadline, 5 minutes. A helper that crashes is reported at once whatever
+// the budget, by Start.
+func Budget(t testing.TB) time.Duration {
+	if d, ok := t.(interface{ Deadline() (time.Time, bool) }); ok {
+		deadline, set := d.Deadline()
+		return budgetAt(deadline, set, time.Now())
+	}
+	return noDeadline
+}
+
+func budgetAt(deadline time.Time, set bool, now time.Time) time.Duration {
+	if !set {
+		return noDeadline
+	}
+	left := deadline.Sub(now)
+	grace := max(left/20, minGrace)
+	return max(left-grace, 0)
+}
+
+// tail keeps the last max bytes written to it, for any number of writers.
+type tail struct {
+	mu  sync.Mutex
+	max int
+	buf []byte
+}
+
+func (b *tail) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.buf = append(b.buf, p...)
+	if over := len(b.buf) - b.max; over > 0 {
+		b.buf = b.buf[over:]
+	}
+	return len(p), nil
+}
+
+// last is the last n lines written, or "(no output)".
+func (b *tail) last(n int) string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	text := strings.TrimRight(string(b.buf), "\r\n")
+	if text == "" {
+		return "(no output)"
+	}
+	lines := strings.Split(text, "\n")
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return strings.Join(lines, "\n")
+}
