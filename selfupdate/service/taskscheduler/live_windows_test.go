@@ -342,7 +342,7 @@ func managedInstallWith(life selfupdate.Lifecycle, rec selfupdate.Reconciler, ta
 func requireLive(t *testing.T) {
 	t.Helper()
 	if os.Getenv(requireEnv) != "1" {
-		t.Skipf("set %s=1 to run against this host's Task Scheduler; GitHub runners have no interactive console session", requireEnv)
+		t.Skipf("set %s=1 to run against this host's Task Scheduler; CI sets it on its Windows runner", requireEnv)
 	}
 }
 
@@ -518,6 +518,10 @@ func assertNoWindow(t *testing.T, path string) {
 	}
 }
 
+// TestLiveTaskUpdate runs a managed update from inside the task, end to
+// end, and requires it to run at medium integrity. CI does not run it: a
+// GitHub runner runs a least-privilege task at high integrity
+// (0021-MADR Amendment A5).
 func TestLiveTaskUpdate(t *testing.T) {
 	cfg := newLiveTask(t)
 	ctx := context.Background()

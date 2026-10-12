@@ -188,6 +188,11 @@ Decided by A5, by U3's run:
 Then: `docs/architecture.md`'s CI bullets say which. Checks; commit; the
 owner pushes; CI green with the step as decided.
 
+*(Deviation D1, 2026-10-12: U3's run took neither branch cleanly. Five
+live tests passed and `TestLiveTaskUpdate` failed only on integrity. The
+owner chose option B: CI requires every live test but
+`TestLiveTaskUpdate`, which runs only on the Windows test host.)*
+
 ### Phase U5: the migration guide (if U2 landed)
 
 The guide's versions move to `v1.15.2`, and a "From v1.15.1 to v1.15.2"
@@ -357,3 +362,131 @@ works, not what a runner will print.
 **Checks.** `scripts/check-workflows.sh --rule all` on `ci.yml`:
 `check-workflows: ok (all) — 1 workflow(s)`. `actionlint`: clean. `make gate` on this Mac,
 load average 3.76 before and 60.03 after: every step `rc=0`, `overall=0`.
+
+### U3, the run (2026-10-12)
+
+The owner committed U3 as `01a8b27` and pushed `68b8fa3` and `01a8b27`;
+the disclosure guard passed on both first. CI run `38283369154`, on
+`01a8b27`: 17 of 17 jobs `success`. On `validate (windows-2025)`, both
+Task Scheduler steps report `success`; the live test's own result is in
+its log, since `continue-on-error` reports a failed step as a success.
+The job ran as the runner's account, `<runner account>` below.
+
+**"Task Scheduler session probe":**
+
+```text
+user_interactive=True
+session_id=2
+explorer_in_session=1
+integrity=Mandatory Label\High Mandatory Level Label S-1-16-12288
+```
+
+**"Task Scheduler live test"**, `SELFUPDATE_REQUIRE_TASKSCHED=1`:
+
+```text
+    live_windows_test.go:560: the update ran at integrity 0x3000, want 0x2000 (medium)
+--- FAIL: TestLiveTaskUpdate (5.21s)
+    live_windows_test.go:605: instance pids before Stop: [4556]
+    live_windows_test.go:609: start pid 4556 running after Stop: false; pids []
+--- PASS: TestLiveTaskStopHoldsDisabled (71.86s)
+--- PASS: TestLiveTaskRollback (5.17s)
+--- PASS: TestLiveTaskRequestStop (1.02s)
+--- PASS: TestLiveTaskStopRefusesDisabled (3.87s)
+--- PASS: TestLiveTaskzCleanup (0.76s)
+FAIL
+##[error]Process completed with exit code 1.
+```
+
+**Reading:**
+
+* **A GitHub Windows runner starts an interactive-token task**
+  [measured]. The job runs in an interactive session (session 2, on the
+  desktop, with Explorer), and five of the six live tests passed,
+  `TestLiveTaskStopHoldsDisabled`'s 70 s hold included.
+* **`TestLiveTaskUpdate` did everything but its integrity check.** Line
+  560 comes after the handoff result (applied, service started), the
+  re-enabled task, a new instance PID, the new binary, and the two
+  no-window checks; it failed only on `0x3000`, where the test requires
+  `0x2000`. The A3 open check at line 567 did not run.
+* **On the runner, a least-privilege task runs at high integrity**
+  [measured]. Amendment A5's [derived] reading, that UAC stays on so the
+  task gets a filtered token, is contradicted. Why is [unverified]: UAC
+  off at run time (`EnableLUA` 0, which the image's scripts do not set),
+  or an account that gets no filtered token, would each explain it.
+
+### Deviation D1 (2026-10-12): the runner runs the task at high integrity
+
+* **Found** in U3's run (above): the runner starts an interactive-token
+  task, and five of the six live tests passed; `TestLiveTaskUpdate`
+  failed only at `live_windows_test.go:560`, `the update ran at integrity
+  0x3000, want 0x2000 (medium)`. Amendment A5's [derived] reading, that
+  the task gets a filtered token there, is contradicted. Not
+  pre-existing in the sense of a defect: the test's requirement is right
+  for the Windows test host, and the runner cannot meet it.
+* **Offered:** A, skip all six on CI as A5 decided; B, require the five
+  and run `TestLiveTaskUpdate` only on the Windows test host; C, require
+  all six with the expected integrity declared per environment, which
+  changes an assertion's expected value. Doing nothing would have left
+  the step allowing failure, hiding `TestLiveTaskUpdate`'s failure on
+  every run.
+* **Decision (the owner, "option b"): B.** Amendment A5 carries a
+  revision of E2 and an annotation of the contradicted reading.
+* **Files added to U4's scope:** none beyond the plan's
+  (`.github/workflows/ci.yml`, `live_windows_test.go`'s skip message,
+  `docs/architecture.md`); `TestLiveTaskUpdate` gains a doc comment that
+  says CI does not run it, and why.
+
+### U4 (2026-10-12)
+
+The owner chose option B ("option b"); Deviation D1 and Amendment A5's
+revision of E2 record it.
+
+**Files.** Changed: `.github/workflows/ci.yml`,
+`selfupdate/service/taskscheduler/live_windows_test.go`,
+`docs/architecture.md`, Amendment A5, this plan.
+
+**As built:**
+
+* **"Task Scheduler live test"** loses `continue-on-error`, keeps
+  `SELFUPDATE_REQUIRE_TASKSCHED: "1"`, and runs `go test -count=1 -v -run
+  '^TestLiveTask' -skip '^TestLiveTaskUpdate$'`. Its comment says the
+  runner runs the task at high integrity, so `TestLiveTaskUpdate` runs
+  only on the Windows test host, and cites A5's revision of E2. The
+  session probe step stays.
+* **`requireLive`'s skip message** reads `set %s=1 to run against this
+  host's Task Scheduler; CI sets it on its Windows runner`.
+* **`TestLiveTaskUpdate`** gains a doc comment: it requires medium
+  integrity, and CI does not run it, since a runner runs a
+  least-privilege task at high integrity.
+* **`docs/architecture.md`:** the backends paragraph and the CI list say
+  CI runs every Task Scheduler live test but `TestLiveTaskUpdate`, and
+  why.
+
+**The step's command on the Windows test host,** a clone at `01a8b27`
+with the diff applied (five files, SHA-256 matched), Go 1.27.2,
+`SELFUPDATE_REQUIRE_TASKSCHED=1`:
+
+```text
+=== RUN   TestLiveTaskStopHoldsDisabled
+--- PASS: TestLiveTaskStopHoldsDisabled (72.25s)
+=== RUN   TestLiveTaskRollback
+--- PASS: TestLiveTaskRollback (5.89s)
+=== RUN   TestLiveTaskRequestStop
+--- PASS: TestLiveTaskRequestStop (1.32s)
+=== RUN   TestLiveTaskStopRefusesDisabled
+--- PASS: TestLiveTaskStopRefusesDisabled (4.24s)
+=== RUN   TestLiveTaskzCleanup
+--- PASS: TestLiveTaskzCleanup (0.64s)
+ok  	github.com/maccavelli/go-selfupdate-lib/selfupdate/service/taskscheduler	84.358s
+```
+
+`TestLiveTaskUpdate` is not run, and afterwards `schtasks /query` lists 0
+`selfupdate-` tasks. **The step fails a failing test:** U3's run showed
+the same `go test` exit 1 on `TestLiveTaskUpdate`'s failure; without
+`continue-on-error`, that fails the job.
+
+**Checks.** gofmt clean; vet for darwin, linux and windows: clean. `make
+pre-add-check FILES="selfupdate/service/taskscheduler/live_windows_test.go"`:
+`go-precheck: 1 file(s) clean`. `scripts/check-workflows.sh --rule all`:
+`ok (all)`; `actionlint`: clean. `make gate` on this Mac, load average
+35.47 before and 43.20 after: every step `rc=0`, `overall=0`.

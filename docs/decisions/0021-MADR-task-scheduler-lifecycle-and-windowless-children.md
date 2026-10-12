@@ -1158,6 +1158,10 @@ probe decides whether the change is needed before it is made.
   `TestLiveTaskUpdate`'s medium-integrity check would hold [derived]. If
   `EnableLUA` were 0, the task would run at high integrity and that check
   would fail, as 0021-PLAN T6a's `HighestAvailable` plant did.
+  *(Contradicted in [0021-PLAN-instance-race-and-ci-live-tests.md](0021-PLAN-instance-race-and-ci-live-tests.md)
+  U3, 2026-10-12: on the runner, the least-privilege task's update ran at
+  `0x3000` [measured]. Why is [unverified]; see the revision of E2
+  below.)*
 * **Not known [unverified]:** whether the job's account is the one
   signed in to that session, which an interactive-token task registered
   for the job's account needs; and whether the runner's Task Scheduler
@@ -1190,6 +1194,28 @@ the cost of one push. A pass would run the Task Scheduler backend on
 every commit, where today only a run on the Windows test host does.
 Whatever is chosen, today's skip message states an assumption as a
 fact; E2-C's correction is the least any option does.
+
+**Revision of E2 (2026-10-12).** The plan's U3 ran the live tests on
+`windows-2025` with failures allowed. The job ran in an interactive
+session (session 2, `UserInteractive` true, Explorer in it), and five of
+the six live tests passed. `TestLiveTaskUpdate` completed the update and
+failed only its last check: the update ran at integrity `0x3000`, where
+the test requires `0x2000` [measured]. E2-A's branch for a failure would
+have skipped all six again. The owner was offered:
+
+* **A.** As decided: skip all six on CI, with a true message.
+* **B.** Require the five that passed on CI; run `TestLiveTaskUpdate`
+  only on the Windows test host, and say why where CI runs the tests.
+* **C.** Require all six, with `TestLiveTaskUpdate`'s expected integrity
+  declared by the environment: medium by default, high on CI.
+
+**Decision (the owner, 2026-10-12, "option b"): B,** because CI then
+holds the stop, the disabled-task hold, the rollback, the request stop
+and the disabled-task refusal on every commit, without changing an
+assertion. The medium-integrity evidence, and the update flow end to
+end, stay with the Windows test host. CI's step runs the live tests with
+`SELFUPDATE_REQUIRE_TASKSCHED=1` and `-skip '^TestLiveTaskUpdate$'`, so a
+live test added later is required on CI by default.
 
 #### Consequences
 

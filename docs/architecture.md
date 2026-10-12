@@ -252,9 +252,10 @@ docs/
 
   Each backend compiles on every OS and returns `ErrUnsupported` on the
   wrong one. Each has live tests against its real service manager, which
-  CI runs on its OS; `taskscheduler`'s skip there, since a GitHub runner
-  has no console session for an interactive-token task, and run on a
-  Windows host with `SELFUPDATE_REQUIRE_TASKSCHED=1`.
+  CI runs on its OS. A GitHub runner runs `taskscheduler`'s tasks at high
+  integrity, so CI runs every Task Scheduler live test but
+  `TestLiveTaskUpdate`, which requires medium; a Windows host runs them
+  all with `SELFUPDATE_REQUIRE_TASKSCHED=1`.
 - `internal/winproc` is the one constructor for every process the module
   starts (0021-MADR D7 and D8): on Windows, `CREATE_NO_WINDOW` for a child
   of a process with no console, a windowless console for the detached
@@ -530,11 +531,10 @@ interpolated into shell.
       (`SELFUPDATE_REQUIRE_SYSTEMD`);
     - macOS: the launchd live tests (`SELFUPDATE_REQUIRE_LAUNCHD`) and the
       codesign live tests (`SELFUPDATE_REQUIRE_CODESIGN`);
-    - Windows: the SCM live tests (`SELFUPDATE_REQUIRE_SCM`).
-    - Run, but not required: the Task Scheduler live tests, on
-      `windows-2025` without `SELFUPDATE_REQUIRE_TASKSCHED`, skip with the
-      reason that a GitHub runner has no interactive console session. The
-      Windows test host runs them with it set.
+    - Windows: the SCM live tests (`SELFUPDATE_REQUIRE_SCM`), and the
+      Task Scheduler live tests (`SELFUPDATE_REQUIRE_TASKSCHED`) but
+      `TestLiveTaskUpdate`: the runner runs the task at high integrity,
+      and that test requires medium. The Windows test host runs it.
     - Not in CI: `ghattest`'s `TestLiveVerify`
       (`SELFUPDATE_REQUIRE_GHATTEST`), which needs `gh` logged in; CI has
       no token.
