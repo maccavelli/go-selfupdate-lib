@@ -57,6 +57,8 @@ Associated MADR: [0024-MADR-documentation-pass-after-v1-15-1.md](0024-MADR-docum
   changed Go file; `scripts/check-docs.sh --links` and `--ids`, and
   markdownlint, on every changed Markdown file; `--arch` when a Go file
   is added; `make gate` ending `overall=0`.
+  *(Deviation D2, 2026-10-12: `make gate` runs once before each push,
+  not before each commit; the other checks stay per commit.)*
 * **Seen failing first:** every new test or assertion fails on a
   `scripts/plant-copy.sh` copy with one planted break, never by dirtying
   the tree. The record quotes the failing line.
@@ -432,3 +434,67 @@ proceed".
 clean`. `make gate` on this Mac, load average 18.41 before and 56.26
 after: every step `rc=0`, `apicheck` `compatible with v1.15.1`,
 `overall=0`.
+
+### Deviation D2 (2026-10-12): the gate before each push
+
+* **Found:** `make gate` and the pre-add check take several minutes each
+  on this Mac under load (load average 56 during W2's gate), and the
+  owner asked "what is taking so long".
+* **Offered:** keep the gate per commit, or run it once before each push
+  for the documentation phases.
+* **Decision (the owner, "committed, proceed, gate before push only"):**
+  `make gate` runs once before each push, for every phase. The pre-add
+  check stays on every changed Go file, as AGENTS.md requires before
+  staging, and the documentation checks stay per commit.
+
+### W3 (2026-10-12)
+
+The owner committed W2 as `820b7e2`, and said "committed, proceed, gate
+before push only".
+
+**Files.** Changed:
+`internal/cmd/selfupdate-release/installer/install.ps1`,
+`internal/cmd/selfupdate-release/installer_ps_test.go`.
+
+**The test first (step 1).** The stand-in program the installer's tests
+use for hooks and identity checks gains `STANDIN_STDIN`: with it set, it
+reads its standard input to the end and logs `<role> stdin <bytes>`.
+`psCase` gains `stdin`, the installer's standard input. The new case,
+"hooks and the identity check get no standard input" (all three modes),
+places the old stand-in, publishes the new one, gives the installer
+`typed at the console\n` (21 bytes), and requires at least three reads,
+each of 0 bytes: the `before_install` hook, the identity check and the
+`after_install` hook.
+
+**The measurement,** the case run on the Windows test host against
+`install.ps1` as it was, Windows PowerShell 5.1 and PowerShell 7, three
+modes each: every run failed with
+
+```text
+installer_ps_test.go:750: standard input reads ["old stdin 21" "new stdin 0" "new stdin 0"]; want the two hooks and the identity check, each reading nothing
+```
+
+The first program the installer ran, the `before_install` hook, read the
+installer's standard input; the later ones read nothing only because it
+was spent. D2 is [measured]: in a console, that input is the user's.
+
+**The fix (step 2).** Each hook runs as `@() | & $exe @hookArgs | …`,
+and the identity command as `$first = @() | & (Join-Path …) @idArgs
+2>$null | …`: an empty pipeline gives the program a standard input that
+is closed at once. A comment at the hook says why.
+
+**After the fix (step 3):**
+
+* the case on the Windows test host: all six `PASS`;
+* **seen failing for the identity check alone:** the host's scratch clone
+  with the hook fixed and the identity command not: `standard input reads
+  ["old stdin 0" "new stdin 21" "new stdin 0"]`, `FAIL`. The case guards
+  each call on its own;
+* the whole package: `ok` on the Windows test host (311 `--- PASS`
+  lines), on this Mac (`ok … 43.479s`), and on the Linux test host
+  (`ok … 17.315s`).
+
+**Checks.** gofmt clean; vet for windows: clean. `make pre-add-check
+FILES="internal/cmd/selfupdate-release/installer_ps_test.go"`:
+`go-precheck: 1 file(s) clean`. `make gate` runs before the push
+(Deviation D2).

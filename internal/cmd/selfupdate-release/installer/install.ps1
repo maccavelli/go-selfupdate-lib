@@ -269,8 +269,10 @@ public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wP
                 Write-Line "running $($hook.Product) $($hookArgs -join ' ')"
                 $ErrorActionPreference = 'Continue'
                 # Shown, not returned: output would make this function's result
-                # an array, which is true however the hook ended.
-                & $exe @hookArgs | ForEach-Object { Write-Line ([string]$_) }
+                # an array, which is true however the hook ended. The empty
+                # input closes the hook's standard input, as install.sh's
+                # </dev/null does, so it cannot read the user's console.
+                @() | & $exe @hookArgs | ForEach-Object { Write-Line ([string]$_) }
                 $code = $LASTEXITCODE
                 $ErrorActionPreference = 'Stop'
                 if ($code -ne 0) {
@@ -287,7 +289,7 @@ public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wP
                 if (-not $Identity.ContainsKey($name)) { continue }
                 $idArgs = $Identity[$name]
                 $ErrorActionPreference = 'Continue'
-                $first = & (Join-Path $Dir "$name.exe") @idArgs 2>$null | Select-Object -First 1
+                $first = @() | & (Join-Path $Dir "$name.exe") @idArgs 2>$null | Select-Object -First 1
                 $ErrorActionPreference = 'Stop'
                 $first = [string]$first
                 $pattern = '^' + [regex]::Escape("$Want (release)") + '( [0-9a-f]{12})?$'

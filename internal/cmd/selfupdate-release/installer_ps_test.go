@@ -180,6 +180,8 @@ type psCase struct {
 	// rawArgs, when set, is the scriptblock form's arguments as
 	// PowerShell source, such as an array no argv can carry.
 	rawArgs string
+	// stdin, when set, is the installer's standard input.
+	stdin string
 }
 
 func newPsCase(t *testing.T, ps psHost, mode psMode, r installReleases) *psCase {
@@ -269,6 +271,9 @@ func (c *psCase) command(ctx context.Context, args ...string) *exec.Cmd {
 	}
 	cmd.Env = append(c.envFor(), "SELFUPDATE_INSTALL_TEST_ARGS="+text)
 	cmd.Dir = c.wd
+	if c.stdin != "" {
+		cmd.Stdin = strings.NewReader(c.stdin)
+	}
 	return cmd
 }
 
@@ -457,7 +462,9 @@ func (c *psCase) unchanged(edit func(), code int, wants ...string) {
 
 // standInSource is a program for hooks and identity checks: it reports its
 // version as a release, holds when asked, and otherwise prints and logs
-// "<role> <args>" and exits with $<ROLE>_EXIT. With STANDIN_LINGER_MS set,
+// "<role> <args>" and exits with $<ROLE>_EXIT. With STANDIN_STDIN set, it
+// first reads its standard input to the end and logs "<role> stdin <bytes>"
+// (0024-MADR D4-A). With STANDIN_LINGER_MS set,
 // its version check starts a copy of itself that keeps the binary's image
 // mapped that long after the check returns, as a process that has just
 // exited can on Windows
@@ -467,6 +474,7 @@ const standInSource = `package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strconv"
@@ -476,11 +484,22 @@ import (
 
 var role, version string
 
+func logLine(line string) {
+	if f, err := os.OpenFile(os.Getenv("HOOK_LOG"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+		fmt.Fprintln(f, line)
+		f.Close()
+	}
+}
+
 func main() {
 	if len(os.Args) == 3 && os.Args[1] == "linger" {
 		ms, _ := strconv.Atoi(os.Args[2])
 		time.Sleep(time.Duration(ms) * time.Millisecond)
 		return
+	}
+	if os.Getenv("STANDIN_STDIN") != "" {
+		b, _ := io.ReadAll(os.Stdin)
+		logLine(role + " stdin " + strconv.Itoa(len(b)))
 	}
 	args := strings.Join(os.Args[1:], " ")
 	switch args {
@@ -497,10 +516,7 @@ func main() {
 		return
 	}
 	fmt.Println(role + " ran " + args)
-	if f, err := os.OpenFile(os.Getenv("HOOK_LOG"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
-		fmt.Fprintln(f, role+" "+args)
-		f.Close()
-	}
+	logLine(role + " " + args)
 	if os.Getenv(strings.ToUpper(role)+"_EXIT") == "1" {
 		os.Exit(1)
 	}
@@ -713,6 +729,25 @@ var psCases = []struct {
 		c.expect(c.run(), 0, "running relay hook-before", "old ran hook-before", "running relay hook-after --mark=1")
 		if log := c.hookLog(); log != "old hook-before\n" {
 			c.t.Fatalf("hook log %q", log)
+		}
+	}},
+	// install.sh runs hooks and the identity command with </dev/null; so
+	// does install.ps1, or a program that reads its input would take the
+	// user's console input (0024-MADR D4-A).
+	{"hooks and the identity check get no standard input", allModes, func(c *psCase) {
+		c.place("relay.exe", standInExe(c.t, "old", fixtureTag))
+		c.srv.replaceAsset(c.t, rawRepo, fixtureTag, c.asset("raw", "relay"), standInExe(c.t, "new", fixtureTag))
+		c.env = append(c.env, "STANDIN_STDIN=1")
+		c.stdin = "typed at the console\n"
+		c.expect(c.run(), 0, "running relay hook-before", "running relay hook-after --mark=1")
+		var reads []string
+		for line := range strings.Lines(c.hookLog()) {
+			if strings.Contains(line, " stdin ") {
+				reads = append(reads, strings.TrimSpace(line))
+			}
+		}
+		if len(reads) < 3 || slices.ContainsFunc(reads, func(l string) bool { return !strings.HasSuffix(l, " stdin 0") }) {
+			c.t.Fatalf("standard input reads %q; want the two hooks and the identity check, each reading nothing", reads)
 		}
 	}},
 	{"a failed before_install changes nothing", allModes, func(c *psCase) {
