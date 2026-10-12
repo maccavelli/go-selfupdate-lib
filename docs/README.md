@@ -62,7 +62,7 @@ name, and the files they cite moved with the rename
 | 0022 | PLAN | [Implement the documentation pass after v1.14.0, the architecture-table check, a hardened `selfupdate.ErrBatchFile`, and the disabled-task measurement](decisions/0022-PLAN-documentation-pass-after-v1-14-0.md) | complete |
 | 0022 | PLAN | [Implement the error-chain tests past interfaces and a process check that sees an exit](decisions/0022-PLAN-error-chain-and-process-liveness.md) | complete |
 | 0023 | MADR | [Make the tests' fixture builds independent of the directory's git state, and their helper-process waits independent of machine load](decisions/0023-MADR-robust-test-fixtures-and-process-waits.md) | accepted |
-| 0023 | PLAN | [Implement fixture builds independent of git state and helper waits independent of machine load](decisions/0023-PLAN-robust-test-fixtures-and-process-waits.md) | in-progress |
+| 0023 | PLAN | [Implement fixture builds independent of git state and helper waits independent of machine load](decisions/0023-PLAN-robust-test-fixtures-and-process-waits.md) | complete |
 
 ## I want to…
 

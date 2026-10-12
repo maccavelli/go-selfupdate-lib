@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 date: 2026-10-12
 associated-madr: "0023-MADR-robust-test-fixtures-and-process-waits.md"
 ---
@@ -633,3 +633,84 @@ covers `599ae94`, `014eec1`, `b5670d5` and `47812eb`: every job
 `success`. "fixture builds under a stray .git" ran on `validate
 (ubuntu-24.04)`, success, with all 16 packages `ok`, and was skipped on
 macOS and Windows, as its `if` says.
+
+### S7: Verification, at closing (2026-10-12)
+
+The owner committed S6 as `82de014`, and said "proceed".
+
+**Two plants added for V2.** S2 planted three behaviours, so
+`TestStartReady` and `TestStartBudget` had not been seen failing. Each
+below is a `scripts/plant-copy.sh` copy of `internal/testproc/testproc.go`
+on this Mac; the tree was not changed, and its two tests pass (`ok …
+0.797s`):
+
+| Plant | Failing line |
+| :--- | :--- |
+| `Proc.Wait` calls `cmd.Wait` again instead of keeping its result | `--- FAIL: TestStartReady (0.32s)`: `testproc_test.go:76: Wait: exec: Wait was already called` |
+| the budget leaves the helper running (no kill, no wait) | `--- FAIL: TestStartBudget (0.20s)`: `testproc_test.go:112: the helper was not ended` |
+| the budget is ignored (a one-hour timer) | `--- FAIL: TestStartBudget (5.01s)`: `testproc_test.go:106: start = testproc.test exited (exit status 0) before it was ready, after 5.009s` |
+
+**The criteria:**
+
+* **V1 (reproduced): met.** S1's record shows the stray `.git` failing
+  `archive`, the image and E2E tests and `buildinfo` on this Mac, and
+  `archive` on the Linux test host, and first-start times on the three
+  hosts (up to 4.284 s on this Mac, 0.003 s on Linux, 0.026 s on
+  Windows).
+* **V2 (helper): met.** Every `internal/testproc` test has been seen
+  failing on a plant: `TestGoBuildIgnoresParentGit`, `TestStartExitsFirst`
+  and `TestBudget` in S2, `TestNoDirectFixtureBuild` in S3,
+  `TestStartReady` and `TestStartBudget` above; depguard named
+  `internal-testproc` in S2. The package passes on this Mac (every gate
+  since S2), the Linux test host (S2, and the gate in S6) and the
+  Windows test host (cross-compiled in S2, native in S6).
+* **V3 (builds): met.** After S3, the reproduction passes on this Mac
+  and the Linux test host. `buildinfo/stamp_test.go` put back to a direct
+  `go build` fails under the stray `.git` with the VCS error, and
+  `TestNoDirectFixtureBuild` names it (`buildinfo/stamp_test.go:67:13`).
+  Before S3 the static test found exactly the six sites. CI's step,
+  run on the tree from before S3 on the Linux test host, failed `archive`
+  (S5).
+* **V4 (waits): met.** A helper that exits 9 before it is ready is
+  reported in 0.80 s, with `exit status 9`. Before S4 the same plant took
+  10.36 s and said "the running copy never signalled ready". `TestIdentity`'s
+  successful runs use the shipped 30 s, and "a hang" fails without its
+  own 1 s (S4).
+* **V5 (gate): met.** `make gate` reached `overall=0` on the Linux test
+  host with its own `TMPDIR` (holding the stray `.git`) and `BASH_ENV`,
+  and on this Mac. The Mac's load average was 2.69 before and 58.29 after
+  in S6, and 45.69 before and 53.87 after in S4 (S4, S6).
+* **V6 (CI): met.** Run `38256089180`, on `47812eb`, the head of the
+  push from `599ae94` to `47812eb`: every job `success`, the stray-`.git`
+  step on Ubuntu with 16 packages `ok` (S6).
+
+### Closing (2026-10-12)
+
+S0 to S7 are recorded above, and V1 to V6 are met. This plan is
+`complete`, here and in the index. The MADR stays `accepted`, with D1-A
+to D4-A as decided, and Deviation D1's change to `check-docs.sh --arch`.
+No release follows.
+
+**What this closes from 0022.** The open item in
+[0022-PLAN-error-chain-and-process-liveness.md](0022-PLAN-error-chain-and-process-liveness.md),
+"`make gate` on this Mac could not pass under the load recorded in Q5",
+is answered: the gate passed with the load average at 45.69 before the
+run and 63.51 (5 min) after it (S4), and rising from 2.69 to 58.29 during
+it (S6). Neither the Linux host's `TMPDIR` nor its `BASH_ENV` needs a
+workaround now.
+
+**Open at closing:**
+
+* **Why only `archive` failed under the Linux test host's stray `.git`**
+  (S1), where this Mac failed four packages, is [unverified]. Every fixture
+  build now passes `-buildvcs=false`, so neither behaviour reaches a test.
+* **The first Windows run's 147.783 s for `internal/testproc`** (S6) is
+  unexplained; three later runs took under a second.
+* **From 0021 and 0022, unchanged:** where `0x8004130B` arises; whether a
+  GitHub runner can run an interactive-token task; a medium-integrity
+  caller's `SYNCHRONIZE` open is [derived], not measured.
+
+**Checks.** On this plan and `docs/README.md`: `scripts/check-docs.sh
+--links` `96 links in 2 files, 0 broken`; `--ids` `2 files, 16 deny-list
+rules, 0 findings`; markdownlint `0 issues`. `make gate` on this Mac,
+load average 7.00 before and 40.35 after: every step `rc=0`, `overall=0`.
