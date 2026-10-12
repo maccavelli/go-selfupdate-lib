@@ -115,6 +115,12 @@ func detachedAttr(breakaway bool) *syscall.SysProcAttr {
 	return &syscall.SysProcAttr{CreationFlags: flags}
 }
 
+// AliveAccess is the access Alive opens a process with: SYNCHRONIZE for
+// its wait, and the query right for its creation time. Task Scheduler's
+// live test opens a task's program with it, to show an unelevated caller
+// is granted it (0022-MADR Amendment A3).
+const AliveAccess = windows.SYNCHRONIZE | windows.PROCESS_QUERY_LIMITED_INFORMATION
+
 // Alive reports whether process pid runs, and, when born is not 0, is the
 // process created at born rather than a later one with a reused ID. A
 // process that has exited is not alive, though another process still
@@ -124,7 +130,7 @@ func detachedAttr(breakaway bool) *syscall.SysProcAttr {
 // process may not open is looked up in the process snapshot, which lists
 // only running processes, and born is not checked.
 func Alive(pid uint32, born uint64) bool {
-	h, err := windows.OpenProcess(windows.SYNCHRONIZE|windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
+	h, err := windows.OpenProcess(AliveAccess, false, pid)
 	if errors.Is(err, windows.ERROR_ACCESS_DENIED) {
 		return inSnapshot(pid)
 	}

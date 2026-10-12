@@ -1,12 +1,12 @@
 ---
-status: proposed
+status: in-progress
 date: 2026-10-12
 associated-madr: "0022-MADR-documentation-pass-after-v1-14-0.md"
 ---
 # Implement the measured and pinned `SYNCHRONIZE` open from an unelevated caller
 
 Associated MADR: [0022-MADR-documentation-pass-after-v1-14-0.md](0022-MADR-documentation-pass-after-v1-14-0.md),
-Amendment A3 (D7-B, recommended). The record's other plans are
+Amendment A3 (D7-B). The record's other plans are
 [0022-PLAN-documentation-pass-after-v1-14-0.md](0022-PLAN-documentation-pass-after-v1-14-0.md)
 and
 [0022-PLAN-error-chain-and-process-liveness.md](0022-PLAN-error-chain-and-process-liveness.md),
@@ -195,3 +195,70 @@ Nothing in the tree changes; the probes live in the scratchpad.
 * **Rollback:** `git revert` of R1 removes the constant and the pin;
   `Alive`'s behaviour is the same either way.
 * **A deviation in any phase** stops it.
+
+## Execution record
+
+### Approval (2026-10-12)
+
+The owner committed this plan, Amendment A3 and the index row as
+`7735803`, and said "committed, proceed". Amendment A3 records D7-B,
+the recommended option, as decided; its heading no longer says
+"proposed". This plan is `in-progress`, here and in the index.
+
+### R1 (2026-10-12)
+
+**Files.** Changed: `internal/winproc/winproc_windows.go`,
+`selfupdate/service/taskscheduler/live_windows_test.go`. No file is
+added.
+
+**As built:**
+
+* `winproc.AliveAccess`, `SYNCHRONIZE |
+  PROCESS_QUERY_LIMITED_INFORMATION`, with a doc comment citing
+  Amendment A3; `Alive` opens with it. Nothing else in `Alive` changed.
+* `liveMode` passes `cfg` to `liveUpdate`. After `writeIntegrity`,
+  `writeOpen` reads the task program's PID from the last line of
+  `starts`, opens it with `winproc.AliveAccess`, and writes `pid=<n>
+  open=ok wait=<timeout|signaled|err: …|0x…>` or `pid=<n> open=<the
+  error>` to `<result>.open`.
+* `TestLiveTaskUpdate` requires the line to end ` open=ok wait=timeout`,
+  and logs it with the integrity RID.
+
+**The console sign-in.** The owner confirmed it ("windows is logged in,
+screen is unlocked"). Before that, a read-only check found Explorer in
+session 1 and a console user set.
+
+**Seen failing (step 4),** each planted copy cross-compiled here and run
+on the Windows test host with `SELFUPDATE_REQUIRE_TASKSCHED=1
+-test.run '^TestLiveTaskUpdate$'`:
+
+| Plant | Result |
+| :--- | :--- |
+| `writeOpen` opens PID 0 | `--- FAIL: TestLiveTaskUpdate (5.27s)`: `live_windows_test.go:567: the update's open of the task's program with winproc.AliveAccess: pid=44128 open=The parameter is incorrect.; want open=ok wait=timeout (0022-MADR A3)` |
+| `writeOpen` writes `signaled` for `WAIT_TIMEOUT` | `--- FAIL: TestLiveTaskUpdate (5.24s)`: `live_windows_test.go:567: … pid=38092 open=ok wait=signaled; want open=ok wait=timeout (0022-MADR A3)` |
+
+**The tree (step 5),** on the Windows test host, the binaries' SHA-256
+checked there:
+
+* `-test.run '^TestLiveTaskUpdate$' -test.count 3`: `PASS` three times
+  (5.19 s, 5.34 s, 5.32 s), each logging `the update's integrity RID
+  0x2000; pid=<n> open=ok wait=timeout`;
+* `-test.run '^TestLiveTask'`: `TestLiveTaskUpdate` (`0x2000`,
+  `open=ok wait=timeout`), `TestLiveTaskStopHoldsDisabled` (71.89 s),
+  `TestLiveTaskRollback`, `TestLiveTaskRequestStop`,
+  `TestLiveTaskStopRefusesDisabled` and `TestLiveTaskzCleanup` `PASS`;
+* `internal/winproc`'s tests, `TestAlive` among them: `PASS`.
+
+**Step 6, the stop condition:** not met. An unelevated update of the same
+user opened the task's program with `AliveAccess` in all four runs, and
+the wait read it as running. A2's [derived] fact holds for the supported
+case [measured].
+
+**Host cleanup.** The run directory was removed; `schtasks /query` lists
+0 `selfupdate-` tasks.
+
+**Checks.** gofmt clean; vet for darwin, linux and windows
+(`CGO_ENABLED=0`): clean. `make pre-add-check FILES="<the 2 Go files>"`:
+`go-precheck: 2 file(s) clean`. `make gate` on this Mac, load average
+8.89 before and 45.86 after: every step `rc=0`, `apicheck` `compatible
+with v1.15.1`, `arch` `16 rows … 0 differ`, `overall=0`.

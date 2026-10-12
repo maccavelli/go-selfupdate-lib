@@ -58,7 +58,7 @@ func liveMode(mode string, args []string) int {
 	case "agent":
 		return liveAgent(cfg)
 	case "update":
-		return liveUpdate()
+		return liveUpdate(cfg)
 	}
 	return 2
 }
@@ -136,13 +136,17 @@ func liveAgent(cfg liveConfig) int {
 	return 0
 }
 
-func liveUpdate() int {
+func liveUpdate(cfg liveConfig) int {
 	done := service.ReportFunc()
 	if err := writeConsole(os.Getenv("SELFUPDATE_HANDOFF_RESULT") + ".console"); err != nil {
 		_ = done(selfupdate.Result{}, err)
 		return 1
 	}
 	if err := writeIntegrity(os.Getenv("SELFUPDATE_HANDOFF_RESULT") + ".integrity"); err != nil {
+		_ = done(selfupdate.Result{}, err)
+		return 1
+	}
+	if err := writeOpen(cfg, os.Getenv("SELFUPDATE_HANDOFF_RESULT")+".open"); err != nil {
 		_ = done(selfupdate.Result{}, err)
 		return 1
 	}
@@ -215,6 +219,43 @@ func writeIntegrity(path string) error {
 	sid := label.Label.Sid
 	rid := sid.SubAuthority(uint32(sid.SubAuthorityCount()) - 1)
 	return os.WriteFile(path, fmt.Appendf(nil, "%#x", rid), 0o600)
+}
+
+// writeOpen records whether this process, the detached update, may open
+// the task's program, before it stops it, with the access winproc.Alive
+// asks for, and what the wait reads while the program runs. A refused
+// open would send Alive to the process snapshot unseen, since the
+// snapshot also sees the program exit (0022-MADR Amendment A3).
+func writeOpen(cfg liveConfig, path string) error {
+	body, err := os.ReadFile(filepath.Join(cfg.Dir, "starts")) //nolint:gosec // the live test's own file
+	if err != nil {
+		return err
+	}
+	pids := strings.Fields(string(body))
+	if len(pids) == 0 {
+		return errors.New("starts: no PID")
+	}
+	pid, err := strconv.ParseUint(pids[len(pids)-1], 10, 32)
+	if err != nil {
+		return err
+	}
+	h, err := windows.OpenProcess(winproc.AliveAccess, false, uint32(pid))
+	if err != nil {
+		return os.WriteFile(path, fmt.Appendf(nil, "pid=%d open=%v", pid, err), 0o600)
+	}
+	defer windows.CloseHandle(h) //nolint:errcheck // a query handle: nothing to report
+	var wait string
+	switch ev, err := windows.WaitForSingleObject(h, 0); {
+	case err != nil:
+		wait = "err: " + err.Error()
+	case ev == uint32(windows.WAIT_TIMEOUT):
+		wait = "timeout"
+	case ev == windows.WAIT_OBJECT_0:
+		wait = "signaled"
+	default:
+		wait = fmt.Sprintf("%#x", ev)
+	}
+	return os.WriteFile(path, fmt.Appendf(nil, "pid=%d open=ok wait=%s", pid, wait), 0o600)
 }
 
 var (
@@ -518,7 +559,14 @@ func TestLiveTaskUpdate(t *testing.T) {
 	if want := fmt.Sprintf("%#x", mediumRID); string(rid) != want {
 		t.Fatalf("the update ran at integrity %s, want %s (medium)", rid, want)
 	}
-	t.Logf("the update's integrity RID %s", rid)
+	open, err := os.ReadFile(result + ".open") //nolint:gosec // the live test's own file
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(string(open), " open=ok wait=timeout") {
+		t.Fatalf("the update's open of the task's program with winproc.AliveAccess: %s; want open=ok wait=timeout (0022-MADR A3)", open)
+	}
+	t.Logf("the update's integrity RID %s; %s", rid, open)
 }
 
 func waitHandOff(t *testing.T, cfg liveConfig, result string) {

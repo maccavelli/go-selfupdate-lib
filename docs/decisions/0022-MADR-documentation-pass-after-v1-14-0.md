@@ -580,7 +580,7 @@ left open at closing, and to ground the remedy in the code. Its plan is
   until the measurement; an open refused falls back to the snapshot.
 * Bad, because the backend fix needs `v1.15.1`.
 
-### A3 (2026-10-12, proposed): the `SYNCHRONIZE` open from an unelevated caller, measured and pinned
+### A3 (2026-10-12): the `SYNCHRONIZE` open from an unelevated caller, measured and pinned
 
 The owner asked, after
 [0023-PLAN-robust-test-fixtures-and-process-waits.md](0023-PLAN-robust-test-fixtures-and-process-waits.md)
@@ -642,7 +642,8 @@ task's program is [derived], not measured". Its plan is
 * **D7-C. Keep it [derived].** A refusal degrades to the snapshot, which
   loses only the reused-ID check.
 
-**Recommended: D7-B,** because:
+**Decision (the owner, 2026-10-12, "committed, proceed"): D7-B,** the
+recommended option, because:
 
 * the live update already runs at medium integrity, through the
   backend's own `Stop`, so the pin observes the case programs ship, not a
@@ -658,7 +659,7 @@ task's program is [derived], not measured". Its plan is
 [derived] fact is false where it matters most. The plan stops, and the
 measurement goes to the owner with resolutions.
 
-**Consequences, if D7-B is chosen:**
+**Consequences:**
 
 * Good, because A2's last [derived] fact becomes [measured], and a
   regression fails a named live test.
