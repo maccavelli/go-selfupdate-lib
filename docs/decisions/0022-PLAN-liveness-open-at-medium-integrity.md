@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 date: 2026-10-12
 associated-madr: "0022-MADR-documentation-pass-after-v1-14-0.md"
 ---
@@ -339,10 +339,47 @@ The owner committed R2 as `3c658b4` (R1 is `10cf06f`), and said
 * **V3 (pairing): met.** R2's three runs recorded, for a caller at
   `0x2000`: `alive_open=ok wait=timeout` for a program at `0x3000`, and
   the same for the control at `0x2000`, with each right alone granted.
-* **V4 (gate):** `make gate` ended `overall=0` for R1's code (R1's
-  checks).
+* **V4 (gate): met.** `make gate` ended `overall=0` for R1's code (R1's
+  checks). CI run `38271193154`, on `34f830e`, the head of the push from
+  `7735803` to `34f830e`: 17 of 17 jobs `success`. Its Windows job ran
+  `internal/winproc` and `selfupdate/service/taskscheduler` `ok`, and its
+  "Task Scheduler live test" step skipped `TestLiveTaskUpdate` and the
+  other live tests: `set SELFUPDATE_REQUIRE_TASKSCHED=1 to run against
+  this host's Task Scheduler; GitHub runners have no interactive console
+  session`. CI holds the build, lint, vet and unit tests; the pin runs
+  only on the Windows test host, as Amendment A3's consequences say.
 
 **The MADR,** in this phase: Amendment A2's consequence ("[unverified]
 until the measurement") and A3's [derived] and [unverified] facts carry
 italic annotations with these answers. Their text is otherwise
 unchanged.
+
+The owner committed the record above as `34f830e`, pushed `7735803` to
+`34f830e`, and said "committed and pushed, ci is green. proceed". V4's
+CI line and this closing were added after that run.
+
+### Closing (2026-10-12)
+
+R0 to R3 are recorded above, and V1 to V4 are met. This plan is
+`complete`, here and in the index; Amendment A3's D7-B stands as decided.
+No release follows: `AliveAccess` is in an internal package, and
+`apicheck` reported `compatible with v1.15.1`.
+
+**What this closes.** The open item
+[0022-PLAN-error-chain-and-process-liveness.md](0022-PLAN-error-chain-and-process-liveness.md)
+listed at closing, "a medium-integrity caller's `SYNCHRONIZE` open of a
+task's program is [derived], not measured", is answered: an unelevated
+updater of the same user is granted it, for a task program at medium
+integrity (R1, pinned) and at high integrity (R2). In every pairing
+measured, `Alive` takes its open-and-wait path and checks `born`; its
+snapshot fallback was not reached.
+
+**Open at closing:**
+
+* **Why the integrity label does not refuse the open** of a
+  higher-integrity program is [derived], not measured (R2).
+* **Pairings not run:** a caller at low integrity, and a task program
+  that runs as another user. Neither was in this plan's scope.
+* **From 0021, unchanged:** where `0x8004130B` arises, and whether a
+  GitHub runner can run an interactive-token task. This run's skip
+  message restates the second.
