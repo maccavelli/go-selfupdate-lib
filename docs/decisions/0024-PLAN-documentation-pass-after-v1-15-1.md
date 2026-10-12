@@ -820,5 +820,94 @@ this Mac (`ok … 43.713s`) and on the Linux test host (`ok … 16.572s`).
 
 **Checks.** `make gate` on this Mac (the tree also held W5), load
 average 4.11 before and 44.87 after: every step `rc=0`, `apicheck`
-`compatible with v1.15.1`, `arch` `0 differ`, `overall=0`. CI runs on the
-push.
+`compatible with v1.15.1`, `arch` `0 differ`, `overall=0`. CI run
+`38320675457`, on `8024c9b` (this fix with W5): 17 of 17 jobs `success`;
+`main` is green again.
+
+### W6 (2026-10-12)
+
+The owner committed D5's fix and W5 as `8024c9b`, pushed, and said "all
+committed, pushed, proceed".
+
+**Files.** Changed: README.md, AGENTS.md, `docs/README.md`,
+`docs/reports/0004-REPORT-release-signing-research.md`.
+
+**Closed:**
+
+* **A1, A10 (README.md):** a plain-http redirect hop is allowed only to a
+  loopback host from an API on loopback; on Windows no `.bat` or `.cmd`
+  program is started, in any spelling, by the version probe, the default
+  runner (and so `ghattest` and the exec reconciler) or the handoff, and
+  the error wraps `selfupdate.ErrBatchFile`.
+* **A4, A5, A6, A7 (AGENTS.md):** what `make gate` leaves out
+  (markdownlint-cli2 0.23.2, `actionlint`, the stray-`.git` run);
+  `plant-copy.sh`'s arguments are Python string literals, FILE holds OLD
+  once, and the copy has no `.git`; the live tests skip unless their
+  switch is set (`SELFUPDATE_REQUIRE_*`, and
+  `SELFUPDATE_INSTALL_REQUIRE_SHELLS`), with a pointer to the
+  architecture page's CI section; `winproc` walks the process tree and
+  reads liveness on Windows, and `internal/testproc` is test support.
+* **A4, A8, A9 (`docs/README.md`):** the gate row says markdownlint and
+  actionlint run by hand; the installer and testing rows are split; four
+  rows added: rehearse without installing, keep the previous binary,
+  replace a setuid or setgid binary, replace before the stop.
+* **A2, A3 (the 0004 report):** a "Since (2026-10-12)" section before
+  "Sources", as the 0016 report's "Decided" section is: runtime
+  provenance is checked opt-in by `ghattest` since `v1.12.0`, in this
+  module, and question 1 is settled by AGENTS.md and 0013-MADR. The
+  report's text is otherwise unchanged.
+
+**A correction before the record:** the first draft of A10 named
+`codesign` among the refusers; `codesign` returns `ErrUnsupported` off
+macOS (finding C9), so it was taken out. The first draft of A6 named only
+`SELFUPDATE_REQUIRE_*`; the installers' switch is
+`SELFUPDATE_INSTALL_REQUIRE_SHELLS`.
+
+**Checks.** On the four files: `scripts/check-docs.sh --links` `134
+links in 4 files, 0 broken`; `--ids` `0 findings`; markdownlint `0
+issues`. Every index title still matches its record's H1 (59 of 59).
+`make gate` runs before the push (Deviation D2).
+
+### W7 (2026-10-12)
+
+**Files.** Changed: `docs/architecture.md`.
+
+**Closed:**
+
+* **B1, B2, B3:** the tree and the `winproc` bullet name the library's
+  packages under `selfupdate/`, not the module, and say the release tool
+  starts its own processes; the batch-file refusal wraps
+  `selfupdate.ErrBatchFile` through the version probe, `ExecRunner`,
+  `ExecReconciler` and `DetachProcess` (0022-MADR D3); `Alive` is
+  Windows-only, `AliveAccess` is named with 0022-MADR Amendment A3, and
+  Unix's liveness checks use `kill(pid, 0)` (`proc_unix.go:22`,
+  `hopwait_unix.go:23`).
+* **B4:** taskscheduler's `Stop` refuses a disabled running task with
+  `ErrTaskDisabled`, ends the task only if the program still runs, and
+  enables it again after a failure with the program running (W1's C2);
+  `Start` returns `ErrTaskDisabled`; the rewrite is for an
+  interactive-token principal.
+* **B5, B18, B19:** the hop wait (`hopwait_*.go`) and `SameExecutable`;
+  launchd's `CleanupHandOffs`; systemd's `Notify` wrappers and unit-name
+  helpers.
+* **B6:** `testproc.Build`, `Budget` and `TestNoDirectFixtureBuild`.
+* **B7, B8:** the Windows leg names the session probe step (0021's second
+  plan, U3); codesign's CI tests are the ad-hoc ones, and
+  `TestLiveSignIdentity` is listed under "Not in CI".
+* **B9:** `other-packages` matches AGENTS.md.
+* **B10, B11:** `ghattest` is its own bullet under 0017-MADR; a new
+  `releasespec` bullet cites 0013-MADR and 0014-MADR.
+* **B12:** 0020-MADR and 0021-MADR are linked by full filename.
+* **B13:** CI's triggers are stated, and the rehearsal runs on `main`, a
+  `release/**` branch or a pull request.
+* **B14:** the gate runs every script test but its own, and the
+  identifier check on changed and untracked files.
+* **B15:** the platform split names `*_other.go` (`cleanup_other.go`,
+  `journal_other.go`).
+* **B16:** the publish workflow's token, and its first step, the `gh`
+  capability check (0010-MADR D5); its steps are numbered 1 to 8.
+* **B17:** `apicheck` compares with the newest `v1.*` tag.
+
+**Checks.** `scripts/check-docs.sh --links` `24 links in 1 files, 0
+broken`; `--ids` `0 findings`; `--arch` `16 rows … 0 differ`;
+markdownlint `0 issues`. `make gate` runs before the push (Deviation D2).

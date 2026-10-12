@@ -76,8 +76,13 @@ and 1 for any other error. `selfupdate/example_test.go` shows a complete
 standalone binding, a managed-service binding, and `ExitCode`.
 
 An exact `--version` is pinned: a source that returns another tag is an
-`ErrIntegrity` failure. Redirects must stay on HTTPS unless they go to a
-loopback host. End of input at the confirmation prompt is a decline.
+`ErrIntegrity` failure. Redirects must stay on HTTPS; a plain-http hop is
+allowed only to a loopback host, from an API on loopback. End of input at
+the confirmation prompt is a decline. On Windows the library never starts
+a `.bat` or `.cmd` program, in any spelling: the version probe, the
+default runner (and so `ghattest` and the exec reconciler) and
+the service handoff refuse it with an error that wraps
+`selfupdate.ErrBatchFile`.
 
 ### Building and publishing releases
 

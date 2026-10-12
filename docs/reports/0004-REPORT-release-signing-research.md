@@ -308,6 +308,24 @@ the password manager.
    because a human gate is most of what a CI-held key could add.
 5. **The backup-key location.** Options and practices are listed above.
 
+## Since (2026-10-12)
+
+This report is kept as written. Two of its statements have since been
+settled by later records:
+
+- **Provenance is checked at run time, opt-in, in this module.** The
+  threat table's "produced by the workflow but not checked at run time"
+  and the finding that runtime provenance "would be an opt-in nested
+  module" predate `selfupdate/verify/ghattest`, which `v1.12.0` added: a
+  `ManifestVerifier` that runs `gh attestation verify`, with no new module
+  requirement
+  ([0017-MADR-verify-build-provenance-and-close-0015-open-items.md](../decisions/0017-MADR-verify-build-provenance-and-close-0015-open-items.md)).
+- **Question 1, a tool under `internal/cmd`:** settled. AGENTS.md says
+  "Commands under `internal/cmd/` are build and release tools that the
+  workflows run from source; they are never released", and
+  `internal/cmd/selfupdate-release` is one
+  ([0013-MADR-build-and-stage-release-workflow.md](../decisions/0013-MADR-build-and-stage-release-workflow.md)).
+
 ## Sources
 
 - C2SP signed-note specification,

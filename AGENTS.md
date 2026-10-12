@@ -30,7 +30,12 @@ verifier; there is no root package. Unexported helpers
 shared between packages live under `internal/`: `internal/winproc` builds
 every process the library's packages start
 (`docs/decisions/0021-MADR-task-scheduler-lifecycle-and-windowless-children.md`
-D7). Requires Go 1.27.1; built
+D7), walks the process tree (`Descends`), and on Windows reads whether a
+process still runs (`Alive`;
+`docs/decisions/0022-MADR-documentation-pass-after-v1-14-0.md` Amendment
+A2); `internal/testproc` is test support that only `_test.go` files
+import (`docs/decisions/0023-MADR-robust-test-fixtures-and-process-waits.md`).
+Requires Go 1.27.1; built
 and tested with Go 1.27.2, the `toolchain` line in `go.mod`
 (`docs/decisions/0018-MADR-move-toolchain-to-go-1-27-2.md`).
 
@@ -174,8 +179,12 @@ CI (`docs/decisions/0002-MADR-rehome-selfupdate-from-mcplib.md` §5);
 The `selfupdate` tests include `TestManifestDifferential`, which needs
 `python3` and skips without it, and `selfupdate/releasespec`'s parity test
 needs `python3` and `sh` the same way; set `SELFUPDATE_REQUIRE_PYTHON=1` to
-make both mandatory, as CI does on Linux and macOS. `golint` is
-not used: its checks are `revive`'s `exported`, `package-comments` and
+make both mandatory, as CI does on Linux and macOS. The live tests,
+against a real service manager, `codesign`, `gh attestation` or an
+installer, skip unless their switch is set (`SELFUPDATE_REQUIRE_*`, and
+`SELFUPDATE_INSTALL_REQUIRE_SHELLS` for the installers);
+`docs/architecture.md`'s CI section names each, and where CI sets it.
+`golint` is not used: its checks are `revive`'s `exported`, `package-comments` and
 `var-naming` rules in `.golangci.yml`. A file that fails is not committed.
 
 The machine-wide agent gate runs the same script before every agent
@@ -187,7 +196,10 @@ is no `git add` hook on every host; do not rely on one.
 `make gate` (`scripts/gate.sh`) runs every check a commit needs, one line
 per step: gofmt, lint, vet, race, shuffle, tidy, apicheck, fuzz, vuln, the
 script tests, shellcheck, cross-target vet, the link check, the
-architecture table check and the identifier check. It ends `overall=0` when every step passed. Each step's
+architecture table check and the identifier check. It ends `overall=0` when every step passed.
+It does not run markdownlint (`npx --yes markdownlint-cli2@0.23.2` on the
+changed Markdown files), `actionlint` on a changed workflow, or the
+stray-`.git` run below, which CI runs; run those by hand when they apply. Each step's
 output is kept in `GATE_OUT` (a new temporary directory by default);
 `GATE_SKIP=fuzz,vuln` skips named steps, and a record must say so. The
 identifier step runs `scripts/check-docs.sh --ids` on the changed and
@@ -201,6 +213,9 @@ a new test fail without dirtying
 the tree, `scripts/plant-copy.sh FILE OLD NEW` makes a scratch copy with one
 planted break
 (`docs/decisions/0015-PLAN-remediate-third-debugging-pass-findings.md` R1).
+OLD and NEW are Python string literals, such as `"'if err != nil {'"`;
+FILE must hold OLD once; and the copy has no `.git`, so `make apicheck`
+cannot run in it (the script's header).
 
 A test that builds a Go fixture, or starts a helper process and waits for
 it, uses `internal/testproc`: `GoBuild` builds with `-buildvcs=false`, so a

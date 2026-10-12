@@ -91,8 +91,9 @@ selfupdate/                 the self-update package
     launchd/                the launchd lifecycle
     scm/                    the Windows SCM lifecycle
     taskscheduler/          the Windows Task Scheduler lifecycle, over COM
-internal/winproc/           every process start: no console window, no
-                            batch file; the ancestor walk
+internal/winproc/           the library's process starts: no console
+                            window, no batch file; the ancestor walk and
+                            the liveness check
 internal/testproc/          test support: fixture builds that ignore the
                             git state around them, helper-process waits
 internal/cmd/selfupdate-release/  the workflows' logic: plan, build, stage,
@@ -140,7 +141,7 @@ docs/
     and of [0004-MADR](decisions/0004-MADR-evolve-selfupdate-api-and-tui-support.md)
     Phase 0;
   - the additive Phase 1 API of that MADR, which `make apicheck` keeps
-    compatible with `v1.0.1`.
+    compatible with the newest `v1.*` tag.
 - The Phase 1 API, by file:
   - **asking without installing:** `checker.go` (`Checker`, shared with
     `Run`'s discovery) and `checkcache.go` (`CheckCached`, `CheckStore`,
@@ -158,7 +159,7 @@ docs/
     `NewManagedInstallerFor` (`types.go`, `session.go`, `managed.go`), and
     `NewManagedInstallerWith` with `ManagedOptions`, whose
     `ReplaceBeforeStop` replaces a running service's binary before the stop
-    (`managed.go`, 0020-MADR), and
+    (`managed.go`, [0020-MADR](decisions/0020-MADR-precheck-gofmt-errors-and-replace-before-stop.md)), and
     `DryRun`, `KeepPrevious` and `CleanupPending` (`updater.go`,
     `session.go`, `standalone.go`); the interrupted-update journal
     (`journal.go`) and `KeptBackups` (`standalone.go`, `managed.go`).
@@ -218,21 +219,25 @@ docs/
     version 1 receipt (`execreconciler.go`), and the handoff: `Detacher`,
     `HandOffIfInside`, `HandOffFunc`, `ReportFunc` and the result file
     (`handoff.go`), `DetachProcess` (`detach*.go`), the private
-    environment file (`handoffenv.go`) and the Windows hop
-    (`handoffhop.go`);
+    environment file (`handoffenv.go`), the Windows hop
+    (`handoffhop.go`) and the real run's wait for the hop to exit
+    (`hopwait_*.go`); and `SameExecutable` (`sameexec.go`);
   - **`systemd`:** probes over one `systemctl show` per call, read by key;
     `Stop`, `Start` and `WaitHealthy` on the unit's state and
     `InvocationID`, with the restart count read after the start; a
     drop-in for a moved binary, checked against the effective `ExecStart`
     after the reload; `Inside` by cgroup; the handoff by `systemd-run`,
-    its environment file under a directory per unit; and `Notify`
-    (`notify.go`);
+    its environment file under a directory per unit; `Notify` and its
+    wrappers `Ready`, `Reloading`, `Status`, `Stopping`, `Watchdog` and
+    `WatchdogInterval` (`notify.go`); and the unit-name helpers `Escape`,
+    `TemplateInstance` and `ValidUnitName` (`name.go`);
   - **`launchd`:** `launchctl` exit codes, `list`, and `print`'s top-level
     `pid` and `state` lines only; `Stop` waits until the job has left the
     domain and its process has exited; `plutil` for the plist, its values
     read with their types; a rewritten plist reloaded when the job is
     loaded but not running; `Inside` by process group or ancestry; the
-    handoff by a one-shot job;
+    handoff by a one-shot job, and `CleanupHandOffs`, which removes the
+    finished ones;
   - **`scm`:** an unexported interface over the SCM and the process table,
     which the tests fake; handles opened with only each call's rights;
     Microsoft's wait-hint and checkpoint loop; an unquoted command line
@@ -243,10 +248,14 @@ docs/
     ([0021-MADR](decisions/0021-MADR-task-scheduler-lifecycle-and-windowless-children.md)):
     the COM API by vtable calls (`com_windows.go`), behind unexported
     `scheduler` and `registered` interfaces that the tests fake; `Stop`
-    disables the task, asks `RequestStop`, ends the task and waits for the
-    recorded process; `Start` enables only what `Stop` disabled;
-    `WaitHealthy` by a new `EnginePID`, with the last run's exit code on a
-    failure; a rewrite and restore of the `Exec` path by
+    refuses a disabled task whose program runs (`ErrTaskDisabled`), then
+    disables the task, asks `RequestStop`, ends the task if the program
+    still runs, and waits for the recorded process, enabling the task
+    again if it fails with the program still running; `Start` enables only
+    what `Stop` disabled, and returns `ErrTaskDisabled` for a task disabled
+    otherwise; `WaitHealthy` by a new `EnginePID`, with the last run's exit
+    code on a failure; a rewrite and restore of the `Exec` path, for a task
+    whose principal logs on with an interactive token, by
     `RegisterTaskDefinition` and `RegisterTask` with the saved XML;
     `Inside` and the handoff as `scm`'s.
 
@@ -256,15 +265,21 @@ docs/
   integrity, so CI runs every Task Scheduler live test but
   `TestLiveTaskUpdate`, which requires medium; a Windows host runs them
   all with `SELFUPDATE_REQUIRE_TASKSCHED=1`.
-- `internal/winproc` is the one constructor for every process the module
-  starts (0021-MADR D7 and D8): on Windows, `CREATE_NO_WINDOW` for a child
-  of a process with no console, a windowless console for the detached
-  handoff run, and a refusal of a `.bat` or `.cmd` program. It holds the
-  ancestor walk `scm` and `taskscheduler` share, `Descends`, and `Alive`,
-  the one check of whether a process still runs: a process that has
-  exited is gone, though another process holds a handle to it
-  ([0022-MADR](decisions/0022-MADR-documentation-pass-after-v1-14-0.md)
-  Amendment A2). `TestNoDirectProcessStart` (`selfupdate/spawn_test.go`)
+- `internal/winproc` is the one constructor for every process the
+  library's packages under `selfupdate/` start ([0021-MADR](decisions/0021-MADR-task-scheduler-lifecycle-and-windowless-children.md) D7 and D8);
+  the release tool under `internal/cmd` starts its own. On Windows:
+  `CREATE_NO_WINDOW` for a child of a process with no console, a
+  windowless console for the detached handoff run, and a refusal of a
+  `.bat` or `.cmd` program in any spelling, which the version probe,
+  `service.ExecRunner`, `ExecReconciler` and `service.DetachProcess`
+  return wrapping the exported `selfupdate.ErrBatchFile` ([0022-MADR](decisions/0022-MADR-documentation-pass-after-v1-14-0.md) D3).
+  It holds the ancestor walk `scm` and `taskscheduler` share, `Descends`,
+  and, on Windows, `Alive`, the one check of whether a process still runs:
+  a process that has exited is gone, though another process holds a
+  handle to it (0022-MADR Amendment A2). `AliveAccess` is the access it
+  opens with, which an unelevated caller is granted (0022-MADR Amendment
+  A3). On Unix the
+  liveness checks use `kill(pid, 0)`. `TestNoDirectProcessStart` (`selfupdate/spawn_test.go`)
   refuses any other process start in a non-test file under `selfupdate/`.
 - `internal/testproc` is test support, which only `_test.go` files
   import
@@ -272,7 +287,10 @@ docs/
   `GoBuild` builds a fixture with `-buildvcs=false`, so a `.git` above a
   temporary directory cannot fail it, and `Start` starts a helper and
   waits for its ready file until the test's deadline, less a grace
-  period, failing at once if the helper exits first.
+  period, failing at once if the helper exits first. `Build` is
+  `GoBuild` for a caller with no `testing.TB`, and `Budget` is the wait's
+  bound. `TestNoDirectFixtureBuild` refuses a direct `go build` in any
+  test file.
 - `cli.Options.HandOff` (`run.go`) runs `Detach` before an apply and
   `Report` after an update that ran.
 - Archive assets and macOS signing
@@ -288,10 +306,16 @@ docs/
   - **`codesign`:** `NewSigner`, a `Transformer`, and `NewChecker`, a
     `Prober`, over `/usr/bin/codesign` through `service.Runner`
     (`codesign.go`). It is opt-in: nothing in the module imports it.
-  - **`ghattest`:** `NewManifestVerifier` and `NewVerifier`, which run
-    `gh attestation verify` through `service.Runner` and check the
-    reported certificate against a `Policy` again (`ghattest.go`). It is
-    opt-in, like `codesign`.
+- Build provenance ([0017-MADR](decisions/0017-MADR-verify-build-provenance-and-close-0015-open-items.md)): `verify/ghattest`'s
+  `NewManifestVerifier` and `NewVerifier` run `gh attestation verify`
+  through `service.Runner` and check the reported certificate against a
+  `Policy` again (`ghattest.go`). It is opt-in, like `codesign`.
+- The release spec ([0013-MADR](decisions/0013-MADR-build-and-stage-release-workflow.md), [0014-MADR](decisions/0014-MADR-shared-installer-templates.md)):
+  `releasespec`'s `Parse` reads the spec a program embeds, and
+  `Spec.Validate` checks it; the program takes `Spec.AssetSelector` and
+  `Spec.Unpacker` from it, and the build workflow `ProductsJSON`,
+  `PlatformsJSON`, `ExtrasJSON` and `ChannelsJSON`, and the installer
+  settings the release tool renders.
 - The coordinator (`updater.go`) owns the order of every step. It validates
   the selected binary and manifest itself, and parses `SHA256SUMS` before any
   staging. It pins an exact `--version`, and closes the session before
@@ -347,7 +371,8 @@ docs/
 - The terminal confirmer reads one line per answer, a byte at a time, and
   leaves no read outstanding once a prompt is answered.
 - Platform code is split by build tag: `*_unix.go` (`//go:build unix`),
-  `*_windows.go`, and `cleanup_other.go` for non-Windows receipt handling.
+  `*_windows.go`, and `*_other.go` (`!windows`): `cleanup_other.go` and
+  `journal_other.go`.
 - The package's GitHub `User-Agent` is supplied by the program;
   `UserAgent` builds one. It reads
   `GH_TOKEN`, then `GITHUB_TOKEN`, when set.
@@ -396,28 +421,32 @@ four publish inputs.
 
 `publish-selfupdate-release.yml` is called with `artifact-name`,
 `products-json`, `platforms-json` and `extra-assets-json`, and optionally
-`prerelease-channels-json` (default `[]`). On a tag ref, in order, it:
+`prerelease-channels-json` (default `[]`). Its token has `contents:
+write`, `id-token: write` and `attestations: write`. On a tag ref, in
+order, it:
 
-1. checks out its own commit at `.core-lib-release-tools`, to run the scripts
+1. checks that the runner's `gh` has `release verify` and `release view`'s
+   `isImmutable` field, and is 2.81.0 or later ([0010-MADR](decisions/0010-MADR-remediate-second-debugging-pass-findings.md) D5);
+2. checks out its own commit at `.core-lib-release-tools`, to run the scripts
    above from the same commit as the workflow;
-2. requires an admitted tag (`check-release-tag.sh`): a strict
+3. requires an admitted tag (`check-release-tag.sh`): a strict
    `vMAJOR.MINOR.PATCH`, or `vMAJOR.MINOR.PATCH-NAME.N` for a `NAME` in
    `prerelease-channels-json`, the rule `NewSemverPolicy` applies;
-3. refuses an existing release (`refuse-existing-release.sh`), after
+4. refuses an existing release (`refuse-existing-release.sh`), after
    proving the repository itself is readable;
-4. downloads the caller's artifact to `staging/`;
-5. validates the staged set (`verify-selfupdate-release.sh`): regular files
+5. downloads the caller's artifact to `staging/`;
+6. validates the staged set (`verify-selfupdate-release.sh`): regular files
    only, safe extra names, and a `SHA256SUMS` parsed exactly as the client
    parses it. Both parsers run the fixtures in
    `selfupdate/testdata/manifest-parity/`. A `format` on every platform
    object makes the release one of archives,
    `<product>-<os>-<arch>.<format>`, and `SHA256SUMS` lists those;
-6. for a release of archives only, sets up Go from its own `go.mod` and
+7. for a release of archives only, sets up Go from its own `go.mod` and
    runs `selfupdate-release check`, which reads each tar.gz and gz to its
    end with gzip (one member, its checksum, nothing after it), then
    unpacks each archive with the client's own unpacker and checks the
    program's image;
-7. creates a draft, uploads the files (one argument each), attests them,
+8. creates a draft, uploads the files (one argument each), attests them,
    publishes, and waits for the release to be immutable and verified. A
    prerelease tag is created with `--prerelease --latest=false`, so it
    never becomes the release stable clients read. A stable tag below the
@@ -489,8 +518,9 @@ interpolated into shell.
     `selfupdate-archive`, `selfupdate-codesign`, `selfupdate-releasespec`
     and `selfupdate-verify-ghattest`: each package's own allowed imports,
     outside its tests;
-  - `other-packages`: any other package, `internal/` included, only the
-    standard library and this module.
+  - `other-packages`: any other package, such as
+    `internal/cmd/selfupdate-release`, an `internal/` package with no rule
+    of its own: only the standard library and this module.
 - **`scripts/go-precheck.sh`** runs `gofmt` on the given Go files, the same
   three golangci-lint runs, `go vet` and `go test` on their packages, each
   in the module that owns it (a nested module, such as the release tool's
@@ -499,11 +529,11 @@ interpolated into shell.
 - **`make gate`** runs `scripts/gate.sh`, every check a commit needs, in
   order: `gofmt`, `make lint`, `go vet`, `go test -race`, `go test
   -shuffle=on -count=2`, `go mod tidy -diff`, `make apicheck`, `make fuzz`,
-  `make vuln`, every script test, `shellcheck`, the cross-target `go vet`,
+  `make vuln`, every script test but the gate's own, `shellcheck`, the cross-target `go vet`,
   the link check over every tracked Markdown file, the check of this page's
   package table against the tracked `.go` files
   ([0022-MADR](decisions/0022-MADR-documentation-pass-after-v1-14-0.md)
-  D2), and the identifier check on the changed files. Each step's output goes to `GATE_OUT`, and it prints
+  D2), and the identifier check on the changed and untracked files. Each step's output goes to `GATE_OUT`, and it prints
   one `<step> rc=<N>` line; `GATE_SKIP` skips named steps. Records cite it
   in place of the session gate the 0010–0014 PLANs ran
   ([0015-PLAN](decisions/0015-PLAN-remediate-third-debugging-pass-findings.md)
@@ -514,8 +544,9 @@ interpolated into shell.
 - **`.golangci.yml`** enables `revive`'s `exported`, `package-comments` and
   `var-naming` rules in place of `golint`. Test files are exempt from
   `errcheck`, `gosec`, `unparam`, `revive`, `gocritic` and `goconst`.
-- **CI** (`.github/workflows/ci.yml`) runs on Linux, macOS and Windows, with
-  the Go version read from `go.mod`.
+- **CI** (`.github/workflows/ci.yml`) runs on pushes to `main` and to
+  `release/**` branches, on `v*` tags and on pull requests, on Linux,
+  macOS and Windows, with the Go version read from `go.mod`.
   - **Every OS:** `go test`, plus, under bash, the refuse-existing-release
     test. The installer tests must reach the runner's shells
     (`SELFUPDATE_INSTALL_REQUIRE_SHELLS`): dash and bash on Linux, `sh`
@@ -530,14 +561,17 @@ interpolated into shell.
       under `sudo` and in the runner's user scope
       (`SELFUPDATE_REQUIRE_SYSTEMD`);
     - macOS: the launchd live tests (`SELFUPDATE_REQUIRE_LAUNCHD`) and the
-      codesign live tests (`SELFUPDATE_REQUIRE_CODESIGN`);
+      ad-hoc codesign live tests (`SELFUPDATE_REQUIRE_CODESIGN`);
     - Windows: the SCM live tests (`SELFUPDATE_REQUIRE_SCM`), and the
       Task Scheduler live tests (`SELFUPDATE_REQUIRE_TASKSCHED`) but
       `TestLiveTaskUpdate`: the runner runs the task at high integrity,
-      and that test requires medium. The Windows test host runs it.
+      and that test requires medium. The Windows test host runs it. A
+      session probe step before them prints the job's session,
+      interactivity, Explorer and integrity ([0021-PLAN](decisions/0021-PLAN-instance-race-and-ci-live-tests.md) U3).
     - Not in CI: `ghattest`'s `TestLiveVerify`
-      (`SELFUPDATE_REQUIRE_GHATTEST`), which needs `gh` logged in; CI has
-      no token.
+      (`SELFUPDATE_REQUIRE_GHATTEST`), which needs `gh` logged in, as CI
+      has no token; and codesign's `TestLiveSignIdentity`, which needs a
+      signing identity in `SELFUPDATE_CODESIGN_IDENTITY`.
   - **Linux also:** a full-history checkout; `go test -shuffle=on -count=2`;
     `go test` of `./selfupdate/...`, `./buildinfo/` and `./internal/...`
     with a `TMPDIR` that holds an empty `.git`, which a fixture build that
@@ -567,8 +601,9 @@ interpolated into shell.
     and one of archives, each with its identity runs on the five runners;
     then a job that checks both staged sets as the publish workflow
     would, without publishing, and checks their installers as rendered
-    for this repository and the stamp. On a branch or pull request it
-    rehearses; on a `v*` tag it builds the fixture as that release.
+    for this repository and the stamp. On `main`, a `release/**` branch
+    or a pull request it rehearses; on a `v*` tag it builds the fixture as
+    that release.
   - **The installer containers:** `install.sh`'s tests, built and staged
     on the runner, then run by the static test binary in `alpine:3.24.2`
     (BusyBox ash and wget, musl) and `buildpack-deps:trixie-curl` (dash,
