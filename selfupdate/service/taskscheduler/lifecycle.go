@@ -116,6 +116,10 @@ func switches(r registered) (bool, []trigger, error) {
 //     wait on Task Scheduler's instance list, which can still name the
 //     process after it has exited (0021-MADR Amendment A4).
 //
+// When Stop fails after step 3 and the recorded process still runs, it
+// enables the task again before it returns, so the task is left as Stop
+// found it (0024-MADR D4-A).
+//
 // Once the task is being stopped, the wait is bounded by Options.Poll's
 // timeout alone, and the caller's context error is returned after
 // (0015-MADR B3). A task that is not running is still disabled.
@@ -167,6 +171,11 @@ func (t *Task) Stop(ctx context.Context, product string) (err error) {
 	if len(pids) == 0 {
 		return nil
 	}
+	defer func() {
+		if err != nil && on && t.s.running(inst.pid, inst.born) {
+			err = errors.Join(err, t.enableAgain(r, path))
+		}
+	}()
 	var asked error
 	if t.o.RequestStop != nil {
 		if asked = t.o.RequestStop(ctx, inst.pid); asked == nil {
@@ -200,6 +209,19 @@ func (t *Task) disable(r registered, path string, on bool) error {
 	}
 	t.mu.Lock()
 	t.disabled[path] = true
+	t.mu.Unlock()
+	return nil
+}
+
+// enableAgain undoes Stop's disable when Stop fails with the program still
+// running, so the task is left as Stop found it: its triggers start the
+// program again if it exits (0024-MADR D4-A).
+func (t *Task) enableAgain(r registered, path string) error {
+	if err := r.setEnabled(true); err != nil {
+		return mapError("enable", path, err)
+	}
+	t.mu.Lock()
+	delete(t.disabled, path)
 	t.mu.Unlock()
 	return nil
 }

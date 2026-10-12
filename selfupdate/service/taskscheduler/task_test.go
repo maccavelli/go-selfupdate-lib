@@ -1,6 +1,7 @@
 package taskscheduler
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -38,6 +39,9 @@ func TestOptionsValidated(t *testing.T) {
 		{"folder with empty element", Options{Folder: `\Vendor\\Product`}, false},
 		{"folder with slash", Options{Folder: `\Vendor/Product`}, false},
 		{"negative grace", Options{StopGrace: -time.Second}, false},
+		{"grace not under the timeout, with RequestStop", Options{StopGrace: time.Minute, RequestStop: asked}, false},
+		{"grace under the timeout, with RequestStop", Options{StopGrace: 59 * time.Second, RequestStop: asked}, true},
+		{"grace not under the timeout, no RequestStop", Options{StopGrace: time.Hour}, true},
 		{"settle not under timeout", Options{Poll: service.PollOptions{Settle: time.Minute, Timeout: time.Second}}, false},
 	} {
 		_, err := newTask(c.o, "windows", newFake())
@@ -52,7 +56,15 @@ func TestOptionsValidated(t *testing.T) {
 	if task.o.Folder != `\` || task.o.StopGrace != DefaultStopGrace {
 		t.Fatalf("defaults: Folder %q, StopGrace %s", task.o.Folder, task.o.StopGrace)
 	}
+	short := service.PollOptions{Timeout: 4 * time.Second, Settle: -1}
+	task, err = newTask(Options{Poll: short, RequestStop: asked}, "windows", newFake())
+	if err != nil || task.o.StopGrace != 2*time.Second {
+		t.Fatalf("a default grace with a 4 s timeout: %v, %v; want 2s (0024-MADR Amendment A1)", task.o.StopGrace, err)
+	}
 }
+
+// asked is a RequestStop that succeeds.
+func asked(context.Context, uint32) error { return nil }
 
 // TestTaskPath: the task's path joins its folder and its name, and the
 // product names it when Options.Name is empty.

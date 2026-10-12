@@ -65,6 +65,8 @@ name, and the files they cite moved with the rename
 | 0022 | PLAN | [Implement the measured and pinned `SYNCHRONIZE` open from an unelevated caller](decisions/0022-PLAN-liveness-open-at-medium-integrity.md) | complete |
 | 0023 | MADR | [Make the tests' fixture builds independent of the directory's git state, and their helper-process waits independent of machine load](decisions/0023-MADR-robust-test-fixtures-and-process-waits.md) | accepted |
 | 0023 | PLAN | [Implement fixture builds independent of git state and helper waits independent of machine load](decisions/0023-PLAN-robust-test-fixtures-and-process-waits.md) | complete |
+| 0024 | MADR | [Correct the documentation against v1.15.1, settle how Go comments cite records, add the missing Examples, and fix the four defects the audit found](decisions/0024-MADR-documentation-pass-after-v1-15-1.md) | accepted |
+| 0024 | PLAN | [Implement the documentation pass after v1.15.1, the Examples, and the four defect fixes](decisions/0024-PLAN-documentation-pass-after-v1-15-1.md) | in-progress |
 
 ## I want to…
 

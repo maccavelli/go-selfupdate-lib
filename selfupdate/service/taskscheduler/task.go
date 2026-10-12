@@ -28,7 +28,8 @@ import (
 )
 
 // DefaultStopGrace is how long Stop waits, by default, for the program to
-// exit after Options.RequestStop before ending it.
+// exit after Options.RequestStop before ending it, or half of Options.Poll's
+// timeout when that is shorter.
 const DefaultStopGrace = 10 * time.Second
 
 // ErrTaskDisabled is returned, wrapped, when the task is disabled where the
@@ -67,8 +68,11 @@ type Options struct {
 	// once; it is part of Stop's error only when ending the task fails too
 	// (0021-MADR D4).
 	RequestStop func(ctx context.Context, pid uint32) error
-	// StopGrace bounds the wait after RequestStop. Zero means
-	// DefaultStopGrace.
+	// StopGrace bounds the wait after RequestStop. It is spent inside
+	// Poll's timeout, so with RequestStop set New refuses a StopGrace that
+	// is not shorter than that timeout: Stop would run out of time before
+	// it could end the task. Zero means DefaultStopGrace, or half of Poll's
+	// timeout when that is shorter (0024-MADR Amendment A1).
 	StopGrace time.Duration
 }
 
@@ -132,11 +136,18 @@ func newTask(o Options, goos string, s scheduler) (*Task, error) {
 	if o.StopGrace < 0 {
 		return nil, fmt.Errorf("selfupdate: taskscheduler: Options.StopGrace %s is negative", o.StopGrace)
 	}
-	if o.StopGrace == 0 {
-		o.StopGrace = DefaultStopGrace
-	}
 	if err := o.Poll.Validate(); err != nil {
 		return nil, fmt.Errorf("selfupdate: taskscheduler: %w", err)
+	}
+	timeout := o.Poll.Timeout
+	if timeout <= 0 {
+		timeout = service.DefaultPollTimeout
+	}
+	switch {
+	case o.StopGrace == 0:
+		o.StopGrace = min(DefaultStopGrace, timeout/2)
+	case o.RequestStop != nil && o.StopGrace >= timeout:
+		return nil, fmt.Errorf("selfupdate: taskscheduler: Options.StopGrace %s is not shorter than Options.Poll.Timeout %s, which it is spent inside", o.StopGrace, timeout)
 	}
 	return &Task{
 		o: o, s: s, now: time.Now, sleep: sleepCtx, self: currentPID,

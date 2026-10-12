@@ -192,13 +192,13 @@ func TestStopRequestFails(t *testing.T) {
 	refused := errors.New("admin socket refused")
 	f := newFake()
 	f.add(`\demo`, 4242)
-	o := Options{StopGrace: time.Hour, RequestStop: func(context.Context, uint32) error { return refused }}
+	o := Options{StopGrace: 1500 * time.Millisecond, RequestStop: func(context.Context, uint32) error { return refused }}
 	task, clock := testTask(t, f, o)
 	start := clock.now()
 	if err := task.Stop(context.Background(), "demo"); err != nil {
 		t.Fatalf("Stop: %v", err)
 	}
-	if waited := clock.now().Sub(start); waited >= time.Hour {
+	if waited := clock.now().Sub(start); waited >= o.StopGrace {
 		t.Fatalf("waited the grace after a failed request: %s", waited)
 	}
 
@@ -208,6 +208,38 @@ func TestStopRequestFails(t *testing.T) {
 	err := task.Stop(context.Background(), "demo")
 	if !errors.Is(err, refused) || !strings.Contains(err.Error(), "HRESULT 0x80004005") {
 		t.Fatalf("Stop: %v, want both errors", err)
+	}
+}
+
+// TestStopFailureEnablesAgain: a Stop that fails after it disabled the task,
+// with the program still running, enables the task again, so its triggers
+// still start the program; one whose program has gone leaves it disabled,
+// for Start (0024-MADR D4-A).
+func TestStopFailureEnablesAgain(t *testing.T) {
+	f := newFake()
+	ft := f.add(`\demo`, 4242)
+	ft.stopErr = hresult(0x80004005)
+	task, _ := testTask(t, f, Options{})
+	if err := task.Stop(context.Background(), "demo"); err == nil {
+		t.Fatal("Stop: nil, want the failed end")
+	}
+	if want := []string{"enable false", "stop", "enable true"}; !slices.Equal(f.verbs(), want) || !ft.on {
+		t.Fatalf("calls %q, enabled %t; want %q and the task enabled", f.verbs(), ft.on, want)
+	}
+	if task.disabled[`\demo`] {
+		t.Fatal("Stop still records that it disabled the task")
+	}
+
+	f = newFake()
+	ft = f.add(`\demo`, 4242)
+	ft.stopErr = hresult(0x80004005)
+	f.alive[4242] = false
+	task, _ = testTask(t, f, Options{})
+	if err := task.Stop(context.Background(), "demo"); err == nil {
+		t.Fatal("Stop: nil, want the failed end")
+	}
+	if want := []string{"enable false", "stop"}; !slices.Equal(f.verbs(), want) || ft.on {
+		t.Fatalf("calls %q, enabled %t; want %q and the task disabled, its program gone", f.verbs(), ft.on, want)
 	}
 }
 
