@@ -1,6 +1,6 @@
 ---
 status: accepted
-date: 2026-10-10
+date: 2026-10-12
 decision-makers: go-selfupdate-lib maintainers
 consulted: "magic-cli-remote's docs/decisions/0159-MADR-the-windows-service-path-is-half-wired.md and its PLAN (measured on a Windows 11 host, 2026-09-19 to 2026-09-20); magic-cli-remote's docs/decisions/0054-MADR-standardize-self-update-on-go-selfupdate-lib.md (proposed, 2026-10-10); Microsoft's Task Scheduler 2.0 schema and COM reference; golang.org/x/sys v0.47.0 source; this module at 31cce88"
 informed: the fleet's programs that run on Windows, magic-cli-remote first
@@ -1036,6 +1036,180 @@ run.
 
 D4's `Stop` order is unchanged; only what its last wait observes changes.
 D3's identity rule (`get_EnginePID`) is unchanged. A3's other rules stand.
+
+### Amendment A5 (2026-10-12): where `0x8004130B` arises, and whether a GitHub runner can run the live tests
+
+The owner asked, on 2026-10-12, to research the two items this record's
+plan left open at closing, which
+[0022-PLAN-liveness-open-at-medium-integrity.md](0022-PLAN-liveness-open-at-medium-integrity.md)
+and earlier plans carried forward unchanged. The research was read-only:
+Microsoft's documentation, the Windows test host's message table,
+Wine's source, an open-source Task Scheduler wrapper's source and issues,
+and the `actions/runner-images` repository's source and issues. Nothing
+ran against Task Scheduler or CI. Tags as in Context; [source] means read
+in that project's code, and [reported] means stated by a third party and
+not measured here.
+
+#### E1: `0x8004130B`
+
+**Findings:**
+
+* **Its name and text.** `certutil -error 0x8004130B` on the Windows
+  test host: `SCHED_E_TASK_NOT_RUNNING`, "There is no running instance
+  of the task." [measured]. Microsoft's constants page gives the same
+  text [docs].
+* **Its origin is Task Scheduler 1.0's `Terminate`.** The 1.0 header,
+  `MSTERR.H` (Visual C++ 6.0), reads "There is no running instance of the
+  task to terminate." [source]. Wine's 1.0 `ITask::Terminate` returns it
+  when nothing runs (`dlls/mstask/task.c`); Wine's 2.0 implementation
+  does not use it [source].
+* **No 2.0 method documents it.** `IRegisteredTask::GetInstances` lists
+  `S_OK`, `E_INVALIDARG` and `E_POINTER` only; `IRunningTask::Refresh`
+  "returns an HRESULT error code" on failure, unnamed [docs].
+* **In 2.0, it is reported from `IRunningTask` calls on an instance that
+  has ended:**
+  * `IRunningTask::Refresh` "on task completion"
+    ([dahall/TaskScheduler#52](https://github.com/dahall/TaskScheduler/issues/52),
+    2018) and in a poll loop when the task ends
+    ([#212](https://github.com/dahall/TaskScheduler/issues/212), 2017);
+  * `IRunningTask::get_Path` while enumerating running tasks: "between
+    the enumerating of all the running tasks and the request for a
+    specific task, that task must finish running" (the wrapper's author,
+    [#108](https://github.com/dahall/TaskScheduler/issues/108), 2011)
+    [reported].
+
+  The wrapper turns `0x8004130B` from `Refresh` into "The current task
+  is no longer running" (`TaskService/Task.cs`) [source].
+* **This module maps it in one place only.** `sysReg.instances` maps it
+  on `GetInstances` (`scheduler_windows.go:151-155`); the per-instance
+  `get_EnginePID` that follows (`:175-179`) returns it unmapped.
+  `api.go:50` attributes it to "GetInstances when idle", which `026faaa`
+  reported and did not keep the output for (Amendment A4). T6a measured
+  `GetInstances` on a never-run task: `S_OK` [measured].
+* **What the gap would do [derived].** An instance that ends between
+  `GetInstances` and `get_EnginePID` makes `instances` return the raw
+  HRESULT, and each caller fails with it: `Running` ("query"), `Stop`
+  and `Start` ("list the instances of"), and `HandOffIfInside` through
+  `insideTask`. The message would read `selfupdate: taskscheduler: list
+  the instances of \<name>: HRESULT 0x8004130B`. The likeliest moment is
+  just after a program exits, such as `Start` after `Stop`, where
+  Amendment A4 records that a stale instance may be listed. It has not
+  been observed; the window is narrow.
+* **A hypothesis, [unverified]:** the `0x8004130B` that `026faaa` saw
+  came from the per-instance call, not from `GetInstances`.
+
+**Options:**
+
+* **E1-A. Measure, then map at the per-instance call.** A probe on the
+  Windows test host, with a throwaway task: hold an `IRunningTask` from
+  `GetInstances` while the program runs, let the program exit, then call
+  `get_EnginePID`, `get_State`, `Refresh` and `GetInstances` again,
+  recording each HRESULT; and run `GetInstances` with `get_EnginePID` in
+  a loop against a task whose program exits at once, counting the
+  results. If an ended instance's `get_EnginePID` returns `0x8004130B`,
+  `instances` skips that instance, since it is not running, with a test
+  over the fake transport and the measurement recorded. The
+  `GetInstances` mapping stays unless the probe shows it cannot arrive.
+  Cost: one probe session, a few lines in the transport, a test, and a
+  patch release.
+* **E1-B. Map it at the per-instance call now,** on the reports. Cost:
+  smaller, but the reports name `Refresh` and `get_Path`, not
+  `get_EnginePID`, so the change would rest on an inference.
+* **E1-C. Record only.** The findings stand in this amendment, and the
+  mapping and its comment stay as they are.
+
+**Decision (the owner, 2026-10-12, "for the open options, follow
+recommendations"): E1-A,** the recommended option, because the reports make the per-instance race
+the likely source, and the transport fails every lifecycle call on it;
+but the module's call is `get_EnginePID`, which no report names, so one
+probe decides whether the change is needed before it is made.
+
+#### E2: a GitHub Windows runner and the live tests
+
+**Findings:**
+
+* **CI has never tried.** The live tests skip on an environment
+  variable, not on a missing session (`requireLive`,
+  `live_windows_test.go:342-347`). Every CI run, the latest
+  `38271193154`, shows the skip. The skip message's "GitHub runners have
+  no interactive console session", and `ci.yml`'s comment above the
+  step, state an assumption, not an observation.
+* **Hosted agents run in an interactive session [reported].** A
+  runner-images maintainer, on 2020-06-25: "the fix was to run the agent
+  in an interactive session. To do that we had to register a scheduled
+  task for the agent and manually start it … it runs with administrator
+  permissions"; that component is not open source
+  ([actions/runner-images#629](https://github.com/actions/runner-images/issues/629)).
+  On 2026-08-07, a maintainer's probes found a `windows-11-arm` job's
+  session interactive: "`UserInteractive=True`, it's on the interactive
+  window station (`WinSta0`)"; the reporter's interactive-desktop check
+  passed on `windows-latest`
+  ([#14049](https://github.com/actions/runner-images/issues/14049)).
+* **The image does not log on by itself [source].** The Windows 11 arm64
+  template sets `AutoAdminLogon` during the build because "Scheduled
+  tasks spawned when using elevated_user provisioners requires the user
+  to log in interactively on Windows Desktop", and removes it before the
+  image ships. The Windows Server 2025 template never sets it. The
+  interactive session is the hosted provisioning's, as #629 says.
+* **UAC stays on [source].** `Configure-BaseImage.ps1` sets
+  `ConsentPromptBehaviorAdmin` to 0 and prints "User Access Control
+  (UAC) has been disabled", but does not change `EnableLUA`. With UAC on,
+  an administrator's least-privilege task gets a filtered token, so
+  `TestLiveTaskUpdate`'s medium-integrity check would hold [derived]. If
+  `EnableLUA` were 0, the task would run at high integrity and that check
+  would fail, as 0021-PLAN T6a's `HighestAvailable` plant did.
+* **Not known [unverified]:** whether the job's account is the one
+  signed in to that session, which an interactive-token task registered
+  for the job's account needs; and whether the runner's Task Scheduler
+  starts such a task within the tests' waits.
+
+**Options:**
+
+* **E2-A. Probe in CI, then decide.** One Windows step, on one push to
+  `main`: record the job's session ID, `UserInteractive`, and its
+  integrity, then run `-run '^TestLiveTask'` with
+  `SELFUPDATE_REQUIRE_TASKSCHED=1` and `continue-on-error: true`, so
+  `main` stays green whatever it shows. If every live test passes, the
+  next commit sets the variable on the step for good, removes
+  `continue-on-error`, and corrects the comment and the skip message. If
+  not, the record keeps the output, and the step returns to skipping
+  with a message that names what was found. Cost: one or two pushes, and
+  about 90 s of Windows CI per run (the live suite took 89 s on the
+  Windows test host in
+  [0022-PLAN-liveness-open-at-medium-integrity.md](0022-PLAN-liveness-open-at-medium-integrity.md)
+  R1).
+* **E2-B. Require it at once.** Cost: no probe step, but a red `main` if
+  the runner cannot, until a revert.
+* **E2-C. Keep skipping,** and correct the comment and the skip message
+  to say CI has not tried, rather than that the runner has no session.
+
+**Decision (the owner, 2026-10-12): E2-A,** the recommended option,
+because the evidence makes a pass likely but does
+not measure it, and a probe that cannot turn `main` red answers it at
+the cost of one push. A pass would run the Task Scheduler backend on
+every commit, where today only a run on the Windows test host does.
+Whatever is chosen, today's skip message states an assumption as a
+fact; E2-C's correction is the least any option does.
+
+#### Consequences
+
+* Good, because the open item about `0x8004130B` is decided by a
+  measurement of the call this module makes, not by a report about
+  another call.
+* Good, because a CI pass would hold the Task Scheduler backend on every
+  commit.
+* Neutral, because E1-A's transport change, if the probe calls for it,
+  needs a patch release; E2-A changes CI only.
+* Bad, because the Windows CI job would take about 90 s longer, and
+  would depend on the hosted provisioning's interactive session, which
+  is not open source and could change.
+
+#### Confirmation
+
+The plan for this amendment,
+[0021-PLAN-instance-race-and-ci-live-tests.md](0021-PLAN-instance-race-and-ci-live-tests.md),
+carries the probe's HRESULTs verbatim, the CI run's step output, and, for
+E1-A's change, a test that fails on a plant of the old mapping.
 
 ### Not chosen, recorded so it is not re-proposed blind
 
