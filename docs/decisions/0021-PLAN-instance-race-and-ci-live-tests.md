@@ -319,3 +319,41 @@ stay as they are; U7 records the measurement in the MADR.
 
 **Checks.** Records only: `scripts/check-docs.sh --links` and `--ids` on
 this plan and `docs/README.md`, and markdownlint on `docs/README.md`.
+
+### U3 (2026-10-12)
+
+The owner committed U1 as `68b8fa3`, and said "committed and pushed,
+proceed". A fetch showed `origin/main` at `b3b12f8`, so `68b8fa3` goes
+out with this phase's push.
+
+**Files.** Changed: `.github/workflows/ci.yml`.
+
+**As built:**
+
+* **"Task Scheduler session probe",** a new step before the live test,
+  Windows only, under `pwsh`. It prints `user_interactive=`,
+  `session_id=`, `explorer_in_session=` (Explorer processes in the job's
+  session) and `integrity=`, the `Mandatory Label` line of `whoami
+  /groups`. It calls `whoami.exe` by its System32 path: on the Windows
+  test host, Git's `whoami` came first on the path and refused
+  `/groups`, so the line was empty.
+* **"Task Scheduler live test"** gains `continue-on-error: true` and
+  `SELFUPDATE_REQUIRE_TASKSCHED: "1"`. Its comment says it is a probe,
+  and cites Amendment A5, E2-A.
+
+**The probe step, run on the Windows test host** from the elevated ssh
+shell, its script taken from the workflow file: exit 0, and
+
+```text
+user_interactive=False
+session_id=0
+explorer_in_session=0
+integrity=Mandatory Label\High Mandatory Level Label S-1-16-12288
+```
+
+An ssh shell runs in session 0 with no desktop, so this shows the step
+works, not what a runner will print.
+
+**Checks.** `scripts/check-workflows.sh --rule all` on `ci.yml`:
+`check-workflows: ok (all) — 1 workflow(s)`. `actionlint`: clean. `make gate` on this Mac,
+load average 3.76 before and 60.03 after: every step `rc=0`, `overall=0`.

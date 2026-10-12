@@ -94,12 +94,29 @@ jobs:
         env:
           SELFUPDATE_REQUIRE_SCM: "1"
         run: go test -count=1 -v -run '^TestLive' ./selfupdate/service/scm
-      # The Task Scheduler live test: a throwaway per-user task. GitHub
-      # runners have no interactive console session, so the tests skip until
-      # a run shows an InteractiveToken task can start
-      # (docs/decisions/0021-PLAN-task-scheduler-lifecycle-and-windowless-children.md T6).
+      # The session an InteractiveToken task depends on, printed before the
+      # Task Scheduler live test, so its result can be read against it
+      # (docs/decisions/0021-PLAN-instance-race-and-ci-live-tests.md U3).
+      - name: Task Scheduler session probe
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $session = (Get-Process -Id $PID).SessionId
+          "user_interactive=$([Environment]::UserInteractive)"
+          "session_id=$session"
+          "explorer_in_session=$(@(Get-Process explorer -ErrorAction SilentlyContinue | Where-Object SessionId -eq $session).Count)"
+          & "$env:SystemRoot\System32\whoami.exe" /groups | Select-String 'Mandatory Label' |
+            ForEach-Object { 'integrity=' + ($_.Line -replace '\s+', ' ').Trim() }
+      # The Task Scheduler live test: a throwaway per-user task. A probe
+      # until one run shows whether a GitHub runner starts an InteractiveToken
+      # task: the tests are required, and their failure is allowed
+      # (docs/decisions/0021-MADR-task-scheduler-lifecycle-and-windowless-children.md
+      # Amendment A5, E2-A).
       - name: Task Scheduler live test
         if: runner.os == 'Windows'
+        continue-on-error: true
+        env:
+          SELFUPDATE_REQUIRE_TASKSCHED: "1"
         run: go test -count=1 -v -run '^TestLiveTask' ./selfupdate/service/taskscheduler
       # The race detector needs cgo, which the Linux and macOS runners have
       # (0003-MADR D9; 0002-PLAN V3; 0004-MADR H7).
