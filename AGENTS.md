@@ -147,6 +147,12 @@ docs/reports/NNNN-GATES-short-slug.md
 - Cite records by full filename, never by number alone. Cite another
   repository's record by repository and filename; a relative link cannot reach
   it.
+- A Go comment cannot link, so it may cite `NNNN-MADR <anchor>` where that
+  number has one MADR. It names the full filename for a PLAN whose number
+  has more than one PLAN, and for a report; every anchor names its record,
+  unless the file's header comment names it; and a fact from another
+  repository is restated and cited to this repository's record
+  (`docs/decisions/0024-MADR-documentation-pass-after-v1-15-1.md` D2-A).
 - `docs/README.md` indexes every record. Update it in the same change.
 
 ## Pre-add checks

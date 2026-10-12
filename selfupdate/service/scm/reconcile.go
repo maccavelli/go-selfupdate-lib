@@ -15,7 +15,7 @@ import (
 // statFile is os.Stat, replaced in tests.
 var statFile = os.Stat
 
-// PathBackup is the ReconcileResult.State of a rewrite: the service's
+// PathBackup is the selfupdate.ReconcileResult.State of a rewrite: the service's
 // command line as it was, which Restore puts back.
 type PathBackup struct {
 	// Name is the service.

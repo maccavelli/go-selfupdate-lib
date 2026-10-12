@@ -2,7 +2,7 @@
 # Check documents before they are committed
 # (docs/decisions/0015-PLAN-remediate-third-debugging-pass-findings.md R1).
 # It replaces the session checker the 0013 and 0014 PLANs cite as
-# doccheck.py. Two modes:
+# doccheck.py. Three modes:
 #
 #   --links FILE...  every relative Markdown link outside code names a file
 #                    that exists, and a #fragment into a .md file names one

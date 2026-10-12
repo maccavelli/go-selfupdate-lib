@@ -498,3 +498,53 @@ is closed at once. A comment at the hook says why.
 FILES="internal/cmd/selfupdate-release/installer_ps_test.go"`:
 `go-precheck: 1 file(s) clean`. `make gate` runs before the push
 (Deviation D2).
+
+### Deviation D3 (2026-10-12): the empty input wrote a byte-order mark on CI
+
+The owner committed W3 as `05ff0f3` and pushed it, with `make gate` not
+yet run (Deviation D2), and said "committed, pushed, proceed".
+
+* **Found:** CI run `38306877278`, on `05ff0f3`, failed
+  `validate (windows-2025)` at `go test ./...`, in Windows PowerShell 5.1
+  only, all three modes:
+  `installer_ps_test.go:750: standard input reads ["old stdin 3" "new
+  stdin 3" "new stdin 3"]`. `main` was red. 16 other jobs passed.
+* **Measured** on the Windows test host with a scratch probe (a program
+  that reports what it reads, run as `@() | & prog`), Windows PowerShell
+  5.1.26100 and PowerShell 7.6:
+
+  ```text
+  powershell 5.1: default_OutputEncoding=us-ascii preamble=0
+    default -> read=0; utf-8 preamble=3 -> read=3 hex=efbbbf;
+    utf-8 preamble=0 -> read=0; us-ascii -> read=0
+  pwsh 7.6: default_OutputEncoding=utf-8 preamble=0
+    the same four results
+  ```
+
+  An empty pipeline still writes `$OutputEncoding`'s byte-order mark. The
+  Windows test host's defaults have none, so W3 passed there; CI's
+  Windows PowerShell 5.1 defaults to UTF-8 with one [derived from the
+  failure; the runner's setting was not read].
+* **Offered:** 1, a BOM-less `$OutputEncoding` local to the two functions,
+  with a test that reproduces CI's setting (recommended); 2, revert W3;
+  3, start hooks through .NET's `Process`. Doing nothing would leave
+  `main` red.
+* **Decision (the owner, "follow recommendations"): 1.**
+* **As built:** `Invoke-InstallHook` and `Test-Identity` set `$OutputEncoding
+  = New-Object System.Text.UTF8Encoding $false` first; it is local to
+  each function, and the session checks still find no new variable. The
+  test driver for the iex and scriptblock forms sets `$OutputEncoding =
+  [Text.Encoding]::UTF8` when `SELFUPDATE_INSTALL_TEST_BOM` is set; the
+  case's body moves into `expectNoStdin`, and a second case, "…under a
+  BOM encoding", runs it with that set, in those two modes.
+* **Seen failing,** the Windows test host's scratch clone without the two
+  `$OutputEncoding` lines: the BOM case failed in both PowerShells and
+  both modes with `installer_ps_test.go:766: standard input reads ["old
+  stdin 3" "new stdin 3" "new stdin 3"]`, as CI's did. With them: all 10
+  standard-input cases `PASS`.
+* **Checks:** the whole package `ok` on the Windows test host (315 `---
+  PASS` lines), this Mac and the Linux test host. `make pre-add-check
+  FILES="internal/cmd/selfupdate-release/installer_ps_test.go"`: clean.
+  `make gate` on this Mac (the tree also held W4's uncommitted changes),
+  load average 10.05 before and 47.81 after: every step `rc=0`,
+  `apicheck` `compatible with v1.15.1`, `overall=0`.

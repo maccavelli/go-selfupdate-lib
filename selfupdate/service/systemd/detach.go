@@ -82,6 +82,8 @@ const (
 // manager, so stopping the unit does not kill it (systemd-run(1),
 // 0011-MADR §9). The environment goes in a 0600 file, never on the command
 // line, where `systemctl show` would publish it (0011-MADR amendment A2).
+// It needs Options.Unit, and systemd 236 or later: on an older systemd it
+// returns service.ErrUnsupported.
 func (u *Unit) Detach(ctx context.Context, spec service.HandOff) (service.Detached, error) {
 	if u.o.Unit == "" {
 		return service.Detached{}, errors.New("selfupdate: systemd: the handoff needs Options.Unit")

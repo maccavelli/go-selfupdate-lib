@@ -17,7 +17,7 @@ import (
 // dropInName is the drop-in this package owns (0011-MADR §5).
 const dropInName = "90-selfupdate.conf"
 
-// DropIn is the ReconcileResult.State of a rewrite: the drop-in written,
+// DropIn is the selfupdate.ReconcileResult.State of a rewrite: the drop-in written,
 // and what was there before, which Restore puts back.
 type DropIn struct {
 	// Path is the drop-in file.

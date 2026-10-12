@@ -78,6 +78,7 @@ const (
 // SELFUPDATE_INSTALL_TEST_ARGS: on the command line, a value that starts
 // with "-" would be read as one of the driver's own options.
 const psDriver = `param([string]$Mode, [string]$Url)
+if ($env:SELFUPDATE_INSTALL_TEST_BOM) { $OutputEncoding = [Text.Encoding]::UTF8 }
 $ArgsText = $env:SELFUPDATE_INSTALL_TEST_ARGS
 $LASTEXITCODE = 0
 $sb = $null
@@ -460,6 +461,28 @@ func (c *psCase) unchanged(edit func(), code int, wants ...string) {
 	c.expectNoPath()
 }
 
+// expectNoStdin installs over an old stand-in with a new one and requires
+// the two hooks and the identity check to read nothing from their standard
+// input, though the installer's holds data: install.sh runs them with
+// </dev/null, and install.ps1 with an empty pipeline (0024-MADR D4-A).
+func expectNoStdin(c *psCase) {
+	c.t.Helper()
+	c.place("relay.exe", standInExe(c.t, "old", fixtureTag))
+	c.srv.replaceAsset(c.t, rawRepo, fixtureTag, c.asset("raw", "relay"), standInExe(c.t, "new", fixtureTag))
+	c.env = append(c.env, "STANDIN_STDIN=1")
+	c.stdin = "typed at the console\n"
+	c.expect(c.run(), 0, "running relay hook-before", "running relay hook-after --mark=1")
+	var reads []string
+	for line := range strings.Lines(c.hookLog()) {
+		if strings.Contains(line, " stdin ") {
+			reads = append(reads, strings.TrimSpace(line))
+		}
+	}
+	if len(reads) < 3 || slices.ContainsFunc(reads, func(l string) bool { return !strings.HasSuffix(l, " stdin 0") }) {
+		c.t.Fatalf("standard input reads %q; want the two hooks and the identity check, each reading nothing", reads)
+	}
+}
+
 // standInSource is a program for hooks and identity checks: it reports its
 // version as a release, holds when asked, and otherwise prints and logs
 // "<role> <args>" and exits with $<ROLE>_EXIT. With STANDIN_STDIN set, it
@@ -734,21 +757,13 @@ var psCases = []struct {
 	// install.sh runs hooks and the identity command with </dev/null; so
 	// does install.ps1, or a program that reads its input would take the
 	// user's console input (0024-MADR D4-A).
-	{"hooks and the identity check get no standard input", allModes, func(c *psCase) {
-		c.place("relay.exe", standInExe(c.t, "old", fixtureTag))
-		c.srv.replaceAsset(c.t, rawRepo, fixtureTag, c.asset("raw", "relay"), standInExe(c.t, "new", fixtureTag))
-		c.env = append(c.env, "STANDIN_STDIN=1")
-		c.stdin = "typed at the console\n"
-		c.expect(c.run(), 0, "running relay hook-before", "running relay hook-after --mark=1")
-		var reads []string
-		for line := range strings.Lines(c.hookLog()) {
-			if strings.Contains(line, " stdin ") {
-				reads = append(reads, strings.TrimSpace(line))
-			}
-		}
-		if len(reads) < 3 || slices.ContainsFunc(reads, func(l string) bool { return !strings.HasSuffix(l, " stdin 0") }) {
-			c.t.Fatalf("standard input reads %q; want the two hooks and the identity check, each reading nothing", reads)
-		}
+	{"hooks and the identity check get no standard input", allModes, expectNoStdin},
+	// An empty pipeline still writes $OutputEncoding's byte-order mark, and
+	// Windows PowerShell 5.1 on a GitHub runner defaults to UTF-8 with one.
+	// The driver sets it, as such a session would (0024-PLAN Deviation D3).
+	{"hooks and the identity check get no standard input under a BOM encoding", []psMode{psIex, psBlock}, func(c *psCase) {
+		c.env = append(c.env, "SELFUPDATE_INSTALL_TEST_BOM=1")
+		expectNoStdin(c)
 	}},
 	{"a failed before_install changes nothing", allModes, func(c *psCase) {
 		c.env = append(c.env, "OLD_EXIT=1")

@@ -33,9 +33,14 @@ const (
 )
 
 // Receipt is what a product's reconcile command prints on its standard
-// output: one JSON object, version 1 of magic-cli-remote's refresh result
-// (0011-MADR §6, owner answer Q2). A receipt with no schema_version is
-// version 1.
+// output: exactly one JSON object, schema version 1 (0011-MADR §6, owner
+// answer Q2). A receipt with no schema_version is version 1, and one with
+// no verdict is refused. Verdict is one of the Verdict constants; Path is
+// the definition reconciled, and Backup where its previous form was kept;
+// Changed reports a rewrite, and Reloaded that the service manager read it
+// again; Reason explains the verdict; Warnings join the run's
+// selfupdate.ReconcileResult.Warnings. A receipt that Changed and was not
+// Reloaded adds a warning, and only a receipt that Changed is restored.
 type Receipt struct {
 	SchemaVersion int      `json:"schema_version"`
 	Verdict       string   `json:"verdict"`
@@ -47,7 +52,7 @@ type Receipt struct {
 	Warnings      []string `json:"warnings,omitempty"`
 }
 
-// ExecState is the ReconcileResult.State of an ExecReconciler: the receipt
+// ExecState is the selfupdate.ReconcileResult.State of an ExecReconciler: the receipt
 // and the binary that wrote it, which Restore runs.
 type ExecState struct {
 	Receipt    Receipt `json:"receipt"`
@@ -65,7 +70,7 @@ type ExecOptions struct {
 	// RestoreFunc is nil.
 	Restore []string
 	// RestoreFunc, when set, restores in this process instead: the updater
-	// is the old version, which is where magic-cli-remote restores
+	// is the old version, which knows the definition it wrote
 	// (0011-MADR amendment A1).
 	RestoreFunc func(ctx context.Context, product string, r Receipt) error
 	// Env is added to this process's environment for the child.

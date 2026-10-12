@@ -40,7 +40,7 @@ var hasConsole = sync.OnceValue(func() bool {
 //
 // The extension is read from the name Windows will open, not the name as
 // written: run.bat. and run.cmd. put an argument under cmd.exe's parser,
-// and run.bat with a trailing space runs the script (measured, 0022-PLAN
+// and run.bat with a trailing space runs the script (measured, 0022-PLAN-documentation-pass-after-v1-14-0.md
 // P1). runName normalizes those spellings first.
 func checkProgram(cmd *exec.Cmd) error {
 	path := cmd.Path
@@ -126,7 +126,8 @@ const AliveAccess = windows.SYNCHRONIZE | windows.PROCESS_QUERY_LIMITED_INFORMAT
 // process that has exited is not alive, though another process still
 // holds a handle to it: its object, its creation time and a query open all
 // outlive the exit then, and only the object's signalled state tells
-// (0022-MADR Amendment A2, measured in its plan's Q1). A process this
+// (0022-MADR Amendment A2, measured in 0022-PLAN-error-chain-and-process-liveness.md
+// Q1). A process this
 // process may not open is looked up in the process snapshot, which lists
 // only running processes, and born is not checked.
 func Alive(pid uint32, born uint64) bool {

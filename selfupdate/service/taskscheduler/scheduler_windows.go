@@ -121,7 +121,8 @@ func (r *sysReg) stop() error {
 			return nil
 		}
 		// S_FALSE: the caller cannot stop running instances, or none remain
-		// (0021-PLAN T6: RequestStop already ended the process).
+		// (0021-PLAN-task-scheduler-lifecycle-and-windowless-children.md T6:
+		// RequestStop already ended the process).
 		var col *comObj
 		if ihr := t.call(taskGetInstances, 0, ptr(&col)); ihr.failed() {
 			if uint32(ihr) == uint32(hrTaskNotRunning) {

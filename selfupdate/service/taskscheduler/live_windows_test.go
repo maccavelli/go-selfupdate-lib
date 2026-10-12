@@ -203,7 +203,7 @@ const mediumRID = 0x2000
 // writeIntegrity records this process's integrity RID, the last
 // subauthority of its token's mandatory label: the detached update runs
 // the backend's calls, and the owner asked for them at medium integrity
-// (0021-PLAN Deviation D3).
+// (0021-PLAN-task-scheduler-lifecycle-and-windowless-children.md Deviation D3).
 func writeIntegrity(path string) error {
 	tok := windows.GetCurrentProcessToken()
 	var n uint32
@@ -727,7 +727,7 @@ func (r countedStop) stop() error {
 }
 
 // TestLiveTaskStopRefusesDisabled: Task Scheduler refuses to run a
-// disabled task (0x80041326, 0022-PLAN P1). So Stop refuses a task the user
+// disabled task (0x80041326, 0022-PLAN-documentation-pass-after-v1-14-0.md P1). So Stop refuses a task the user
 // disabled while its program runs, and leaves the program running and the
 // task disabled; and Start, on the disabled task once its program has
 // ended, reports ErrTaskDisabled and starts nothing (0022-MADR Amendment

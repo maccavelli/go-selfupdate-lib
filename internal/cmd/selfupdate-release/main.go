@@ -1,6 +1,8 @@
 // Command selfupdate-release is the logic of the build-and-stage release
 // workflow (docs/decisions/0013-MADR-build-and-stage-release-workflow.md
-// §1, §4–§8), in Go, on the library's own code. It is never released:
+// §1, §4–§8), and its installer subcommand renders the shared installers
+// (docs/decisions/0014-MADR-shared-installer-templates.md), in Go, on the
+// library's own code. It is never released:
 // build-selfupdate-release.yml and publish-selfupdate-release.yml build it
 // from the called workflow's commit.
 //

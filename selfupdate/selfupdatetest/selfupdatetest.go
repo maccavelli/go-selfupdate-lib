@@ -1,5 +1,5 @@
 // Package selfupdatetest provides test doubles for programs built on
-// selfupdate: release fixtures, an in-memory ReleaseSource, a recording
+// selfupdate: release fixtures, an in-memory selfupdate.ReleaseSource, a recording
 // Reporter, a scripted Confirmer, and a fake GitHub API whose asset
 // downloads redirect to a second TLS origin (0004-MADR H3).
 //

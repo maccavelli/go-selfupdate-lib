@@ -17,7 +17,7 @@
 // token outside the workflow fails it. What it does not prove: anything
 // about a malicious commit and v* tag pushed through the workflow, which
 // it attests like any other. Restrict who can create v* tags with a tag
-// ruleset; the building guide's step 4 says how.
+// ruleset; docs/guides/building-releases.md, step 4, says how.
 //
 // The check is opt-in: nothing enables it by default. It runs gh, by the
 // absolute path Options.GH gives, through a service.Runner, and gh must be

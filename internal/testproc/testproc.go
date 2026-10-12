@@ -62,7 +62,8 @@ type Proc struct {
 
 // Start starts cmd and waits until the file ready exists. It fails t at
 // once when the process exits first, with its exit status and the last
-// lines of its output, and when Budget(t) runs out. cmd's standard output
+// lines of its output, and when Budget(t) runs out, after it kills the
+// helper and waits for it. cmd's standard output
 // and error, when unset, are kept for that message. The caller ends the
 // process its own way, and waits for it with Proc.Wait, never cmd.Wait.
 func Start(t testing.TB, cmd *exec.Cmd, ready string) *Proc {

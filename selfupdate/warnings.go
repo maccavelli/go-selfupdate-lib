@@ -6,8 +6,9 @@ import (
 )
 
 // Warnings lists, sanitized and in order, the errors that arrived after a
-// run's EventComplete: each was also reported as an EventWarning, and none
-// failed the run (0010-MADR Q3).
+// run's EventComplete, and a managed install's ReconcileResult.Warnings:
+// each was also reported as an EventWarning, and none failed the run
+// (0010-MADR Q3).
 //
 // Its JSON form is an array of strings. It is a string, its entries joined
 // by newlines, so Result and ResultDocument stay comparable and == compares

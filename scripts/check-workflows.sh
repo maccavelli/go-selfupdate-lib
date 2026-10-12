@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Check GitHub Actions workflows by parsing them as YAML, the way GitHub does,
 # rather than scanning lines (docs/decisions/0004-MADR-evolve-selfupdate-api-and-tui-support.md
-# R7, R8). Three rules:
+# R7, R8). Four rules:
 #
 #   expressions  no step's run script contains ${{ }}. GitHub substitutes an
 #                expression into the script text before the shell runs it, so

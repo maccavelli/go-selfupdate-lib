@@ -5,6 +5,12 @@
 // (docs/decisions/0021-MADR-task-scheduler-lifecycle-and-windowless-children.md
 // D7, D8). Off Windows it adds nothing but the Unix handoff's new session.
 //
+// It also walks the process tree, for the backends' check that the caller
+// runs inside a service (Descends), and on Windows reads whether a process
+// still runs by its object's signalled state (Alive, and the access it
+// opens with, AliveAccess; docs/decisions/0022-MADR-documentation-pass-after-v1-14-0.md
+// Amendments A2 and A3).
+//
 // It imports only the standard library and golang.org/x/sys/windows, and
 // nothing in this module, so every package that starts a process can
 // import it.

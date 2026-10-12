@@ -67,9 +67,10 @@ type selector struct {
 	manifest func(product, tag string) (string, error)
 }
 
-// NewSelector returns an AssetSelector that chooses the archive holding the
-// program and the checksum asset, and marks the selection Packed. It
-// refuses a platform list as NewExactAssetSelector refuses it. Pair it
+// NewSelector returns a selfupdate.AssetSelector that chooses the archive
+// holding the program and the checksum asset, and marks the selection
+// Packed. It refuses a platform list as selfupdate.NewExactAssetSelector
+// refuses it. Pair it
 // with NewUnpacker (0012-MADR §3).
 func NewSelector(o SelectorOptions) (selfupdate.AssetSelector, error) {
 	exact, err := selfupdate.NewExactAssetSelector(o.Platforms)

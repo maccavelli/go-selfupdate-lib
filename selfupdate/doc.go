@@ -155,10 +155,20 @@
 // The selfupdatetest package provides test doubles: release fixtures, a fake
 // source, reporter and confirmer, and a fake GitHub API.
 //
-// Consumers publish through the reusable workflow
-// .github/workflows/publish-selfupdate-release.yml at the exact go-selfupdate-lib
-// module-tag commit. That workflow is the only supported publication path
-// for the canonical asset contract. Its prerelease-channels-json input
+// Package selfupdate/archive selects and unpacks a release published as
+// archives, selfupdate/codesign signs and checks the installed binary on
+// macOS (docs/decisions/0012-MADR-archive-assets-and-macos-codesign.md),
+// and selfupdate/releasespec is the release spec a program embeds and the
+// build workflow reads
+// (docs/decisions/0013-MADR-build-and-stage-release-workflow.md).
+//
+// Consumers build and publish through the reusable workflows
+// .github/workflows/build-selfupdate-release.yml and
+// .github/workflows/publish-selfupdate-release.yml, from a release spec, at
+// the exact go-selfupdate-lib module-tag commit
+// (docs/guides/building-releases.md). They are the only supported
+// publication path for the canonical asset contract. The publish
+// workflow's prerelease-channels-json input
 // names the channels it may publish prereleases for; the default publishes
 // stable tags only.
 package selfupdate

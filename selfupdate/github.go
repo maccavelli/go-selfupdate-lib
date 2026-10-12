@@ -369,7 +369,7 @@ func listLimit(o ListOptions) (int, error) {
 }
 
 // ListReleases implements ReleaseLister. It pages
-// GET /repos/{owner}/{repo}/releases, listPageSize at a time, through the
+// GET /repos/{owner}/{repo}/releases, 30 at a time, through the
 // same credential, redirect and rate-limit handling as Latest, and stops
 // at the limit or a short page. Each page is bounded by
 // Limits.ReleaseJSON. Entries are not structure-checked: discovery checks

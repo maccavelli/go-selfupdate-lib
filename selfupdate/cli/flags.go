@@ -87,7 +87,7 @@ func (f *Flags) Bind(fs FlagSet) {
 	fs.StringVar(&f.Channel, "channel", "", "follow a prerelease channel, such as rc")
 }
 
-// Parse parses args with the standard flag package (amendment F4). It
+// Parse parses args with the standard flag package (0004-MADR amendment F4). It
 // returns flag.ErrHelp for -h and --help, writing nothing, so the caller
 // prints Help with its program name. Any other usage error, including a
 // positional argument, writes HelpText to stderr and returns the error.

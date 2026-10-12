@@ -13,7 +13,7 @@ import (
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
 )
 
-// PlistBackup is the ReconcileResult.State of a rewrite: the plist as it
+// PlistBackup is the selfupdate.ReconcileResult.State of a rewrite: the plist as it
 // was, which Restore puts back.
 type PlistBackup struct {
 	// Path is the plist.

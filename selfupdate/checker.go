@@ -15,7 +15,8 @@ type CheckerConfig struct {
 	Source ReleaseSource
 	// Versions validates and compares tags.
 	Versions VersionPolicy
-	// Assets selects exact raw-binary names.
+	// Assets selects the exact asset: a raw binary, or an archive it marks
+	// Packed.
 	Assets AssetSelector
 	// Limits bound the selected assets' advertised sizes.
 	Limits Limits
@@ -45,8 +46,10 @@ type CheckRequest struct {
 	CurrentVersion string
 	// CurrentBuild distinguishes release and local binaries.
 	CurrentBuild BuildKind
-	// TargetVersion selects an exact tag. Empty means the latest stable
-	// release.
+	// TargetVersion selects an exact tag, which the VersionPolicy must
+	// validate. Under a ChannelPolicy, a prerelease tag also needs a Channel
+	// that admits it. Empty means the latest release on Channel: with no
+	// Channel, the latest stable release.
 	TargetVersion string
 	// Platform selects the asset matrix entry. Zero means runtime GOOS/GOARCH.
 	Platform Platform
@@ -66,7 +69,8 @@ type Availability struct {
 	TargetVersion string
 	// ReleaseURL is the selected release's HTML URL when known.
 	ReleaseURL string
-	// AssetName is the exact selected executable asset name.
+	// AssetName is the exact selected asset name: the executable, or the
+	// archive holding it when the selection is Packed.
 	AssetName string
 	// Operation is the action an apply would take.
 	Operation Operation

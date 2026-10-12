@@ -19,7 +19,9 @@ type BuildKind uint8
 const (
 	// BuildUnknown is the zero value and is not a valid Request.CurrentBuild.
 	BuildUnknown BuildKind = iota
-	// ReleaseBuild is a binary stamped from a strict vMAJOR.MINOR.PATCH tag.
+	// ReleaseBuild is a binary stamped as a release, with a tag the
+	// VersionPolicy validates: vMAJOR.MINOR.PATCH, or under NewSemverPolicy
+	// a prerelease tag such as vMAJOR.MINOR.PATCH-rc.N.
 	ReleaseBuild
 	// LocalBuild is any non-release identity, including dirty VCS trees.
 	LocalBuild
@@ -91,13 +93,14 @@ type Operation uint8
 const (
 	// OperationNone means the running identity already equals the selection.
 	OperationNone Operation = iota
-	// OperationUpgrade installs a higher stable release.
+	// OperationUpgrade installs a higher release: stable, or on the
+	// request's channel.
 	OperationUpgrade
 	// OperationReinstall replaces the same release version under --force.
 	OperationReinstall
-	// OperationRollback installs an exact lower stable tag.
+	// OperationRollback installs an exact lower tag.
 	OperationRollback
-	// OperationReplaceLocal replaces a local build with a stable release.
+	// OperationReplaceLocal replaces a local build with a release.
 	OperationReplaceLocal
 )
 
@@ -210,8 +213,8 @@ type GitHubOptions struct {
 	APIBaseURL *url.URL
 	// UserAgent is the required product/version User-Agent.
 	UserAgent string
-	// Token is an explicit GitHub token. Empty falls back to GH_TOKEN then
-	// GITHUB_TOKEN.
+	// Token is an explicit GitHub token. Empty falls back to Credentials,
+	// then GH_TOKEN, then GITHUB_TOKEN.
 	Token string
 	// Limits bound JSON, error, manifest, and executable bodies.
 	Limits Limits
@@ -672,8 +675,9 @@ const (
 const (
 	// EventWarning follows EventComplete, once for each error that arrived
 	// after the run had done its work: a failed Close, a failed report of
-	// complete, or an installer that committed and still returned an
-	// error. Detail is the sanitized error, which Result.Warnings also
+	// complete, an installer that committed and still returned an error,
+	// and each of a managed install's ReconcileResult.Warnings. Detail is
+	// the sanitized error, which Result.Warnings also
 	// lists. The run does not fail. A reporter error on it is ignored.
 	EventWarning EventKind = iota + EventRolledBack + 1
 )
@@ -810,7 +814,8 @@ type Config struct {
 	// Packed.
 	Assets AssetSelector
 	// Verifiers run after built-in integrity checks, on the release asset
-	// as published. An empty slice is valid.
+	// as published. A refusal aborts the run, and its error matches
+	// ErrIntegrity. An empty slice is valid.
 	Verifiers []Verifier
 	// Transformer is an optional post-verification change. Nil is a no-op.
 	Transformer Transformer

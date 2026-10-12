@@ -260,6 +260,10 @@ public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wP
         # and skips a product not installed yet. Returns whether all passed.
         function Invoke-InstallHook([string]$When, [string]$Dir, [string[]]$Selected, [bool]$Skip) {
             if ($Skip) { return $true }
+            # An empty pipeline still writes $OutputEncoding's byte-order mark,
+            # which Windows PowerShell 5.1 can default to; this one has none.
+            # It is local to the function.
+            $OutputEncoding = New-Object System.Text.UTF8Encoding $false
             $ok = $true
             foreach ($hook in $Hooks) {
                 if ($hook.When -cne $When -or $Selected -cnotcontains $hook.Product) { continue }
@@ -285,6 +289,7 @@ public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wP
         }
 
         function Test-Identity([string]$Dir, [string[]]$Selected, [string]$Want) {
+            $OutputEncoding = New-Object System.Text.UTF8Encoding $false
             foreach ($name in $Selected) {
                 if (-not $Identity.ContainsKey($name)) { continue }
                 $idArgs = $Identity[$name]

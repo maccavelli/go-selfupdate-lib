@@ -106,12 +106,12 @@ func switches(r registered) (bool, []trigger, error) {
 //  2. it records the instance, so WaitHealthy can require a new one;
 //  3. it disables an enabled task, and records that it did, so a
 //     repeating trigger cannot start the task while its binary is replaced:
-//     ending the task alone does not stop the trigger (magic-cli-remote's
-//     docs/decisions/0159-MADR-the-windows-service-path-is-half-wired.md,
+//     ending the task alone does not stop the trigger (0021-MADR, F7,
 //     probe 8);
 //  4. it calls Options.RequestStop, when set, and waits up to
 //     Options.StopGrace for the program to exit on its own;
-//  5. it ends the task (IRegisteredTask::Stop), and waits until the
+//  5. when the program still runs, it ends the task
+//     (IRegisteredTask::Stop), and waits until the
 //     recorded process has exited, by PID and creation time. It does not
 //     wait on Task Scheduler's instance list, which can still name the
 //     process after it has exited (0021-MADR Amendment A4).

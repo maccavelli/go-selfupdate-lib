@@ -48,9 +48,9 @@ linters:
             - pkg: github.com/maccavelli/go-llmprovider-sdk
               desc: "this module never imports go-llmprovider-sdk (AGENTS.md, Dependencies)"
             - pkg: charm.land
-              desc: "Charm lives in go-tui-lib, not here (0004-MADR, Decision Outcome)"
+              desc: "Charm lives in go-tui-lib, not here (docs/decisions/0004-MADR-evolve-selfupdate-api-and-tui-support.md, Decision Outcome)"
             - pkg: github.com/charmbracelet
-              desc: "Charm lives in go-tui-lib, not here (0004-MADR, Decision Outcome)"
+              desc: "Charm lives in go-tui-lib, not here (docs/decisions/0004-MADR-evolve-selfupdate-api-and-tui-support.md, Decision Outcome)"
         module:
           list-mode: strict
           files:
@@ -118,7 +118,7 @@ linters:
           allow:
             - $gostd
             - github.com/maccavelli/go-selfupdate-lib/selfupdate$
-        # selfupdate/service and its three backends: the standard library,
+        # selfupdate/service and its four backends: the standard library,
         # x/sys only where Windows needs it, and the module's own packages
         # (docs/decisions/0011-MADR-reference-service-lifecycles.md §1).
         service:

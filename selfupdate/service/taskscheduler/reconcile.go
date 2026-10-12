@@ -11,7 +11,7 @@ import (
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
 )
 
-// DefinitionBackup is the ReconcileResult.State of a rewrite: the task's
+// DefinitionBackup is the selfupdate.ReconcileResult.State of a rewrite: the task's
 // definition as Task Scheduler returned it before the rewrite, which
 // Restore registers again.
 type DefinitionBackup struct {

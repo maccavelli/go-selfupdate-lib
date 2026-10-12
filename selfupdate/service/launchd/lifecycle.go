@@ -83,9 +83,10 @@ func (j *Job) disabled(ctx context.Context) (bool, error) {
 
 // Stop boots the job out, the only stop that holds against KeepAlive, and
 // waits until launchd has let it go and its process has exited: the
-// bootout-wait magic-cli-remote measured (0011-MADR §7). Once bootout is
-// issued, the wait runs to stopBound whatever ctx does, and ctx's error is
-// returned after it (0015-MADR B3). It refuses with
+// bootout-wait 0011-MADR §7 records. Once bootout is issued, the wait runs
+// whatever ctx does, for the longer of Options.Poll's timeout (60 s by
+// default) and the plist's ExitTimeOut (5 s by default) plus 30 s, and
+// ctx's error is returned after it (0015-MADR B3). It refuses with
 // service.ErrInsideService when this process would die with the job.
 func (j *Job) Stop(ctx context.Context, _ string) error {
 	inside, err := j.Inside(ctx)

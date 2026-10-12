@@ -105,7 +105,7 @@ func report(dir, tag string) error {
 // through Command, or through Detached as the handoff does; the child
 // starts a grandchild with no flags. Neither gets a console window, and
 // both have a console, so a console program among them still runs
-// (0021-MADR D7; magic-cli-remote 0159 probe 8).
+// (0021-MADR D7, and F7, probe 8).
 func TestNoConsoleWindowThreeDeep(t *testing.T) {
 	self, err := os.Executable()
 	if err != nil {
@@ -138,7 +138,7 @@ func TestNoConsoleWindowThreeDeep(t *testing.T) {
 // program, whatever its case, and an extensionless path that os/exec
 // resolves to one through PATHEXT (0021-MADR D8). They refuse it too in
 // each spelling the Win32 layer reads as one: a trailing dot or space,
-// which 0022-PLAN P1 measured reaching cmd.exe, and an alternate data
+// which 0022-PLAN-documentation-pass-after-v1-14-0.md P1 measured reaching cmd.exe, and an alternate data
 // stream (0022-MADR H2).
 func TestBatchFileRefused(t *testing.T) {
 	dir := t.TempDir()

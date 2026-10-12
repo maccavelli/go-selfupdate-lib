@@ -147,7 +147,7 @@ func DefaultResultPath(executable string) string {
 // off when this process is inside the service, and its detail names the
 // handoff and its result file. The detached run cannot ask for
 // confirmation, so inside the service a request without Yes is refused
-// with ErrConfirmationRequired (0015-MADR C3).
+// with selfupdate.ErrConfirmationRequired (0015-MADR C3).
 func HandOffFunc(d Detacher, spec HandOff) func(context.Context, selfupdate.Request) (bool, string, error) {
 	return func(ctx context.Context, req selfupdate.Request) (bool, string, error) {
 		if !req.Yes && d != nil && os.Getenv(EnvHandOff) == "" {

@@ -9,7 +9,7 @@ import (
 
 // liveArg makes the test binary act as the live test's task, its agent, or
 // its detached update (live_windows_test.go). A task cannot carry
-// environment (0159 F9), so the mode is an argument.
+// environment (0021-MADR, F9, probe 9), so the mode is an argument.
 const liveArg = "tasksched-live"
 
 func TestMain(m *testing.M) {

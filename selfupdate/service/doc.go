@@ -25,5 +25,5 @@
 // handoff writes so a job's plist does not publish the caller's
 // environment; and in a hop, through which the Windows handoff starts the
 // run so that it does not descend from the service, it starts the real run
-// and exits (amendments A3 and A4).
+// and exits (0011-MADR amendments A3 and A4).
 package service

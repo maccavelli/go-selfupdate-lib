@@ -45,8 +45,9 @@ var (
 	// ErrForceRequired is returned when applying over a local build without
 	// Request.Force (0004-MADR G4).
 	ErrForceRequired = errors.New("selfupdate: replacing a local build requires --force")
-	// ErrLatestOlder is returned when the latest stable release is older
-	// than the running release build (0004-MADR G4).
+	// ErrLatestOlder is returned when the latest release, stable or on the
+	// request's channel, is older than the running release build
+	// (0004-MADR G4).
 	ErrLatestOlder = errors.New("selfupdate: latest release is older than the running version")
 	// ErrBatchFile is returned, wrapped, on Windows when the program to
 	// start is a .bat or .cmd file, in any spelling Windows resolves to

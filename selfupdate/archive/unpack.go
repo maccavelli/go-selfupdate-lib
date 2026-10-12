@@ -50,7 +50,9 @@ type UnpackOptions struct {
 	// name is the product (plus ".exe" on windows), at the top level or
 	// one directory down. A .gz asset has no members, and ignores it.
 	// NewUnpacker refuses a Member no entry could be named: one that is not
-	// a clean relative path, or that checkPortable would refuse
+	// a clean relative path, or a name the package's portable-name rules
+	// refuse: outside printable ASCII, an element ending in a dot or a
+	// space or holding one of < > : " | ? *, or a device name
 	// (docs/decisions/0017-PLAN-verify-build-provenance-and-close-0015-open-items.md
 	// N6).
 	Member string

@@ -231,7 +231,7 @@ func (o Options) handedOff(res selfupdate.Result, detail string) error {
 	return err
 }
 
-// resultLine is the final JSON Lines object (amendment F8). HandedOff is
+// resultLine is the final JSON Lines object (0004-MADR amendment F8). HandedOff is
 // the handoff's detail when the update was handed off (0011-MADR §9).
 type resultLine struct {
 	Kind      string                    `json:"kind"`
@@ -284,7 +284,7 @@ func Summary(res selfupdate.Result, err error) string {
 
 // Exit writes "update failed: <message>" to stderr for any error but
 // selfupdate.ErrUpdateAvailable, and returns selfupdate.ExitCode
-// (amendment F7). It writes nothing else, and never to stdout.
+// (0004-MADR amendment F7). It writes nothing else, and never to stdout.
 func Exit(stderr io.Writer, res selfupdate.Result, err error) int {
 	code := selfupdate.ExitCode(res, err)
 	if err != nil && !errors.Is(err, selfupdate.ErrUpdateAvailable) {

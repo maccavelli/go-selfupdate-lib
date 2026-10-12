@@ -143,7 +143,9 @@ var (
 // While a saved NotBefore is in the future it returns the saved record and
 // ErrCheckDeferred without touching the network. A rate-limited check saves
 // a NotBefore taken from the error's RetryAfter, and its Reset when no
-// requests remain, or one minute ahead when the response gave neither.
+// requests remain, or one minute ahead when the response gave neither; it
+// is never more than an hour ahead, and a saved one further ahead is a
+// miss.
 //
 // Whatever the error, a returned record with a non-zero CheckedAt holds a
 // real answer as of CheckedAt, and its Outcome says which.

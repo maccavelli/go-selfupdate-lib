@@ -76,7 +76,9 @@ type versionProber struct {
 // NewVersionProber returns a Prober that runs the binary with args, with no
 // stdin, stderr discarded and the environment inherited, and requires it to
 // exit 0 within timeout with stdout containing want(TargetVersion). A nil
-// want is the identity: the output must contain the tag itself. A probe the
+// want is the identity: the output must contain the tag itself. Only the
+// first 64 KiB of stdout is searched. It refuses empty args and a timeout
+// that is not positive. A probe the
 // caller's deadline or cancellation ends fails wrapping that context error.
 // On Windows a .bat or .cmd binary is refused with an error wrapping
 // ErrBatchFile, and a probe from a process with no console opens no window
