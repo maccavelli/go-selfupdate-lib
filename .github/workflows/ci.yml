@@ -115,6 +115,16 @@ jobs:
       - name: go test -shuffle
         if: runner.os == 'Linux'
         run: go test -shuffle=on -count=2 ./...
+      # The fixture builds must not read the git state around them: a .git
+      # that git cannot read, above the temporary directory, fails a build
+      # that stamps VCS information
+      # (docs/decisions/0023-MADR-robust-test-fixtures-and-process-waits.md D4-A).
+      - name: fixture builds under a stray .git
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/stray/.git"
+          TMPDIR="$RUNNER_TEMP/stray" go test -count=1 ./selfupdate/... ./buildinfo/ ./internal/...
       # Each fuzz target for 20 s; a failing input is kept as an artifact
       # (0004-PLAN-h2-fuzzing-and-manifest-differential.md Step 4).
       - name: fuzz

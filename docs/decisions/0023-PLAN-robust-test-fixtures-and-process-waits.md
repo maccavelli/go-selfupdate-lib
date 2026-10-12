@@ -551,3 +551,35 @@ pre-add-check FILES="<the 6 Go files>"`: `go-precheck: 6 file(s) clean`.
 every step `rc=0`, `overall=0`.
 
 **Host cleanup.** Both hosts' run directories were removed.
+
+### S5 (2026-10-11)
+
+The owner committed S4 as `b5670d5`, and said "proceed".
+
+**Files.** Changed: `.github/workflows/ci.yml`, `docs/architecture.md`,
+`AGENTS.md`.
+
+* **CI:** a step "fixture builds under a stray .git" in the `validate`
+  job, after `go test -shuffle`, `if: runner.os == 'Linux'`, under bash:
+  `mkdir -p "$RUNNER_TEMP/stray/.git"`, then `TMPDIR="$RUNNER_TEMP/stray"
+  go test -count=1 ./selfupdate/... ./buildinfo/ ./internal/...`. Its
+  comment cites MADR D4-A.
+* `docs/architecture.md`'s "Linux also" CI bullet names the step.
+  AGENTS.md's `internal/testproc` paragraph names
+  `TestNoDirectFixtureBuild` and gives the step's command to run by hand.
+
+**The step's command, on the Linux test host:**
+
+* on this tree (a clone at `d396052` with the diff applied, 21 files,
+  SHA-256 matched), with a `RUNNER_TEMP` of its own: all 16 packages
+  `ok`, `step_rc=0`;
+* **seen failing,** on the tree before S3 (a clone at `d396052`, no
+  diff): `FAIL github.com/maccavelli/go-selfupdate-lib/selfupdate/archive`
+  with `error obtaining VCS status: exit status 128`, `step_rc=1`. As in
+  S1, only `archive` fails on that host; the step fails all the same.
+
+**Checks.** `scripts/check-workflows.sh` with `expressions`,
+`permissions` and `pins` on `ci.yml`: each exit 0; `actionlint` v1.7.12:
+clean. On the two documents: links, identifiers and markdownlint clean.
+`make gate` on this Mac, load average 5.11 before and 38.46 after: every
+step `rc=0`, `overall=0`.

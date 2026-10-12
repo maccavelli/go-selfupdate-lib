@@ -539,6 +539,11 @@ interpolated into shell.
       (`SELFUPDATE_REQUIRE_GHATTEST`), which needs `gh` logged in; CI has
       no token.
   - **Linux also:** a full-history checkout; `go test -shuffle=on -count=2`;
+    `go test` of `./selfupdate/...`, `./buildinfo/` and `./internal/...`
+    with a `TMPDIR` that holds an empty `.git`, which a fixture build that
+    stamped VCS information would fail on
+    ([0023-MADR](decisions/0023-MADR-robust-test-fixtures-and-process-waits.md)
+    D4-A);
     the fuzz script's test, then `make fuzz`, with the corpus uploaded as
     an artifact when it fails;
     `go vet` for `freebsd/amd64`, `openbsd/amd64` and `linux/386`;

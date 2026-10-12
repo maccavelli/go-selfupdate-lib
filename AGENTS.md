@@ -201,6 +201,14 @@ it, uses `internal/testproc`: `GoBuild` builds with `-buildvcs=false`, so a
 `.git` above a temporary directory cannot fail it, and `Start` waits until
 the test's deadline and reports a helper that exits first at once
 (`docs/decisions/0023-MADR-robust-test-fixtures-and-process-waits.md`).
+`TestNoDirectFixtureBuild` refuses a direct `go build` in a test file. CI's
+Linux job runs the fixture-building packages under a stray `.git`; to do
+the same by hand:
+
+```bash
+d=$(mktemp -d) && mkdir "$d/.git" &&
+  TMPDIR="$d" go test -count=1 ./selfupdate/... ./buildinfo/ ./internal/...
+```
 
 Cross-target commands set `CGO_ENABLED=0` explicitly: a host `go env` may
 set `CGO_ENABLED=1`, and cgo cannot cross-compile to another OS here.
