@@ -323,3 +323,26 @@ low alive_open=ok wait=timeout query_open=ok sync_open=ok snapshot=true
 **Checks.** Records only: `scripts/check-docs.sh --links` and `--ids` on
 this plan, clean. The repository's markdownlint configuration excludes
 MADR and PLAN files.
+
+### R3: Verification, at closing (2026-10-12)
+
+The owner committed R2 as `3c658b4` (R1 is `10cf06f`), and said
+"committed, proceed".
+
+* **V1 (measured): met.** R1's four tree runs of `TestLiveTaskUpdate`
+  (three with `-test.count 3`, one in the live suite) each logged
+  `the update's integrity RID 0x2000; pid=<n> open=ok wait=timeout`.
+* **V2 (pinned): met.** The new check failed on both plants, quoting
+  `open=The parameter is incorrect.` and `open=ok wait=signaled`, and
+  passes on the tree; the six live tests and `internal/winproc`'s tests
+  passed on the Windows test host.
+* **V3 (pairing): met.** R2's three runs recorded, for a caller at
+  `0x2000`: `alive_open=ok wait=timeout` for a program at `0x3000`, and
+  the same for the control at `0x2000`, with each right alone granted.
+* **V4 (gate):** `make gate` ended `overall=0` for R1's code (R1's
+  checks).
+
+**The MADR,** in this phase: Amendment A2's consequence ("[unverified]
+until the measurement") and A3's [derived] and [unverified] facts carry
+italic annotations with these answers. Their text is otherwise
+unchanged.

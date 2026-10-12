@@ -578,6 +578,10 @@ left open at closing, and to ground the remedy in the code. Its plan is
 * Neutral, because D6-A asks for `SYNCHRONIZE` as well as the query
   right. That a task's program grants it to the updater is [unverified]
   until the measurement; an open refused falls back to the snapshot.
+  *(Measured in [0022-PLAN-liveness-open-at-medium-integrity.md](0022-PLAN-liveness-open-at-medium-integrity.md),
+  R1 and R2, 2026-10-12: an unelevated updater of the same user is
+  granted it, for a task program at medium and at high integrity
+  [measured]. See Amendment A3.)*
 * Bad, because the backend fix needs `v1.15.1`.
 
 ### A3 (2026-10-12): the `SYNCHRONIZE` open from an unelevated caller, measured and pinned
@@ -602,6 +606,10 @@ task's program is [derived], not measured". Its plan is
   program at medium integrity. An unelevated caller of the same user is
   expected to get the same open, because the caller and the program run
   as one user at one integrity level [derived, not measured].
+  *(Measured in the plan's R1, 2026-10-12: the detached update, at
+  integrity RID `0x2000`, opened the task's program with `AliveAccess` and
+  read it as running, in four runs [measured]; `TestLiveTaskUpdate` now
+  requires it.)*
 * **The supported case already runs at medium integrity.**
   `TestLiveTaskUpdate`'s detached update asserts its integrity RID is
   `0x2000` (`selfupdate/service/taskscheduler/live_windows_test.go:514-521`)
@@ -621,6 +629,10 @@ task's program is [derived], not measured". Its plan is
   task program at high integrity, as when a user runs the update from an
   ordinary shell while their task runs with highest privileges. Whether
   the open is refused there is [unverified].
+  *(Measured in the plan's R2, 2026-10-12: not refused. A caller at
+  `0x2000` opened a program at `0x3000` with `AliveAccess`, and with each
+  right alone, and read it as running, in three runs [measured]. `Alive`
+  takes its open-and-wait path there too.)*
 
 **Options (D7):**
 
