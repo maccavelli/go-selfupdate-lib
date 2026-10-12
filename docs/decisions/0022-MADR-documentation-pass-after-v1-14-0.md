@@ -1,6 +1,6 @@
 ---
 status: accepted
-date: 2026-10-11
+date: 2026-10-12
 decision-makers: go-selfupdate-lib maintainers
 consulted: "a read-only audit of README.md, AGENTS.md, docs/, the three guides and every package's doc comments and Examples, against the code at cf0664c (v1.14.0 plus records), 2026-10-11; Go 1.27.2's os/exec and syscall on Windows; Microsoft's Task Scheduler 2.0 COM reference"
 informed: the fleet's programs that read this module's guides and go doc, magic-cli-remote first
@@ -579,6 +579,96 @@ left open at closing, and to ground the remedy in the code. Its plan is
   right. That a task's program grants it to the updater is [unverified]
   until the measurement; an open refused falls back to the snapshot.
 * Bad, because the backend fix needs `v1.15.1`.
+
+### A3 (2026-10-12, proposed): the `SYNCHRONIZE` open from an unelevated caller, measured and pinned
+
+The owner asked, after
+[0023-PLAN-robust-test-fixtures-and-process-waits.md](0023-PLAN-robust-test-fixtures-and-process-waits.md)
+closed, for the pair that settles the open item
+[0022-PLAN-error-chain-and-process-liveness.md](0022-PLAN-error-chain-and-process-liveness.md)
+left at closing: "a medium-integrity caller's `SYNCHRONIZE` open of a
+task's program is [derived], not measured". Its plan is
+[0022-PLAN-liveness-open-at-medium-integrity.md](0022-PLAN-liveness-open-at-medium-integrity.md).
+
+**Facts [observed 2026-10-12, `main` at `5df1e3d`]:**
+
+* **`winproc.Alive` opens with `SYNCHRONIZE |
+  PROCESS_QUERY_LIMITED_INFORMATION`**
+  (`internal/winproc/winproc_windows.go:127`). An open refused with
+  `ERROR_ACCESS_DENIED` falls back to the process snapshot, and `born`
+  is not checked (`:128-129`).
+* **A2's measurement made that open from the elevated ssh shell** (its
+  plan's Q1; 0021-PLAN Deviation D1): an elevated caller, and a task
+  program at medium integrity. An unelevated caller of the same user is
+  expected to get the same open, because the caller and the program run
+  as one user at one integrity level [derived, not measured].
+* **The supported case already runs at medium integrity.**
+  `TestLiveTaskUpdate`'s detached update asserts its integrity RID is
+  `0x2000` (`selfupdate/service/taskscheduler/live_windows_test.go:514-521`)
+  and calls `Stop`, whose wait reads `Alive` on the task's program
+  (`sysSched.running`, `scheduler_windows.go:60-61`; `lifecycle.go:226`).
+  The test passes whichever way the open goes, because the snapshot also
+  sees the program exit. Its passes since `v1.15.1` do not answer the
+  question.
+* **What a refusal costs is the reused-ID check, not A2's fix.** Q1
+  measured that the snapshot drops a process that has exited, though a
+  handle to it is held, so the fallback still reads an exit. It cannot
+  tell a reused PID from the original: `Stop`'s wait
+  (`lifecycle.go:226`) and `Start`'s filter of a stale instance
+  (`lifecycle.go:289`, 0021 Amendment A4) would read a new process with
+  the old PID as the old one.
+* **One pairing is not measured either way:** an unelevated caller and a
+  task program at high integrity, as when a user runs the update from an
+  ordinary shell while their task runs with highest privileges. Whether
+  the open is refused there is [unverified].
+
+**Options (D7):**
+
+* **D7-A. Measure once.** A scratch probe, run from a least-privilege
+  driver task (0021-PLAN's method), opens a task's program and records
+  the result. Cost: no code. But it rebuilds the configuration rather
+  than running the backend's own path, and a later Windows change goes
+  unseen.
+* **D7-B. Pin it in `TestLiveTaskUpdate`,** and measure the
+  high-integrity pairing once. The detached update, before it stops the
+  task, opens the task's program with the access `Alive` asks for and
+  records whether the open succeeded and what `WaitForSingleObject(h, 0)`
+  read; the test requires both. `internal/winproc` exports that access as
+  `AliveAccess`, which `Alive` uses, so the test cannot drift from it.
+  The high-integrity pairing is measured with scratch probes and
+  recorded. Cost: one constant in an internal package (no exported API,
+  no release), about 40 lines of live test, and runs on the Windows test
+  host with the console sign-in.
+* **D7-C. Keep it [derived].** A refusal degrades to the snapshot, which
+  loses only the reused-ID check.
+
+**Recommended: D7-B,** because:
+
+* the live update already runs at medium integrity, through the
+  backend's own `Stop`, so the pin observes the case programs ship, not a
+  reconstruction of it;
+* the fallback hides a refusal from every existing check; only a test
+  that looks at the open itself can see it, and a pinned test sees it on
+  every later live run;
+* the high-integrity pairing decides which path `Alive` takes in a
+  configuration users can make. Either answer is recorded; `Alive`'s doc
+  comment already describes both paths.
+
+**Stop condition.** If the supported case's open is refused, A2's
+[derived] fact is false where it matters most. The plan stops, and the
+measurement goes to the owner with resolutions.
+
+**Consequences, if D7-B is chosen:**
+
+* Good, because A2's last [derived] fact becomes [measured], and a
+  regression fails a named live test.
+* Good, because the record says which path `Alive` takes for each
+  pairing of caller and program that has been run.
+* Neutral, because `AliveAccess` is exported only within the module
+  (`internal/`): `apicheck` sees no change, and no release follows.
+* Bad, because the pin runs only where the live suite runs, on the
+  Windows test host with the console sign-in; GitHub's runners have no
+  console session (`requireLive`).
 
 ## More Information
 
