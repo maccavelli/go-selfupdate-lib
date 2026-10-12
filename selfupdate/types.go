@@ -271,7 +271,10 @@ type Selection struct {
 	Packed bool
 }
 
-// ReleaseSource discovers releases and opens asset bodies.
+// ReleaseSource discovers releases and opens asset bodies. Latest and
+// ByTag return an error that wraps ErrNoRelease when the release asked for
+// does not exist, as GitHubSource's do; Checker.CheckCached saves that
+// outcome as CheckNoRelease.
 type ReleaseSource interface {
 	Latest(context.Context) (Release, error)
 	ByTag(context.Context, string) (Release, error)

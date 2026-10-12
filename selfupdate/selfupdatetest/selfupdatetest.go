@@ -106,7 +106,9 @@ type FakeSource struct {
 }
 
 // NewFakeSource returns a source whose Latest is the release tagged latest.
-// An empty latest makes Latest fail.
+// An empty latest makes Latest fail. A missing release is an error that
+// wraps selfupdate.ErrNoRelease, as GitHubSource's is, so a Checker's
+// CheckCached records it as selfupdate.CheckNoRelease (0024-MADR D4-A).
 func NewFakeSource(latest string, releases ...ReleaseSpec) *FakeSource {
 	s := &FakeSource{latest: latest, releases: make(map[string]builtRelease, len(releases))}
 	var next int64
@@ -128,7 +130,7 @@ func (s *FakeSource) lookup(tag string) (selfupdate.Release, error) {
 	defer s.mu.Unlock()
 	b, ok := s.releases[tag]
 	if !ok {
-		return selfupdate.Release{}, fmt.Errorf("selfupdatetest: no release %q", tag)
+		return selfupdate.Release{}, fmt.Errorf("selfupdatetest: no release %q: %w", tag, selfupdate.ErrNoRelease)
 	}
 	rel := b.release
 	rel.Assets = append([]selfupdate.Asset(nil), rel.Assets...)
@@ -142,7 +144,7 @@ func (s *FakeSource) Latest(ctx context.Context) (selfupdate.Release, error) {
 		return selfupdate.Release{}, err
 	}
 	if s.latest == "" {
-		return selfupdate.Release{}, fmt.Errorf("selfupdatetest: no latest release")
+		return selfupdate.Release{}, fmt.Errorf("selfupdatetest: no latest release: %w", selfupdate.ErrNoRelease)
 	}
 	return s.lookup(s.latest)
 }

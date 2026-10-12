@@ -8,10 +8,12 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/selfupdatetest"
@@ -167,6 +169,42 @@ func TestFakeSource(t *testing.T) {
 	cancel()
 	if _, err := src.Latest(canceled); !errors.Is(err, context.Canceled) {
 		t.Fatalf("Latest on a canceled context = %v", err)
+	}
+}
+
+// TestFakeSourceNoRelease: a missing release wraps selfupdate.ErrNoRelease,
+// as GitHubSource's does, so CheckCached records CheckNoRelease
+// (0024-MADR D4-A).
+func TestFakeSourceNoRelease(t *testing.T) {
+	ctx := context.Background()
+	if _, err := selfupdatetest.NewFakeSource("").Latest(ctx); !errors.Is(err, selfupdate.ErrNoRelease) {
+		t.Fatalf("Latest with no latest release = %v, want ErrNoRelease", err)
+	}
+	src := selfupdatetest.NewFakeSource("", selfupdatetest.NewRelease("demo", "v1.0.0", plats, body))
+	if _, err := src.ByTag(ctx, "v9.9.9"); !errors.Is(err, selfupdate.ErrNoRelease) {
+		t.Fatalf("ByTag of an unknown tag = %v, want ErrNoRelease", err)
+	}
+	selector, err := selfupdate.NewExactAssetSelector(plats)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checker, err := selfupdate.NewChecker(selfupdate.CheckerConfig{
+		Source: src, Versions: selfupdate.NewStrictVersionPolicy(), Assets: selector,
+		Limits: selfupdate.DefaultLimits(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := selfupdate.NewFileCheckStore(filepath.Join(t.TempDir(), "check.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := selfupdate.CheckRequest{
+		Product: "demo", CurrentVersion: "v1.0.0", CurrentBuild: selfupdate.ReleaseBuild, Platform: plats[0],
+	}
+	rec, err := checker.CheckCached(ctx, req, store, time.Hour)
+	if !errors.Is(err, selfupdate.ErrNoRelease) || rec.Outcome != selfupdate.CheckNoRelease {
+		t.Fatalf("CheckCached = outcome %v, %v; want CheckNoRelease and ErrNoRelease", rec.Outcome, err)
 	}
 }
 

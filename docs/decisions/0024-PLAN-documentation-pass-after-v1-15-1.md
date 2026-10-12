@@ -396,3 +396,39 @@ tasks.
 pre-add-check FILES="<the 4 Go files>"`: `go-precheck: 4 file(s) clean`.
 `make gate` on this Mac, load average 8.75 before and 52.47 after: every
 step `rc=0`, `apicheck` `compatible with v1.15.1`, `overall=0`.
+
+### W2 (2026-10-12)
+
+The owner committed W0 and W1 as `597d560`, and said "committed,
+proceed".
+
+**Files.** Changed: `selfupdate/selfupdatetest/selfupdatetest.go`,
+`selfupdatetest_test.go`, `selfupdate/types.go`.
+
+**As built:**
+
+* `FakeSource.Latest` with no latest release, and a missing tag through
+  `ByTag` and `Latest`, return `selfupdatetest: no latest release:
+  selfupdate: no such release` and `selfupdatetest: no release "<tag>":
+  selfupdate: no such release`, wrapping `ErrNoRelease`. The prefixes are
+  unchanged, and nothing in the repository matched the old text.
+  `OpenAsset`'s errors are unchanged. `NewFakeSource`'s doc says so.
+* `ReleaseSource`'s doc: `Latest` and `ByTag` wrap `ErrNoRelease` for a
+  release that does not exist, and `CheckCached` saves it as
+  `CheckNoRelease` (E14).
+* `TestFakeSourceNoRelease`: both methods match `ErrNoRelease`, and a
+  `Checker.CheckCached` over the fake returns `CheckNoRelease` with an
+  error matching it.
+
+**Seen failing:**
+
+| Plant | Failing line |
+| :--- | :--- |
+| `Latest` without the wrap | `selfupdatetest_test.go:181: Latest with no latest release = selfupdatetest: no latest release, want ErrNoRelease` |
+| `lookup` without the wrap | `selfupdatetest_test.go:185: ByTag of an unknown tag = selfupdatetest: no release "v9.9.9", want ErrNoRelease` |
+
+**Checks.** `go test ./selfupdate/selfupdatetest/ ./selfupdate/`: `ok`.
+`make pre-add-check FILES="<the 3 Go files>"`: `go-precheck: 3 file(s)
+clean`. `make gate` on this Mac, load average 18.41 before and 56.26
+after: every step `rc=0`, `apicheck` `compatible with v1.15.1`,
+`overall=0`.
