@@ -262,3 +262,64 @@ case [measured].
 `go-precheck: 2 file(s) clean`. `make gate` on this Mac, load average
 8.89 before and 45.86 after: every step `rc=0`, `apicheck` `compatible
 with v1.15.1`, `arch` `16 rows … 0 differ`, `overall=0`.
+
+### R2 (2026-10-12)
+
+The owner committed R1, confirmed the console sign-in ("logged in"), and
+said "proceed". Each run's script also recorded a console user present
+and Explorer in one interactive session.
+
+**The probes,** in the scratchpad, not the tree: `pairprobe.exe` (the
+standard library and `golang.org/x/sys/windows`, cross-compiled here)
+and `pair.ps1`, run from the elevated ssh shell. The script registers
+three `selfupdate-probe-<random>` tasks for the signed-in user, each
+`Interactive`, with no trigger:
+
+* **high:** `RunLevel Highest`, `pairprobe target <dir> high`: writes its
+  PID and integrity RID, then waits for a stop file;
+* **low (the control):** `RunLevel Limited`, the same with `low`;
+* **caller:** `RunLevel Limited`, `pairprobe caller <dir> high low`:
+  records its own RID, then for each target opens it with `SYNCHRONIZE |
+  PROCESS_QUERY_LIMITED_INFORMATION` (`winproc.AliveAccess`'s value) and
+  reads `WaitForSingleObject(h, 0)`, opens it with each right alone, and
+  looks for it in the snapshot.
+
+The script starts the two targets, then the caller, prints the results,
+then writes the stop file and removes the three tasks in `finally`. It
+ran three times, each in a new directory, the binary's and script's
+SHA-256 checked on the host.
+
+**Output, identical in the three runs** (the targets' and caller's
+lines):
+
+```text
+high rid=0x3000
+low rid=0x2000
+caller rid=0x2000
+high alive_open=ok wait=timeout query_open=ok sync_open=ok snapshot=true
+low alive_open=ok wait=timeout query_open=ok sync_open=ok snapshot=true
+```
+
+**Reading:**
+
+* The caller ran at medium integrity (`0x2000`), so the runs are valid
+  (step 2).
+* **The control (step 3)** opened and read as running, as R1 found
+  through the backend: R1 and R2 agree.
+* **An unelevated caller opens a high-integrity program of the same user
+  with `AliveAccess`** [measured]: the open succeeded, and each right
+  alone succeeded, in every run. A3's [unverified] expectation of a
+  possible refusal is answered: no. `Alive` takes its open-and-wait path
+  for this pairing too, and checks `born`; the snapshot fallback was not
+  reached in any pairing measured.
+* Why the integrity label does not refuse it is not measured. Both rights
+  are of a kind a process's default mandatory policy (no read up, no
+  write up) does not withhold, which is consistent with the result
+  [derived].
+
+**Host cleanup.** Each run printed `cleanup.task=removed` three times and
+`dir-removed`; afterwards `schtasks /query` lists 0 `selfupdate-` tasks.
+
+**Checks.** Records only: `scripts/check-docs.sh --links` and `--ids` on
+this plan, clean. The repository's markdownlint configuration excludes
+MADR and PLAN files.
