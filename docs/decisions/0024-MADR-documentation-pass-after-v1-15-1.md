@@ -298,6 +298,91 @@ proceed"): "D1-A", "D2-A", "D3-A" and "D4-A", because:
   silently shortens a long grace a program set; documenting C1 only,
   which leaves the trap.
 
+### A2 (2026-10-12, proposed): `install.ps1` gives hooks an empty file as standard input
+
+* **Found in the PLAN's Deviations D3 and D4.** W3's `@() | & $exe` and
+  D3's BOM-less `$OutputEncoding` both passed on the Windows test host and
+  both failed on CI's `windows-2025` (runs `38306877278`, `38310786338`):
+  in Windows PowerShell 5.1, every hook and the identity check read 3
+  bytes. `main` is red.
+* **Measured on the Windows test host** (Windows PowerShell 5.1.26100,
+  PowerShell 7.6.6; a program that reports what it reads):
+
+  | How the program is started | 5.1 | 7.6 |
+  | :--- | :--- | :--- |
+  | `@() \| & prog`, BOM-less `$OutputEncoding`, `[Console]::InputEncoding` UTF-8 with a BOM | 3 bytes, `efbbbf` | 0 |
+  | `@() \| & prog`, both UTF-8 with a BOM | 6 bytes, two BOMs | 3 bytes |
+  | `Start-Process -RedirectStandardInput <empty file>`, both UTF-8 with a BOM | 0 | 0 |
+
+  The host's console input encoding is IBM437, which has no BOM, so W3 and
+  D3 passed there; CI's is UTF-8 [derived from the failure].
+* **Why, from the sources:**
+  * Data piped to a native command is encoded with `$OutputEncoding`,
+    and in Windows PowerShell "any Unicode encoding, except UTF7, always
+    creates a BOM"; PowerShell 6 and later default to UTF-8 without one
+    ([about_Character_Encoding][ace]).
+  * Windows PowerShell 5.1 runs on .NET Framework, whose `Process` writes
+    a redirected standard input through `Console.InputEncoding`: a
+    UTF-8 console input encoding puts a BOM on the child's input before
+    anything is written. CliWrap reproduced it with a bare `Process`
+    under Windows' UTF-8 setting, and its maintainer declined to work
+    around it because `Console.InputEncoding` "is a global variable"
+    ([CliWrap#215][cw]); .NET recorded the Desktop and Core difference
+    for PowerShell ([dotnet/runtime#16174][rt]). PowerShell's own
+    discussions treat the console encodings as session-wide state
+    ([PowerShell#4681][p4681], [#10907][p10907]).
+  * On Windows, `Start-Process -RedirectStandardInput` opens the file and
+    hands its handle to `CreateProcess` as `hStdInput`; no writer and no
+    encoding is involved (PowerShell's `Process.cs`, `SetStartupInfo`).
+  * Its pitfalls, each measured or documented: `-ArgumentList` joins the
+    arguments with spaces and quotes nothing (`'b c'` arrived as `b`,
+    `c`); `-Wait` waits for the whole process tree
+    ([Start-Process][sp]), so a hook that starts a long-lived program
+    would hang the installer; and Windows PowerShell reports no
+    `ExitCode` unless the process handle is read while it runs (measured:
+    empty on 5.1, `0` on 7.6).
+  * **Public practice:** Microsoft's `microsoft/WindowsDeveloperConfig`
+    runs `wsl.exe` with no input as `Start-Process -NoNewWindow
+    -RedirectStandardInput ([IO.Path]::GetTempFileName())`, with
+    `-PassThru`, no `-Wait`, the handle read first ("so Windows
+    PowerShell can still report ExitCode"), and a poll on `HasExited`
+    (`src/windows-dev-config/steps/_environment.ps1`,
+    `Invoke-DevConfigProcess`). `ggml-org/llama-install.sh`'s `install.ps1`
+    redirects a tool's input from a file the same way.
+* **Options:**
+  * **A2-1. `Start-Process` with an empty temporary file as standard
+    input, in both editions** (recommended). Each hook and the identity
+    command start with `-NoNewWindow -PassThru -RedirectStandardInput
+    <an empty file from GetTempFileName>`; the handle is read at once; the
+    installer polls `HasExited`, so Ctrl+C still stops it, then reads
+    `ExitCode`. A hook's output goes straight to the installer's standard
+    output, as `Write-Line` sent it. The identity command's output goes to
+    a temporary file, whose first line is read, and its error output to
+    another, discarded as `2>$null` did. The arguments are joined by
+    `Start-Process`, which is safe because the renderer allows only
+    `^[A-Za-z0-9._:=/,+@%-]+$` in any value it writes (`render.go:94-103`).
+    The temporary files are removed in `finally`. D3's `$OutputEncoding`
+    lines go, since nothing is piped.
+  * **A2-2. Set a BOM-less `[Console]::InputEncoding` for the call, and
+    restore it** (the recommendation before this research). It works, but
+    it changes the console's state for every program attached to it while
+    the hook runs, against the guidance above, and it fixes only the .NET
+    Framework path.
+  * **A2-3. Revert W3,** and document that `install.ps1`'s hooks share
+    the console's input.
+* **Recommended: A2-1,** because it removes the cause rather than
+  working around an encoding: the child gets an empty file's handle, in
+  both editions, whatever either encoding is; it uses documented
+  parameters and Microsoft's own pattern; and it changes no session or
+  console state.
+
+[ace]: https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_character_encoding
+[cw]: https://github.com/Tyrrrz/CliWrap/issues/215
+[rt]: https://github.com/dotnet/runtime/issues/16174
+[p4681]: https://github.com/PowerShell/PowerShell/issues/4681
+[p10907]: https://github.com/PowerShell/PowerShell/issues/10907
+[sp]: https://learn.microsoft.com/powershell/module/microsoft.powershell.management/start-process
+
 ## More Information
 
 * The PLAN, [0024-PLAN-documentation-pass-after-v1-15-1.md](0024-PLAN-documentation-pass-after-v1-15-1.md),

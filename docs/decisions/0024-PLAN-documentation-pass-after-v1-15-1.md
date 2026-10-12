@@ -548,3 +548,115 @@ yet run (Deviation D2), and said "committed, pushed, proceed".
   `make gate` on this Mac (the tree also held W4's uncommitted changes),
   load average 10.05 before and 47.81 after: every step `rc=0`,
   `apicheck` `compatible with v1.15.1`, `overall=0`.
+
+### W4 (2026-10-12)
+
+The owner committed Deviation D3's fix and W4 together as `8e3d830` (43
+files), pushed, and said "i committed and pushed all, ci is running".
+
+**Files.** 36 Go files, `.golangci.yml`, `scripts/check-docs.sh`,
+`scripts/check-workflows.sh` and `AGENTS.md`. No file is added.
+
+**Closed, as the table says:**
+
+* **E1 to E4:** `ReleaseBuild` admits a prerelease tag under
+  `NewSemverPolicy`; `OperationUpgrade`, `OperationRollback`,
+  `OperationReplaceLocal`, `ErrLatestOlder` and
+  `CheckRequest.TargetVersion` no longer say "stable" only, the last
+  copying `Request.TargetVersion`'s wording; `CheckerConfig.Assets` and
+  `Availability.AssetName` name archives; `EventWarning` and `Warnings`
+  name `ReconcileResult.Warnings`.
+* **E5:** `winproc`'s package doc names `Descends`, `Alive` and
+  `AliveAccess`, and `Alive`'s doc names
+  `0022-PLAN-error-chain-and-process-liveness.md` Q1.
+* **E6 to E8:** launchd's `Stop` states its bound (the longer of
+  `Poll.Timeout`, 60 s by default, and `ExitTimeOut`, 5 s by default, plus
+  30 s); `UnpackOptions.Member` states the portable-name rules;
+  `ListReleases` says 30 at a time.
+* **E9, E10:** `Receipt` documents its fields, the decode rules and when
+  a warning or a restore follows; `ExecOptions.RestoreFunc`, launchd's
+  `Stop` and taskscheduler's `Stop` cite this repository's records for
+  the facts they had cited to another.
+* **E11:** `selfupdate.` qualifies `ErrConfirmationRequired`,
+  `AssetSelector`, `NewExactAssetSelector`, `ReconcileResult.State` in the
+  five backup and state types, and `ReleaseSource` in `selfupdatetest`.
+* **E12, E13, E15, E16:** `Validate` cites 0014-MADR too; the package doc
+  names `archive`, `codesign`, `releasespec` and both workflows with the
+  building guide; `GitHubOptions.Token` names `Credentials` first;
+  `Config.Verifiers` says a refusal matches `ErrIntegrity`.
+* **E17 to E20:** taskscheduler's `Stop` step 5 runs only when the
+  program still runs; systemd's `Detach` names `Options.Unit` and
+  systemd 236; `CheckCached` states the one-hour cap; `NewVersionProber`
+  states its refusals and the 64 KiB limit.
+* **E24, E25:** the release tool's package doc cites 0014-MADR;
+  `testproc.Start` says it kills the helper when the budget runs out.
+* **O1, O3 to O5:** "its four backends"; the depguard `desc` strings cite
+  0004-MADR by full filename; "Three modes"; "Four rules".
+
+**E21, by D2-A.** The search found, and W4 changed:
+
+* PLAN numbers with several PLANs (0004, 0010, 0021, 0022), cited short:
+  `scheduler_windows.go` (0021-PLAN T6), `live_windows_test.go` (0021-PLAN
+  Deviation D3; 0022-PLAN P1), `api.go`, `fake_test.go`,
+  `winproc_windows.go` and `winproc_windows_test.go` (0022-PLAN P1); each
+  now names the full filename;
+* anchors that named no record, outside test files: `cli/run.go` (F7,
+  F8) and `cli/flags.go` (F4), now `0004-MADR amendment …`;
+  `service/doc.go` (A3, A4), now 0011-MADR's; `archive/doc.go` (E8, 4C),
+  now 0015-MADR's and 0017-MADR's; `ghattest/doc.go`, now
+  `docs/guides/building-releases.md`, step 4;
+* another repository's record by number: `winproc_windows_test.go` and
+  `taskscheduler/main_test.go` ("0159 …"), now 0021-MADR's F7 and F9
+  rows.
+
+Left, as D2-A allows: anchors in test files whose header comment names
+the record (twelve files, each checked); citations of another
+repository by repository and filename beside this repository's record
+(`github.go`, `winproc_windows.go`); test comments that mention
+magic-cli-remote as history, not as a citation. No report is cited in
+Go. After the change the search finds none of the kinds D2-A changes.
+AGENTS.md's "Records" gains D2-A's rule.
+
+**Checks.** gofmt clean; `go vet ./...` for linux, darwin and windows
+(`CGO_ENABLED=0`): clean. `make pre-add-check FILES="<the 35 Go
+files>"`: `go-precheck: 35 file(s) clean`. The 36th,
+`taskscheduler/main_test.go` (the "0159 F9" citation), was changed after
+that run; gofmt and vet were clean on it, and `make gate`'s lint covered
+it. `go doc` read back for the
+changed packages. On AGENTS.md: links, identifiers and markdownlint
+clean. `make gate` ran with W4 in the tree (Deviation D3's checks):
+`overall=0`.
+
+### Deviation D4 (2026-10-12, proposed): D3's fix failed on CI too
+
+* **Found:** CI run `38310786338`, on `8e3d830` (D3's fix with W4),
+  failed `validate (windows-2025)` at `go test ./...`, Windows PowerShell
+  5.1 only: both standard-input cases, `["old stdin 3" "new stdin 3"
+  "new stdin 3"]`. The fix was in the commit (`install.ps1:266`, `:292`).
+  `main` is red; 16 other jobs passed.
+* **Measured and researched:** MADR Amendment A2. The bytes come from
+  .NET Framework's standard-input writer, which encodes with
+  `[Console]::InputEncoding`, not from `$OutputEncoding`. The host's
+  console input is IBM437; CI's is UTF-8. `Start-Process` with an empty
+  file gives 0 bytes in both editions under either BOM.
+* **The owner asked** to evaluate the recommendation against official
+  documentation, public practice and both editions, and to improve it.
+  The recommendation changes from setting `[Console]::InputEncoding`
+  (A2-2) to `Start-Process` with an empty file (A2-1).
+* **Proposed, for W3 again** (files: `installer/install.ps1`,
+  `installer_ps_test.go`):
+  1. one function in `install.ps1` starts a program with no input, as
+     A2-1 says, and returns its exit code, or its first output line for
+     the identity check; the hooks and `Test-Identity` call it; D3's
+     `$OutputEncoding` lines go;
+  2. the test driver's `SELFUPDATE_INSTALL_TEST_BOM` sets both
+     `[Console]::InputEncoding` and `$OutputEncoding` to UTF-8 with a BOM,
+     and puts the console's back in `finally`. The console is shared by
+     the parallel cases while it is set; after the fix no case's result
+     depends on it;
+  3. **seen failing:** the BOM case against `8e3d830`'s `install.ps1` on
+     the Windows test host, as CI failed, then passing with the fix;
+  4. the hook cases still see each hook's output, its exit code, and a
+     failed `before_install` stopping the install; the whole package on
+     the three hosts; then CI on the push.
+* **Doing nothing** leaves `main` red.
