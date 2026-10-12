@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: in-progress
 date: 2026-10-12
 associated-madr: "0021-MADR-task-scheduler-lifecycle-and-windowless-children.md"
 ---
@@ -244,3 +244,78 @@ Q5 ran it:
   U4, today's skipping step. A released `v1.15.2` is not withdrawn; a
   fault in it is fixed forward.
 * **A deviation in any phase** stops it.
+
+## Execution record
+
+### Approval (2026-10-12)
+
+The owner committed Amendment A5's decision, this plan and the index row
+as `b3b12f8`, pushed, and said "committed and pushed, proceed. i am
+logged into the windows host." This plan is `in-progress`, here and in
+the index.
+
+### U1 (2026-10-12)
+
+**The probe.** `instprobe.ps1` in the scratchpad, run once from the
+elevated ssh shell, with the scratch Go sleeper from
+[0022-PLAN-error-chain-and-process-liveness.md](0022-PLAN-error-chain-and-process-liveness.md)
+Q1 (`sleep <n>`) as each task's action; the files' SHA-256 checked on
+the host. It reached Task Scheduler through the `Schedule.Service`
+object's `IDispatch`; the module calls the same methods through their
+vtables. Each task was `selfupdate-probe-<random>`, `Interactive`,
+`Limited`, no trigger. The script recorded `console_user_present=True
+explorer_sessions=1`. For each call it records `ok:<value>`, or
+`hr:<HRESULT>` of the innermost exception.
+
+**Step 1, a held instance** (a sleeper of 3 s; the instance kept from
+`GetInstances(0)`; the PID it gave shown as `<same pid>`):
+
+```text
+held run=1 pid_while_running=ok state_while_running=ok:4 program_exited=True | after_exit: EnginePID=ok:<same pid> State=ok:4 Refresh=hr:0x8004130B EnginePID_after_refresh=ok:0 fresh_GetInstances_Count=ok:0 fresh_item_EnginePID=none
+held run=2 pid_while_running=ok state_while_running=ok:4 program_exited=True | after_exit: EnginePID=ok:<same pid> State=ok:4 Refresh=hr:0x8004130B EnginePID_after_refresh=ok:0 fresh_GetInstances_Count=ok:0 fresh_item_EnginePID=none
+held run=3 pid_while_running=ok state_while_running=ok:4 program_exited=True | after_exit: EnginePID=ok:<same pid> State=ok:4 Refresh=hr:0x8004130B EnginePID_after_refresh=ok:0 fresh_GetInstances_Count=ok:0 fresh_item_EnginePID=none
+```
+
+(`State` 4 is `TASK_STATE_RUNNING`.)
+
+**Step 2, the race** (a sleeper of 0 s, 50 runs, 2 s of polling after
+each):
+
+```text
+race runs=50, 2 s of polling each:
+  EnginePID=ok:<pid> x105
+  GetInstances=ok listed=0 x106861
+  GetInstances=ok listed=1 x105
+```
+
+**Reading:**
+
+* **`0x8004130B` arises from `IRunningTask::Refresh` on an instance whose
+  program has exited** [measured], as the wrapper's issues reported.
+* **An `IRunningTask`'s properties are a snapshot.** After the program
+  exited, the held instance still gave its PID and `State` 4 with no
+  error; only `Refresh` asked Task Scheduler again. After the failed
+  `Refresh`, `EnginePID` read 0 [measured].
+* **`get_EnginePID` did not return `0x8004130B`** in any read: three per
+  held run, and 105 in the race. `GetInstances` did not return it in any
+  call: 106,966 in the race, idle, during a run, or just after one, and
+  every call in step 1. The module calls `GetInstances` and
+  `get_EnginePID`, and never `Refresh`.
+* **A5's [derived] gap does not arise:** an ended instance does not fail
+  `get_EnginePID`; it gives the PID it had, which `Stop`'s wait and
+  `Start`'s `current` already check by process and creation time
+  (Amendment A4; 0022-MADR Amendment A2).
+* **A5's hypothesis** that `026faaa` saw the code from the per-instance
+  call is not supported. Where `026faaa` saw it stays [unverified].
+
+**Branch (step 3):** the second. An ended instance's `EnginePID` returns
+a value with no error, and step 2 shows no `0x8004130B` from it. U2, U5
+and U6 are not done: the transport's behaviour is right for every call it
+makes, and no release follows. The `GetInstances` mapping and its comment
+stay as they are; U7 records the measurement in the MADR.
+
+**Host cleanup.** The script printed `cleanup.task=removed` twice and
+`dir-removed`; afterwards `schtasks /query` lists 0 `selfupdate-` tasks.
+
+**Checks.** Records only: `scripts/check-docs.sh --links` and `--ids` on
+this plan and `docs/README.md`, and markdownlint on `docs/README.md`.
