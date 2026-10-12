@@ -1,6 +1,6 @@
 ---
 status: in-progress
-date: 2026-10-11
+date: 2026-10-12
 associated-madr: "0023-MADR-robust-test-fixtures-and-process-waits.md"
 ---
 # Implement fixture builds independent of git state and helper waits independent of machine load
@@ -583,3 +583,53 @@ The owner committed S4 as `b5670d5`, and said "proceed".
 clean. On the two documents: links, identifiers and markdownlint clean.
 `make gate` on this Mac, load average 5.11 before and 38.46 after: every
 step `rc=0`, `overall=0`.
+
+### S6 (2026-10-12)
+
+The owner committed S5 as `47812eb`, pushed `599ae94` to `47812eb`, and
+said "proceed". Every run below is at `47812eb` with no diff: the host
+clones report `head=47812eb` and no changed files.
+
+**1. The Linux test host,** `make gate` with the host's `TMPDIR` and
+`BASH_ENV` as they are, and `GATE_SKIP=ids`. That `TMPDIR` holds the empty
+`.git` S1 found, and bash scripts still see it there. Every step
+`rc=0` (`ids` skipped), `overall=0`. This is the run 0022's Q5 could only
+pass with `env -u BASH_ENV` and a clean `TMPDIR`.
+
+**2. This Mac,** `make gate`: every step `rc=0`, `overall=0`. Load average
+2.69 (1 min) before; 58.29 (1 min) and 55.80 (5 min) after. The load came
+up during the run.
+
+**3. The Windows test host,** Go 1.27.2 windows/amd64, native `go test
+-count=1 -v ./selfupdate/ ./internal/cmd/selfupdate-release/
+./internal/testproc/`:
+
+| Run | `selfupdate` | `selfupdate-release` | `testproc` | Tests |
+| :--- | :--- | :--- | :--- | :--- |
+| first | `ok` 68.218 s | `ok` 39.304 s | `ok` 147.783 s | 1132 `PASS` and 11 `SKIP` lines (tests and subtests), `test_rc=0` |
+| repeat | `ok` 43.278 s | `ok` 38.269 s | `ok` 0.813 s | `test_rc=0` |
+
+The skips are `TestBackupCopyFallbackPreservesMode`,
+`TestInstallDetectsSwappedDirectory`, `TestInstallPermissionDenied`,
+`TestApplyUndoesSwap`, `TestRunReportsUnrestoredBackup`,
+`TestManagedCommitSwapRecovers`, `TestReplaceBeforeStopCommitRefused`,
+and subtests of `TestInstallReportsRestoreAfterSyncFailure`,
+`TestManagedRecoveryReportsRestoredBinary` and
+`TestManagedCommitRefusedStartRule`. None is a site this plan changed.
+The slowest tests in the repeat are `TestManifestDifferential` (26.53 s)
+and `TestInstallPs1` (7.78 s); every `testproc` test is under 0.33 s.
+
+**Not explained: the first run's 147.783 s for `internal/testproc`.** The
+per-test lines of that run were not kept. Run alone twice afterwards, the
+package took 0.756 s and 0.763 s, and the repeat of the three-package run
+took 0.813 s. The likeliest cause is the first build of
+`TestGoBuildIgnoresParentGit`'s module (its own `CGO_ENABLED=0` and empty
+`GOFLAGS`) on a cold build cache, alongside the other two packages, but
+that is not measured. The package passed, within the default 10-minute
+`go test` timeout.
+
+**4. CI,** run `38256089180` on `47812eb`, the head of the push, so it
+covers `599ae94`, `014eec1`, `b5670d5` and `47812eb`: every job
+`success`. "fixture builds under a stray .git" ran on `validate
+(ubuntu-24.04)`, success, with all 16 packages `ok`, and was skipped on
+macOS and Windows, as its `if` says.
