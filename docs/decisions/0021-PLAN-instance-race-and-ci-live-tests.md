@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 date: 2026-10-12
 associated-madr: "0021-MADR-task-scheduler-lifecycle-and-windowless-children.md"
 ---
@@ -490,3 +490,72 @@ pre-add-check FILES="selfupdate/service/taskscheduler/live_windows_test.go"`:
 `go-precheck: 1 file(s) clean`. `scripts/check-workflows.sh --rule all`:
 `ok (all)`; `actionlint`: clean. `make gate` on this Mac, load average
 35.47 before and 43.20 after: every step `rc=0`, `overall=0`.
+
+### U4, the run (2026-10-12)
+
+The owner committed U4 as `2877360`, pushed, and said "i pushed, ci is
+green". CI run `38286620509`, on `2877360`: 17 of 17 jobs `success`. On
+`validate (windows-2025)`, the session probe printed the same four lines
+as U3's run (`user_interactive=True`, `session_id=2`,
+`explorer_in_session=1`, high integrity), and the required live test
+step:
+
+```text
+=== RUN   TestLiveTaskStopHoldsDisabled
+--- PASS: TestLiveTaskStopHoldsDisabled (71.84s)
+=== RUN   TestLiveTaskRollback
+--- PASS: TestLiveTaskRollback (5.18s)
+=== RUN   TestLiveTaskRequestStop
+--- PASS: TestLiveTaskRequestStop (1.02s)
+=== RUN   TestLiveTaskStopRefusesDisabled
+--- PASS: TestLiveTaskStopRefusesDisabled (3.88s)
+=== RUN   TestLiveTaskzCleanup
+--- PASS: TestLiveTaskzCleanup (0.85s)
+ok  	github.com/maccavelli/go-selfupdate-lib/selfupdate/service/taskscheduler	82.797s
+```
+
+### U7: Verification, at closing (2026-10-12)
+
+* **V1 (measured): met.** U1's three held-instance runs and the race
+  counts are recorded verbatim; they took the second branch.
+* **V2 (fixed): not applicable.** U1 showed no call the module makes
+  returns `0x8004130B` for an ended instance, so U2 was not done, as its
+  branch says.
+* **V3 (CI probed): met.** U3's run is recorded: the session facts, five
+  live tests passed and `TestLiveTaskUpdate` failed on integrity.
+* **V4 (CI settled): met,** as Deviation D1 decided. CI requires every
+  Task Scheduler live test but `TestLiveTaskUpdate`, and passes (U4's
+  run); the comment, the skip message and `docs/architecture.md` say why.
+  No message or comment says the runner has no console session.
+* **V5 (released): not applicable.** U5 and U6 depended on U2.
+
+**The MADR,** in this phase: Amendment A4's `0x8004130B` paragraph, A5's
+gap, hypothesis and "not known" findings, the Confirmation's runner
+paragraph and "Not verified"'s runner line carry italic annotations with
+what was measured. Their text is otherwise unchanged.
+
+### Closing (2026-10-12)
+
+U0 to U7 are recorded above. V1, V3 and V4 are met; V2 and V5 did not
+apply, because U1 found nothing to fix. This plan is `complete`, here and
+in the index. Amendment A5 stands, with its revision of E2. No release
+follows.
+
+**What this closes.** Both items this record's first plan left open, and
+every later plan carried:
+
+* **`0x8004130B`** arises from `IRunningTask::Refresh` on an ended
+  instance, which the module never calls (U1).
+* **A GitHub Windows runner can run an interactive-token task** (U3), and
+  CI now runs the Task Scheduler live tests on every commit, but one
+  (U4).
+
+**Open at closing:**
+
+* **Where `026faaa` saw `0x8004130B`** stays [unverified]; the
+  `GetInstances` mapping stays as a guard no measured call reaches.
+* **Why the runner runs a least-privilege task at high integrity** is
+  [unverified] (Deviation D1).
+* **`TestLiveTaskUpdate`, and with it the medium-integrity evidence and
+  0022-MADR Amendment A3's open check,** run only on the Windows test
+  host.

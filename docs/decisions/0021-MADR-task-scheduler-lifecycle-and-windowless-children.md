@@ -569,6 +569,10 @@ Each item is a product concern here, or already decided elsewhere:
   Whether a GitHub Windows runner can run an interactive-token task is
   [unverified]. Until it is shown, CI skips the live test with a stated
   reason, and `SELFUPDATE_REQUIRE_TASKSCHED=1` makes it mandatory.
+  *(Measured in [0021-PLAN-instance-race-and-ci-live-tests.md](0021-PLAN-instance-race-and-ci-live-tests.md),
+  U3 and U4, 2026-10-12: it can. CI requires every live test but
+  `TestLiveTaskUpdate`, since the runner runs the task at high
+  integrity; Amendment A5.)*
 * **The D7 three-deep test** fails against today's `startDetached` and
   passes after. The D7 static ban names the file and line of a planted bare
   `exec.Command`.
@@ -660,7 +664,8 @@ everything together." The questions as asked, with the answers:
 ### Not verified
 
 * Whether a GitHub Windows runner can run an interactive-token task
-  (Confirmation).
+  (Confirmation). *(Measured, 2026-10-12: it can, at high integrity;
+  Amendment A5.)*
 * That this module's handoff children flash a window in a user's session
   (Context). This is derived from 0159 probe 8 and this module's flags, and
   has not been run against this module. D7's three-deep test measures it
@@ -993,7 +998,10 @@ run.
   `TestCOMLayout` measured a never-run task: `GetInstances` returns
   `S_OK` (`0x00000000`) with an empty collection [measured]. Where
   `0x8004130B` arises is still [unverified]; the mapping stays, and no
-  test reaches it.
+  test reaches it. *(Measured in [0021-PLAN-instance-race-and-ci-live-tests.md](0021-PLAN-instance-race-and-ci-live-tests.md)
+  U1, 2026-10-12: `IRunningTask::Refresh` on an instance whose program
+  has exited returns it; `GetInstances` and `get_EnginePID` did not, in
+  any call. The module does not call `Refresh`. Amendment A5.)*
 * **`Stop`'s `S_FALSE`.** *(Amends A3's `Stop` contract and its rule 6.)*
   `S_FALSE` is still "the user cannot stop the instances" ([docs]). It
   also arrives when nothing is left to stop: after `RequestStop` the
@@ -1095,8 +1103,13 @@ not measured here.
   just after a program exits, such as `Start` after `Stop`, where
   Amendment A4 records that a stale instance may be listed. It has not
   been observed; the window is narrow.
+  *(Measured in the plan's U1: it does not arise. An ended instance's
+  `get_EnginePID` gives the PID it had, with no error; `Stop`'s wait and
+  `Start`'s `current` check that PID by process and creation time.)*
 * **A hypothesis, [unverified]:** the `0x8004130B` that `026faaa` saw
   came from the per-instance call, not from `GetInstances`.
+  *(Not supported by U1: `get_EnginePID` never returned it. Where
+  `026faaa` saw it stays [unverified].)*
 
 **Options:**
 
@@ -1166,6 +1179,8 @@ probe decides whether the change is needed before it is made.
   signed in to that session, which an interactive-token task registered
   for the job's account needs; and whether the runner's Task Scheduler
   starts such a task within the tests' waits.
+  *(Measured in the plan's U3 and U4: both hold. Five live tests passed
+  on the runner, twice, the second time required.)*
 
 **Options:**
 
