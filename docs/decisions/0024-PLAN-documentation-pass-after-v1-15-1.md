@@ -627,7 +627,7 @@ changed packages. On AGENTS.md: links, identifiers and markdownlint
 clean. `make gate` ran with W4 in the tree (Deviation D3's checks):
 `overall=0`.
 
-### Deviation D4 (2026-10-12, proposed): D3's fix failed on CI too
+### Deviation D4 (2026-10-12): D3's fix failed on CI too
 
 * **Found:** CI run `38310786338`, on `8e3d830` (D3's fix with W4),
   failed `validate (windows-2025)` at `go test ./...`, Windows PowerShell
@@ -643,7 +643,9 @@ clean. `make gate` ran with W4 in the tree (Deviation D3's checks):
   documentation, public practice and both editions, and to improve it.
   The recommendation changes from setting `[Console]::InputEncoding`
   (A2-2) to `Start-Process` with an empty file (A2-1).
-* **Proposed, for W3 again** (files: `installer/install.ps1`,
+* **Decision (the owner, "follow the new recommendations. accept the
+  madr, approved to execute the plan"): A2-1.** For W3 again (files:
+  `installer/install.ps1`,
   `installer_ps_test.go`):
   1. one function in `install.ps1` starts a program with no input, as
      A2-1 says, and returns its exit code, or its first output line for
@@ -660,3 +662,47 @@ clean. `make gate` ran with W4 in the tree (Deviation D3's checks):
      failed `before_install` stopping the install; the whole package on
      the three hosts; then CI on the push.
 * **Doing nothing** leaves `main` red.
+
+### Deviation D4, as built (2026-10-12)
+
+**Files.** Changed: `internal/cmd/selfupdate-release/installer/install.ps1`,
+`internal/cmd/selfupdate-release/installer_ps_test.go`.
+
+* **`install.ps1`:** a new `Invoke-NoInput` starts a program with
+  `Start-Process -NoNewWindow -PassThru -RedirectStandardInput` an empty
+  file from `[IO.Path]::GetTempFileName()`, reads `.Handle` at once,
+  polls `HasExited` every 50 ms, then `WaitForExit()`, and returns
+  `ExitCode`, or -1 when `Start-Process` fails. With an output file, it
+  redirects standard output there and standard error to a discarded
+  temporary file. The temporary files are removed in `finally`. A
+  comment gives each reason (A2). `Invoke-InstallHook` runs each hook
+  through it, the hook writing straight to the installer's output;
+  `Test-Identity` runs the identity command into a temporary file and
+  reads its first line with `Get-Content -TotalCount 1`. D3's
+  `$OutputEncoding` lines and the pipelines are gone.
+* **The test driver** sets `$OutputEncoding` and `[Console]::InputEncoding`
+  to UTF-8 with a BOM when `SELFUPDATE_INSTALL_TEST_BOM` is set, and puts
+  the console's back before it reports; the case's comment says why.
+
+**Seen failing,** the Windows test host's clone at `8e3d830` with only
+the test changed (`install.ps1` as D3 left it): every Windows PowerShell
+5.1 standard-input case failed with `standard input reads ["old stdin 3"
+"new stdin 3" "new stdin 3"]`, as CI did; every PowerShell 7 case
+passed. The plain 5.1 case failed too, because the BOM case's console
+setting is shared by the cases running in parallel, as step 2 foresaw.
+
+**After the fix:** the whole package on the Windows test host, `ok`,
+315 `--- PASS` lines (the standard-input cases in both editions, and the
+hook cases: each hook's output, a failed `before_install` stopping the
+install, a failed `after_install` exiting 3); on this Mac `ok … 45.310s`;
+on the Linux test host `ok … 16.822s`.
+
+**Not tested:** a hook that starts a long-lived program. Without `-Wait`
+the installer waits only for the hook's own process, as before; no case
+starts one.
+
+**Checks.** vet for windows: clean. `make pre-add-check
+FILES="internal/cmd/selfupdate-release/installer_ps_test.go"`:
+`go-precheck: 1 file(s) clean`. `make gate` on this Mac, load average
+14.17 before and 49.81 after: every step `rc=0`, `apicheck` `compatible
+with v1.15.1`, `overall=0`. CI runs on the push.

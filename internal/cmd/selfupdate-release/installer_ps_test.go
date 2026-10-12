@@ -78,7 +78,12 @@ const (
 // SELFUPDATE_INSTALL_TEST_ARGS: on the command line, a value that starts
 // with "-" would be read as one of the driver's own options.
 const psDriver = `param([string]$Mode, [string]$Url)
-if ($env:SELFUPDATE_INSTALL_TEST_BOM) { $OutputEncoding = [Text.Encoding]::UTF8 }
+$inputBefore = $null
+if ($env:SELFUPDATE_INSTALL_TEST_BOM) {
+    $OutputEncoding = [Text.Encoding]::UTF8
+    $inputBefore = [Console]::InputEncoding
+    [Console]::InputEncoding = [Text.Encoding]::UTF8
+}
 $ArgsText = $env:SELFUPDATE_INSTALL_TEST_ARGS
 $LASTEXITCODE = 0
 $sb = $null
@@ -105,6 +110,7 @@ try {
 $newVars = @(Get-Variable | ForEach-Object { $_.Name } | Where-Object { $varsBefore -notcontains $_ -and $_ -ne '_' -and $_ -ne 'PSItem' })
 $newFuncs = @(Get-ChildItem function: | ForEach-Object { $_.Name } | Where-Object { $funcsBefore -notcontains $_ })
 $tlsAfter = [Net.ServicePointManager]::SecurityProtocol
+if ($inputBefore) { [Console]::InputEncoding = $inputBefore }
 [Console]::Out.WriteLine('driver: new variables [' + ($newVars -join ',') + ']')
 [Console]::Out.WriteLine('driver: new functions [' + ($newFuncs -join ',') + ']')
 [Console]::Out.WriteLine("driver: ErrorActionPreference $eapBefore -> $ErrorActionPreference")
@@ -758,9 +764,10 @@ var psCases = []struct {
 	// does install.ps1, or a program that reads its input would take the
 	// user's console input (0024-MADR D4-A).
 	{"hooks and the identity check get no standard input", allModes, expectNoStdin},
-	// An empty pipeline still writes $OutputEncoding's byte-order mark, and
-	// Windows PowerShell 5.1 on a GitHub runner defaults to UTF-8 with one.
-	// The driver sets it, as such a session would (0024-PLAN Deviation D3).
+	// A byte-order mark can reach a program's standard input from
+	// $OutputEncoding, and in Windows PowerShell from [Console]::InputEncoding,
+	// which is UTF-8 on a GitHub runner. The driver sets both to UTF-8 with a
+	// BOM, and puts the console's back (0024-MADR Amendment A2).
 	{"hooks and the identity check get no standard input under a BOM encoding", []psMode{psIex, psBlock}, func(c *psCase) {
 		c.env = append(c.env, "SELFUPDATE_INSTALL_TEST_BOM=1")
 		expectNoStdin(c)

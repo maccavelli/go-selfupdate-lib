@@ -256,14 +256,44 @@ public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wP
             if ($keyName -eq 'Environment') { Send-SettingChange }
         }
 
+        # Start a program with an empty file as its standard input, so it
+        # cannot read the user's console, as install.sh's </dev/null does.
+        # Start-Process hands the file's handle to the program, so neither
+        # $OutputEncoding nor Windows PowerShell's [Console]::InputEncoding
+        # can put a byte-order mark on it. No -Wait, which waits for every
+        # program the hook starts; the handle is read first, or Windows
+        # PowerShell reports no exit code; and the wait polls, so Ctrl+C
+        # still stops the installer. The arguments are joined with spaces,
+        # which is safe: no value the installer holds has a space or a
+        # quote. With $Out, standard output goes to that file and standard
+        # error is discarded. Returns the exit code, or -1 when the program
+        # could not be started (0024-MADR Amendment A2).
+        function Invoke-NoInput([string]$Exe, [string[]]$Arguments, [string]$Out) {
+            $in = [IO.Path]::GetTempFileName()
+            $err = $null
+            try {
+                $start = @{ FilePath = $Exe; NoNewWindow = $true; PassThru = $true; RedirectStandardInput = $in }
+                if ($Arguments) { $start.ArgumentList = $Arguments }
+                if ($Out) {
+                    $err = [IO.Path]::GetTempFileName()
+                    $start.RedirectStandardOutput = $Out
+                    $start.RedirectStandardError = $err
+                }
+                try { $process = Start-Process @start } catch { return -1 }
+                $null = $process.Handle
+                while (-not $process.HasExited) { Start-Sleep -Milliseconds 50 }
+                $process.WaitForExit()
+                return $process.ExitCode
+            } finally {
+                Remove-Item -LiteralPath $in -Force -ErrorAction SilentlyContinue
+                if ($err) { Remove-Item -LiteralPath $err -Force -ErrorAction SilentlyContinue }
+            }
+        }
+
         # Run the hooks of one time. before_install runs the installed copy,
         # and skips a product not installed yet. Returns whether all passed.
         function Invoke-InstallHook([string]$When, [string]$Dir, [string[]]$Selected, [bool]$Skip) {
             if ($Skip) { return $true }
-            # An empty pipeline still writes $OutputEncoding's byte-order mark,
-            # which Windows PowerShell 5.1 can default to; this one has none.
-            # It is local to the function.
-            $OutputEncoding = New-Object System.Text.UTF8Encoding $false
             $ok = $true
             foreach ($hook in $Hooks) {
                 if ($hook.When -cne $When -or $Selected -cnotcontains $hook.Product) { continue }
@@ -271,14 +301,8 @@ public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wP
                 if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { continue }
                 $hookArgs = $hook.Args
                 Write-Line "running $($hook.Product) $($hookArgs -join ' ')"
-                $ErrorActionPreference = 'Continue'
-                # Shown, not returned: output would make this function's result
-                # an array, which is true however the hook ended. The empty
-                # input closes the hook's standard input, as install.sh's
-                # </dev/null does, so it cannot read the user's console.
-                @() | & $exe @hookArgs | ForEach-Object { Write-Line ([string]$_) }
-                $code = $LASTEXITCODE
-                $ErrorActionPreference = 'Stop'
+                # The hook writes straight to the installer's output.
+                $code = Invoke-NoInput $exe $hookArgs ''
                 if ($code -ne 0) {
                     [Console]::Error.WriteLine("install: $When hook failed: $($hook.Product) $($hookArgs -join ' ')")
                     $ok = $false
@@ -289,14 +313,16 @@ public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wP
         }
 
         function Test-Identity([string]$Dir, [string[]]$Selected, [string]$Want) {
-            $OutputEncoding = New-Object System.Text.UTF8Encoding $false
             foreach ($name in $Selected) {
                 if (-not $Identity.ContainsKey($name)) { continue }
                 $idArgs = $Identity[$name]
-                $ErrorActionPreference = 'Continue'
-                $first = @() | & (Join-Path $Dir "$name.exe") @idArgs 2>$null | Select-Object -First 1
-                $ErrorActionPreference = 'Stop'
-                $first = [string]$first
+                $out = [IO.Path]::GetTempFileName()
+                try {
+                    $null = Invoke-NoInput (Join-Path $Dir "$name.exe") $idArgs $out
+                    $first = [string](Get-Content -LiteralPath $out -TotalCount 1)
+                } finally {
+                    Remove-Item -LiteralPath $out -Force -ErrorAction SilentlyContinue
+                }
                 $pattern = '^' + [regex]::Escape("$Want (release)") + '( [0-9a-f]{12})?$'
                 if ($first -cnotmatch $pattern) {
                     [Console]::Error.WriteLine("install: $name reports `"$first`", not $Want (release)")

@@ -298,7 +298,7 @@ proceed"): "D1-A", "D2-A", "D3-A" and "D4-A", because:
   silently shortens a long grace a program set; documenting C1 only,
   which leaves the trap.
 
-### A2 (2026-10-12, proposed): `install.ps1` gives hooks an empty file as standard input
+### A2 (2026-10-12): `install.ps1` gives hooks an empty file as standard input
 
 * **Found in the PLAN's Deviations D3 and D4.** W3's `@() | & $exe` and
   D3's BOM-less `$OutputEncoding` both passed on the Windows test host and
@@ -370,7 +370,9 @@ proceed"): "D1-A", "D2-A", "D3-A" and "D4-A", because:
     Framework path.
   * **A2-3. Revert W3,** and document that `install.ps1`'s hooks share
     the console's input.
-* **Recommended: A2-1,** because it removes the cause rather than
+* **Decision (the owner, 2026-10-12, "follow the new recommendations.
+  accept the madr, approved to execute the plan"): A2-1,** the
+  recommended option, because it removes the cause rather than
   working around an encoding: the child gets an empty file's handle, in
   both editions, whatever either encoding is; it uses documented
   parameters and Microsoft's own pattern; and it changes no session or
