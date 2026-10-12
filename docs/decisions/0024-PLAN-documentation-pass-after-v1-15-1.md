@@ -706,3 +706,119 @@ FILES="internal/cmd/selfupdate-release/installer_ps_test.go"`:
 `go-precheck: 1 file(s) clean`. `make gate` on this Mac, load average
 14.17 before and 49.81 after: every step `rc=0`, `apicheck` `compatible
 with v1.15.1`, `overall=0`. CI runs on the push.
+
+### W5 (2026-10-12)
+
+The owner committed D4's fix as `f99f5e6`, pushed, and said "committed
+and pushed, proceed".
+
+**Files.** New: `buildinfo/example_test.go`,
+`selfupdate/selfupdatetest/example_test.go`, and an `example_test.go` in
+each of `selfupdate/service/systemd`, `launchd`, `scm` and
+`taskscheduler`. Changed: `selfupdate/example_test.go`,
+`docs/architecture.md`.
+
+**As built (D3-A, E22, E23):**
+
+* `buildinfo`: `ExampleLDFlags` (the exact `-X` string) and
+  `ExampleIdentity` (a test binary is `local`, and `Current` is
+  non-empty), each with `// Output:`.
+* `selfupdatetest`: `ExampleNewFakeSource`, a dry run of an `Updater`
+  over the fake with a stand-in target in a temporary directory:
+  `v1.1.0 true false <nil>`, and the fake recorded its calls.
+* Each backend: a compile-only `ExampleNew` that wires the backend into
+  `selfupdate.NewManagedInstaller` as both its `Lifecycle` and its
+  `Reconciler`, and says `New` returns `service.ErrUnsupported` off its
+  OS.
+* `selfupdate`'s `ExampleNew_standalone` builds its User-Agent with
+  `selfupdate.UserAgent` and `buildinfo.Identity().Current()`, and its
+  comment names `releasespec`'s `Spec.AssetSelector` and `Spec.Unpacker`
+  and the building guide's step 2.
+* `docs/architecture.md`: the test-file counts of the six packages
+  (`buildinfo` 3, `selfupdatetest` 2, systemd 18, launchd 14, scm 13,
+  taskscheduler 11); `--arch`: `16 rows … 0 differ`.
+
+**Deviation from step 1's text:** the first `ExampleNewFakeSource`
+ran its dry run against the test binary and failed with "target … is
+outside allowed roots"; a dry run still checks the install target. The
+Example now gives the installer a stand-in binary in a temporary
+directory, as `selfupdate`'s own Examples do. It is still the dry run
+step 1 names.
+
+**Seen failing (step 3):** a `plant-copy.sh` copy with `ExampleIdentity`'s
+output planted as `release`: `--- FAIL: ExampleIdentity`, `got: local`,
+`want: release`.
+
+**Checks.** `go test -run '^Example'` on `buildinfo`, `selfupdate`,
+`selfupdatetest` and the four backends: `ok`. vet for linux, darwin and
+windows: clean. `make pre-add-check FILES="<the 7 Go files>"`:
+`go-precheck: 7 file(s) clean`. `make gate` runs before the push
+(Deviation D2).
+
+### Deviation D5 (2026-10-12): Windows PowerShell 5.1's `Start-Process` loses a fast hook
+
+* **Found:** CI run `38315770402`, on `f99f5e6`, failed
+  `validate (windows-2025)`: `TestInstallPs1/powershell/file/a_running_copy_is_replaced`,
+  `installer_ps_test.go:1016: exit 1, want 0`, the output `running relay
+  hook-before`, `old ran hook-before`, `install: before_install hook
+  failed`. Every standard-input case passed; 16 other jobs passed. `main`
+  is red.
+* **Measured on the Windows test host:** 100 starts with `-PassThru` and
+  the handle read at once, and 100 with `-Wait -PassThru`, lost no exit
+  code in either edition; 300 more under busy loops on every core lost
+  none and threw none. The race was not reproduced there.
+* **The probe's own cleanup failed:** the under-load probe started one
+  busy loop per core and did not end them; a check found 32 still
+  running, and stopped them all (`left=0`).
+* **Researched:** MADR Amendment A3: PowerShell 7 fixed the start race
+  in 2023 (#20749); Windows PowerShell 5.1 did not.
+* **Decision (the owner, "follow recommendations, proceed"): A3-1.**
+* **Offered:** A3-1, `CreateProcess` from a C# helper (recommended);
+  A3-2, split by edition; A3-3, revert W3. Doing nothing leaves `main`
+  red.
+* **W5** (the Examples) is done and uncommitted; it does not depend on
+  this.
+
+### Deviation D5, as built (2026-10-12)
+
+**Files.** Changed: `internal/cmd/selfupdate-release/installer/install.ps1`.
+
+* **`Invoke-NoInput`** keeps its signature and callers. It compiles,
+  once per session, `SelfupdateInstall.NoInput` with `Add-Type`, as
+  `Send-SettingChange` compiles its helper, and starts the program
+  through it: `CreateProcess` with `STARTF_USESTDHANDLES`; standard input
+  the `NUL` device opened inheritable; standard output and error
+  inheritable copies of the installer's own, or the output file and
+  `NUL` for the identity check; the same console; the command line
+  quoted as `CommandLineToArgvW` reads it. The process handle comes from
+  `CreateProcess`, so nothing looks the process up afterwards. The
+  installer polls `Wait(handle, 100)`, then reads `GetExitCodeProcess`,
+  and closes the handle in `finally`; a failure to start is -1. The
+  comment gives the reasons (Amendments A2 and A3).
+
+**Not reproducible as a failing test:** the start race did not occur on
+the Windows test host in 800 tries across both probes, so no case fails
+on the old code there; CI's run `38315770402` is the failing evidence.
+
+**The helper on the Windows test host** (the function as `install.ps1`
+holds it, dot-sourced under `Set-StrictMode -Version 3.0`, with
+`[Console]::InputEncoding` and `$OutputEncoding` both UTF-8 with a BOM),
+in Windows PowerShell 5.1.26100 and PowerShell 7.6.6, identical:
+
+```text
+one run: code=5 output=read=0 hex= err=<nil> args=["5" "a b"]
+under load: wrong exit code 0 of 300
+missing program: code=-1
+```
+
+A path with a space, and an argument with a space, arrived whole. The
+probe's busy loops: its own stop by ID reported none left, yet a check by
+command line found 32 and stopped them (`left=0`).
+
+**The package:** `ok` on the Windows test host (315 `--- PASS` lines), on
+this Mac (`ok … 43.713s`) and on the Linux test host (`ok … 16.572s`).
+
+**Checks.** `make gate` on this Mac (the tree also held W5), load
+average 4.11 before and 44.87 after: every step `rc=0`, `apicheck`
+`compatible with v1.15.1`, `arch` `0 differ`, `overall=0`. CI runs on the
+push.

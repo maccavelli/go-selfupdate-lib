@@ -256,37 +256,152 @@ public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wP
             if ($keyName -eq 'Environment') { Send-SettingChange }
         }
 
-        # Start a program with an empty file as its standard input, so it
+        # Start a program with the NUL device as its standard input, so it
         # cannot read the user's console, as install.sh's </dev/null does.
-        # Start-Process hands the file's handle to the program, so neither
-        # $OutputEncoding nor Windows PowerShell's [Console]::InputEncoding
-        # can put a byte-order mark on it. No -Wait, which waits for every
-        # program the hook starts; the handle is read first, or Windows
-        # PowerShell reports no exit code; and the wait polls, so Ctrl+C
-        # still stops the installer. The arguments are joined with spaces,
-        # which is safe: no value the installer holds has a space or a
-        # quote. With $Out, standard output goes to that file and standard
-        # error is discarded. Returns the exit code, or -1 when the program
-        # could not be started (0024-MADR Amendment A2).
+        # CreateProcess, from a small helper, takes the input's handle, so
+        # neither $OutputEncoding nor Windows PowerShell's
+        # [Console]::InputEncoding can put a byte-order mark on it; and it
+        # returns the process's handle, so the exit code of a program that
+        # exits at once is never lost, as Windows PowerShell's Start-Process
+        # can lose it. The wait polls, so Ctrl+C still stops the installer,
+        # and it waits for the program alone, not for what it starts. With
+        # $Out, standard output goes to that file and standard error to NUL;
+        # otherwise both are the installer's own. Returns the exit code, or
+        # -1 when the program could not be started (0024-MADR Amendments A2
+        # and A3).
         function Invoke-NoInput([string]$Exe, [string[]]$Arguments, [string]$Out) {
-            $in = [IO.Path]::GetTempFileName()
-            $err = $null
+            if (-not ('SelfupdateInstall.NoInput' -as [type])) {
+                Add-Type -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using System.Text;
+
+namespace SelfupdateInstall {
+    public static class NoInput {
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        struct StartupInfo {
+            public int cb; public string reserved; public string desktop; public string title;
+            public int x, y, xSize, ySize, xChars, yChars, fill, flags;
+            public short show, reserved2; public IntPtr reserved3, stdin, stdout, stderr;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct ProcessInformation { public IntPtr process, thread; public int pid, tid; }
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct SecurityAttributes { public int length; public IntPtr descriptor; public int inherit; }
+
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        static extern bool CreateProcess(string app, StringBuilder line, IntPtr pa, IntPtr ta, bool inherit,
+            uint flags, IntPtr env, string dir, ref StartupInfo si, out ProcessInformation pi);
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        static extern IntPtr CreateFile(string name, uint access, uint share, ref SecurityAttributes sa,
+            uint disposition, uint flags, IntPtr template);
+        [DllImport("kernel32.dll")] static extern IntPtr GetStdHandle(int which);
+        [DllImport("kernel32.dll")] static extern IntPtr GetCurrentProcess();
+        [DllImport("kernel32.dll", SetLastError = true)]
+        static extern bool DuplicateHandle(IntPtr sp, IntPtr h, IntPtr tp, out IntPtr dup, uint access, bool inherit, uint options);
+        [DllImport("kernel32.dll", SetLastError = true)] static extern uint WaitForSingleObject(IntPtr h, uint ms);
+        [DllImport("kernel32.dll", SetLastError = true)] static extern bool GetExitCodeProcess(IntPtr h, out uint code);
+        [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
+
+        static readonly IntPtr Invalid = new IntPtr(-1);
+
+        // Open opens path, inheritable: NUL to read or to write, or a file
+        // created empty to write.
+        static IntPtr Open(string path, bool write, List<IntPtr> owned) {
+            SecurityAttributes sa = new SecurityAttributes();
+            sa.length = Marshal.SizeOf(typeof(SecurityAttributes));
+            sa.inherit = 1;
+            uint disposition = (write && path != "NUL") ? 2u : 3u; // CREATE_ALWAYS, OPEN_EXISTING
+            IntPtr h = CreateFile(path, write ? 0x40000000u : 0x80000000u, 3u, ref sa, disposition, 0u, IntPtr.Zero);
+            if (h == Invalid) { throw new Win32Exception(); }
+            owned.Add(h);
+            return h;
+        }
+
+        // Std is an inheritable copy of this process's standard handle, or
+        // the handle itself when it cannot be copied, or there is none.
+        static IntPtr Std(int which, List<IntPtr> owned) {
+            IntPtr h = GetStdHandle(which), dup;
+            if (h == IntPtr.Zero || h == Invalid) { return h; }
+            if (DuplicateHandle(GetCurrentProcess(), h, GetCurrentProcess(), out dup, 0u, true, 2u)) {
+                owned.Add(dup);
+                return dup;
+            }
+            return h;
+        }
+
+        // Quote quotes one argument as CommandLineToArgvW reads it.
+        static string Quote(string a) {
+            if (a.Length > 0 && a.IndexOfAny(new char[] { ' ', '\t', '"' }) < 0) { return a; }
+            StringBuilder b = new StringBuilder("\"");
+            int slashes = 0;
+            foreach (char c in a) {
+                if (c == '\\') { slashes++; continue; }
+                if (c == '"') { b.Append('\\', slashes * 2 + 1); } else { b.Append('\\', slashes); }
+                b.Append(c);
+                slashes = 0;
+            }
+            b.Append('\\', slashes * 2).Append('"');
+            return b.ToString();
+        }
+
+        // Start runs exe with args in this console, and returns the process
+        // handle that Wait, ExitCode and Close take.
+        public static IntPtr Start(string exe, string[] args, string outPath) {
+            StringBuilder line = new StringBuilder(Quote(exe));
+            if (args != null) { foreach (string a in args) { line.Append(' ').Append(Quote(a)); } }
+            List<IntPtr> owned = new List<IntPtr>();
             try {
-                $start = @{ FilePath = $Exe; NoNewWindow = $true; PassThru = $true; RedirectStandardInput = $in }
-                if ($Arguments) { $start.ArgumentList = $Arguments }
-                if ($Out) {
-                    $err = [IO.Path]::GetTempFileName()
-                    $start.RedirectStandardOutput = $Out
-                    $start.RedirectStandardError = $err
+                StartupInfo si = new StartupInfo();
+                si.cb = Marshal.SizeOf(typeof(StartupInfo));
+                si.flags = 0x100; // STARTF_USESTDHANDLES
+                si.stdin = Open("NUL", false, owned);
+                if (String.IsNullOrEmpty(outPath)) {
+                    si.stdout = Std(-11, owned);
+                    si.stderr = Std(-12, owned);
+                } else {
+                    si.stdout = Open(outPath, true, owned);
+                    si.stderr = Open("NUL", true, owned);
                 }
-                try { $process = Start-Process @start } catch { return -1 }
-                $null = $process.Handle
-                while (-not $process.HasExited) { Start-Sleep -Milliseconds 50 }
-                $process.WaitForExit()
-                return $process.ExitCode
+                ProcessInformation pi;
+                if (!CreateProcess(exe, line, IntPtr.Zero, IntPtr.Zero, true, 0u, IntPtr.Zero, null, ref si, out pi)) {
+                    throw new Win32Exception();
+                }
+                CloseHandle(pi.thread);
+                return pi.process;
             } finally {
-                Remove-Item -LiteralPath $in -Force -ErrorAction SilentlyContinue
-                if ($err) { Remove-Item -LiteralPath $err -Force -ErrorAction SilentlyContinue }
+                foreach (IntPtr h in owned) { CloseHandle(h); }
+            }
+        }
+
+        // Wait reports whether the process has exited, waiting up to ms.
+        public static bool Wait(IntPtr process, int ms) {
+            uint r = WaitForSingleObject(process, (uint)ms);
+            if (r == 0xFFFFFFFFu) { throw new Win32Exception(); }
+            return r == 0u;
+        }
+
+        public static int ExitCode(IntPtr process) {
+            uint code;
+            if (!GetExitCodeProcess(process, out code)) { throw new Win32Exception(); }
+            return unchecked((int)code);
+        }
+
+        public static void Close(IntPtr process) { CloseHandle(process); }
+    }
+}
+'@
+            }
+            try { $process = [SelfupdateInstall.NoInput]::Start($Exe, $Arguments, $Out) } catch { return -1 }
+            try {
+                while (-not [SelfupdateInstall.NoInput]::Wait($process, 100)) { }
+                return [SelfupdateInstall.NoInput]::ExitCode($process)
+            } finally {
+                [SelfupdateInstall.NoInput]::Close($process)
             }
         }
 

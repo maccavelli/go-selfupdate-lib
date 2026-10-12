@@ -11,15 +11,21 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/maccavelli/go-selfupdate-lib/buildinfo"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/selfupdatetest"
 )
 
+// A program built by the release workflow names itself with the stamps
+// buildinfo reads. Its asset selector here lists the platforms it ships; a
+// program that embeds a release spec takes the selector, and the unpacker
+// for archives, from releasespec's Spec.AssetSelector and Spec.Unpacker
+// instead (docs/guides/building-releases.md, step 2).
 func ExampleNew_standalone() {
 	src, err := selfupdate.NewGitHubSource(selfupdate.GitHubOptions{
 		Repository: selfupdate.Repository{Owner: "maccavelli", Name: "prepare-commit-msg"},
 		Client:     &http.Client{Timeout: 15 * time.Minute},
-		UserAgent:  "prepare-commit-msg/v1.2.0",
+		UserAgent:  selfupdate.UserAgent("prepare-commit-msg", buildinfo.Identity().Current()),
 		Limits:     selfupdate.DefaultLimits(),
 	})
 	if err != nil {

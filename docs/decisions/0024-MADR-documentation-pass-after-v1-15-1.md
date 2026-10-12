@@ -385,6 +385,50 @@ proceed"): "D1-A", "D2-A", "D3-A" and "D4-A", because:
 [p10907]: https://github.com/PowerShell/PowerShell/issues/10907
 [sp]: https://learn.microsoft.com/powershell/module/microsoft.powershell.management/start-process
 
+### A3 (2026-10-12): a race-free start for hooks in Windows PowerShell 5.1
+
+* **Found in the PLAN's Deviation D5.** CI run `38315770402`, on A2-1's
+  fix (`f99f5e6`): the standard-input cases passed in both editions, and
+  "a running copy is replaced" failed in Windows PowerShell 5.1: `old ran
+  hook-before`, then `before_install hook failed`, though that hook exits
+  0. `main` is red.
+* **Why, from PowerShell's source and history:** `Start-Process` starts
+  the program, then finds it with `Process.GetProcessById`, and the
+  returned object reports `ExitCode` only once its handle has been read.
+  PowerShell 7 closed both gaps in 2023 ([PowerShell#20749][p20749]): it
+  starts the program suspended, takes its handle, then resumes it
+  (`Process.cs`, after `StartWithCreateProcess`). Windows PowerShell 5.1
+  has neither fix, so a hook that exits before `GetProcessById` makes
+  `Start-Process` fail, which A2-1's `Invoke-NoInput` counts as exit -1,
+  or leaves no `ExitCode`, which counts as a failure [derived: CI's run
+  does not show which]. 300 starts of a program that exits at once, under
+  load on every core of the Windows test host, lost none in either
+  edition; CI's runner did.
+* **Options:**
+  * **A3-1. Start the program with `CreateProcess` from a small C#
+    helper** (recommended), compiled with `Add-Type` as
+    `Send-SettingChange` already does: standard input the `NUL` device,
+    standard output and error the installer's own or a file, the same
+    console, the process handle kept from creation, a polled wait so
+    Ctrl+C still works, and `GetExitCodeProcess`. One path for both
+    editions, with no race and no encoding. Cost: about 60 lines of C#
+    in the installer, compiled once per install that runs a hook or an
+    identity check.
+  * **A3-2. Split by edition:** PowerShell 7 keeps `Start-Process`, whose
+    race was fixed in 7.4; Windows PowerShell 5.1 uses .NET's `Process`
+    with a redirected input closed at once, after setting a BOM-less
+    `[Console]::InputEncoding` (A2-2) and putting it back. Cost: two
+    paths, global console state in 5.1, and 7.0 to 7.3 keep the race.
+  * **A3-3. Revert W3,** and document that `install.ps1`'s hooks share
+    the console's input.
+* **Decision (the owner, 2026-10-12, "follow recommendations,
+  proceed"): A3-1,** the recommended option, because it is the one route
+  that removes both
+  causes found so far (the encodings, and the start race) in both
+  editions, using a mechanism the installer already uses.
+
+[p20749]: https://github.com/PowerShell/PowerShell/pull/20749
+
 ## More Information
 
 * The PLAN, [0024-PLAN-documentation-pass-after-v1-15-1.md](0024-PLAN-documentation-pass-after-v1-15-1.md),
