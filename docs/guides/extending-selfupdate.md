@@ -190,7 +190,8 @@ In Bubble Tea, `Next` is the "wait for activity" command: a `tea.Cmd`
 that calls `s.Next(ctx)` and returns the interaction as a message, then is
 issued again from `Update`. The planned `go-tui-lib/updatetea` adapter
 packages that pattern, with a progress bar, a masked input and a confirm
-prompt (0004-MADR §4).
+prompt ([0004-MADR](../decisions/0004-MADR-evolve-selfupdate-api-and-tui-support.md),
+§4).
 
 `Updater.RunWith` is the same per-run override without a `Stream`:
 `WithReporter`, `WithConfirmer`, `WithCredentials` and
@@ -342,6 +343,8 @@ requires its stdout to contain the release's version.
 
 An `Unpacker`, then a `Transformer` such as a re-signing step, run before
 the probes, so the probes see the bytes that will be installed.
+`selfupdate.ChainTransformers` runs several transformers in order, such as
+the codesign signer and one of your own.
 
 - `selfupdate/probe_test.go`
 
@@ -420,7 +423,13 @@ Since `v1.12.0` an update interrupted between replacing the target and
 committing, by a crash or a kill, keeps its backup too: the update's
 journal, `.<base>.selfupdate.pending`, tells the next session, which keeps
 the backup under the same kept name. `StandaloneInstaller.KeptBackups`
-lists every kept backup, so call it after `CleanupPending`.
+lists every kept backup, so call it after `CleanupPending`. A service
+program holds a `*ManagedInstaller`, which has its own `KeptBackups`;
+`CleanupPending` is the inner `StandaloneInstaller`'s, so keep that one to
+call it.
+
+- `selfupdate/journal_test.go`, `selfupdate/lifecycle_windows_test.go`,
+  `selfupdate/cleanup_busy_windows_test.go`
 
 ## Replace a setuid or setgid binary
 
@@ -494,19 +503,33 @@ for Task Scheduler,
     per-user task ([Task Scheduler](#task-scheduler)).
 - **Use it twice.** Each is a `selfupdate.Lifecycle`, an
   `EnabledLifecycle` and a `Reconciler`:
-  `selfupdate.NewManagedInstaller(inner, b, b)`.
+  `selfupdate.NewManagedInstaller(inner, b, b)`. Each backend's `ExampleNew`
+  shows it.
+- **Errors and waits.** A backend's error wraps one of `service`'s typed
+  errors, which `errors.Is` matches: `ErrNotInstalled`, `ErrUnsupported`,
+  `ErrInsideService`, `ErrTimeout`, `ErrUnhealthy` or `ErrPermission`.
+  `Options.Poll` bounds the waits: `Timeout` 60 s, `Interval` 250 ms and
+  `Settle` 10 s by default (`DefaultPollTimeout`, `DefaultPollInterval`,
+  `DefaultPollSettle`). `Options.Probe` is a `service.HealthProbe`, a
+  function that observes the service once and returns a `service.Health`;
+  an error from it is kept, and reported if the wait times out.
 - **What it does around the replace:**
   - `Stop` returns once the service has stopped, not when the stop was
     asked for: systemd `inactive` or `failed`; launchd out of the domain
     with its process gone; the SCM's `STOPPED`, by Microsoft's wait-hint
     loop; for Task Scheduler, the recorded process gone, by its process ID
-    and creation time. Once the stop is issued, the wait does not end with
-    your context. On systemd and launchd it runs to the service manager's
-    own kill bound, the longer of `Options.Poll.Timeout` and launchd's
-    `ExitTimeOut` (5 s when unset) or systemd's `TimeoutStopUSec`, plus
-    30 s. On the SCM it is `Options.Poll.Timeout`; on Task Scheduler too,
-    after up to `Options.StopGrace` for a program asked to exit by
-    `Options.RequestStop`.
+    and creation time and, since `v1.15.1`, by its process object's
+    signalled state, so a process that has exited reads as gone though
+    another process still holds a handle to it. Once the stop is issued,
+    the wait does not end with your context. On systemd and launchd it
+    runs to the service manager's own kill bound, the longer of
+    `Options.Poll.Timeout` and launchd's `ExitTimeOut` (5 s when unset) or
+    systemd's `TimeoutStopUSec`, plus 30 s. On the SCM and on Task
+    Scheduler it is `Options.Poll.Timeout`. Task Scheduler spends
+    `Options.StopGrace`, the wait for a program asked to exit by
+    `Options.RequestStop`, inside that timeout, so since `v1.15.2` `New`
+    refuses a `StopGrace` you set that is not shorter than it, and a
+    default grace is the shorter of 10 s and half the timeout.
   - A stop that fails after the service stopped, such as a wait that timed
     out, starts the service again; the update fails with
     `ErrManagedInstall`, and the binary is not replaced.
@@ -518,8 +541,13 @@ for Task Scheduler,
   - `Reconcile` checks that the definition still runs the binary, and
     changes nothing. `Options.RewritePath` lets it point the definition at
     a binary that moved. A program that owns its definition through its own
-    install command uses `service.NewExecReconciler` instead. Since
-    `v1.10.1`, a rewrite:
+    install command uses `service.NewExecReconciler` instead:
+    `ExecOptions.Reconcile` are the arguments that make the new binary
+    reconcile its definition and print a `service.Receipt`, one JSON object
+    whose `verdict` is `none`, `unchanged`, `refreshed` or `kept`; and
+    `ExecOptions.Restore`, or `RestoreFunc` in the updater itself, restores
+    a receipt that `changed`. One of the two is required. The state kept
+    for the restore is an `ExecState`. Since `v1.10.1`, a rewrite:
     - on systemd, checks the unit's effective `ExecStart` after the
       reload; a drop-in that loads later and sets it again, such as an
       `override.conf`, is an error, and recovery removes this package's
@@ -528,11 +556,13 @@ for Task Scheduler,
       launchd reads the new plist, and refuses a job that is running;
     - on the SCM, reads an unquoted command line whose path holds a
       space the way the SCM runs it, and refuses one that could name two
-      programs: quote it. Task Scheduler's rewrite sets the `Exec`
-      action's path field, and parses no command line.
+      programs: quote it.
+
+    Task Scheduler's rewrite (since `v1.14.0`) sets the `Exec` action's
+    path field, and parses no command line.
   - Since `v1.11.0`, `New` refuses `Options.Poll` whose settle window is
     not shorter than its timeout, launchd's at least 10 s, since every
-    wait would time out (`PollOptions.Validate`); and on Windows the
+    wait would time out (`PollOptions.Validate`); and on the SCM the
     dependents `StopDependents` stopped are started again after the
     service.
   - `Enabled` on launchd counts `RunAtLoad` only as `<true/>`; launchd
@@ -552,14 +582,14 @@ for Task Scheduler,
 - **No library process start runs a `.bat` or `.cmd` file** (since
   `v1.14.0`). On Windows, `cmd.exe` parses a batch file's arguments by
   rules no quoting can make safe (the BatBadBut class), so the version
-  probe, `service.ExecRunner`, and so `service.NewExecReconciler`,
-  `ghattest`, `codesign` and the backends' tools, and the handoff refuse
-  one. The error wraps `selfupdate.ErrBatchFile` (since `v1.15.0`), so
+  probe, `service.ExecRunner`, and so `service.NewExecReconciler` and
+  `ghattest` through their default runner, and the handoff refuse one.
+  The error wraps `selfupdate.ErrBatchFile` (since `v1.15.0`), so
   `errors.Is` tells it from any other failure. The check reads the name
-  Windows will run: `x.cmd`, found for a path with no extension; `x.bat.`
-  or `x.bat` with a trailing space, which Windows reads as `x.bat`; and
-  `x.bat::$DATA` (since `v1.15.0`). Point them at an `.exe`: a `gh.cmd`
-  shim as `ghattest.Options.GH` is refused too.
+  Windows will run: `x.cmd`, found for a path with no extension; and,
+  since `v1.15.0`, `x.bat.` or `x.bat` with a trailing space, which
+  Windows reads as `x.bat`, and `x.bat::$DATA`. Point them at an `.exe`: a
+  `gh.cmd` shim as `ghattest.Options.GH` is refused too.
 
 ### Task Scheduler
 
@@ -600,12 +630,18 @@ Off Windows, `New` returns `service.ErrUnsupported`.
 - **`Stop`** disables the task first, so the watchdog cannot start the
   program while its binary is replaced. It then calls
   `Options.RequestStop`, when set, and waits up to `Options.StopGrace` (10 s
-  by default) for the program to exit on its own; then it ends the task,
-  and waits for the program's process to exit. Without `RequestStop`, the
+  by default, or half of `Options.Poll.Timeout` when that is shorter) for
+  the program to exit on its own; then, if it still runs, it ends the
+  task, and waits for the program's process to exit. The grace is spent
+  inside `Options.Poll.Timeout`: since `v1.15.2`, `New` refuses a
+  `StopGrace` you set that is not shorter than it, with `RequestStop`
+  set. Without `RequestStop`, the
   program is ended at once, with no chance to clean up. Ending the task
   ends only the program's own process: children it started keep running,
   so stop them in your `RequestStop` handler.
 - **`Start`** enables the task again when `Stop` disabled it, and runs it.
+  Task Scheduler can still list a process that has exited; `Start` does
+  not count the instance `Stop` recorded once that process has gone.
 - **A task you disabled yourself** cannot be run: Task Scheduler refuses
   to run a disabled task, even with `TASK_RUN_IGNORE_CONSTRAINTS`
   (`SCHED_E_TASK_DISABLED`, measured). So since `v1.15.0`, `Stop` refuses
@@ -618,9 +654,13 @@ Off Windows, `New` returns `service.ErrUnsupported`.
   program and left it stopped
   ([0022-MADR](../decisions/0022-MADR-documentation-pass-after-v1-14-0.md),
   Amendment A1).
-- **If the update crashes between the two,** the task stays disabled and
-  the watchdog does not run it. Your setup's repair registers it again, or
-  `schtasks /change /tn <folder>\<name> /enable` re-enables it.
+- **If the update crashes between `Stop` and `Start`,** the task stays
+  disabled and the watchdog does not run it. Your setup's repair registers
+  it again, or `schtasks /change /tn <folder>\<name> /enable` re-enables
+  it. A `Stop` that fails while the program still runs, such as a wait
+  that timed out, enables the task again before it returns (since
+  `v1.15.2`), so the task is left as it was; before, it stayed disabled
+  too.
 - **`WaitHealthy`** needs a new process running for `Options.Poll.Settle`,
   then runs `Options.Probe`. A program that exits first fails the check at
   once, with its exit code in the detail.
@@ -634,8 +674,16 @@ Off Windows, `New` returns `service.ErrUnsupported`.
 - **The console window.** A console program run by a task has a visible
   console window in your session. Building with `-H windowsgui` removes
   it, but breaks a CLI's output in PowerShell: redirected output is empty,
-  and the exit code is lost (0159, probe 7). The library's own children
+  and the exit code is lost (magic-cli-remote's
+  `docs/decisions/0159-MADR-the-windows-service-path-is-half-wired.md`,
+  probe 7). The library's own children
   never add a window of their own (see the handoff's Windows line below).
+
+Pointers:
+
+- `taskscheduler.ExampleNew`
+- `selfupdate/service/taskscheduler/lifecycle_test.go`, over a fake Task
+  Scheduler; `live_windows_test.go`, against the real one
 
 ### Replace before the stop
 
@@ -675,19 +723,32 @@ m, err := selfupdate.NewManagedInstallerWith(inner, b, b,
   replaced while the service ran. A service that was stopped, or not
   installed, has nothing to stop, so the option changes nothing for it.
 
+Pointers:
+
+- `ExampleNewManagedInstallerWith` in `selfupdate`
+- `selfupdate/managed_replacefirst_test.go`
+
 ### Updating from inside the service
 
 A process the service started, such as an agent running a remote session,
-is inside the service. When it runs `<prog> update --yes`, stopping the
-service kills the update halfway, and the service stays stopped. The
-handoff runs that update outside the service instead, as a detached copy
-of the same command:
+is inside the service. When it runs `<prog> update --yes`, every
+backend's `Stop` refuses before it changes anything, with an error wrapping
+`service.ErrInsideService`, and the update ends with an error that matches
+both it and `selfupdate.ErrManagedInstall`: the service keeps running the
+old binary, and with `ReplaceBeforeStop` the replaced binary is rolled
+back. A `Lifecycle` of your own without that check would kill the update
+halfway. The handoff runs that update outside the service instead, as a
+detached copy of the same command:
 
 ```go
 func main() {
     report := service.ReportFunc() // first: see below
+    ctx := context.Background()
     unit, err := systemd.New(systemd.Options{Unit: "relay.service"})
-    // …
+    if err != nil {
+        fmt.Fprintln(os.Stderr, err)
+        os.Exit(1)
+    }
     o := cli.StdioOptions()
     o.HandOff = cli.HandOff{
         Detach: service.HandOffFunc(unit, service.HandOff{Args: os.Args[1:]}),
@@ -697,6 +758,9 @@ func main() {
 }
 ```
 
+`newUpdater` is your function that builds the `Updater`, as for any
+`cli.Command`.
+
 - **The handoff needs the name** in `Options.Unit`, `Options.Label` or
   `Options.Name`.
 - **Without `cli`,** call `service.HandOffIfInside(ctx, backend,
@@ -705,7 +769,11 @@ func main() {
   `ResultPath`, and this process does not update. In the detached run,
   write the outcome with the function `service.ReportFunc` returns, or
   `service.WriteHandOffResult`. `service.HandOffFunc` is the same call,
-  shaped for `cli.HandOff.Detach`.
+  shaped for `cli.HandOff.Detach`. `HandOffIfInside` checks neither
+  `--yes` nor whether the run would install anything: `HandOffFunc`
+  refuses a run without `Yes` inside the service, and `cli` runs one with
+  nothing to install in place. Without `cli`, make both checks yourself
+  before you call it.
 - **The agent's session sees** one line on stderr, and exit 0:
 
   ```text
@@ -719,8 +787,10 @@ func main() {
   beside the binary, with `service.ReadHandOffResult`, or as JSON:
 
   ```json
-  {"schema_version":1,"id":"3f2a…","started_at":"…","finished_at":"…","exit_code":0,"result":{"schema_version":4,"applied":true,"service_started":true,"rolled_back":false}}
+  {"schema_version":1,"id":"3f2a…","started_at":"…","finished_at":"…","exit_code":0,"result":{"schema_version":4,…,"applied":true,"service_started":true,"rolled_back":false,…}}
   ```
+
+  (`result` is abridged here: it is the whole `--json` result document.)
 
   `exit_code` is the update's, `error` its message when it failed, and
   `result` the `--json` result document; since `v1.11.0` its
@@ -763,18 +833,28 @@ Pointers:
   `selfupdate/service/scm/live_windows_test.go`,
   `selfupdate/service/taskscheduler/live_windows_test.go`: each runs an
   update from a process the service started, end to end, against the real
-  service manager
+  service manager. Each skips unless its switch is set:
+  `SELFUPDATE_REQUIRE_SYSTEMD` (with `SELFUPDATE_SYSTEMD_SCOPE=user` for a
+  user unit), `SELFUPDATE_REQUIRE_LAUNCHD`, `SELFUPDATE_REQUIRE_SCM`, which
+  needs an administrator session, and `SELFUPDATE_REQUIRE_TASKSCHED`,
+  which needs a signed-in console. `TestLiveTaskUpdate` also requires the
+  update to run at medium integrity, which a GitHub runner does not give
+  it, so CI skips that one test
 
 ## Test a program that self-updates
 
 The `selfupdate/selfupdatetest` package provides:
 
 - `NewRelease`, which builds a release with matching `SHA256SUMS`;
-- `FakeSource`;
+- `NewFakeSource(latest, releases…)`, an in-memory source whose `Calls`
+  lists what it answered, and whose missing release wraps
+  `selfupdate.ErrNoRelease` (since `v1.15.2`), as GitHub's does;
 - `RecordingReporter`;
 - `ScriptedConfirmer`;
-- `GitHubServer`, a fake GitHub API on one TLS origin whose asset requests
-  redirect to a second. It can rate-limit and truncate. `RequireToken`
+- `NewGitHubServer(t, owner, repo, releases…)`, a fake GitHub API on one
+  TLS origin whose asset requests redirect to a second. `RateLimit` and
+  `TruncateAssets` make it rate-limit and truncate, and `Requests` lists
+  what it received. `RequireToken`
   requires a bearer token; since `v1.6.0`, `RequireCredential(header,
   value)` requires a custom-header credential exactly as the library sends
   it. It logs every request with whether it carried `Authorization`, and,
@@ -784,6 +864,7 @@ The `selfupdate/selfupdatetest` package provides:
 
 Pointers:
 
-- `selfupdate/selfupdatetest/selfupdatetest_test.go`
+- `selfupdatetest.ExampleNewFakeSource`,
+  `selfupdate/selfupdatetest/selfupdatetest_test.go`
 - `selfupdate/e2e_github_test.go`, `selfupdate/golden_test.go`,
   `selfupdate/credential_header_e2e_test.go`

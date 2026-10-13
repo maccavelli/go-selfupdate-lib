@@ -911,3 +911,59 @@ issues`. Every index title still matches its record's H1 (59 of 59).
 **Checks.** `scripts/check-docs.sh --links` `24 links in 1 files, 0
 broken`; `--ids` `0 findings`; `--arch` `16 rows … 0 differ`;
 markdownlint `0 issues`. `make gate` runs before the push (Deviation D2).
+
+### W8 (2026-10-12)
+
+The owner committed W6 and W7 as `667f41a`, and said "committed,
+proceed".
+
+**Files.** Changed: `docs/guides/extending-selfupdate.md`.
+
+**Closed:**
+
+* **C1, C2 (W1's fixes):** the stop bound says Task Scheduler spends
+  `StopGrace` inside `Poll.Timeout`; since `v1.15.2` `New` refuses a set
+  grace not shorter than it, and a default grace is the shorter of 10 s
+  and half the timeout; `Stop` ends the task only if the program still
+  runs, and a `Stop` that fails with the program running enables the
+  task again (since `v1.15.2`).
+* **C3, C9:** the trailing-dot and trailing-space spellings are dated
+  `v1.15.0` with `::$DATA`; the refusers are the version probe,
+  `ExecRunner` (so `NewExecReconciler` and `ghattest`) and the handoff,
+  not `codesign` or the backends' tools.
+* **C4, C17:** inside the service, every backend's `Stop` refuses with
+  `service.ErrInsideService`, and the update's error matches it and
+  `ErrManagedInstall`; `HandOffIfInside` checks neither `--yes` nor
+  whether the run would install, which `HandOffFunc` and `cli` do.
+* **C5:** the `v1.15.1` liveness check, and `Start`'s filter of the
+  instance `Stop` recorded.
+* **C6:** each backend's live-test switch, with the administrator,
+  console and integrity conditions, and why CI skips
+  `TestLiveTaskUpdate`.
+* **C7, C8:** a paragraph on the typed errors, `Poll`'s defaults and
+  `HealthProbe`; the exec reconciler's arguments, `Receipt` and its
+  verdicts, `Restore` or `RestoreFunc`, and `ExecState`.
+* **C10, C11:** Task Scheduler's rewrite sits outside the `v1.10.1` list,
+  dated `v1.14.0`; the dependents rule says "on the SCM".
+* **C12:** pointers added to "Keep the previous binary", "Run as a
+  service" (each backend's `ExampleNew`, from W5), "Task Scheduler" and
+  "Replace before the stop".
+* **C13, C18, C19:** `ManagedInstaller.KeptBackups` and `CleanupPending`
+  on the inner installer; `ChainTransformers`; `selfupdatetest`'s
+  constructors, `Calls`, `RateLimit`, `TruncateAssets` and `Requests`,
+  and `FakeSource`'s `ErrNoRelease` (W2).
+* **C14:** 0004-MADR linked; "0159, probe 7" named by repository and
+  filename, as the guide's other citation of it is.
+* **C15, C16:** the handoff result's `result` is marked abridged; the
+  `main` snippet checks `err`, declares `ctx`, and the text names
+  `newUpdater`.
+
+**The snippet built (Rules):** the handoff `main`, verbatim, in a
+scratch module outside the repository with a `replace` of this module
+and a stub `newUpdater`: `go build` for linux, darwin and windows
+(`CGO_ENABLED=0`), each `rc=0`. The audit had seen the old one fail with
+`declared and not used: err`.
+
+**Checks.** `scripts/check-docs.sh --links` `15 links in 1 files, 0
+broken`; `--ids` `0 findings`; markdownlint `0 issues`. `make gate` runs
+before the push (Deviation D2).
