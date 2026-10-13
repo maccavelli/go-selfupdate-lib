@@ -14,16 +14,20 @@ checklist, not the authorization.
 ## 1. Go 1.27.1
 
 go-selfupdate-lib requires `go 1.27.1`, so `go get` raises your `go` directive to
-at least that. Move it deliberately first, and run your full test suite at
-1.27.1 before changing anything else.
+at least that. Move it deliberately first, and run your full test suite
+before changing anything else. Build and test with Go 1.27.2, a
+`toolchain go1.27.2` line, as this module is: it fixes ten standard-library
+advisories ([From v1.11.0 to v1.11.1](#from-v1110-to-v1111)). A program
+that was on `go-core-lib` (`v1.4.1` and earlier) changes that import path
+to this one too: the module was renamed, and the README says how.
 
 ## 2. The Go import
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.15.1
+go get github.com/maccavelli/go-selfupdate-lib@v1.15.2
 ```
 
-`v1.15.1` is the current release. `v1.6.0` changed a few behaviours that
+`v1.15.2` is the current release. `v1.6.0` changed a few behaviours that
 `v1.5.x` had; they are listed in [6. From v1.5 to v1.6](#6-from-v15-to-v16).
 `v1.7.0`, `v1.8.0`, `v1.9.0` and `v1.10.0` only add to the API: see
 [7. From v1.6 to v1.7](#7-from-v16-to-v17),
@@ -44,7 +48,9 @@ API; its fix is in [From v1.12.0 to v1.12.1](#from-v1120-to-v1121).
 `v1.15.0` adds two errors, refuses more batch-file spellings, and refuses
 a disabled task it cannot start again: see
 [15. From v1.14 to v1.15](#15-from-v114-to-v115). `v1.15.1` changes no API;
-its fix is in [From v1.15.0 to v1.15.1](#from-v1150-to-v1151).
+its fix is in [From v1.15.0 to v1.15.1](#from-v1150-to-v1151). `v1.15.2`
+changes no API either; its fixes are in
+[From v1.15.1 to v1.15.2](#from-v1151-to-v1152).
 
 Replace every `github.com/maccavelli/mcplib/selfupdate` import with
 `github.com/maccavelli/go-selfupdate-lib/selfupdate`. No identifier or signature
@@ -79,7 +85,8 @@ on the old behaviour.
 - **Unrelated release assets no longer matter.** Only the selected binary
   and `SHA256SUMS` are checked, so an extra asset that is large,
   still uploading, or zero-sized no longer blocks updates.
-- **Redirects must stay on HTTPS,** except to a loopback host.
+- **Redirects must stay on HTTPS,** except a plain-http hop to a loopback
+  host from an API on loopback.
 - **Events arrive in order:** `verified` before `transforming`, and
   `complete` only after the session (and its lock) is released. A local
   build's check mode says that apply needs `--force`.
@@ -169,9 +176,10 @@ The steps below are prepare-commit-msg's, proven on a scratch copy of it at
 `selfupdate/cli/testdata/migration` files byte for byte, with exit codes 0,
 10 and 1.
 
-**`go.mod`.** Require go-selfupdate-lib `v1.15.1`, with `go 1.27.1`. The steps
+**`go.mod`.** Require go-selfupdate-lib `v1.15.2`, with `go 1.27.1`. The steps
 were proven at `v1.5.0`; every later release only adds to the API, so
-they still build, and §6 lists the behaviour `v1.6.0` changed. `mcplib` stays
+they still build. §6 to §15 list the behaviour later releases changed;
+among them, the `--json` result is now `schema_version` 4 (§13). `mcplib` stays
 only if something else still imports it; in prepare-commit-msg,
 `llmprovider` and `wizard` do.
 
@@ -318,7 +326,7 @@ that runs `make -n build-all` and counts both names keeps them right.
 ### What a user of the program will notice
 
 - **Progress, prompts and the outcome go to stderr.** Stdout is empty
-  unless `--json` is given (0004-MADR, owner decision 1). A script that read
+  unless `--json` is given ([0004-MADR](../decisions/0004-MADR-evolve-selfupdate-api-and-tui-support.md), owner decision 1). A script that read
   the old progress from stdout must read stderr.
 - **The outcome is one line,** such as `prepare-commit-msg: update available:
   v1.2.0 -> v1.3.0`.
@@ -335,7 +343,8 @@ that runs `make -n build-all` and counts both names keeps them right.
 
 `cli.Command` uses the standard `flag` package. A cobra program binds the
 same flags on its own command and calls `cli.Run` and `cli.Exit`, which fixes
-C3 (a spurious usage dump on exit 10) and C4 (ctrl+c not cancelling):
+[0004-MADR](../decisions/0004-MADR-evolve-selfupdate-api-and-tui-support.md)'s C3 (a spurious usage dump on exit 10) and C4 (ctrl+c not
+cancelling):
 
 ```go
 var flags cli.Flags
@@ -388,7 +397,7 @@ the real stdout in `o.Stdout` when `--json` is given.
 ## 6. From v1.5 to v1.6
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.15.1
+go get github.com/maccavelli/go-selfupdate-lib@v1.15.2
 ```
 
 This takes the current release; what each later release adds is in §7
@@ -397,6 +406,20 @@ exported change is an addition, so a program that built on `v1.5.x` builds uncha
 the behaviours that change, and what to do about each. Why, and how, is in
 [0010-MADR](../decisions/0010-MADR-remediate-second-debugging-pass-findings.md)
 §3 and its amendments A2 to A5.
+
+### From v1.5.0 to v1.5.1
+
+`v1.5.1` changes no API ([0010-MADR](../decisions/0010-MADR-remediate-second-debugging-pass-findings.md) §2). What a program
+sees:
+
+- **Every failure writes the `--json` result object,** once the flags are
+  parsed (C4).
+- **A rollback stops the service first,** once `Start` had succeeded
+  (B4).
+- **Credentials are resolved again on each run,** and each `Start`: a
+  refused or missing credential is not kept (A2).
+- **A plain-http redirect** is followed only to a loopback host, from an
+  API on loopback (A10); a verifier's failure wraps `ErrIntegrity` (A8).
 
 ### An error after the update is a warning
 
@@ -416,7 +439,8 @@ The exit code is 0, where it was 1 with the binary already replaced.
 
 `Result.Document`, and so the `--json` result object, has `schema_version`
 2. It adds `service_started`, and `warnings`, an array that is omitted when
-there are none. A program that reads the document checks `schema_version`.
+there are none. A program that reads the document checks `schema_version`;
+later releases raise it, to 4 at the current one (§11, §13).
 
 A dry run's `complete` event has the `detail` `dry-run`. It was the sentence
 "dry run: verified, nothing installed".
@@ -465,14 +489,15 @@ and group, when the updater may give them.
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
 - A test or a script that reads the `--json` result accepts
-  `schema_version` 2.
+  `schema_version` 2, and the later versions the current release writes
+  (4).
 - A managed service that is stopped but enabled is started after an update
   only if your `Lifecycle` implements `Enabled`.
 
 ## 7. From v1.6 to v1.7
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.15.1
+go get github.com/maccavelli/go-selfupdate-lib@v1.15.2
 ```
 
 `v1.7.0` only adds: `make apicheck` reports it compatible with `v1.6.0`, it
@@ -511,12 +536,12 @@ is in
 ### Check
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
-- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.1`.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.2`.
 
 ## 8. From v1.7 to v1.8
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.15.1
+go get github.com/maccavelli/go-selfupdate-lib@v1.15.2
 ```
 
 `v1.8.0` only adds. `make apicheck` reports it compatible with `v1.7.0`, it
@@ -563,12 +588,12 @@ runs unless you configure it. Why, and how, is in
 ### Check
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
-- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.1`.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.2`.
 
 ## 9. From v1.8 to v1.9
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.15.1
+go get github.com/maccavelli/go-selfupdate-lib@v1.15.2
 ```
 
 `v1.9.0` only adds. `make apicheck` reports it compatible with `v1.8.0`,
@@ -607,13 +632,13 @@ that use none of the new pieces behave as they did. Why, and how, is in
 ### Check
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
-- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.1`.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.2`.
 - A pull request runs the build workflow as a rehearsal, and it passes.
 
 ## 10. From v1.9 to v1.10
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.15.1
+go get github.com/maccavelli/go-selfupdate-lib@v1.15.2
 ```
 
 `v1.10.0` only adds. `make apicheck` reports it compatible with `v1.9.0`,
@@ -697,7 +722,8 @@ why, is in
   run, after the identifier's.
 - **The generated installers:** a product named twice installs once; an
   empty `--product` is refused; hooks and identity commands run with no
-  standard input; a relative install folder is made absolute; checksums
+  standard input (`install.sh`'s; `install.ps1`'s since `v1.15.2`); a
+  relative install folder is made absolute; checksums
   verify in a folder whose name holds `\`; a `--version` holding a newline
   is refused; a failed identity check restores only what this run moved
   aside; and a directory where a program goes is refused.
@@ -712,7 +738,7 @@ github.com/maccavelli/go-selfupdate-lib` gives `v1.10.1`.
 ### Check
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
-- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.1`.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.2`.
 - A pull request's rehearsal stages `install.sh` and `install.ps1`, and a
   dry run of the released one-liner (`… | sh -s -- --dry-run`) names the
   assets you expect.
@@ -720,7 +746,7 @@ github.com/maccavelli/go-selfupdate-lib` gives `v1.10.1`.
 ## 11. From v1.10 to v1.11
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.15.1
+go get github.com/maccavelli/go-selfupdate-lib@v1.15.2
 ```
 
 `v1.11.0` settles the contracts the third debugging pass left open.
@@ -743,7 +769,7 @@ may need a change. Why, and how, is in
   was restored after the new one was installed, and `probes_skipped` that
   a dry run for another platform did not run the probes. `Result` has
   `RolledBack` and `ProbesSkipped`. A reader that checks `schema_version`
-  must accept 3.
+  must accept 3, and 4 from `v1.13.0` (§13).
 - **Handoffs:** an update from inside a service without `--yes` is refused
   with `ErrConfirmationRequired` (exit 1), since the detached run cannot
   ask; and a run with nothing to install is not handed off.
@@ -773,7 +799,7 @@ may need a change. Why, and how, is in
 - **A zero `Updater` or `Checker`** that used to panic now returns an
   error: build them with `New` and `NewChecker`.
 - **Read `schema_version` 3,** and the two new keys, if you parse the
-  result object.
+  result object; the current release writes 4 (§13).
 - **Pass `--yes`** to an update an agent runs inside a service; it already
   had to, since the detached run never asked.
 - **Check `Options.Poll`:** a short `Timeout` needs a shorter `Settle`, or
@@ -828,13 +854,13 @@ github.com/maccavelli/go-selfupdate-lib` gives `v1.11.1`.
 ### Check
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
-- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.1`.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.2`.
 - A pull request's rehearsal passes the plan step's module check.
 
 ## 12. From v1.11 to v1.12
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.15.1
+go get github.com/maccavelli/go-selfupdate-lib@v1.15.2
 ```
 
 `v1.12.0` adds a build-provenance check, and keeps the previous binary of
@@ -922,12 +948,12 @@ github.com/maccavelli/go-selfupdate-lib` gives `v1.12.1`.
 ### Check
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
-- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.1`.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.2`.
 
 ## 13. From v1.12 to v1.13
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.15.1
+go get github.com/maccavelli/go-selfupdate-lib@v1.15.2
 ```
 
 `v1.13.0` lets a managed install replace the binary before it stops the
@@ -967,12 +993,12 @@ how, is in
 ### Check
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
-- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.1`.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.2`.
 
 ## 14. From v1.13 to v1.14
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.15.1
+go get github.com/maccavelli/go-selfupdate-lib@v1.15.2
 ```
 
 `v1.14.0` adds a Task Scheduler backend, starts the library's own Windows
@@ -1024,12 +1050,12 @@ change is the new package. Why, and how, is in
 ### Check
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
-- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.1`.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.2`.
 
 ## 15. From v1.14 to v1.15
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.15.1
+go get github.com/maccavelli/go-selfupdate-lib@v1.15.2
 ```
 
 `v1.15.0` exports the batch-file refusal and closes the spellings that
@@ -1089,7 +1115,43 @@ Amendment A2.
 - **Tests:** `errors.Is(err, selfupdate.ErrBatchFile)` is now held at
   each entry point a program calls, on every OS.
 
+### From v1.15.1 to v1.15.2
+
+`v1.15.2` changes no exported API: `make apicheck` reports it compatible
+with `v1.15.1`. §15's `go get` above takes the current release. What
+changed, and why, is in [0024-MADR](../decisions/0024-MADR-documentation-pass-after-v1-15-1.md), D4-A and its amendments.
+
+- **Task Scheduler's stop grace.** `Options.StopGrace`, the wait for a
+  program asked to exit by `Options.RequestStop`, is spent inside
+  `Options.Poll.Timeout`; a grace as long as the timeout ended `Stop`
+  without ending the task. `New` now refuses a `StopGrace` you set that
+  is not shorter than the timeout, when `RequestStop` is set, and a
+  default grace is the shorter of 10 s and half the timeout.
+- **A failed stop leaves the task enabled.** `Stop` disables the task
+  before it ends the program; a `Stop` that then failed with the program
+  still running left the task disabled, so its triggers no longer
+  started the program. It now enables the task again before it returns.
+- **`selfupdatetest.FakeSource`** wraps `selfupdate.ErrNoRelease` for a
+  missing release, as `GitHubSource` does, so a test takes the same
+  `ErrNoRelease` and `CheckNoRelease` paths as a real run. Its messages
+  keep their text, with `: selfupdate: no such release` after it.
+- **`install.ps1`'s hooks and identity check** get the `NUL` device as
+  their standard input, as `install.sh`'s get `/dev/null`, so they cannot
+  read what the user types; and Windows PowerShell 5.1 no longer loses a
+  hook's exit code when the hook exits at once. The installers ship with
+  the workflows: move your workflow pins to `v1.15.2` to take it.
+- **Documentation:** a second pass checked the guides, `go doc` and the
+  records against the code and fixed 91 findings, and each service
+  backend, `buildinfo` and `selfupdatetest` gained an `Example`.
+
+Adopting it:
+
+- **If `taskscheduler.New` now fails** naming `Options.StopGrace`, set a
+  grace shorter than `Options.Poll.Timeout`: it could never be waited out.
+- **A test that compared `FakeSource`'s error text** for a missing release
+  should test `errors.Is(err, selfupdate.ErrNoRelease)` instead.
+
 ### Check
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
-- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.1`.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.2`.

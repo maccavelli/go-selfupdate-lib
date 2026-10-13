@@ -967,3 +967,56 @@ and a stub `newUpdater`: `go build` for linux, darwin and windows
 **Checks.** `scripts/check-docs.sh --links` `15 links in 1 files, 0
 broken`; `--ids` `0 findings`; markdownlint `0 issues`. `make gate` runs
 before the push (Deviation D2).
+
+### W9 (2026-10-12)
+
+The owner committed W8 as `26f6ea3`, and said "committed, proceed".
+
+**Files.** Changed: `docs/guides/migrating-from-mcplib-selfupdate.md`,
+`docs/guides/building-releases.md`.
+
+**The migration guide:**
+
+* **The current version is `v1.15.2`:** its eleven `go get` lines, its
+  nine checks, §2's "current release" and §5's `go.mod` line; §2 names
+  `v1.15.2` and its section. The pinned workflow commits and §3's
+  `refs/tags/v1.15.1^{}` stay until the tag exists, for W10's pin commit.
+* **"From v1.15.1 to v1.15.2"**, after §15's `v1.15.1` part: the Task
+  Scheduler grace and failed-stop fixes (W1), `FakeSource` and
+  `ErrNoRelease` (W2), `install.ps1`'s `NUL` input and Windows PowerShell
+  5.1's exit codes (W3, Deviations D3 to D5), the documentation pass and
+  the Examples, and what to adopt. It cites this record.
+* **D1:** build and test with Go 1.27.2, with the go-core-lib rename
+  noted. **D3:** §5 points at §6 to §15 and schema 4; §6's and §11's
+  schema lines say the current release writes 4. **D4:** 0004-MADR is
+  linked for owner decision 1 and for C3 and C4. **D5:** a "From v1.5.0
+  to v1.5.1" section from 0010-MADR §2 (C4, B4, A2, A10, A8). **O2:** the
+  loopback rule. **D2:** §10's installer line dates `install.ps1`'s empty
+  input to `v1.15.2`.
+
+**The building guide:**
+
+* **D2:** the identity check and the hooks: `install.ps1` gives them `NUL`
+  since `v1.15.2`.
+* **D6:** the arm64 runners are announced for public repositories; a
+  private repository's arm64 identity jobs may find no runner.
+* **D7:** the module must require this library; two §9 rows, with
+  `floor.go`'s and `stage.go`'s exact messages.
+* **D8:** an extra's `path` is relative to the repository root and must
+  be committed; the example extra is a committed `NOTICE`, and a
+  generated SBOM goes through the extras artifact.
+* **D9:** the `-tools` artifact, kept 1 day, and the re-run windows.
+* **D10, D11:** the rehearsal stamp's 12 hex; setup-go's cache.
+* **D12:** `.old-<guid>` beside `.bad-<guid>`, and that uninstall leaves
+  both.
+* **D13:** the spec's limits (`validate.go`, `installer.go`,
+  `releasespec.MaxSize`) and the jobs' timeouts (30 and 10 minutes).
+
+**The spec example checked (Rules):** §1's JSON block, verbatim,
+embedded in a scratch program outside the repository: `releasespec.Parse`
+accepts it, and `ExtraNames("v1.2.3")` gives `relay-v1.2.3.notice.txt`,
+`install.sh` and `install.ps1`.
+
+**Checks.** `scripts/check-docs.sh --links` `56 links in 2 files, 0
+broken`; `--ids` `0 findings`; markdownlint `0 issues`. `make gate` runs
+before the push (Deviation D2).

@@ -45,7 +45,7 @@ cannot live at the repository root unless that package does.
   ],
   "packaging": "binary",
   "extras": [
-    {"name": "relay-{tag}.spdx.json", "path": "dist/sbom.spdx.json"}
+    {"name": "relay-{tag}.notice.txt", "path": "NOTICE"}
   ],
   "prerelease_channels": ["rc", "beta"],
   "installer": {}
@@ -61,14 +61,22 @@ cannot live at the repository root unless that package does.
   `<product>-<os>-<arch>[.exe]`; `archive` ships archives (step 7). Under
   `archive`, each archive's name must be at most 128 characters, and a
   tar.gz program's name at most 100.
-- **`extras`:** further assets, such as an SBOM. `{tag}` in a name is
-  replaced by the release tag. With `path`, the file comes from your
-  repository; without it, from an artifact you upload (step 6).
+- **`extras`:** further assets, such as a notice or an SBOM. `{tag}` in a
+  name is replaced by the release tag. With `path`, the file comes from
+  your repository: the path is relative to the repository root, and the
+  file must be committed at the tagged commit, since the workflow runs
+  none of your steps before it stages. A generated file, such as an SBOM,
+  comes without `path`, from an artifact you upload (step 6).
 - **`prerelease_channels`:** the channels the publish workflow may release
   `vX.Y.Z-NAME.N` tags for, most stable first; see
   [Offer a beta channel](extending-selfupdate.md#offer-a-beta-channel).
 - **`installer`:** present, even empty, it adds `install.sh` and
   `install.ps1` to every release; see step 12.
+
+**Limits:** 1 to 16 products and 1 to 32 platforms; at most 32 extras;
+at most 16 `tags` and 16 `identity_args` for a product; at most 8 hooks,
+each with 1 to 16 arguments; and a spec of at most 64 KiB
+(`releasespec.MaxSize`).
 
 Unknown fields, a misspelled key, a duplicate key and `null` are errors,
 so a typo fails loudly: leave a field out rather than set it to `null`. `releasespec.Parse`'s errors name the field, such as
@@ -145,7 +153,12 @@ as the first line, and an exit status of 0. The run's environment holds
 or a configuration file fails there, with its output in the error.
 A product without `identity_args` is built and checked without being run,
 and the job summary says so. The installers run the same command after an
-install, with no standard input.
+install, with no standard input (`install.ps1` since `v1.15.2`).
+
+The linux/arm64 and windows/arm64 runners, `ubuntu-24.04-arm` and
+`windows-11-arm`, were announced for public repositories. In a private
+repository that ships those platforms with `identity_args`, their identity
+jobs may find no runner, and wait.
 
 ## 4. Call the workflows
 
@@ -188,8 +201,9 @@ jobs:
   raise its token beyond what the calling workflow grants, so grant at
   least that.
 - **`module-dir`** names the Go module when it is not the repository root.
-  The Go version is that module's `toolchain` line, or its `go` line
-  when it has none (`setup-go`'s `go-version-file`). Since `v1.11.0` the plan
+  That module must require this library, whose `releasespec` reads the
+  spec. The Go version is its `toolchain` line, or its `go` line when it
+  has none (`setup-go`'s `go-version-file`). Since `v1.11.0` the plan
   step also checks that module's requirement of this library: a spec
   that uses a field an older release refuses, such as `installer`
   (`v1.10.0`), needs a module that requires a release that reads it. A
@@ -200,7 +214,13 @@ jobs:
   `selfupdate-rehearsal-<first 12 hex of the commit>-<attempt>` in a
   rehearsal.
 - **`retention-days`** keeps the staged artifact that many days, 7 by
-  default.
+  default. The build job also uploads `<artifact-name>-tools`, the built
+  release tool the identity jobs use, kept for 1 day: re-run failed
+  identity jobs within a day, and a cancelled publish within the staged
+  artifact's retention. Do not upload an artifact of your own with that
+  name.
+- **The jobs' limits:** the build job times out after 30 minutes, and
+  each identity job after 10.
 - **Its outputs** are `artifact-name`; `tag`, empty in a rehearsal;
   `rehearsal`, `'true'` or `'false'`; and the four publish inputs.
 - **One publish at a time:** the publish job runs in the concurrency group
@@ -237,7 +257,8 @@ jobs:
 
 On any ref that is not a tag (a branch push, a pull request), the build
 workflow runs the same recipe and every check, stamped
-`rehearsal-<commit> (local)` instead of as a release, and the `release` job
+`rehearsal-<first 12 hex of the commit> (local)` instead of as a release,
+and the `release` job
 is skipped. The release recipe is then tried on every change, not first on
 the tag. A rehearsal never produces a release-stamped binary.
 
@@ -310,8 +331,8 @@ CGO_ENABLED=0 GOOS=<os> GOARCH=<arch> GOFLAGS=-mod=readonly GOTOOLCHAIN=local GO
   `GOAMD64` or `GOARM64` level, no environment. Build tags are the one
   per-product choice. With cgo off, `netgo`, `osusergo` and
   `-extldflags -static` change nothing.
-- **The Go cache is off,** so a release build restores nothing another
-  ref wrote.
+- **setup-go's cache is off,** so a release build restores nothing
+  another ref wrote.
 - **Each binary is then checked** from its own build information: the
   platform, the tags, cgo off, `-trimpath`, the commit, a clean tree, the
   toolchain, the module and package, and, for a module at the repository
@@ -339,6 +360,8 @@ CGO_ENABLED=0 GOOS=<os> GOARCH=<arch> GOFLAGS=-mod=readonly GOTOOLCHAIN=local GO
 | `releasespec: installer.env_prefix: the prefix made from …; set installer.env_prefix` | the repository's name makes no valid variable prefix, such as one that starts with a digit |
 | `releasespec: "…": null is not allowed; leave the field out` | a field set to `null`, which the spec does not read as absent |
 | `module … requires go-selfupdate-lib …; this spec's "installer" needs v1.10.0 or later …` | your program's `go.mod` requires a release that cannot parse the spec it embeds; move it to the version the workflow is pinned to |
+| `module … does not require github.com/maccavelli/go-selfupdate-lib, whose releasespec reads the spec` | the module `module-dir` names does not require this library; add it |
+| `extra … has no path, and no extras directory was given` | an extra without `path`, and no `extras-artifact-name`; give one or the other (step 6) |
 
 ## 10. Verify an attestation
 
@@ -440,7 +463,8 @@ is no race and no rate limit.
   put back, and a new binary with no earlier copy is removed. On Windows,
   one that the identity check's process still holds after 2 s is renamed
   `<product>.exe.bad-<guid>`, so it never keeps its name (since
-  `v1.12.1`).
+  `v1.12.1`). A `.prev` that a running program still holds is renamed
+  `<product>.exe.old-<guid>` in the same way.
 - **PATH:** advice on Unix. On Windows the user PATH is updated, editing
   the registry value so `%VAR%` entries and its type are kept.
 
@@ -456,7 +480,7 @@ is no race and no rate limit.
 | | `-NoPathUpdate` | `<PREFIX>_NO_PATH_UPDATE=1` | print PATH advice instead of updating it |
 | `--allow-root` | | | allow running as root |
 | `--dry-run` | `-DryRun` | | print what would be downloaded and where it would go, and change nothing |
-| `--uninstall` | `-Uninstall` | | remove the binaries and `.prev` files, and on Windows the folder's PATH entry with the last program; configuration is left |
+| `--uninstall` | `-Uninstall` | | remove the binaries and `.prev` files, and on Windows the folder's PATH entry with the last program; configuration is left, and so are Windows' `.old-` and `.bad-` files |
 
 `irm … | iex` cannot pass options: use the variables, or the scriptblock
 form. A switch takes no value: `-DryRun`, not `-DryRun:$true`, which is
@@ -476,6 +500,8 @@ refused.
   `installer` present, so do `identity_args`. A step that needs more
   belongs in a subcommand of your program.
 - They run with no standard input, and only a regular file is run.
+  `install.ps1` gives them the `NUL` device since `v1.15.2`; before, they
+  shared the console's input.
 - Their output is shown; `--no-hooks` skips them.
 
 ### Exit codes
