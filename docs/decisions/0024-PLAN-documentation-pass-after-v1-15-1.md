@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 date: 2026-10-12
 associated-madr: "0024-MADR-documentation-pass-after-v1-15-1.md"
 ---
@@ -1077,3 +1077,66 @@ with `v1.15.1`.
   were checked against the code and 91 findings fixed; Examples were
   added for `buildinfo`, `selfupdatetest` and each service backend; Go
   comments' record citations follow AGENTS.md's new rule.
+
+### W11: Verification, at closing (2026-10-12)
+
+The owner committed the pin commit as `f774c5c`, pushed it, and said
+"tagged, ci green, committed, proceed". CI run `38331026979`, on `f774c5c`: 17 of 17 jobs `success`.
+
+* **V1 (findings): met.** All 91 are closed: A1 to A10 in W6, B1 to B19
+  in W7, C1 to C19 in W8, D1 to D13 and O2 in W9, E1 to E25 with O1 and
+  O3 to O5 in W4 and W5; C1, C2, D2 and E14 also by code (W1 to W3). E21
+  is closed as D2-A decides: the citations a reader cannot resolve were
+  changed, and the rest are allowed by AGENTS.md's new rule.
+* **V2 (defects): met.** C1's and C2's tests failed on their plants and
+  pass; the Task Scheduler live suite passed on the Windows test host
+  (W1). E14's test failed on both plants and passes (W2). D2's test failed
+  on `install.ps1` as it was, and on each later fix's predecessor where
+  the host could reproduce it (W3, Deviations D3 and D4), and passes in
+  both PowerShell editions on the Windows test host and on CI; Deviation
+  D5's start race could not be reproduced on the host, so CI is its
+  evidence (below).
+* **V3 (citations): met.** W4's search finds none of the kinds D2-A
+  changes; AGENTS.md's "Records" states the rule.
+* **V4 (Examples): met.** Every Example passes `go test -run '^Example'`,
+  and `buildinfo`, `selfupdatetest` and the four backends each have one
+  (W5).
+* **V5 (checks): met.** Links, identifiers, the architecture table and
+  markdownlint were clean at each phase; `make gate` ended `overall=0`
+  before each push (Deviation D2), the last at W9; `apicheck` stayed
+  compatible with `v1.15.1`.
+* **V6 (release): met.** `v1.15.2` is an annotated tag on `436a7f5`; its
+  CI passed 17 of 17 jobs with ten identity legs; the proxy serves it and
+  `@latest` resolves to it (W10).
+
+### Closing (2026-10-12)
+
+W0 to W11 are recorded above, and V1 to V6 are met. This plan is
+`complete`, here and in the index; the MADR stays `accepted`, with D1-A
+to D4-A and Amendments A1 to A3.
+
+**What the pass changed beyond documents:** two Task Scheduler fixes, a
+test double that matches the real source, and an installer whose hooks
+cannot read the console, each released in `v1.15.2`. The installer fix
+took three attempts (Deviations D3 to D5): each failure was found by CI's
+Windows PowerShell 5.1 and not by the Windows test host, whose console
+encoding and speed differed.
+
+**Open at closing:**
+
+* **Deviation D5's start race** in Windows PowerShell 5.1's
+  `Start-Process` is inferred from PowerShell's source and CI's one
+  failure; 800 tries on the Windows test host did not reproduce it. Every
+  CI run since `8024c9b` has passed.
+* **Why CI's Windows console input is UTF-8** is [derived] from the
+  failures; the runner's setting was not read.
+* **Not tested:** a hook that starts a long-lived program, and Ctrl+C
+  during a hook (`Invoke-NoInput` waits for the hook alone, and polls).
+* **`make gate`** still leaves markdownlint and actionlint to be run by
+  hand; AGENTS.md says so.
+* **From 0021, unchanged:** where `026faaa` saw `0x8004130B`, and why a
+  GitHub runner runs a least-privilege task at high integrity.
+* **This pass's own footprint outside the repository:** one audit
+  installed `apidiff` into the Go bin directory (MADR, Context); twice a
+  load probe on the Windows test host left its busy loops running, and
+  each time a check found and stopped all of them (Deviation D5).
