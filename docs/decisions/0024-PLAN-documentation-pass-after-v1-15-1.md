@@ -1020,3 +1020,60 @@ accepts it, and `ExtraNames("v1.2.3")` gives `relay-v1.2.3.notice.txt`,
 **Checks.** `scripts/check-docs.sh --links` `56 links in 2 files, 0
 broken`; `--ids` `0 findings`; markdownlint `0 issues`. `make gate` runs
 before the push (Deviation D2).
+
+After W9's record, `make gate` on this Mac, load average 3.24 before and
+56.15 after: every step `rc=0`, `apicheck` `compatible with v1.15.1`,
+`links` `531 links in 69 files, 0 broken`, `overall=0`. The disclosure
+guard passed on `667f41a` and `26f6ea3`.
+
+### W10, `v1.15.2` (2026-10-12)
+
+The owner committed W9 as `436a7f5`, pushed it, created the tag and
+pushed it, and said "tag pushed ci running".
+
+1. **CI on `main`** at `436a7f5`: run `38328935226`, `success`.
+2. **The tag:** `v1.15.2` is an annotated tag object (`b4d9884`) on
+   `436a7f5976a6815491c7384527fef90869574a1b`; `git ls-remote …
+   'refs/tags/v1.15.2^{}'` gives that commit.
+3. **The tag's CI:** run `38329947405`, 17 of 17 jobs `success`, among
+   them both release rehearsals' ten identity legs (relay on linux/amd64,
+   linux/arm64, darwin/arm64, windows/amd64 and windows/arm64, raw and
+   archive).
+4. **The pin commit** (uncommitted, for the owner): README.md's current
+   release, `go get` line and publish pin; `docs/architecture.md`'s
+   current release and commit; `building-releases.md`'s "pin `v1.15.2`'s",
+   three workflow pins and the peeled ref; the migration guide's publish
+   pin, "`v1.11.0` to `v1.15.2` change nothing in it", "the example pins
+   `v1.15.2`" and the peeled ref. Kept, since they say what `v1.15.1`
+   itself changed: `extending-selfupdate.md:521`, and the migration
+   guide's lines 50 to 53, 1099, 1101, 1118 and 1121. Links, identifiers
+   and markdownlint on the four files: clean.
+5. **The proxy:** `go list -m -json …@v1.15.2` from
+   `proxy.golang.org` gives `v1.15.2`, origin hash `436a7f5…`; `@latest`
+   resolves to `v1.15.2`.
+
+### Release notes for v1.15.2 (2026-10-12)
+
+`v1.15.2` changes no exported API: `make apicheck` reports it compatible
+with `v1.15.1`.
+
+* **Task Scheduler's stop grace:** `taskscheduler.New` refuses an
+  `Options.StopGrace` the program set that is not shorter than the
+  effective `Options.Poll.Timeout`, when `Options.RequestStop` is set; a
+  default grace is the shorter of 10 s and half the timeout. A grace as
+  long as the timeout used to end `Stop` without ending the task.
+* **A failed Task Scheduler stop leaves the task enabled:** a `Stop` that
+  fails after it disabled the task, with the program still running,
+  enables the task again before it returns.
+* **`selfupdatetest.FakeSource`** wraps `selfupdate.ErrNoRelease` for a
+  missing release, as `GitHubSource` does.
+* **`install.ps1`:** hooks and the identity check get the `NUL` device as
+  their standard input, through `CreateProcess` from a small compiled
+  helper, so they cannot read the user's console, whatever either
+  PowerShell's encodings are; and Windows PowerShell 5.1 no longer loses a
+  hook's exit code when the hook exits at once. Callers take it by moving
+  their workflow pins to `v1.15.2`.
+* **Documentation:** the guides, `go doc`, the records index and AGENTS.md
+  were checked against the code and 91 findings fixed; Examples were
+  added for `buildinfo`, `selfupdatetest` and each service backend; Go
+  comments' record citations follow AGENTS.md's new rule.

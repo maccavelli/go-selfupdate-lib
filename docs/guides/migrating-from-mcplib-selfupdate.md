@@ -102,7 +102,7 @@ In the job that publishes your release, change the `uses:` line and delete
 
 ```diff
 -    uses: maccavelli/mcplib/.github/workflows/publish-selfupdate-release.yml@<mcplib SHA> # mcplib v1.x.y
-+    uses: maccavelli/go-selfupdate-lib/.github/workflows/publish-selfupdate-release.yml@fa74db4b292baaa14df6e057886102cc712bbeeb # v1.15.1
++    uses: maccavelli/go-selfupdate-lib/.github/workflows/publish-selfupdate-release.yml@436a7f5976a6815491c7384527fef90869574a1b # v1.15.2
      with:
        artifact-name: …
        products-json: …
@@ -120,9 +120,9 @@ In the job that publishes your release, change the `uses:` line and delete
   current call passes. `v1.10.0` reads each tar.gz and gz asset to its
   end before publishing, and changes nothing a call passes either.
   `v1.10.1` runs one publish at a time per repository and names the
-  immutable releases setting on a timeout. `v1.11.0` to `v1.15.1` change
+  immutable releases setting on a timeout. `v1.11.0` to `v1.15.2` change
   nothing in it, though from `v1.11.1` its release tools build with Go
-  1.27.2, `go.mod`'s `toolchain` line; the example pins `v1.15.1`. Its
+  1.27.2, `go.mod`'s `toolchain` line; the example pins `v1.15.2`. Its
   check of a release of archives runs the pinned commit's own unpacker,
   though, which `v1.11.0` and `v1.11.1` tighten
   ([11](#11-from-v110-to-v111), [its `v1.11.1` part](#from-v1110-to-v1111)):
@@ -130,7 +130,7 @@ In the job that publishes your release, change the `uses:` line and delete
   later one.
   Tags are annotated, so the tag ref names a tag object, not the commit
   `uses:` needs. Resolve the commit with the peeled ref:
-  `git ls-remote https://github.com/maccavelli/go-selfupdate-lib 'refs/tags/v1.15.1^{}'`.
+  `git ls-remote https://github.com/maccavelli/go-selfupdate-lib 'refs/tags/v1.15.2^{}'`.
 - **`bridge-release` must go,** even when it is `false`. The workflow no
   longer declares it, and GitHub rejects an input the called workflow does
   not define. It only ever permitted `magic-cli-remote` `v0.16.0`, which is

@@ -23,7 +23,7 @@ The pieces:
   12).
 
 Both workflows are pinned to the same commit of this repository; the
-examples below pin `v1.15.1`'s.
+examples below pin `v1.15.2`'s.
 
 ## 1. Write the spec
 
@@ -174,7 +174,7 @@ permissions:
 
 jobs:
   build:
-    uses: maccavelli/go-selfupdate-lib/.github/workflows/build-selfupdate-release.yml@fa74db4b292baaa14df6e057886102cc712bbeeb # v1.15.1
+    uses: maccavelli/go-selfupdate-lib/.github/workflows/build-selfupdate-release.yml@436a7f5976a6815491c7384527fef90869574a1b # v1.15.2
     with:
       spec-path: internal/updateclient/selfupdate-release.json
 
@@ -185,7 +185,7 @@ jobs:
       contents: write
       id-token: write
       attestations: write
-    uses: maccavelli/go-selfupdate-lib/.github/workflows/publish-selfupdate-release.yml@fa74db4b292baaa14df6e057886102cc712bbeeb # v1.15.1
+    uses: maccavelli/go-selfupdate-lib/.github/workflows/publish-selfupdate-release.yml@436a7f5976a6815491c7384527fef90869574a1b # v1.15.2
     with:
       artifact-name: ${{ needs.build.outputs.artifact-name }}
       products-json: ${{ needs.build.outputs.products-json }}
@@ -196,7 +196,7 @@ jobs:
 
 - **Pin both to the full commit SHA of a release tag,** as the publish
   workflow has always required. Tags are annotated; resolve the commit with
-  `git ls-remote https://github.com/maccavelli/go-selfupdate-lib 'refs/tags/v1.15.1^{}'`.
+  `git ls-remote https://github.com/maccavelli/go-selfupdate-lib 'refs/tags/v1.15.2^{}'`.
 - **The build job needs only `contents: read`.** A called workflow cannot
   raise its token beyond what the calling workflow grants, so grant at
   least that.
@@ -279,7 +279,7 @@ in its own job, and name the artifact:
 
   build:
     needs: apk
-    uses: maccavelli/go-selfupdate-lib/.github/workflows/build-selfupdate-release.yml@fa74db4b292baaa14df6e057886102cc712bbeeb # v1.15.1
+    uses: maccavelli/go-selfupdate-lib/.github/workflows/build-selfupdate-release.yml@436a7f5976a6815491c7384527fef90869574a1b # v1.15.2
     with:
       spec-path: internal/updateclient/selfupdate-release.json
       extras-artifact-name: extras
