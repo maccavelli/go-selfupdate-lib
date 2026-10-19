@@ -11,9 +11,11 @@
 # Every file is fetched from this release's tag over HTTPS and checked
 # against its SHA256SUMS before anything is installed. It never uses sudo.
 #
-# Exit codes: 0 installed; 1 a usage or environment error; 2 a
-# verification failure, with nothing changed or the previous binary
-# restored; 3 installed, but an after_install hook failed.
+# Exit codes: 0 installed or removed; 1 a usage or environment error, or a
+# failed before_install or before_uninstall hook, with nothing changed; 2
+# a verification failure, with nothing changed or the previous binary
+# restored; 3 installed, but an after_install hook failed, or removed with
+# --force, but a before_uninstall hook failed.
 
 # >>> selfupdate-release values
 # The build workflow replaces this block with the release's values; the
@@ -60,10 +62,11 @@ Usage: install.sh [options]
   --dir DIR              install into DIR (default ~/.local/bin)
   --product NAME         install only NAME; repeatable (default: all)
   --verify-attestation   also verify each download's attestation with gh
-  --no-hooks             skip the release's install hooks
+  --no-hooks             skip the release's hooks
   --allow-root           allow running as root
   --dry-run              show what would be done, and change nothing
   --uninstall            remove the programs (configuration is left)
+  --force                with --uninstall: remove even when a before_uninstall hook fails
   --help                 show this help
 
 Environment: ${ENV_PREFIX}_VERSION, ${ENV_PREFIX}_INSTALL_DIR, ${ENV_PREFIX}_NO_HOOKS=1
@@ -199,8 +202,11 @@ supported() {
 	printf '%s\n' "$ASSETS" | awk '{ print $2 "/" $3 }' | sort -u | tr '\n' ' '
 }
 
-# run_hooks WHEN DIR: run each hook of that time. before_install runs the
-# installed copy, and skips a product not installed yet.
+# run_hooks WHEN DIR: run each hook of that time. A hook runs the copy in
+# DIR, and skips a product not installed there. The first failure stops a
+# before_* time, but --force runs every before_uninstall hook. Under
+# --dry-run a hook is shown, not run
+# (docs/decisions/0026-MADR-before-uninstall-installer-hook.md).
 run_hooks() {
 	[ "$NO_HOOKS" = 1 ] && return 0
 	[ -n "$HOOKS" ] || return 0
@@ -216,13 +222,20 @@ run_hooks() {
 		if [ ! -f "$exe" ] || [ ! -x "$exe" ]; then
 			continue
 		fi
+		if [ "$DRY_RUN" = 1 ]; then
+			say "would run $prod $args"
+			continue
+		fi
 		say "running $prod $args"
 		# shellcheck disable=SC2086 # args is a word list on purpose.
 		# Not the list's file as stdin, which the hook could read up.
 		if ! "$exe" $args </dev/null; then
 			err "$1 hook failed: $prod $args"
 			hooks_failed=1
-			[ "$1" = before_install ] && break
+			case $1 in
+			before_uninstall) [ "$FORCE" = 1 ] || break ;;
+			before_*) break ;;
+			esac
 		fi
 	done <"$WORK/hooks"
 	set +f
@@ -286,7 +299,22 @@ cleanup() {
 	fi
 }
 
+# uninstall: run the before_uninstall hooks, then remove the programs. A
+# failed hook removes nothing; with --force everything is removed, and the
+# exit code is 3. The hook list goes in a work directory of its own: the
+# install directory may be about to lose its programs.
 uninstall() {
+	uninstall_failed=0
+	if [ "$NO_HOOKS" != 1 ] && [ -n "$HOOKS" ]; then
+		trap cleanup EXIT
+		trap 'cleanup; exit 130' INT
+		trap 'cleanup; exit 143' TERM
+		WORK=$(mktemp -d "${TMPDIR:-/tmp}/.$INSTALLER_NAME-uninstall.XXXXXX")
+		if ! run_hooks before_uninstall "$DIR"; then
+			[ "$FORCE" = 1 ] || die 1 "a before_uninstall hook failed; nothing was removed"
+			uninstall_failed=1
+		fi
+	fi
 	for prod in $SELECTED; do
 		if [ "$DRY_RUN" = 1 ]; then
 			say "would remove $DIR/$prod"
@@ -296,6 +324,10 @@ uninstall() {
 		say "removed $DIR/$prod"
 	done
 	say "configuration, if any, is left in place"
+	if [ "$uninstall_failed" = 1 ]; then
+		err "removed, but a before_uninstall hook failed"
+		exit 3
+	fi
 }
 
 # fetch_verified NAME FILE: find NAME in SHA256SUMS, download it to FILE
@@ -348,6 +380,7 @@ main() {
 	ALLOW_ROOT=0
 	DRY_RUN=0
 	UNINSTALL=0
+	FORCE=0
 	WORK=''
 	SWAPPED=''
 	PREVIOUS=''
@@ -368,10 +401,14 @@ main() {
 		--allow-root) ALLOW_ROOT=1; shift ;;
 		--dry-run) DRY_RUN=1; shift ;;
 		--uninstall) UNINSTALL=1; shift ;;
+		--force) FORCE=1; shift ;;
 		-h | --help) usage; exit 0 ;;
 		*) usage >&2; die 1 "unknown option $1" ;;
 		esac
 	done
+	if [ "$FORCE" = 1 ] && [ "$UNINSTALL" != 1 ]; then
+		die 1 "--force applies only to --uninstall"
+	fi
 	[ -n "$VERSION" ] || VERSION=$(env_get VERSION)
 	[ -n "$VERSION" ] || VERSION=$TAG
 	case $VERSION in v*) ;; *) VERSION="v$VERSION" ;; esac

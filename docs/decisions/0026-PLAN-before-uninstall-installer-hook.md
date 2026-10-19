@@ -297,3 +297,75 @@ Decision Outcome, and U2, U3 and U4 carry it. The MADR became
    * `pre-add-check` 4 files clean;
    * `make apicheck` compatible with `v1.16.0`;
    * links, markdownlint, ids and arch clean.
+
+### U2 (2026-10-19)
+
+1. **`install.sh`:**
+   * `run_hooks` (`:205-243`): under `--dry-run`, a hook that would run prints
+     `would run <product> <args>` and is not run. A failure stops a
+     `before_*` time, except `before_uninstall` under `--force` (`:235-238`).
+   * `uninstall()` (`:302-331`): when hooks are not skipped and the release
+     has any, it sets the `cleanup` traps and makes its work directory under
+     `${TMPDIR:-/tmp}` (`:312`). It then runs the `before_uninstall` hooks.
+     Without `--force`, a failure ends the uninstall: exit 1, "a
+     before_uninstall hook failed; nothing was removed". With `--force`, the
+     binaries are removed and the exit is 3, "removed, but a
+     before_uninstall hook failed".
+   * `main`: `FORCE=0`, and `--force` parses. Without `--uninstall` it is
+     refused: exit 1, "--force applies only to --uninstall" (`:409-411`).
+   * **Text:**
+     * the usage line `--no-hooks` reads "skip the release's hooks";
+     * a `--force` line is added;
+     * the header's exit codes name both `before_*` failures under 1, and
+       `--force`'s removal under 3. The old header left out the
+       `before_install` failure's exit 1.
+2. **The fixture:** `installSpecJSON` gains `{"when": "before_uninstall",
+   "product": "relay", "args": ["hook-uninstall"]}`.
+   * **A correction to step 4:** the fixture program does not record
+     `hook-before`. Its `main` prints `relay` and exits 0 for any argument it
+     does not know, and the stand-ins (`standIn`) do the recording. So
+     `hook-uninstall` needs no change to the program, just as `hook-before`
+     needed none. The existing "--uninstall" case runs that hook through the
+     real `relay` and still passes.
+3. **Tests:** `installer_sh_test.go` (`:409-494`) gains step 5's eight cases.
+   They run under `sh`, `bash` and `dash` on this host, and all 24 pass:
+   * "before_uninstall runs the installed copy before removal": the
+     stand-in logs only when it finds itself on disk, so its log line shows
+     that it ran before `relay` was removed. `relay`, `relay.prev` and
+     `relayctl` are all removed.
+   * "a failed before_uninstall removes nothing";
+   * "before_uninstall skips a product not installed";
+   * "--no-hooks and RELAY_NO_HOOKS skip before_uninstall";
+   * "--uninstall --dry-run shows the hook and runs nothing";
+   * "--uninstall --product runs only that product's hooks";
+   * "--force removes past a failed before_uninstall and exits 3": a second
+     hook, on `relayctl`, is added with `renderWith`; both hooks run.
+   * "--force needs --uninstall".
+4. **Seen failing:**
+   * Step 6 named three plants. Nine were run, one or more for each case,
+     each on a `scripts/plant-copy.sh` copy of `install.sh` under `dash`.
+   * The session's `plant/u2.py` made the copies and ran them; the tree
+     was not touched.
+   * The table quotes each plant's first failure, with the temporary paths
+     elided.
+
+   | Plant | Failure |
+   | :--- | :--- |
+   | `uninstall()` without the hook call | `installer_sh_test.go:416: the output lacks "running relay hook-uninstall"`; the failure, `--dry-run` and `--force` cases fail too |
+   | `[ "$FORCE" = 1 ] \|\| die 1 …` replaced by `:` | `installer_sh_test.go:428: exit 3, want 1` |
+   | `run_hooks` without the installed-copy check | `installer_sh_test.go:434: exit 1, want 0` (`…/relay: not found`), and twelve install cases |
+   | `--no-hooks` not setting `NO_HOOKS` | `installer_sh_test.go:443: exit 1, want 0` |
+   | `<PREFIX>_NO_HOOKS` not read | `installer_sh_test.go:447: exit 1, want 0` |
+   | the dry-run branch removed | `installer_sh_test.go:457: the output lacks "would run relay hook-uninstall"` |
+   | `run_hooks` without `selected` | `installer_sh_test.go:469: a hook of an unselected product ran` |
+   | `before_uninstall) break ;;` (`--force` still stops) | `installer_sh_test.go:488: hook log "old hook-uninstall\n", want both before_uninstall hooks` |
+   | the `--force` refusal replaced by `:` | `installer_sh_test.go:492: exit 0, want 1` (it installed) |
+
+5. **Checks:**
+   * `go test ./internal/cmd/selfupdate-release/` is `ok`, with
+     `SELFUPDATE_REQUIRE_PYTHON=1`.
+   * `scripts/check-installers.sh …/install.sh` is clean.
+   * `installer_ps_test.go` is `//go:build windows`, so its cases do not
+     build on this host. `Invoke-InstallHook` (`install.ps1:410`) skips a
+     hook whose time is not its own, so the new fixture hook is inert there
+     until U3. U3 runs those cases on the Windows test host.

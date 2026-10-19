@@ -87,6 +87,7 @@ func installSpecJSON(kind string) ([]byte, error) {
 		"installer": map[string]any{"name": "relay", "env_prefix": "RELAY", "hooks": []any{
 			map[string]any{"when": "before_install", "product": "relay", "args": []string{"hook-before"}},
 			map[string]any{"when": "after_install", "product": "relay", "args": []string{"hook-after", "--mark=1"}},
+			map[string]any{"when": "before_uninstall", "product": "relay", "args": []string{"hook-uninstall"}},
 		}},
 	})
 }
