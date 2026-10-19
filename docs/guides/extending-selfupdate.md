@@ -269,10 +269,18 @@ Pointers:
   `Updater` and `cli.Command`
 - `selfupdate/archive/unpack_test.go`: every refusal
 
-## Verify a signature later
+## Verify a release signature
 
-No publisher signature is verified by default. Two hooks run inside the
-update, and both make the run fail with `ErrIntegrity`:
+No publisher signature is verified by default.
+`selfupdate/verify/signednote` is the opt-in check: a `ManifestVerifier`
+that requires `SHA256SUMS.note`, a signed note over the release's
+statement, to open with a key your program embeds, and to name your
+repository, the tag, your product and the exact manifest. The publish
+workflow signs when you ask; [the building guide, step
+13](building-releases.md#13-sign-a-release-opt-in), says how.
+
+Two hooks run inside the update, and both make the run fail with
+`ErrIntegrity`:
 
 - **`Config.ManifestVerifiers`** run on the downloaded `SHA256SUMS`, before
   any binary byte is fetched. A signature over the manifest belongs here. The
@@ -284,12 +292,15 @@ update, and both make the run fail with `ErrIntegrity`:
   Mach-O thin or fat, or PE). With an archive, the unpacker makes that check
   on the program instead.
 
-How signing would be added, and why it is not yet, is in
-[0004-REPORT](../reports/0004-REPORT-release-signing-research.md). To
-check that a release was built by your workflow, see
+The design and its trade-offs are in
+[0004-REPORT](../reports/0004-REPORT-release-signing-research.md); signing
+was built, opt-in, by
+[0025-MADR](../decisions/0025-MADR-align-with-go-sdk-design-practices.md)
+D10. To check that a release was built by your workflow, see
 [Check build provenance](#check-build-provenance).
 
-- `selfupdate/manifestverify_test.go`, `selfupdate/imageverify_test.go`
+- `selfupdate/verify/signednote/signednote_test.go`,
+  `selfupdate/manifestverify_test.go`, `selfupdate/imageverify_test.go`
 
 ## Check build provenance
 

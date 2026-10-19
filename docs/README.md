@@ -83,7 +83,8 @@ name, and the files they cite moved with the rename
 | offer a beta or rc channel | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#offer-a-beta-channel) |
 | read JSON output | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#read-json-output) |
 | plug in a credential | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#plug-in-a-credential) |
-| verify a signature later | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#verify-a-signature-later) |
+| verify a release signature | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#verify-a-release-signature) |
+| sign my releases | [guides/building-releases.md, step 13](guides/building-releases.md#13-sign-a-release-opt-in) |
 | check that a release was built by my workflow | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#check-build-provenance) |
 | probe the new binary | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#probe-the-new-binary) |
 | drive an update from a TUI or event loop | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#drive-an-update-from-a-tui-or-event-loop) |

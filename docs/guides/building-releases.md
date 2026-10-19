@@ -16,8 +16,9 @@ The pieces:
 - **`build-selfupdate-release.yml`,** which builds every product for every
   platform with a fixed recipe, checks each binary, packs, writes
   `SHA256SUMS`, and uploads the staged set. Off a tag it rehearses.
-- **`publish-selfupdate-release.yml`,** unchanged in what it takes, which
-  validates, publishes, attests and waits for the release to be immutable.
+- **`publish-selfupdate-release.yml`,** which validates, publishes,
+  attests and waits for the release to be immutable, and, when you ask,
+  signs `SHA256SUMS` first (step 13).
 - **`install.sh` and `install.ps1`,** which the build workflow renders into
   the release from this repository's templates when the spec asks (step
   12).
@@ -194,6 +195,8 @@ jobs:
       prerelease-channels-json: ${{ needs.build.outputs.prerelease-channels-json }}
 ```
 
+- **Signing is opt-in:** `sign`, `note-verifier-key` and the
+  `SELFUPDATE_NOTE_KEY` secret are left out above; step 13 adds them.
 - **Pin both to the full commit SHA of a release tag,** as the publish
   workflow has always required. Tags are annotated; resolve the commit with
   `git ls-remote https://github.com/maccavelli/go-selfupdate-lib 'refs/tags/v1.15.2^{}'`.
@@ -538,3 +541,76 @@ missing or logged-out `gh` is an error (exit 1), not a skipped check.
 - **Testing a release locally:** `SELFUPDATE_INSTALL_BASE_URL` replaces
   `https://github.com` with another `https://` origin, or a loopback
   `http://127.0.0.1:<port>` or `http://localhost:<port>`, and nothing else.
+
+## 13. Sign a release (opt-in)
+
+The publish workflow can sign `SHA256SUMS` with a release statement,
+`SHA256SUMS.note`, which your program checks with
+`selfupdate/verify/signednote` before it downloads a binary
+([0025-MADR](../decisions/0025-MADR-align-with-go-sdk-design-practices.md)
+D10). Nothing signs until you turn it on, and existing binaries ignore the
+note.
+
+1. **Make the keys on your own machine,** never in CI, from a checkout of
+   this repository at your pinned commit: a CI key, and an offline backup
+   key.
+
+   ```sh
+   go run ./internal/cmd/selfupdate-note keygen -name github.com/<owner>/<repo>/selfupdate -out ci.key
+   go run ./internal/cmd/selfupdate-note keygen -name github.com/<owner>/<repo>/selfupdate-backup -out backup.key
+   ```
+
+   Each prints its verifier key. Keep the signer keys as the research
+   report advises: encrypted, in two places, out of any repository
+   ([0004-REPORT](../reports/0004-REPORT-release-signing-research.md),
+   "Keys, rotation and revocation" and "Where the offline backup key could
+   be kept").
+2. **Create the environment `selfupdate-signing`** in your repository,
+   allowed to deploy from `v*` tags only. Its secret `SELFUPDATE_NOTE_KEY`
+   is the CI signer key, and the repository variable
+   `SELFUPDATE_NOTE_VKEY` holds its verifier key.
+3. **Call the publish workflow with signing,** passing the secret by name.
+   A secret you do not pass is an empty string in the called workflow,
+   and the sign job then fails, so nothing unsigned is published by
+   mistake:
+
+   ```yaml
+     release:
+       # … as in step 4
+       with:
+         # … as in step 4
+         sign: true
+         note-verifier-key: ${{ vars.SELFUPDATE_NOTE_VKEY }}
+       secrets:
+         SELFUPDATE_NOTE_KEY: ${{ secrets.SELFUPDATE_NOTE_KEY }}
+   ```
+
+   The `sign` job runs in that environment, with a read-only token. It
+   checks the staged set, signs the exact `SHA256SUMS` for
+   `github.com/<owner>/<repo>`, the tag and your products, opens its own
+   note with `note-verifier-key`, and hands it to `publish`. `publish`
+   adds it to the release, and attests it with the rest. A failed `sign`
+   publishes nothing.
+4. **Embed the verifier keys** in your program as Go constants, and add
+   the verifier, with `RequiredFrom` at your first signed tag:
+
+   ```go
+   const (
+       ciKey     = "github.com/<owner>/<repo>/selfupdate+<hash>+<key>"
+       backupKey = "github.com/<owner>/<repo>/selfupdate-backup+<hash>+<key>"
+   )
+
+   v, err := signednote.New(signednote.Config{
+       Repository:   "github.com/<owner>/<repo>",
+       Keys:         []string{ciKey, backupKey},
+       RequiredFrom: "v1.4.0",
+   })
+   // Config.ManifestVerifiers: []selfupdate.ManifestVerifier{v}
+   ```
+
+   Not with `-ldflags -X`: a build without the flag would trust no key.
+   An older, unsigned release still installs with an exact `--version`.
+
+To rotate, sign with the old and the new key, release a version that
+trusts both, then sign with the new key alone (0004-REPORT, "Planned
+rotation").

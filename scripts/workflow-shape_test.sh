@@ -10,7 +10,14 @@
 #   - the two archive-check steps come after it and before "Create a draft
 #     release", are guarded by exactly steps.verify.outputs.packed == 'true',
 #     and neither has continue-on-error, so a refused archive stops the job
-#     before anything is published.
+#     before anything is published;
+#   - signing is opt-in: the sign input is a boolean, default false; the
+#     secret is declared, not required, and read only by the sign job,
+#     which has the environment selfupdate-signing, a read-only token, and
+#     no continue-on-error; publish needs sign, runs after a successful or
+#     a skipped sign only, and adds the note after the archive check and
+#     before the draft
+#     (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D10).
 #
 # build-selfupdate-release.yml:
 #   - the token is contents: read only, at the top and in no job;
@@ -94,6 +101,42 @@ group = load(sys.argv[1])["jobs"]["publish"].get("concurrency", {})
 check(group.get("group") == "go-selfupdate-lib-publish-${{ github.repository }}"
       and group.get("cancel-in-progress") is False,
       "one publish runs at a time per repository, none cancelled")
+
+# docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D10: the
+# opt-in sign job. PyYAML reads the key on as True.
+wf = load(sys.argv[1])
+call = (wf.get("on") or wf.get(True) or {}).get("workflow_call", {})
+inputs = call.get("inputs", {})
+check(inputs.get("sign", {}).get("type") == "boolean" and inputs.get("sign", {}).get("default") is False,
+      "the sign input is a boolean, default false")
+check(inputs.get("note-verifier-key", {}).get("type") == "string" and inputs.get("note-verifier-key", {}).get("default") == "",
+      "the note-verifier-key input is a string, default empty")
+check(call.get("secrets", {}).get("SELFUPDATE_NOTE_KEY", {}).get("required") is False,
+      "the signer key is a declared secret, not required")
+sign_job = wf["jobs"].get("sign", {})
+check(sign_job.get("if") == "inputs.sign", "the sign job runs only when sign is true")
+check(sign_job.get("environment") == "selfupdate-signing", "the sign job has the environment selfupdate-signing")
+check(sign_job.get("permissions") == {"contents": "read"}, "the sign job's token is contents: read")
+sign_steps = sign_job.get("steps", [])
+signer = sign_steps[index(sign_steps, "Sign the manifest")] if index(sign_steps, "Sign the manifest") >= 0 else {}
+check(signer.get("env", {}).get("SELFUPDATE_NOTE_KEY") == "${{ secrets.SELFUPDATE_NOTE_KEY }}"
+      and "secrets." not in signer.get("run", "") and "selfupdate-note sign" in signer.get("run", ""),
+      "the signer reads the key through env only and runs selfupdate-note sign")
+check("continue-on-error" not in sign_job and all("continue-on-error" not in st for st in sign_steps),
+      "nothing in the sign job has continue-on-error")
+check(all("SELFUPDATE_NOTE_KEY" not in yaml.safe_dump(j) for name, j in wf["jobs"].items() if name != "sign"),
+      "no job but sign reads the signer key")
+pjob = wf["jobs"]["publish"]
+check(pjob.get("needs") == "sign", "publish needs sign")
+check(pjob.get("if") == "${{ !cancelled() && (needs.sign.result == 'success' || (needs.sign.result == 'skipped' && !inputs.sign)) }}",
+      "publish runs after a successful sign, or a sign skipped because signing is off")
+add = index(publish, "Add the release statement")
+require = index(publish, "Require the release statement")
+check(0 <= archives < add < require < draft, "the note is added after the archive check and before the draft")
+for i, what in ((add, "note download"), (require, "note check")):
+    step = publish[i] if i >= 0 else {}
+    check(step.get("if") == "inputs.sign", "the %s runs exactly when signing" % what)
+    check("continue-on-error" not in step, "the %s has no continue-on-error" % what)
 
 doc = load(sys.argv[2])
 jobs = doc["jobs"]

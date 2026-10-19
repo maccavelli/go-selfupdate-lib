@@ -57,7 +57,9 @@ failure. The behaviour a consumer can see is listed in the
 `selfupdate` discovers GitHub Releases, selects the exact asset
 `<product>-<goos>-<goarch>[.exe]`, checks it against `SHA256SUMS` (and the
 GitHub digest when present), and replaces the running binary under a lock.
-It proves release-asset integrity, not publisher signature authenticity.
+It proves release-asset integrity, not publisher signature authenticity,
+unless the program opts in to `selfupdate/verify/signednote`, which checks
+a signed release statement over `SHA256SUMS`.
 
 `selfupdate` never reads flags or calls `os.Exit`; only `service.HandOffHop`, in a hand-off hop, exits. The program binds:
 

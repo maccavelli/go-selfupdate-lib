@@ -437,9 +437,24 @@ four publish inputs.
 
 `publish-selfupdate-release.yml` is called with `artifact-name`,
 `products-json`, `platforms-json` and `extra-assets-json`, and optionally
-`prerelease-channels-json` (default `[]`). Its token has `contents:
-write`, `id-token: write` and `attestations: write`. On a tag ref, in
-order, it:
+`prerelease-channels-json` (default `[]`), `sign` (default `false`),
+`note-verifier-key` and the secret `SELFUPDATE_NOTE_KEY`. Its token has
+`contents: write`, `id-token: write` and `attestations: write`.
+
+With `sign: true`, a `sign` job runs first, in the caller's environment
+`selfupdate-signing`, with a `contents: read` token. It is the only job
+that sees the signer key. It checks the tag and validates the staged set
+as below, then runs `internal/cmd/selfupdate-note sign` from its own
+commit: the statement for `<server host>/<repository>`, the tag and the
+products, over the exact `SHA256SUMS`. It opens the note with
+`note-verifier-key`, and uploads `SHA256SUMS.note` as an artifact. The
+signer refuses an empty key, which is what a secret the caller did not
+pass is. `publish` needs `sign`, and runs only when `sign` succeeded or was
+skipped because signing is off
+([0025-MADR](decisions/0025-MADR-align-with-go-sdk-design-practices.md)
+D10).
+
+On a tag ref, in order, `publish`:
 
 1. checks that the runner's `gh` has `release verify` and `release view`'s
    `isImmutable` field, and is 2.81.0 or later ([0010-MADR](decisions/0010-MADR-remediate-second-debugging-pass-findings.md) D5);
@@ -462,6 +477,9 @@ order, it:
    end with gzip (one member, its checksum, nothing after it), then
    unpacks each archive with the client's own unpacker and checks the
    program's image;
+   with `sign: true`, then adds the `sign` job's `SHA256SUMS.note` to
+   `staging/` and requires it. The validation above refuses a staged note,
+   so the only note published is the signer's;
 8. creates a draft, uploads the files (one argument each), attests them,
    publishes, and waits for the release to be immutable and verified. A
    prerelease tag is created with `--prerelease --latest=false`, so it
@@ -632,5 +650,6 @@ interpolated into shell.
 
 - **Any consumer's migration,** and `mcplib`'s deprecation of its own copy.
   Each is recorded in that repository.
-- **Release signing.** No publisher signature is verified; the
-  `ManifestVerifier` hook is where one would be.
+- **Signing by default.** A publisher signature is verified only when a
+  program configures `selfupdate/verify/signednote`, and a release is
+  signed only when its caller sets `sign: true` (0025-MADR D10).

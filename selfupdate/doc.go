@@ -119,7 +119,9 @@
 // Baseline verification proves release-asset integrity: HTTPS GitHub
 // metadata, the GitHub asset digest when present, and the exact SHA256SUMS
 // entry. It does not prove publisher signature authenticity, and no
-// publisher signature is verified by default. Config.ManifestVerifiers run
+// publisher signature is verified by default; package
+// selfupdate/verify/signednote is the opt-in check of a signed release
+// statement over SHA256SUMS. Config.ManifestVerifiers run
 // on the downloaded SHA256SUMS before any binary byte is fetched; that is the
 // hook for a signature over the manifest. Config.Verifiers run on the asset
 // as published, after the integrity check: the binary, or the archive when

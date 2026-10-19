@@ -1807,3 +1807,68 @@ S7's items 1, 4 and 5 above describe the first shape. As built:
      * `pre-add-check` 12 files clean;
      * arch 18 rows, 0 differ;
      * `apicheck` compatible with `v1.15.2`.
+10. The owner committed S9 as `056ea06` ("committed, proceed.").
+
+### S10 (2026-10-19)
+
+1. **`publish-selfupdate-release.yml`:**
+   * `workflow_call` gains `sign` (boolean, default `false`),
+     `note-verifier-key` (string, default `''`) and the secret
+     `SELFUPDATE_NOTE_KEY` (not required).
+   * The new job `sign` has `if: inputs.sign`, `environment:
+     selfupdate-signing` and `permissions: contents: read`. Its steps are
+     the tools checkout, the tag check, the artifact download, the staged
+     set's validation (copies of `publish`'s), setup-go from the tools'
+     `go.mod`, "Sign the manifest" and "Upload the release statement"
+     (`<artifact-name>-note`, `if-no-files-found: error`,
+     `retention-days: 1`).
+   * "Sign the manifest" reads the secret and the inputs through `env`
+     only, refuses an empty `note-verifier-key`, and runs `selfupdate-note
+     sign` with `-repository "${SERVER_URL#https://}/$REPOSITORY"`.
+   * `publish` gains `needs: sign` and the `if` of step 1, plus two steps
+     between "Check archived programs" and "Create a draft release": "Add
+     the release statement" (the artifact into `staging/`) and "Require
+     the release statement" (`test -f`), both `if: inputs.sign`. The
+     existing steps and their guards are unchanged.
+   * `actionlint` (on the file) exits 0. `scripts/check-workflows.sh`
+     gives `ok (all)`.
+2. **`scripts/workflow-shape_test.sh`** gains 16 assertions on the inputs,
+   the secret, the `sign` job, the key's single reader, `publish`'s
+   `needs` and `if`, and the two new steps' place and guards. All hold, and
+   the earlier assertions still do.
+3. **Seen failing**, each a planted copy of the workflow given to the test
+   by path:
+
+   | Plant | Failure |
+   | :--- | :--- |
+   | `continue-on-error: true` on "Sign the manifest" | `FAIL nothing in the sign job has continue-on-error` |
+   | `publish` with `if: ${{ always() }}` | `FAIL publish runs after a successful sign, or a sign skipped because signing is off` |
+   | the secret also in "Create a draft release" | `FAIL no job but sign reads the signer key` |
+
+   The plan named a plant with the add step moved after the draft. The
+   `always()` and leak plants replace it: each tests a rule that, broken,
+   would publish without a note or expose the key, which a misplaced step
+   would not.
+4. **Docs:**
+   * `building-releases.md`: "The pieces" no longer says the publish
+     workflow is "unchanged in what it takes"; step 4 notes the opt-in
+     inputs; a new `## 13. Sign a release (opt-in)` covers keygen, the
+     environment, the caller YAML passing the secret by name, the embedded
+     keys with `RequiredFrom`, and rotation.
+   * `extending-selfupdate.md`: `## Verify a signature later` becomes
+     `## Verify a release signature`. Its only link,
+     `docs/README.md:86`, now points at the new anchor, and a row "sign my
+     releases" is added.
+   * `docs/architecture.md`: "Release workflow" describes the `sign` job
+     and step 7's note. "What is not here" says "Signing by default"
+     instead of "Release signing".
+   * `selfupdate/doc.go` and `README.md:59` keep "not verified by
+     default" and name `signednote`.
+5. **Snippets:** step 13's Go block, copied into a scratch module that
+   requires this tree, builds for linux, darwin and windows. The keys are
+   placeholders, so `New` fails at run time, as a reader replacing them
+   expects.
+6. **Checks:** `workflow-shape_test.sh` all hold; `check-workflows_test.sh`
+   44 passed; actionlint clean; links 0 broken (187 links), markdownlint 0
+   issues, ids 0 findings, `pre-add-check` clean, arch 0 differ,
+   `apicheck` compatible. The live run is S13.
