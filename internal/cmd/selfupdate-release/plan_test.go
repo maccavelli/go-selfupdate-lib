@@ -228,6 +228,9 @@ func TestPlanRefusesAnOldLibrary(t *testing.T) {
 		t.Fatal(err)
 	}
 	installer := releasespec.Spec{Installer: &releasespec.Installer{}}
+	uninstallHook := releasespec.Spec{Installer: &releasespec.Installer{Hooks: []releasespec.Hook{
+		{When: releasespec.HookBeforeUninstall, Product: "relay", Args: []string{"setup-service", "--uninstall"}},
+	}}}
 	req := func(v string) string { return "require " + libraryPath + " " + v }
 	for _, c := range []struct {
 		name string
@@ -247,6 +250,15 @@ func TestPlanRefusesAnOldLibrary(t *testing.T) {
 			"requires go-selfupdate-lib v1.9.0", false},
 		{"the library itself", installer, libModule(t, libraryPath), "", false},
 		{"no requirement", installer, libModule(t, "example.com/relay"), "does not require " + libraryPath, false},
+		// docs/decisions/0026-MADR-before-uninstall-installer-hook.md D5.
+		{"v1.16.0 with a before_uninstall hook", uninstallHook, libModule(t, "example.com/relay", req("v1.16.0")),
+			`this spec's "installer.hooks[].when before_uninstall" needs v1.17.0 or later`, false},
+		{"v1.17.0 with a before_uninstall hook", uninstallHook, libModule(t, "example.com/relay", req("v1.17.0")), "", false},
+		{"v1.9.0 with a before_uninstall hook names the higher floor", uninstallHook, libModule(t, "example.com/relay", req("v1.9.0")),
+			"go get " + libraryPath + "@v1.17.0", false},
+		{"v1.16.0 with only the install hooks", releasespec.Spec{Installer: &releasespec.Installer{Hooks: []releasespec.Hook{
+			{When: releasespec.HookAfterInstall, Product: "relay", Args: []string{"configure"}},
+		}}}, libModule(t, "example.com/relay", req("v1.16.0")), "", false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			note, err := checkLibraryFloor(context.Background(), g, c.dir, c.spec)

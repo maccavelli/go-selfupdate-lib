@@ -178,3 +178,24 @@ func TestInstallerArgumentCharset(t *testing.T) {
 		t.Fatalf("safe arguments refused: %v", err)
 	}
 }
+
+// TestInstallerBeforeUninstall: a before_uninstall hook parses, under the
+// same product and argument rules, and changes nothing else the installer
+// field decides (docs/decisions/0026-MADR-before-uninstall-installer-hook.md
+// D1).
+func TestInstallerBeforeUninstall(t *testing.T) {
+	m := base()
+	m["installer"] = map[string]any{"hooks": []any{
+		map[string]any{"when": "before_uninstall", "product": "relay", "args": []any{"setup-service", "--uninstall"}},
+	}}
+	s := mustParse(t, encode(t, m))
+	want := []Hook{{When: HookBeforeUninstall, Product: "relay", Args: []string{"setup-service", "--uninstall"}}}
+	if !reflect.DeepEqual(s.Installer.Hooks, want) {
+		t.Fatalf("hooks = %+v", s.Installer.Hooks)
+	}
+	empty := base()
+	empty["installer"] = map[string]any{}
+	if got, want := s.InstallerScripts(), mustParse(t, encode(t, empty)).InstallerScripts(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("InstallerScripts = %v, want %v", got, want)
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -28,6 +29,14 @@ type specFloor struct {
 var specFloors = []specFloor{
 	{"installer", "v1.10.0", "releasespec.Parse in v1.9.0 refuses it as an unknown field",
 		func(s releasespec.Spec) bool { return s.Installer != nil }},
+	// A value, not a field: v1.16.0 parses the field and refuses the time
+	// (docs/decisions/0026-MADR-before-uninstall-installer-hook.md D5).
+	{"installer.hooks[].when before_uninstall", "v1.17.0", "releasespec.Parse in v1.16.0 refuses that hook time",
+		func(s releasespec.Spec) bool {
+			return s.Installer != nil && slices.ContainsFunc(s.Installer.Hooks, func(h releasespec.Hook) bool {
+				return h.When == releasespec.HookBeforeUninstall
+			})
+		}},
 }
 
 // goModEdit is the part of `go mod edit -json` this reads.
@@ -75,11 +84,17 @@ func checkLibraryFloor(ctx context.Context, g goTool, dir string, spec releasesp
 		}
 		version = r.New.Version
 	}
-	for _, f := range specFloors {
-		if f.set(spec) && semverLess(version, f.min) {
-			return "", fmt.Errorf("module %s requires go-selfupdate-lib %s; this spec's %q needs %s or later, or the program cannot parse the spec it embeds (%s; go get %s@%s)",
-				mod.Module.Path, version, f.field, f.min, f.why, libraryPath, f.min)
+	// The highest floor the module misses, so the go get it names is
+	// enough (docs/decisions/0026-PLAN-before-uninstall-installer-hook.md U1).
+	var miss *specFloor
+	for i, f := range specFloors {
+		if f.set(spec) && semverLess(version, f.min) && (miss == nil || semverLess(miss.min, f.min)) {
+			miss = &specFloors[i]
 		}
+	}
+	if miss != nil {
+		return "", fmt.Errorf("module %s requires go-selfupdate-lib %s; this spec's %q needs %s or later, or the program cannot parse the spec it embeds (%s; go get %s@%s)",
+			mod.Module.Path, version, miss.field, miss.min, miss.why, libraryPath, miss.min)
 	}
 	return "", nil
 }

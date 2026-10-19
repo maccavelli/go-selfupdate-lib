@@ -25,6 +25,10 @@ const (
 	// HookAfterInstall runs the new copy after the swap and the identity
 	// check.
 	HookAfterInstall = "after_install"
+	// HookBeforeUninstall runs the installed copy, when there is one,
+	// before --uninstall removes it
+	// (docs/decisions/0026-MADR-before-uninstall-installer-hook.md).
+	HookBeforeUninstall = "before_uninstall"
 )
 
 // Installer asks the build workflow to generate install.sh and install.ps1
@@ -45,7 +49,7 @@ type Installer struct {
 
 // Hook runs one product of the release with fixed arguments.
 type Hook struct {
-	// When is HookBeforeInstall or HookAfterInstall.
+	// When is HookBeforeInstall, HookAfterInstall or HookBeforeUninstall.
 	When string `json:"when"`
 	// Product is a product the spec lists.
 	Product string `json:"product"`
@@ -81,8 +85,8 @@ func (s Spec) validateInstaller() error {
 	}
 	for i, h := range in.Hooks {
 		at := fmt.Sprintf("releasespec: installer.hooks[%d]", i)
-		if h.When != HookBeforeInstall && h.When != HookAfterInstall {
-			return fmt.Errorf("%s.when: %q is not %q or %q", at, h.When, HookBeforeInstall, HookAfterInstall)
+		if h.When != HookBeforeInstall && h.When != HookAfterInstall && h.When != HookBeforeUninstall {
+			return fmt.Errorf("%s.when: %q is not %q, %q or %q", at, h.When, HookBeforeInstall, HookAfterInstall, HookBeforeUninstall)
 		}
 		if _, err := s.Product(h.Product); err != nil {
 			return fmt.Errorf("%s.product: %q is not a product of the spec", at, h.Product)

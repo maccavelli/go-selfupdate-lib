@@ -254,3 +254,46 @@ Decision Outcome, and U2, U3 and U4 carry it. The MADR became
 2. The MADR records the owner's choices and `--force`'s behaviour.
 3. 0014-MADR gains `## Amendments` with `A1 (2026-10-19)`, pointing
    here.
+4. The owner committed U0 as `27519b7` ("committed, proceed").
+
+### U1 (2026-10-19)
+
+1. **`releasespec`:**
+   * `HookBeforeUninstall = "before_uninstall"`;
+   * `validateInstaller` accepts it, and its refusal reads `… is not
+     "before_install", "after_install" or "before_uninstall"`;
+   * `Hook.When`'s doc names the three.
+   * The `after_uninstall` refusal (`installer_test.go:53`) still holds: it
+     matches `installer.hooks[0].when`, which the new wording keeps.
+2. **The floor:**
+   * `specFloors` gains `{"installer.hooks[].when before_uninstall",
+     "v1.17.0", …}`, set when any hook's `When` is `HookBeforeUninstall`.
+   * **A refinement step 3 did not name:** `checkLibraryFloor` returned the
+     first floor a module failed. A `v1.9.0` module with the new hook would
+     have been told `go get …@v1.10.0`, which is not enough. It now reports
+     the highest floor the module misses. No decision changes; D5-A's "naming
+     the `go get` to run" needs it.
+3. **Tests:**
+   * `TestInstallerBeforeUninstall`: the hook parses, and `InstallerScripts`
+     equals an empty installer's.
+   * `TestPlanRefusesAnOldLibrary` gains four cases:
+     * `v1.16.0` with the hook is refused, naming the floor;
+     * `v1.17.0` with it passes;
+     * `v1.9.0` with it names `go get …@v1.17.0`;
+     * `v1.16.0` with only the install hooks passes.
+   * `TestSpecFloorsCoverEveryField` still passes: the new floor is a value,
+     not a new field.
+4. **Seen failing:**
+
+   | Plant | Failure |
+   | :--- | :--- |
+   | `validateInstaller` without the new time | `installer_test.go:191: Parse: releasespec: installer.hooks[0].when: "before_uninstall" is not "before_install", "after_install" or "before_uninstall"` |
+   | the floor at `v0.0.0` | `plan_test.go:269: err = <nil>; want "this spec's \"installer.hooks[].when before_uninstall\" needs v1.17.0 or later"` |
+   | the first miss wins again | `plan_test.go:269: err = … this spec's "installer" needs v1.10.0 or later …` (for the `v1.9.0` case) |
+
+5. **Checks:**
+   * `go test ./selfupdate/releasespec/ ./internal/cmd/selfupdate-release/`
+     `ok`, with `SELFUPDATE_REQUIRE_PYTHON=1`;
+   * `pre-add-check` 4 files clean;
+   * `make apicheck` compatible with `v1.16.0`;
+   * links, markdownlint, ids and arch clean.
