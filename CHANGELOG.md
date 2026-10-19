@@ -8,11 +8,11 @@ listed in the
 [migration guide](docs/guides/migrating-from-mcplib-selfupdate.md), one
 section per release, and each entry links its section and its records.
 
-## Unreleased
+## v1.16.0 - 2026-10-19
 
-Planned as `v1.16.0`
-([0025-MADR](docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md),
-[0025-PLAN](docs/decisions/0025-PLAN-align-with-go-sdk-design-practices.md)).
+See [the guide](docs/guides/migrating-from-mcplib-selfupdate.md#16-from-v115-to-v116),
+[0025-MADR](docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md) and
+[0025-PLAN](docs/decisions/0025-PLAN-align-with-go-sdk-design-practices.md).
 
 ### Added
 

@@ -80,7 +80,7 @@ name, and the files they cite moved with the rename
 | report a vulnerability | [SECURITY.md](../SECURITY.md) |
 | know what an update proves, and what it does not | [architecture.md, Trust model](architecture.md#trust-model) |
 | know how the API may change within `v1` | [architecture.md, API evolution](architecture.md#api-evolution) |
-| move to the current release from an earlier one of this module | [guides/migrating-from-mcplib-selfupdate.md, §6 to §15](guides/migrating-from-mcplib-selfupdate.md#6-from-v15-to-v16) |
+| move to the current release from an earlier one of this module | [guides/migrating-from-mcplib-selfupdate.md, §6 to §16](guides/migrating-from-mcplib-selfupdate.md#6-from-v15-to-v16) |
 | add the update command to my program | [guides/migrating-from-mcplib-selfupdate.md, §5](guides/migrating-from-mcplib-selfupdate.md#5-adopt-the-canonical-update-command) |
 | stamp a release build so `update` knows it is one | `buildinfo.LDFlags`; [0004-PLAN-v1-4-0, Step 2](decisions/0004-PLAN-v1-4-0-command-surface.md#step-2-buildinfo-buildinfobuildinfogo-new) |
 | show an update banner | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#show-an-update-banner) |

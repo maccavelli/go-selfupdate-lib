@@ -2070,3 +2070,21 @@ S7's items 1, 4 and 5 above describe the first shape. As built:
    * The throwaway repository is not deleted yet: the CLI's token has no
      `delete_repo` scope. The owner deletes it, or refreshes the scope
      with `gh auth refresh -s delete_repo` for the agent to.
+9. The owner committed this record as `42e15cd` ("committed, proceed").
+
+### S14 (2026-10-19), before the tag
+
+1. **The migration guide:**
+   * gains `## 16. From v1.15 to v1.16`, with what is new, the behaviour
+     a program may notice (the floor, redaction, the Windows receipt
+     retries, `retract`, the reserved name), adopting it, and a check;
+   * its "current release" paragraph names `v1.16.0` and links §16;
+   * its `go get`, workflow-pin and `go.mod` lines that name `v1.15.2` are
+     left for the pin commit after the tag, as 0017's procedure has it.
+2. **`CHANGELOG.md`:** `## Unreleased` becomes `## v1.16.0 - 2026-10-19`,
+   linking §16, 0025-MADR and this plan. `docs/README.md`'s row reads "§6
+   to §16".
+3. **Checks:**
+   * `scripts/check-release-tag.sh v1.16.0` exits 0;
+   * links 0 broken (213 links in 3 files), markdownlint 0 issues, ids 0
+     findings, arch 0 differ.

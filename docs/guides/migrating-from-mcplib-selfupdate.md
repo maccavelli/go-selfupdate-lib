@@ -28,7 +28,7 @@ to this one too: the module was renamed, and the README says how.
 go get github.com/maccavelli/go-selfupdate-lib@v1.15.2
 ```
 
-`v1.15.2` is the current release. `v1.6.0` changed a few behaviours that
+`v1.16.0` is the current release. `v1.6.0` changed a few behaviours that
 `v1.5.x` had; they are listed in [6. From v1.5 to v1.6](#6-from-v15-to-v16).
 `v1.7.0`, `v1.8.0`, `v1.9.0` and `v1.10.0` only add to the API: see
 [7. From v1.6 to v1.7](#7-from-v16-to-v17),
@@ -52,6 +52,8 @@ a disabled task it cannot start again: see
 its fix is in [From v1.15.0 to v1.15.1](#from-v1150-to-v1151). `v1.15.2`
 changes no API either; its fixes are in
 [From v1.15.1 to v1.15.2](#from-v1151-to-v1152).
+`v1.16.0` adds to the API, lowers the Go floor to 1.26.9, and makes
+release signing opt-in: see [16. From v1.15 to v1.16](#16-from-v115-to-v116).
 
 Replace every `github.com/maccavelli/mcplib/selfupdate` import with
 `github.com/maccavelli/go-selfupdate-lib/selfupdate`. No identifier or signature
@@ -1156,3 +1158,81 @@ Adopting it:
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
 - `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.15.2`.
+
+## 16. From v1.15 to v1.16
+
+```bash
+go get github.com/maccavelli/go-selfupdate-lib@v1.16.0
+```
+
+`v1.16.0` aligns the module with the Go SDK design practices the owner
+adopted: it adds API, lowers the Go floor, makes the signing design
+optional and real, and writes down the contracts. `make apicheck` reports
+it compatible with `v1.15.2`: every exported change is an addition. Why,
+and how, is in
+[0025-MADR](../decisions/0025-MADR-align-with-go-sdk-design-practices.md)
+and its amendments; what each change does is in the
+[changelog](../../CHANGELOG.md).
+
+### What is new
+
+- **`NewGitHubUpdater`** builds a standalone program's `Updater` in one
+  call, from the repository, product and running version, with every other
+  part at its safe default. Its default HTTP client bounds the dial, TLS and
+  response headers, and not the whole request.
+- **Typed errors:** `selfupdate.HTTPError` for a status no sentinel names,
+  and `service.CommandError` for a failed `systemctl`, `systemd-run`,
+  `launchctl` or exec-reconciler command. Both work with `errors.As`, and
+  every message is unchanged.
+- **Contexts on the hand-off:** `service.HandOffHopContext` and
+  `service.LoadHandOffEnvContext` stop the real run's wait for the hop when
+  the context ends.
+- **Seams:** `Clock` and `ClockFunc`, with `Config.Clock` and
+  `CheckerConfig.Clock`, for check-record ages and the progress throttle;
+  `NewVersionProberWith`, whose `Run` replaces how the probe starts the
+  binary; and `NewSlogReporter`, which logs events to a `log/slog` logger.
+- **`selfupdatetest.VerifyReleaseSource`** checks a `ReleaseSource` of
+  another host against the contract the updater relies on.
+- **Release signing, opt-in:** `selfupdate/verify/signednote` checks a
+  signed release statement, `SHA256SUMS.note`, against keys your program
+  embeds. The publish workflow signs when called with `sign: true`; see
+  [the building guide, step 13](building-releases.md#13-sign-a-release-opt-in).
+- **Documentation:** each type's concurrency contract, an "Errors"
+  paragraph on the entry points, the [API evolution](../architecture.md#api-evolution)
+  policy, the [trust model](../architecture.md#trust-model),
+  [SECURITY.md](../../SECURITY.md) and the
+  [changelog](../../CHANGELOG.md).
+
+### Behaviour you may notice
+
+- **The Go floor is 1.26.9.** The module's `go` line moves down from
+  `1.27.1`; it is still built and tested with 1.27.2, and CI also tests it
+  with 1.26.9. A program on Go 1.26 can now adopt it.
+- **Secrets no longer print.** `fmt` and `log/slog` print `Credential`,
+  `GitHubOptions` and `*GitHubSource` with the secret as `<redacted>`.
+  `encoding/json` still carries a `Credential`'s value, so a
+  `CredentialObserver` can save it; slog's JSON handler on a struct that
+  holds a `Credential` therefore prints it, so log the `Credential` itself.
+- **On Windows,** the cleanup receipt's retries take the session's
+  `LockTimeout`, not a fixed 5 s, and at session start they stop when the
+  context ends.
+- **`go list -m -versions`** no longer offers `v1.0.0` to `v1.4.1`, which
+  were published as `go-core-lib` and never resolve under this path:
+  `go.mod` retracts them.
+- **`SHA256SUMS.note` is reserved:** a release spec and the publish
+  workflow refuse it as an extra asset.
+
+Adopting it:
+
+- **Nothing is required.** Move your workflow pins to `v1.16.0` to get the
+  `sign` input; a caller that does not set it publishes as before.
+- **A test that compared the printed form** of a `Credential`,
+  `GitHubOptions` or `GitHubSource` should compare its fields instead.
+- **To sign,** follow the building guide's step 13, then add
+  `signednote.New` to `Config.ManifestVerifiers` with `RequiredFrom` at
+  your first signed tag.
+
+### Check
+
+- `go build ./...`, `go vet ./...` and `go test ./...` pass.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.16.0`.
