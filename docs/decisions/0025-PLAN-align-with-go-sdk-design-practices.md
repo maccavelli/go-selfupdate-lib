@@ -1916,3 +1916,75 @@ S7's items 1, 4 and 5 above describe the first shape. As built:
 8. **Checks (Go 1.27.2):** `go test ./...` and `go-fuzz_test.sh` pass;
    links 0 broken, markdownlint 0 issues, ids 0 findings, `pre-add-check`
    9 files clean, arch 0 differ, `apicheck` compatible, actionlint clean.
+9. The owner committed S11 as `efd0750` ("committed, proceed").
+
+### S12 (2026-10-19)
+
+1. **`retract`:**
+   * `go.mod` gains `retract [v1.0.0, v1.4.1] // declared
+     github.com/maccavelli/go-core-lib; use v1.5.0 or later` after the
+     `toolchain` line, with no comment above it.
+   * `go mod tidy -diff` exits 0.
+   * `go mod edit -json` gives `Retract: [{Low v1.0.0, High v1.4.1,
+     Rationale "declared github.com/maccavelli/go-core-lib; use v1.5.0 or
+     later"}]`.
+   * The proxy's version list changes only once `v1.16.0` is published
+     (S14).
+2. **`CHANGELOG.md`:**
+   * at the root, in Keep a Changelog form;
+   * `## Unreleased` holds S1 to S11's changes as Added, Changed and Fixed;
+   * 17 release entries from `v1.15.2` to `v1.5.0`, each with its
+     migration-guide anchor and records, from the "Changelog source" table;
+   * a final note for `v1.0.0` to `v1.4.1`.
+   * The headings are `## vX.Y.Z - date`, with no bracketed link labels,
+     because this repository's tags have no GitHub releases to link to.
+3. **The evolution policy:**
+   * `docs/architecture.md` gains `## API evolution` with step 3's rules,
+     plus one learnt in S7: "a struct stays comparable if it was" (MADR
+     Amendment A4).
+   * `extending-selfupdate.md` gains `## Evolve with the library`. Its
+     `EnabledLifecycle` sentence was checked against `types.go:593-599`
+     and corrected to say what the interface does: a managed update starts
+     a stopped service only when `Enabled` reports true.
+4. **The trust model:**
+   * `docs/architecture.md` gains `## Trust model`, after `## Release
+     workflow`, as step 4 says.
+   * Root `SECURITY.md` covers reporting, supported versions, the summary,
+     and the `govulncheck` practice. Private vulnerability reporting is off
+     until S14's settings.
+   * README links `CHANGELOG.md` and `SECURITY.md`. `docs/README.md`
+     gains four rows (changelog, vulnerability, trust model, API evolution)
+     and rewords the signing row.
+5. **Variant recipes:**
+   * `### Universal, musl and arm variants` sits under `## Ship an archive`.
+     The universal note was checked against `imageverify.go:33` ("Mach-O
+     (thin, or fat with a matching arch)").
+   * `docs/architecture.md`'s "What is not here" gains `Platform.Variant`.
+6. **D14's remaining items:**
+   * `selfupdate/service/example_test.go`, `ExamplePollHealthy`, with
+     `// Output: healthy`. **Seen failing:** a planted `// Output: ready`
+     gives `--- FAIL: ExamplePollHealthy`.
+   * README's pkg.go.dev badge under the H1.
+   * **The surface review.** The S8 facts' heuristic found 32 exported
+     `selfupdate` names that no other package, Example, guide or README
+     references. Each was checked by hand: an enum member (the `Event…`,
+     `Check…`, `Operation…` and `Build…` constants), a documented sentinel
+     (`ErrForceRequired`, `ErrNoCheckRecord`, `ErrRateLimited`), a `…Func`
+     adapter (`ManifestVerifierFunc`, `ProberFunc`, `VerifierFunc`), or a
+     type reachable from an exported signature (`KeptBackup`,
+     `Interaction`, `CredentialedSource`, `CredentialObserver`,
+     `ProbePhase`, `RateLimitError`, `VersionPolicy`,
+     `DefaultLockTimeout`). There is no accidental export, and nothing is
+     deprecated.
+7. Arch: `service` 16/16.
+8. **Checks:**
+   * `go test ./...` `ok`.
+   * Phase checks: links 0 broken (241 links), markdownlint 0 issues, ids 0
+     findings, `pre-add-check` clean, arch 0 differ, `apicheck`
+     compatible.
+   * **`make gate`**, before the push S13 needs, ends `overall=0`. Every
+     step is `rc=0`: gofmt, lint ("0 issues."), vet, race, shuffle, tidy,
+     apicheck ("compatible with v1.15.2"), fuzz, vuln ("No
+     vulnerabilities found."), scripts ("all script tests passed"),
+     shellcheck, crossvet, links ("563 links in 71 files, 0 broken"),
+     arch, and ids.

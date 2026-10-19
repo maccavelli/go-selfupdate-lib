@@ -76,6 +76,10 @@ name, and the files they cite moved with the rename
 | :--- | :--- |
 | see what is in this repository today | [architecture.md](architecture.md) |
 | move a program from `mcplib/selfupdate` to this module | [guides/migrating-from-mcplib-selfupdate.md](guides/migrating-from-mcplib-selfupdate.md) |
+| see what changed in each release | [CHANGELOG.md](../CHANGELOG.md) |
+| report a vulnerability | [SECURITY.md](../SECURITY.md) |
+| know what an update proves, and what it does not | [architecture.md, Trust model](architecture.md#trust-model) |
+| know how the API may change within `v1` | [architecture.md, API evolution](architecture.md#api-evolution) |
 | move to the current release from an earlier one of this module | [guides/migrating-from-mcplib-selfupdate.md, §6 to §15](guides/migrating-from-mcplib-selfupdate.md#6-from-v15-to-v16) |
 | add the update command to my program | [guides/migrating-from-mcplib-selfupdate.md, §5](guides/migrating-from-mcplib-selfupdate.md#5-adopt-the-canonical-update-command) |
 | stamp a release build so `update` knows it is one | `buildinfo.LDFlags`; [0004-PLAN-v1-4-0, Step 2](decisions/0004-PLAN-v1-4-0-command-surface.md#step-2-buildinfo-buildinfobuildinfogo-new) |
@@ -113,6 +117,6 @@ name, and the files they cite moved with the rename
 | know why the gates were never taught to pass on an empty module | [0001-MADR, §6](decisions/0001-MADR-scaffold-shared-go-library.md#6-gates-are-not-taught-to-pass-on-nothing) |
 | see what the debugging pass found, and how each finding is fixed | [0003-MADR](decisions/0003-MADR-remediate-debugging-pass-findings.md) |
 | see where `selfupdate` is going: API growth, TUI support, the canonical CLI, and what is still open | [0004-MADR, amendment P3](decisions/0004-MADR-evolve-selfupdate-api-and-tui-support.md#p3-2026-10-07-phase-4-is-built-the-open-work-in-one-place) |
-| know why releases are not signed, and how signing would be done | [0004-REPORT](reports/0004-REPORT-release-signing-research.md) |
+| know how release signing was designed, and why it is opt-in | [0004-REPORT](reports/0004-REPORT-release-signing-research.md), and [0025-MADR](decisions/0025-MADR-align-with-go-sdk-design-practices.md) D10 |
 | know how this repository's tooling differs from `go-llmprovider-sdk`'s | [0001-MADR, §5](decisions/0001-MADR-scaffold-shared-go-library.md#5-deliberate-differences-from-go-llmprovider-sdk) |
 | see how the scaffold's checks were proven | [0001-PLAN, execution record](decisions/0001-PLAN-scaffold-shared-go-library.md#execution-record) |

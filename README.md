@@ -1,5 +1,7 @@
 # go-selfupdate-lib
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/maccavelli/go-selfupdate-lib.svg)](https://pkg.go.dev/github.com/maccavelli/go-selfupdate-lib)
+
 > **Formerly `go-core-lib`.** Up to `v1.4.1` this module was
 > `github.com/maccavelli/go-core-lib`, which is now deprecated in favour of this
 > path. Releases from `v1.5.0` use this path; the earlier tags are not
@@ -15,7 +17,9 @@ not self-update belongs in another module.
 
 Module: `github.com/maccavelli/go-selfupdate-lib`
 
-**Documentation:** [docs/](docs/README.md)
+**Documentation:** [docs/](docs/README.md) ·
+**Changes:** [CHANGELOG.md](CHANGELOG.md) ·
+**Security:** [SECURITY.md](SECURITY.md)
 
 ## Status
 

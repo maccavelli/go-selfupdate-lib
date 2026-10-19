@@ -131,7 +131,7 @@ docs/
 | `selfupdate/verify/ghattest/` | `ghattest` | 2 | 3, plus a `testdata/` capture of `gh attestation verify --format json` | none (`selfupdate`, `service`) |
 | `selfupdate/verify/signednote/` | `signednote` | 3 | 4, including a fuzz target | `x/mod/semver`, `x/mod/sumdb/note` (and `selfupdate`) |
 | `selfupdate/releasespec/` | `releasespec` | 4 | 5, including a fuzz target, plus 4 `testdata/` specs | none (`selfupdate`, `archive`) |
-| `selfupdate/service/` | `service` | 16 | 15 | `x/sys/windows` (and `selfupdate`, `internal/winproc`) |
+| `selfupdate/service/` | `service` | 16 | 16 | `x/sys/windows` (and `selfupdate`, `internal/winproc`) |
 | `selfupdate/service/systemd/` | `systemd` | 9 | 18, plus 3 `testdata/` captures of `systemctl show` | none (`selfupdate`, `service`) |
 | `selfupdate/service/launchd/` | `launchd` | 7 | 14, plus 7 `testdata/` captures of `launchctl print` and `list` | none (`selfupdate`, `service`) |
 | `selfupdate/service/scm/` | `scm` | 7 | 13 | `x/sys/windows`, `x/sys/windows/svc`, `x/sys/windows/svc/mgr` (and `selfupdate`, `service`, `internal/winproc`) |
@@ -397,6 +397,31 @@ docs/
   `UserAgent` builds one. It reads
   `GH_TOKEN`, then `GITHUB_TOKEN`, when set.
 
+## API evolution
+
+Within `v1` the module only adds
+([0025-MADR](decisions/0025-MADR-align-with-go-sdk-design-practices.md)
+D6):
+
+- **Additive only.** `make apicheck` compares the exported API with the
+  newest `v1.*` tag at every commit, and an incompatible change fails it.
+  Behaviour a program can see is listed in the migration guide and the
+  [changelog](../CHANGELOG.md).
+- **An interface a caller implements never gains a method.** `Lifecycle`,
+  `InstallSession`, `TwoPhaseSession` and `ReleaseSource` are frozen; a new
+  capability is a new optional interface, checked by type assertion, as
+  `EnabledLifecycle`, `ReleaseLister`, `ChannelPolicy`, `CredentialedSource`
+  and `StagingOwner` are.
+- **An interface only the library implements is sealed** from its first
+  release, with an unexported method, as `RunOption` and `Interaction` are.
+- **A new constructor returns a concrete type** unless the value is a pure
+  strategy, such as a selector, policy or reporter.
+- **A struct stays comparable** if it was: a new field of a comparable
+  struct is itself comparable, such as an interface rather than a func
+  (`Config.Clock`, 0025-MADR Amendment A4).
+- **Retirement:** a field or function to be retired gets `// Deprecated:`
+  naming its replacement, and is removed only in a `/v2` module.
+
 ## Build workflow
 
 `build-selfupdate-release.yml` is called with `spec-path`, and optionally
@@ -505,6 +530,53 @@ item 5). `queue: max` would keep it, once actionlint accepts the key.
 Every `gh` step that acts on the calling repository sets `GH_REPO`. Every
 `run:` block reads the ref from `env:` (`TAG`, `REF_TYPE`); no `${{ }}` is
 interpolated into shell.
+
+## Trust model
+
+What an update proves, and what it does not
+([0025-MADR](decisions/0025-MADR-align-with-go-sdk-design-practices.md)
+D9; the threat analysis is
+[0004-REPORT](reports/0004-REPORT-release-signing-research.md)).
+
+**Every run proves:**
+
+- the release metadata and assets came over TLS, with the trust roots of
+  the program's HTTP client, from the API origin and the hosts it
+  redirects to, every hop HTTPS (plain http only between loopback hosts),
+  and no credential sent to another origin;
+- the release is published, not a draft, and immutable on GitHub, so its
+  files cannot change after publication (`ErrMutableRelease` otherwise);
+- each asset is complete (`uploaded`), within the limits, exactly its
+  advertised size, and matches its `SHA256SUMS` entry and, when GitHub
+  gives one, its digest (`ErrIntegrity` otherwise);
+- an exact `--version` gets that tag, and a latest release older than the
+  running one is refused (`ErrLatestOlder`): a downgrade needs an exact
+  version.
+
+**It does not prove:**
+
+- **a publisher signature,** unless the program configures
+  `selfupdate/verify/signednote`;
+- **that the manifest is independent of the binary:** `SHA256SUMS` comes
+  from the same release, so anyone who can publish a release, through
+  repository write access and a `v*` tag, can publish a matching manifest.
+  Restrict `v*` tag creation with a tag ruleset, and keep two-factor
+  authentication on;
+- **freshness:** a stale release served as the latest, a freeze attack
+  ([TUF](https://theupdateframework.io/security/)), is mitigated only by
+  TLS to the API origin; signing does not change that;
+- **the hosts redirects reach:** they are not allow-listed; the checksum,
+  not the host, guards the bytes.
+
+**Opt-in checks add:**
+
+- `selfupdate/verify/signednote`: a holder of an embedded key signed this
+  manifest for this repository, tag and product;
+- `selfupdate/verify/ghattest`: the release was built by the expected
+  workflow, through `gh attestation verify`;
+- `selfupdate/codesign`: the macOS binary is signed, or is re-signed;
+- `Config.Probes` and `InstallOptions.PostInstall`: the new binary runs and
+  reports the expected version before the update commits.
 
 ## Tooling
 
@@ -657,3 +729,8 @@ interpolated into shell.
 - **Signing by default.** A publisher signature is verified only when a
   program configures `selfupdate/verify/signednote`, and a release is
   signed only when its caller sets `sign: true` (0025-MADR D10).
+- **`Platform.Variant`.** `Platform` is `{OS, Arch}`: GOARM, GOAMD64 levels
+  and musl builds are reached through a `Name` function or a selector of
+  your own. A variant field would move the release spec, the workflows and
+  the installers together, and waits for a consumer that needs it
+  (0025-MADR D13).

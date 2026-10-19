@@ -262,6 +262,25 @@ binary. Why it works as it does is in
   published with other tooling, such as GoReleaser, work too, as
   immutable GitHub releases: the updater refuses a mutable one.
 
+### Universal, musl and arm variants
+
+`Platform` is `{OS, Arch}`, so a variant a platform can run is chosen by
+name, not by field
+([0025-MADR](../decisions/0025-MADR-align-with-go-sdk-design-practices.md)
+D13):
+
+- **One universal macOS archive:** a `Name` function that returns the same
+  name for `darwin/amd64` and `darwin/arm64`, such as
+  `relay-darwin-universal.tar.gz`. The image check accepts a fat Mach-O
+  that holds the running architecture.
+- **musl, or an arm level:** the asset to install depends on the host, not
+  on `GOOS` and `GOARCH`, so write an `AssetSelector` that looks at the host
+  (for example, whether `/lib/ld-musl-*` exists) and picks the exact name;
+  raw binaries have no name hook, so this is the route for them too.
+- **GoReleaser's names** for `arm` and `mips*` carry a variant `Platform`
+  does not hold, so `GoReleaserName` refuses them; name them with a `Name`
+  function of your own.
+
 Pointers:
 
 - `archive.ExampleNewSelector`, `archive.ExampleNewUnpacker`
@@ -851,6 +870,18 @@ Pointers:
   which needs a signed-in console. `TestLiveTaskUpdate` also requires the
   update to run at medium integrity, which a GitHub runner does not give
   it, so CI skips that one test
+
+## Evolve with the library
+
+Within `v1` the library only adds, and an interface you implement, such as
+`Lifecycle`, `InstallSession` or `ReleaseSource`, never gains a method. A
+new capability arrives as an optional interface your type may also
+implement: since `v1.6.0` a `Lifecycle` that also implements
+`EnabledLifecycle` reports whether the service is configured to start, and
+a managed update then starts a stopped one that is; a `Lifecycle` without
+it keeps the earlier behaviour, starting only a service that was running. The rules are
+in [architecture.md, API evolution](../architecture.md#api-evolution), and
+what each release adds is in the [changelog](../../CHANGELOG.md).
 
 ## Test a program that self-updates
 
