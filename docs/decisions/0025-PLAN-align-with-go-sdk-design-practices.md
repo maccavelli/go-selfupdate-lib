@@ -264,6 +264,10 @@ A1).
      `"Value":"dg=="`.
    * **Seen failing:** three plants, each removing one type's `Format`
      method, fail `TestSecretsNeverFormat` with the secret quoted.
+   * *(Deviation D2, 2026-10-19: a value that holds a `Credential`,
+     logged through slog's JSON handler, is encoded with `encoding/json`,
+     which D1-A leaves alone, so its `Value` prints. That case is pinned
+     as JSON and documented, and every other case asserts redaction.)*
 5. Arch: `selfupdate` 45/84. Checks; commit.
 6. Seen and left (Out of scope): `ghattest.Options.Env` and
    `service.Command.Env`, recorded.
@@ -1291,7 +1295,75 @@ The MADR gains Amendment A2.
    The first version of `TestWindowsCommitReceiptNotCancelled` did not
    fail on its plant, because the receipt's destination was free and the
    first attempt succeeded. It was rewritten as above before this record.
-6. **Checks:** `make pre-add-check` on the 22 changed Go files
+6. **Checks (S1):** `make pre-add-check` on the 22 changed Go files
    (`go-precheck: 22 file(s) clean (gofmt, golangci-lint, go vet, go
    test, govulncheck).`). `make apicheck` is `compatible with v1.15.2`.
    `--arch`: 16 rows, 0 differ (no `.go` file added).
+7. Committed as `53c8cf0`.
+
+### Deviation D2 (2026-10-19): a Credential inside another value, through slog's JSON handler
+
+**Found** (S2 step 4, at the first run of `TestSecretsNeverFormat`):
+
+```text
+redact_test.go:86: struct field through slog's json handler prints the secret as "Zml4dHVyZS1zZWNyZXQtMDEyMw==": {…"v":{"C":{"Header":"X-Token","Value":"Zml4dHVyZS1zZWNyZXQtMDEyMw==","Source":"env:X_TOKEN"}}}
+```
+
+slog calls `LogValue` only on the value it is given, and its JSON handler
+encodes any other value with `encoding/json`. D1-A leaves `encoding/json`
+alone so that a `CredentialObserver` can save the accepted credential.
+A `Credential` held in a struct field is therefore printed by slog's JSON
+handler. Every fmt verb redacts it, slog's text handler redacts it, and
+both handlers redact it when it is logged directly. The plan's test spec
+asserted redaction for the JSON case too, which D1-A cannot give.
+
+**Decided** (the owner, 2026-10-19, "Keep D1-A, document and pin it"):
+
+* `Credential`'s doc says that `encoding/json`, and so slog's JSON handler
+  on a value that holds a `Credential`, prints `Value`. A program logs the
+  `Credential` itself, or gives its own type a `LogValue`.
+* The test pins that one case as JSON, with `Value` present, and asserts
+  redaction in every other case.
+* The MADR gains Amendment A3.
+
+### S2 (2026-10-19)
+
+1. **The formatters:**
+   * `Credential` (`credentials.go`) has `String`, `GoString`, `Format`
+     and `LogValue`.
+   * `GitHubOptions` and `*GitHubSource` (`github.go`) have the same; the
+     source has no `GoString`, because `Format` covers `%#v`.
+   * Helpers: `redacted`, `setOrNil`, `repoText` (`owner/name` through
+     `sanitizeText`) and `apiText` (through `redactURL`).
+   * The `Format` methods carry `//nolint:errcheck // fmt.Formatter has no
+     error to return; fmt drops write errors`, since `errcheck` runs with
+     `check-blank: true` (`.golangci.yml:256`).
+   * `Credential`'s doc states the JSON rule of deviation D2.
+2. **The test**, `redact_test.go`:
+   * `TestSecretsNeverFormat` covers seven fixtures (`Credential`,
+     `*Credential`, `GitHubOptions`, `*GitHubOptions`, `*GitHubSource`, an
+     `[]any` of three, a struct field). Each is printed with eight verbs
+     (`%v %+v %#v %s %q %x %X %d`) and through slog's text and JSON
+     handlers.
+   * It checks five forms of the secret: text, hex, upper hex, base64, and
+     `%v`'s decimal bytes.
+   * `%d` is in the list because a type without `Format` falls back to
+     `String` for `%v`, `%s`, `%x` and `%q`, and prints its fields for
+     `%d`.
+   * `TestCredentialJSONKeepsValue` pins D1-A's JSON.
+3. **Seen failing**, each plant renaming one `Format` to `unusedFormat`:
+
+   | Plant | Failure |
+   | :--- | :--- |
+   | `Credential` | `redact_test.go:71: slice with %d prints the secret as "102 105 120": [{%!d(string=X-Token) [102 105 120 …` |
+   | `GitHubOptions` | `redact_test.go:71: slice with %d prints the secret as "fixture-secret-0123": […{{%!d(string=o) …` |
+   | `*GitHubSource` | `redact_test.go:71: *GitHubSource with %#v prints the secret as "fixture-secret-0123": &selfupdate.GitHubSource{repo:…` |
+
+4. **Checks:**
+   * `go test ./selfupdate/` `ok`; vet for windows and linux clean;
+   * `make pre-add-check` on the three files: clean, after the
+     `errcheck` reasons;
+   * `make apicheck` is `compatible with v1.15.2`;
+   * arch: `selfupdate` 45/84, 16 rows, 0 differ.
+5. **Seen and left** (Out of scope): `ghattest.Options.Env` and
+   `service.Command.Env` can hold `GH_TOKEN=…` and have no formatter.

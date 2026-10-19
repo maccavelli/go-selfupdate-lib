@@ -5,7 +5,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -16,6 +19,14 @@ import (
 // "Authorization: Bearer <Value>"; otherwise "Header: Value" is sent as
 // given (0004-MADR amendment A6). Source labels where it came from, for
 // diagnostics; it never holds the secret.
+//
+// Formatting a Credential with fmt or log/slog never prints Value;
+// encoding/json does, so a CredentialObserver can save it. slog's JSON
+// handler encodes a value that holds a Credential, such as a struct field,
+// with encoding/json too, so log the Credential itself, or give the
+// holder a LogValue
+// (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D1,
+// Amendment A3).
 type Credential struct {
 	// Header is the HTTP header name, or empty for a bearer token.
 	Header string
@@ -23,6 +34,45 @@ type Credential struct {
 	Value []byte
 	// Source is a label such as "env:GH_TOKEN".
 	Source string
+}
+
+// String implements fmt.Stringer. It prints Header and Source, and
+// Value only as <redacted>, or <empty> when there is none.
+func (c Credential) String() string {
+	return "Credential{Header:" + strconv.Quote(c.Header) + ", Source:" + strconv.Quote(c.Source) +
+		", Value:" + redacted(len(c.Value) > 0) + "}"
+}
+
+// GoString implements fmt.GoStringer. It is String.
+func (c Credential) GoString() string { return c.String() }
+
+// Format implements fmt.Formatter: every verb, %#v, %d, %x and %q
+// included, prints String, so no directive reaches Value.
+func (c Credential) Format(f fmt.State, _ rune) {
+	_, _ = io.WriteString(f, c.String()) //nolint:errcheck // fmt.Formatter has no error to return; fmt drops write errors
+}
+
+// LogValue implements slog.LogValuer: Header and Source, and Value only
+// as <redacted> or <empty>.
+func (c Credential) LogValue() slog.Value {
+	return slog.GroupValue(slog.String("header", c.Header), slog.String("source", c.Source),
+		slog.String("value", redacted(len(c.Value) > 0)))
+}
+
+// redacted stands in for a secret: <redacted> when there is one.
+func redacted(set bool) string {
+	if set {
+		return "<redacted>"
+	}
+	return "<empty>"
+}
+
+// setOrNil stands in for a value a formatter does not print.
+func setOrNil(set bool) string {
+	if set {
+		return "<set>"
+	}
+	return "<nil>"
 }
 
 // CredentialRequest describes the request that needs a credential.

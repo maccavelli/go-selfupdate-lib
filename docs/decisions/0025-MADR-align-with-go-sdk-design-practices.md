@@ -764,6 +764,19 @@ receipt after a committed update. The owner chose, during the PLAN's S1
 
 The fixed 5 s default is gone from both.
 
+### Amendment A3 (2026-10-19): what D1-A redacts, and what it cannot
+
+slog calls `LogValue` only on the value it is given. Its JSON handler
+encodes anything else with `encoding/json`, and D1-A leaves that alone so
+a `CredentialObserver` can save the accepted credential. A `Credential`
+held inside another value, such as a struct field, is therefore printed
+by slog's JSON handler. Every fmt verb, slog's text handler, and both
+handlers given the `Credential` itself redact it.
+
+The owner kept D1-A (the PLAN's deviation D2). `Credential`'s doc says
+this, and a test pins it. The Consequences' first bullet holds for a
+credential logged directly or through fmt.
+
 ### Consequences
 
 * Good, because a program that logs its updater, its options or a

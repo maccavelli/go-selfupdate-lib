@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"math"
 	"net"
 	"net/http"
@@ -32,6 +33,8 @@ var (
 )
 
 // GitHubSource is the canonical GitHub Releases implementation of ReleaseSource.
+// Formatting one with fmt or log/slog prints its repository and API origin,
+// never its token (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D1).
 type GitHubSource struct {
 	repo      Repository
 	client    *http.Client
@@ -812,6 +815,86 @@ func (s *GitHubSource) accept(ctx context.Context, c Credential) {
 func (s *GitHubSource) origin() *url.URL {
 	u := *s.apiBase
 	return &u
+}
+
+// String implements fmt.Stringer: the repository and the API origin. A
+// nil source is GitHubSource(nil).
+func (s *GitHubSource) String() string {
+	if s == nil {
+		return "GitHubSource(nil)"
+	}
+	return "GitHubSource{Repository:" + repoText(s.repo) + " API:" + apiText(s.apiBase) + "}"
+}
+
+// Format implements fmt.Formatter: every verb prints String, so no
+// directive reaches the token.
+func (s *GitHubSource) Format(f fmt.State, _ rune) {
+	_, _ = io.WriteString(f, s.String()) //nolint:errcheck // fmt.Formatter has no error to return; fmt drops write errors
+}
+
+// LogValue implements slog.LogValuer: the repository and the API origin.
+func (s *GitHubSource) LogValue() slog.Value {
+	if s == nil {
+		return slog.StringValue("GitHubSource(nil)")
+	}
+	return slog.GroupValue(slog.String("repository", repoText(s.repo)), slog.String("api", apiText(s.apiBase)))
+}
+
+// String implements fmt.Stringer. It prints Token only as <redacted>, or
+// <empty> when there is none, the API base without user information, query
+// or fragment, and the client, provider and observer only as <set> or
+// <nil> (0025-MADR D1).
+func (o GitHubOptions) String() string {
+	var b strings.Builder
+	b.WriteString("GitHubOptions{Repository:" + repoText(o.Repository))
+	b.WriteString(" APIBaseURL:")
+	if o.APIBaseURL == nil {
+		b.WriteString("<default>")
+	} else {
+		b.WriteString(apiText(o.APIBaseURL))
+	}
+	b.WriteString(" UserAgent:" + strconv.Quote(o.UserAgent))
+	b.WriteString(" Token:" + redacted(o.Token != ""))
+	b.WriteString(" Client:" + setOrNil(o.Client != nil))
+	b.WriteString(" Credentials:" + setOrNil(o.Credentials != nil))
+	b.WriteString(" Observer:" + setOrNil(o.Observer != nil))
+	fmt.Fprintf(&b, " Limits:{ReleaseJSON:%d ErrorBody:%d Manifest:%d Executable:%d}}",
+		o.Limits.ReleaseJSON, o.Limits.ErrorBody, o.Limits.Manifest, o.Limits.Executable)
+	return b.String()
+}
+
+// GoString implements fmt.GoStringer. It is String.
+func (o GitHubOptions) GoString() string { return o.String() }
+
+// Format implements fmt.Formatter: every verb prints String, so no
+// directive reaches Token.
+func (o GitHubOptions) Format(f fmt.State, _ rune) {
+	_, _ = io.WriteString(f, o.String()) //nolint:errcheck // fmt.Formatter has no error to return; fmt drops write errors
+}
+
+// LogValue implements slog.LogValuer, with Token only as <redacted> or
+// <empty>.
+func (o GitHubOptions) LogValue() slog.Value {
+	api := "<default>"
+	if o.APIBaseURL != nil {
+		api = apiText(o.APIBaseURL)
+	}
+	return slog.GroupValue(slog.String("repository", repoText(o.Repository)), slog.String("api", api),
+		slog.String("user_agent", o.UserAgent), slog.String("token", redacted(o.Token != "")),
+		slog.String("credentials", setOrNil(o.Credentials != nil)), slog.String("observer", setOrNil(o.Observer != nil)))
+}
+
+// repoText is owner/name, sanitized for a diagnostic.
+func repoText(r Repository) string {
+	return sanitizeText(r.Owner) + "/" + sanitizeText(r.Name)
+}
+
+// apiText is u without user information, query or fragment.
+func apiText(u *url.URL) string {
+	if u == nil {
+		return defaultAPIOrigin
+	}
+	return redactURL(u.String())
 }
 
 // mapStatus maps a non-2xx response; every caller has filtered 2xx.
