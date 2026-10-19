@@ -602,6 +602,18 @@ No section changes: §2 and §4 already state the recommendations.
   credentials, and none covers every platform the fleet ships.
   Complementary, out of scope (§7).
 
+## Amendments
+
+### A1 (2026-10-19): a third hook time, `before_uninstall`
+
+*Status: accepted (2026-10-19), as 0026-MADR.*
+
+[0026-MADR-before-uninstall-installer-hook.md](0026-MADR-before-uninstall-installer-hook.md)
+adds `before_uninstall` to this record's hooks: it runs the installed copy
+before `--uninstall` removes anything, with `before_install`'s rules, and a
+`--force` that removes past a failed hook. This record's description of the
+hooks is kept as written.
+
 ## More Information
 
 ### Probe evidence
