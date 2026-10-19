@@ -205,6 +205,20 @@ func (r installReleases) render(t *testing.T, kind, name, tag string) []byte {
 	return files[name]
 }
 
+// renderWith is one kind's installer called name, at fixtureTag, from
+// its spec after edit (docs/decisions/0015-PLAN-remediate-third-debugging-pass-findings.md
+// P7).
+func (r installReleases) renderWith(t *testing.T, kind, name string, edit func(*releasespec.Spec)) []byte {
+	t.Helper()
+	s := r.spec(t, kind)
+	edit(&s)
+	files, err := renderInstallers(s, releaseKinds[kind], fixtureTag)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return files[name]
+}
+
 // rawRepo is the raw release's repository.
 const rawRepo = "fixture/relay"
 

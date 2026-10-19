@@ -145,20 +145,6 @@ func standIn(role, version string) []byte {
 		"echo \"" + role + " $*\" >>\"$HOOK_LOG\"\nexit \"${" + strings.ToUpper(role) + "_EXIT:-0}\"\n")
 }
 
-// renderWith is one kind's installer called name, at fixtureTag, from
-// its spec after edit (docs/decisions/0015-PLAN-remediate-third-debugging-pass-findings.md
-// P7).
-func (r installReleases) renderWith(t *testing.T, kind, name string, edit func(*releasespec.Spec)) []byte {
-	t.Helper()
-	s := r.spec(t, kind)
-	edit(&s)
-	files, err := renderInstallers(s, releaseKinds[kind], fixtureTag)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return files[name]
-}
-
 // stdinReader is standIn reading its standard input to the end first, as
 // a program that waits for input does
 // (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md F2).

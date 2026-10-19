@@ -14,9 +14,11 @@
 # defines stays in the caller's session. On Windows PowerShell 5.1 it adds
 # TLS 1.2 to the process's protocols, the one change that outlasts it.
 #
-# Exit codes, when run as a file: 0 installed; 1 a usage or environment
-# error; 2 a verification failure, with nothing changed or the previous
-# binary restored; 3 installed, but an after_install hook failed. Under
+# Exit codes, when run as a file: 0 installed or removed; 1 a usage or
+# environment error, or a failed before_install or before_uninstall hook,
+# with nothing changed; 2 a verification failure, with nothing changed or
+# the previous binary restored; 3 installed, but an after_install hook
+# failed, or removed with -Force, but a before_uninstall hook failed. Under
 # iex or [scriptblock]::Create it never exits the caller's session: a
 # failure is an error instead.
 
@@ -38,7 +40,8 @@
             [switch]$NoHooks,
             [switch]$NoPathUpdate,
             [switch]$DryRun,
-            [switch]$Uninstall
+            [switch]$Uninstall,
+            [switch]$Force
         )
         Set-StrictMode -Version 3.0
         $ErrorActionPreference = 'Stop'
@@ -405,9 +408,12 @@ namespace SelfupdateInstall {
             }
         }
 
-        # Run the hooks of one time. before_install runs the installed copy,
-        # and skips a product not installed yet. Returns whether all passed.
-        function Invoke-InstallHook([string]$When, [string]$Dir, [string[]]$Selected, [bool]$Skip) {
+        # Run the hooks of one time. A hook runs the copy in Dir, and skips a
+        # product not installed there. The first failure stops a before_*
+        # time, but -Force runs every before_uninstall hook. Under -DryRun a
+        # hook is shown, not run. Returns whether all passed
+        # (docs/decisions/0026-MADR-before-uninstall-installer-hook.md).
+        function Invoke-InstallHook([string]$When, [string]$Dir, [string[]]$Selected, [bool]$Skip, [bool]$DryRun = $false, [bool]$Force = $false) {
             if ($Skip) { return $true }
             $ok = $true
             foreach ($hook in $Hooks) {
@@ -415,13 +421,17 @@ namespace SelfupdateInstall {
                 $exe = Join-Path $Dir ($hook.Product + '.exe')
                 if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { continue }
                 $hookArgs = $hook.Args
+                if ($DryRun) {
+                    Write-Line "would run $($hook.Product) $($hookArgs -join ' ')"
+                    continue
+                }
                 Write-Line "running $($hook.Product) $($hookArgs -join ' ')"
                 # The hook writes straight to the installer's output.
                 $code = Invoke-NoInput $exe $hookArgs ''
                 if ($code -ne 0) {
                     [Console]::Error.WriteLine("install: $When hook failed: $($hook.Product) $($hookArgs -join ' ')")
                     $ok = $false
-                    if ($When -ceq 'before_install') { break }
+                    if ($When -clike 'before_*' -and -not ($Force -and $When -ceq 'before_uninstall')) { break }
                 }
             }
             return $ok
@@ -451,7 +461,7 @@ namespace SelfupdateInstall {
             param(
                 [string]$Version, [string]$InstallDir, [string[]]$Product,
                 [bool]$VerifyAttestation, [bool]$NoHooks, [bool]$NoPathUpdate,
-                [bool]$DryRun, [bool]$Uninstall
+                [bool]$DryRun, [bool]$Uninstall, [bool]$Force
             )
             if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
                 Invoke-Fail 1 'install.ps1 is for Windows; on Linux and macOS use install.sh'
@@ -459,6 +469,7 @@ namespace SelfupdateInstall {
             if ($PSVersionTable.PSVersion.Major -lt 6) {
                 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
             }
+            if ($Force -and -not $Uninstall) { Invoke-Fail 1 '-Force applies only to -Uninstall' }
             $want = $Version
             if (-not $want) { $want = Get-EnvSetting 'VERSION' }
             if (-not $want) { $want = $Tag }
@@ -485,6 +496,10 @@ namespace SelfupdateInstall {
             $base = Get-BaseUrl
 
             if ($Uninstall) {
+                # A failed hook removes nothing; with -Force everything is
+                # removed, and the exit code is 3.
+                $hooksOk = Invoke-InstallHook 'before_uninstall' $dir $selected $skipHooks $DryRun $Force
+                if (-not $hooksOk -and -not $Force) { Invoke-Fail 1 'a before_uninstall hook failed; nothing was removed' }
                 foreach ($name in $selected) {
                     $exe = Join-Path $dir "$name.exe"
                     if ($DryRun) { Write-Line "would remove $exe"; continue }
@@ -495,6 +510,10 @@ namespace SelfupdateInstall {
                 $left = @($Products | Where-Object { Test-Path -LiteralPath (Join-Path $dir "$_.exe") })
                 if (-not $DryRun -and $left.Count -eq 0) { Clear-UserPathEntry $dir $base }
                 Write-Line 'configuration, if any, is left in place'
+                if (-not $hooksOk) {
+                    [Console]::Error.WriteLine('install: removed, but a before_uninstall hook failed')
+                    return 3
+                }
                 return 0
             }
 
@@ -611,7 +630,8 @@ namespace SelfupdateInstall {
         try {
             $code = Install-Release -Version $Version -InstallDir $InstallDir -Product $Product `
                 -VerifyAttestation $VerifyAttestation.IsPresent -NoHooks $NoHooks.IsPresent `
-                -NoPathUpdate $NoPathUpdate.IsPresent -DryRun $DryRun.IsPresent -Uninstall $Uninstall.IsPresent
+                -NoPathUpdate $NoPathUpdate.IsPresent -DryRun $DryRun.IsPresent -Uninstall $Uninstall.IsPresent `
+                -Force $Force.IsPresent
         } catch {
             $code = 1
             if ($_.Exception.Data.Contains('InstallExitCode')) { $code = $_.Exception.Data['InstallExitCode'] }

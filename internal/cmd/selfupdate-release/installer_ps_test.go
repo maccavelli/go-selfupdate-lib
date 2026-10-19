@@ -856,6 +856,92 @@ var psCases = []struct {
 		expectFiles(c.t, c.dir, nil)
 		c.expectPath("REG_EXPAND_SZ", "")
 	}},
+	// docs/decisions/0026-MADR-before-uninstall-installer-hook.md D2-D4.
+	{"before_uninstall runs the installed copy before removal", argModes, func(c *psCase) {
+		c.place("relay.exe", standInExe(c.t, "old", fixtureTag))
+		c.place("relay.exe.prev", standInExe(c.t, "old", fixtureTag))
+		c.place("relayctl.exe", standInExe(c.t, "new", fixtureTag))
+		c.expect(c.run("-Uninstall"), 0, "running relay hook-uninstall", "old ran hook-uninstall", "removed "+filepath.Join(c.dir, "relay.exe"))
+		expectFiles(c.t, c.dir, nil)
+		if log := c.hookLog(); log != "old hook-uninstall\n" {
+			c.t.Fatalf("hook log %q", log)
+		}
+	}},
+	{"a failed before_uninstall removes nothing", argModes, func(c *psCase) {
+		c.place("relay.exe", standInExe(c.t, "old", fixtureTag))
+		c.place("relay.exe.prev", standInExe(c.t, "old", fixtureTag))
+		c.place("relayctl.exe", standInExe(c.t, "new", fixtureTag))
+		before := filesIn(c.t, c.dir)
+		c.env = append(c.env, "OLD_EXIT=1")
+		c.expect(c.run("-Uninstall"), 1, "before_uninstall hook failed: relay hook-uninstall",
+			"a before_uninstall hook failed; nothing was removed")
+		expectFiles(c.t, c.dir, before)
+	}},
+	{"before_uninstall skips a product not installed", argModes, func(c *psCase) {
+		c.place("relayctl.exe", standInExe(c.t, "new", fixtureTag))
+		c.expect(c.run("-Uninstall"), 0, "removed "+filepath.Join(c.dir, "relayctl.exe"))
+		expectFiles(c.t, c.dir, nil)
+		if log := c.hookLog(); log != "" {
+			c.t.Fatalf("hook log %q", log)
+		}
+	}},
+	{"-NoHooks and RELAY_NO_HOOKS skip before_uninstall", argModes, func(c *psCase) {
+		c.env = append(c.env, "OLD_EXIT=1")
+		c.place("relay.exe", standInExe(c.t, "old", fixtureTag))
+		c.expect(c.run("-Uninstall", "-NoHooks"), 0, "removed "+filepath.Join(c.dir, "relay.exe"))
+		expectFiles(c.t, c.dir, nil)
+		c.place("relay.exe", standInExe(c.t, "old", fixtureTag))
+		c.env = append(c.env, "RELAY_NO_HOOKS=1")
+		c.expect(c.run("-Uninstall"), 0, "removed "+filepath.Join(c.dir, "relay.exe"))
+		expectFiles(c.t, c.dir, nil)
+		if log := c.hookLog(); log != "" {
+			c.t.Fatalf("hooks ran: %q", log)
+		}
+	}},
+	{"-Uninstall -DryRun shows the hook and runs nothing", argModes, func(c *psCase) {
+		c.place("relay.exe", standInExe(c.t, "old", fixtureTag))
+		c.place("relayctl.exe", standInExe(c.t, "new", fixtureTag))
+		before := filesIn(c.t, c.dir)
+		c.expect(c.run("-Uninstall", "-DryRun"), 0, "would run relay hook-uninstall", "would remove "+filepath.Join(c.dir, "relay.exe"))
+		expectFiles(c.t, c.dir, before)
+		if log := c.hookLog(); log != "" {
+			c.t.Fatalf("hooks ran: %q", log)
+		}
+	}},
+	{"-Uninstall -Product runs only that product's hooks", argModes, func(c *psCase) {
+		old := standInExe(c.t, "old", fixtureTag)
+		c.place("relay.exe", old)
+		c.place("relayctl.exe", standInExe(c.t, "new", fixtureTag))
+		r := c.run("-Uninstall", "-Product", "relayctl")
+		c.expect(r, 0, "removed "+filepath.Join(c.dir, "relayctl.exe"))
+		if strings.Contains(r.out, "running relay") {
+			c.t.Fatalf("a hook of an unselected product ran:\n%s", r.out)
+		}
+		expectFiles(c.t, c.dir, map[string][]byte{"relay.exe": old})
+		if log := c.hookLog(); log != "" {
+			c.t.Fatalf("hook log %q", log)
+		}
+	}},
+	{"-Force removes past a failed before_uninstall and exits 3", argModes, func(c *psCase) {
+		c.script = c.r.renderWith(c.t, "raw", "install.ps1", func(s *releasespec.Spec) {
+			s.Installer.Hooks = append(s.Installer.Hooks, releasespec.Hook{When: "before_uninstall", Product: "relayctl", Args: []string{"hook-two"}})
+		})
+		c.place("relay.exe", standInExe(c.t, "old", fixtureTag))
+		c.place("relay.exe.prev", standInExe(c.t, "old", fixtureTag))
+		c.place("relayctl.exe", standInExe(c.t, "new", fixtureTag))
+		c.env = append(c.env, "OLD_EXIT=1")
+		c.expect(c.run("-Uninstall", "-Force"), 3, "before_uninstall hook failed: relay hook-uninstall",
+			"removed "+filepath.Join(c.dir, "relay.exe"), "removed, but a before_uninstall hook failed")
+		expectFiles(c.t, c.dir, nil)
+		if log := c.hookLog(); log != "old hook-uninstall\nnew hook-two\n" {
+			c.t.Fatalf("hook log %q, want both before_uninstall hooks", log)
+		}
+	}},
+	{"-Force needs -Uninstall", argModes, func(c *psCase) {
+		c.expect(c.run("-Force"), 1, "-Force applies only to -Uninstall")
+		expectFiles(c.t, c.dir, nil)
+		c.expectNoPath()
+	}},
 	{"-DryRun changes nothing", argModes, func(c *psCase) {
 		c.expect(c.run("-DryRun"), 0, "would download "+c.srv.URL+"/fixture/relay/releases/download/v1.2.3/"+c.asset("raw", "relay")+
 			" and install "+filepath.Join(c.dir, "relay.exe"))

@@ -369,3 +369,87 @@ Decision Outcome, and U2, U3 and U4 carry it. The MADR became
      build on this host. `Invoke-InstallHook` (`install.ps1:410`) skips a
      hook whose time is not its own, so the new fixture hook is inert there
      until U3. U3 runs those cases on the Windows test host.
+
+### U3 (2026-10-19)
+
+1. **`install.ps1`:**
+   * `Invoke-InstallHook` (`:410-438`) gains `[bool]$DryRun = $false` and
+     `[bool]$Force = $false`. Under `-DryRun`, a hook that would run prints
+     `would run <product> <args>` and is not run. A failure stops a
+     `before_*` time, except `before_uninstall` under `-Force` (`:434`).
+     * Step 1 named only `$DryRun`. `$Force` is how step 2's "every hook
+       runs" reaches the loop, as `FORCE` does in `install.sh`'s
+       `run_hooks`.
+   * The `-Uninstall` branch (`:498-518`) runs the `before_uninstall` hooks
+     first. Without `-Force`, a failure ends it: `Invoke-Fail` 1, 'a
+     before_uninstall hook failed; nothing was removed'. With `-Force`, the
+     binaries are removed, the PATH entry is cleared as before, and the
+     return is 3, 'removed, but a before_uninstall hook failed'.
+   * `[switch]$Force` (`:44`) reaches `Install-Release` as `[bool]$Force`.
+     Without `-Uninstall` it is refused: `Invoke-Fail` 1, '-Force applies
+     only to -Uninstall' (`:472`).
+   * **Text:** the header's exit codes, as in `install.sh`. **A correction
+     to step 3:** `install.ps1` has no help text, so there is no `-NoHooks`
+     help to change. The header is the only text.
+2. **Tests:**
+   * **A helper move:** `renderWith` moves from `installer_sh_test.go`
+     (`//go:build unix`) to `installer_harness_test.go`, which has no build
+     tag. The `-Force` case needs it on Windows. Its body is unchanged.
+   * `installer_ps_test.go` (`:859-944`) gains step 4's eight cases in
+     `argModes`. The stand-ins are `old` for `relay.exe`, and `new` for
+     `relayctl.exe` and for the `-Force` case's second hook (`hook-two`).
+3. **Fixed during the phase: the TLS order.**
+   * **First run:** 31 of the 32 new runs passed (eight cases, two forms,
+     two PowerShells). `powershell/scriptblock/-Force needs -Uninstall`
+     failed with `installer_ps_test.go:941: Windows PowerShell ran the script
+     without adding TLS 1.2 (0 -> 0)`.
+   * **Cause:** the `-Force` check stood before the line that adds TLS 1.2
+     on Windows PowerShell 5.1. The header promises that addition, and
+     `session` requires it for every refusal except a parameter-binding
+     error. The other option refusals, such as an unknown `-Product`, come
+     after the TLS line.
+   * **Fix:** the check moves below the TLS line (`:472`). No decision or
+     test changes.
+4. **Seen failing:**
+   * Nine plants, the same as U2's, on `scripts/plant-copy.sh` copies of
+     `install.ps1`.
+   * They ran on the Windows test host under `pwsh` in the file form, from
+     a bundle with no AppleDouble files.
+   * The first eight ran on copies made before the fix. The fix does not
+     touch the lines those eight plant or the cases they fail. The `-Force`
+     refusal plant was run again after the fix, under both PowerShells and
+     both forms.
+   * The table quotes each plant's first failure, with the temporary paths
+     elided.
+
+   | Plant | Failure |
+   | :--- | :--- |
+   | the `-Uninstall` branch without the hook call | `installer_ps_test.go:933: exit 0, want 3`; the failure, `-DryRun` and "before removal" cases fail too |
+   | the no-`-Force` `Invoke-Fail` removed | `installer_ps_test.go:876: exit 3, want 1` |
+   | `Invoke-InstallHook` without the installed-copy check | `installer_ps_test.go:639: exit 1, want 0` (`before_install hook failed`), and sixteen other cases |
+   | `$skipHooks` without `-NoHooks` | `installer_ps_test.go:891: exit 1, want 0` |
+   | `$skipHooks` without `<PREFIX>_NO_HOOKS` | `installer_ps_test.go:895: exit 1, want 0` |
+   | the dry-run branch removed | `installer_ps_test.go:905: the output lacks "would run relay hook-uninstall"` |
+   | `Invoke-InstallHook` without `$Selected` | `installer_ps_test.go:918: a hook of an unselected product ran` |
+   | `if ($When -clike 'before_*') { break }` (`-Force` still stops) | `installer_ps_test.go:937: hook log "old hook-uninstall\n", want both before_uninstall hooks` |
+   | the `-Force` refusal removed | `installer_ps_test.go:941: exit 0, want 1` (it installed), in each PowerShell and form |
+
+5. **Checks:**
+   * On the Windows test host, with
+     `SELFUPDATE_INSTALL_REQUIRE_SHELLS=powershell,pwsh`:
+     * after the fix, `go test -run '^TestInstallPs1'` was `ok`, and all 32 new runs passed;
+     * `scripts/check-installers.sh …/install.ps1` (the parser and
+       PSScriptAnalyzer) was clean.
+   * On this host:
+     * PSScriptAnalyzer is not installed, so `check-installers.sh` on
+       `install.ps1` refuses to run here;
+     * `make pre-add-check` on the three test files was clean, its lint
+       covering `GOOS=windows`;
+     * `go test ./internal/cmd/selfupdate-release/` was `ok`, with the
+       sh cases still using the moved `renderWith`.
+   * **A watched risk that did not occur:** a hook's image can stay mapped
+     for a moment after it exits, and the uninstall's `Remove-Item` is
+     `-ErrorAction SilentlyContinue`. In every run of "before_uninstall
+     runs the installed copy before removal", `relay.exe` was gone right
+     after its hook. That held in each PowerShell and form, so no change was
+     made for it.
