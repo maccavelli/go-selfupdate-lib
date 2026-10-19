@@ -115,7 +115,7 @@ docs/
 | Directory | Package | Non-test files | Test files | Non-standard imports |
 | :--- | :--- | :--- | :--- | :--- |
 | `buildinfo/` | `buildinfo` | 1 | 3 | none |
-| `selfupdate/` | `selfupdate` | 45 | 85, including five fuzz targets, plus `testdata/SHA256SUMS.{valid,invalid}`, 23 `testdata/manifest-parity/` cases and 14 `testdata/golden/` files | `x/mod/semver`, `x/sys/unix`, `x/sys/windows`, `x/term` (and `internal/winproc`) |
+| `selfupdate/` | `selfupdate` | 46 | 87, including five fuzz targets, plus `testdata/SHA256SUMS.{valid,invalid}`, 23 `testdata/manifest-parity/` cases and 14 `testdata/golden/` files | `x/mod/semver`, `x/sys/unix`, `x/sys/windows`, `x/term` (and `internal/winproc`) |
 | `selfupdate/cli/` | `cli` | 4 | 9, plus 53 `testdata/golden/` and 9 `testdata/migration/` files | `x/term` (and `selfupdate`, `buildinfo`) |
 | `selfupdate/selfupdatetest/` | `selfupdatetest` | 2 | 2 | none (`selfupdate` itself) |
 | `selfupdate/archive/` | `archive` | 3 | 8, including three fuzz targets, plus a real GoReleaser `testdata/` checksum file | none (`selfupdate`) |
@@ -163,6 +163,9 @@ docs/
     `DryRun`, `KeepPrevious` and `CleanupPending` (`updater.go`,
     `session.go`, `standalone.go`); the interrupted-update journal
     (`journal.go`) and `KeptBackups` (`standalone.go`, `managed.go`).
+- The API of [0025-MADR](decisions/0025-MADR-align-with-go-sdk-design-practices.md), by file:
+  - **the common path:** `githubupdater.go` (`NewGitHubUpdater`,
+    `GitHubUpdaterOptions`, and its default client);
 - The Phase 2 core API:
   - **per-run options:** `runoptions.go` (`RunOption`, `RunWith`,
     `WithReporter`, `WithConfirmer`, `WithCredentials`,

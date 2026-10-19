@@ -9,6 +9,25 @@
 //
 // # Updating
 //
+// NewGitHubUpdater is the common path for a standalone program released on
+// GitHub with exact asset names:
+//
+//	id := buildinfo.Identity()
+//	u, err := selfupdate.NewGitHubUpdater(selfupdate.GitHubUpdaterOptions{
+//		Repository: selfupdate.Repository{Owner: "owner", Name: "repo"},
+//		Product:    "demo",
+//		Version:    id.Current(),
+//	})
+//	if err != nil {
+//		return err
+//	}
+//	res, err := u.Run(ctx, selfupdate.Request{Product: "demo", CurrentVersion: id.Current(), CurrentBuild: build})
+//	os.Exit(selfupdate.ExitCode(res, err))
+//
+// where build is selfupdate.ReleaseBuild when id.Kind is
+// buildinfo.KindRelease, and selfupdate.LocalBuild otherwise. Package cli's
+// Command builds the request from the update command's flags instead.
+//
 // New composes an Updater from explicit parts, and Updater.Run does one
 // request: resolve the target, discover and select the release, confirm,
 // download to session-owned staging, verify, unpack an archive, optionally

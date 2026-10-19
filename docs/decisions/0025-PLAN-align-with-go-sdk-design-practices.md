@@ -71,6 +71,10 @@ A1).
   after pre-add checks pass", authorizes the agent to commit at the end of
   each phase. Pushes, tags and every other outward-facing step still need
   an ask in that turn.)*
+  *(Deviation D3, 2026-10-19: withdrawn. Under the owner's
+  `sysadmin-git-branch-gates`, a commit on `main` needs "commit to main"
+  in the same turn, and a plan approval or a standing rule is not that.
+  Each phase now ends with its checks and waits for that word.)*
 * **Each phase stops at a deviation** (AGENTS.md, Plan deviations). The
   deviation is recorded in this plan, and in the MADR when it changes a
   decision or a fact the MADR asserts, before the phase continues.
@@ -1487,3 +1491,86 @@ asserted redaction for the JSON case too, which D1-A cannot give.
    which adds the constructor.
 4. `go doc` shows the new text. Vet for darwin, linux and windows is
    clean.
+5. Phase checks: links, markdownlint and ids clean; `pre-add-check` 11
+   files clean; arch 0 differ; `apicheck` compatible with `v1.15.2`.
+   Committed as `499d043`.
+
+### Deviation D3 (2026-10-19): commits on `main` need the owner's word in the same turn
+
+**Found** (before S6's commit). The organization's git-branch gate forbids
+agent commits on `main`. The owner directed that their
+`sysadmin-git-branch-gates` supersedes it: "no, use
+sysadmin-git-branch-gates it superceeds that". That gate allows a commit
+on `main` only when the current turn says so by name ("commit to main").
+A push needs its own word in that turn. "An earlier turn, a standing
+rule, a memory, or a plan approval is not authorization." The Approval
+note in Rules took the plan approval, with the owner's standing rule, as
+commit authorization. Under that gate it is not.
+
+The six commits `a705460`, `53c8cf0`, `6006fcf`, `10cb69b`, `2e3b6e9` and
+`499d043` (S0 to S5) were made that way. All six are local and unpushed.
+They are left as they are; nothing in history is rewritten unless the
+owner asks.
+
+**Decided:** from S6 on, each phase ends with its checks passed and the
+tree uncommitted. The agent commits only on "commit to main" in that turn,
+with `git commit --no-edit`, so the hook writes the message. Pushes and
+tags need their own word.
+
+### S6 (2026-10-19)
+
+1. **`selfupdate/githubupdater.go`:**
+   * `GitHubUpdaterOptions` and `NewGitHubUpdater`, as step 1 and
+     Amendment A1 define them. The fields are `Stdin *os.File` and
+     `APIBaseURL`.
+   * Default platforms come from `runningPlatform()`, so the existing
+     `SetRunningPlatform` test seam applies.
+   * A nil `Stderr` is detected with the package's `isNil`, which also
+     catches a typed nil.
+   * Every error is prefixed `selfupdate: github updater: `.
+   * `defaultHTTPClient` clones `http.DefaultTransport`, or builds Go
+     1.27.2's equivalent, then sets `ResponseHeaderTimeout` to 30 s, with no
+     `Client.Timeout`.
+2. **Docs:**
+   * `types.go:201-202` and `:806-807` are reworded as step 2 says, and
+     `GitHubOptions.Client`'s paragraph gains S5's deferred sentence.
+   * `selfupdate/doc.go`'s `# Updating` opens with the happy path as a
+     tab-indented block.
+   * README gains `### Quickstart` after the bindings list, and points to
+     `cli.Command` for the full command.
+   * `docs/architecture.md` gains "The API of 0025-MADR, by file", listing
+     `githubupdater.go`.
+3. **Tests:**
+   * `githubupdater_test.go` (`selfupdate_test`):
+     * `TestNewGitHubUpdaterRefuses` covers seven bad options: owner, name,
+       empty and invalid product, version, an invalid platform, and an
+       empty platform list;
+     * `TestNewGitHubUpdaterChecks`: against `NewGitHubServer`, through
+       `Updater.Checker().Check`, it finds `v1.1.0`, and every request
+       carries `UserAgent("demo", "v1.0.0")`;
+     * `CheckOnly` through `Run` would resolve the test binary as the
+       target, which lies outside the home directory, so the test checks
+       through the Checker.
+   * `githubupdater_internal_test.go`: `TestDefaultClientTimeouts`.
+   * `ExampleNewGitHubUpdater` in `example_test.go`, `// Output: updater
+     ready`.
+4. **Snippets:** README's quickstart and `doc.go`'s block are copied into
+   a scratch module that requires this tree. `CGO_ENABLED=0 go build`
+   exits 0 for linux, darwin and windows.
+5. **Seen failing:**
+
+   | Plant | Failure |
+   | :--- | :--- |
+   | no empty-version refusal | `githubupdater_test.go:40: empty version: updater &{…}, err <nil>; want a refusal` |
+   | `Client.Timeout: time.Minute` on the default client | `githubupdater_internal_test.go:15: Client.Timeout = 1m0s, want none` |
+
+6. Arch: `selfupdate` 46/87.
+7. **Phase checks:**
+   * markdownlint first failed with `README.md:95:1 error MD010/no-hard-tabs`,
+     on the quickstart's gofmt tabs. The guides indent Go blocks with
+     four spaces (`grep -c $'^\t'` gives 0 for each guide), so the block
+     was converted to match.
+   * Then: links 0 broken, markdownlint 0 issues, ids 0 findings,
+     `pre-add-check` 6 files clean, arch 0 differ, `apicheck` compatible
+     with `v1.15.2`. `go test ./selfupdate/` `ok`.
+   * Not committed: waiting for "commit to main" (deviation D3).

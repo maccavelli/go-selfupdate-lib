@@ -70,6 +70,35 @@ It proves release-asset integrity, not publisher signature authenticity.
 - a **reporter** and a **confirmer** (`NewTextReporter`,
   `NewTerminalConfirmer`).
 
+### Quickstart
+
+`NewGitHubUpdater` binds all of those, with their safe defaults, for a
+standalone program released on GitHub with exact asset names:
+
+```go
+func update(ctx context.Context) int {
+    id := buildinfo.Identity()
+    u, err := selfupdate.NewGitHubUpdater(selfupdate.GitHubUpdaterOptions{
+        Repository: selfupdate.Repository{Owner: "<owner>", Name: "<repo>"},
+        Product:    "<product>",
+        Version:    id.Current(),
+    })
+    if err != nil {
+        fmt.Fprintln(os.Stderr, err)
+        return 1
+    }
+    build := selfupdate.LocalBuild
+    if id.Kind == buildinfo.KindRelease {
+        build = selfupdate.ReleaseBuild
+    }
+    res, err := u.Run(ctx, selfupdate.Request{Product: "<product>", CurrentVersion: id.Current(), CurrentBuild: build})
+    return selfupdate.ExitCode(res, err)
+}
+```
+
+For the full `update` command, with its flags and `--json`, use
+`selfupdate/cli`'s `Command` instead.
+
 `ExitCode` maps a run to the process status: 0 when there is no error
 (already current, declined, or applied), 10 when a check finds an update,
 and 1 for any other error. `selfupdate/example_test.go` shows a complete

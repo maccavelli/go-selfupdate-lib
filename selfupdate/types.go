@@ -199,8 +199,8 @@ type Repository struct {
 	Name string
 }
 
-// GitHubOptions construct a GitHubSource. There is no convenience constructor
-// that fills a client, token, or limits.
+// GitHubOptions construct a GitHubSource; every field is explicit.
+// NewGitHubUpdater composes a source with safe defaults (0025-MADR D5).
 type GitHubOptions struct {
 	// Repository is the GitHub owner/name pair.
 	Repository Repository
@@ -213,7 +213,7 @@ type GitHubOptions struct {
 	// Client.Timeout bounds each request including the whole asset
 	// download; prefer a context deadline, or a Transport with
 	// ResponseHeaderTimeout, so a slow large download is not cut off
-	// (0025-MADR D14).
+	// (0025-MADR D14). NewGitHubUpdater's default client does that.
 	Client *http.Client
 	// APIBaseURL is the GitHub API origin. Nil means https://api.github.com.
 	APIBaseURL *url.URL
@@ -810,8 +810,9 @@ func (l Limits) valid() error {
 	return nil
 }
 
-// Config is the explicit Updater composition. There is no convenience
-// constructor that fills security-relevant defaults.
+// Config is the explicit Updater composition. New fills no defaults;
+// NewGitHubUpdater composes the safe ones for a standalone program
+// (0025-MADR D5).
 type Config struct {
 	// Source discovers releases.
 	Source ReleaseSource

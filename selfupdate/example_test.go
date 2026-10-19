@@ -64,6 +64,24 @@ func ExampleNew_standalone() {
 	// Output: standalone updater ready
 }
 
+// ExampleNewGitHubUpdater is the one-call common path: the same standalone
+// binding as ExampleNew_standalone, for the running platform, with every
+// part at its safe default (0025-MADR D5).
+func ExampleNewGitHubUpdater() {
+	updater, err := selfupdate.NewGitHubUpdater(selfupdate.GitHubUpdaterOptions{
+		Repository: selfupdate.Repository{Owner: "maccavelli", Name: "prepare-commit-msg"},
+		Product:    "prepare-commit-msg",
+		Version:    buildinfo.Identity().Current(),
+	})
+	if err != nil {
+		fmt.Println("updater:", err)
+		return
+	}
+	_ = updater
+	fmt.Println("updater ready")
+	// Output: updater ready
+}
+
 func ExampleNewTextReporter() {
 	reporter := selfupdate.NewTextReporter(os.Stdout)
 	_ = reporter.Report(context.Background(), selfupdate.Event{
