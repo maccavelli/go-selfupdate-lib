@@ -8,6 +8,17 @@ listed in the
 [migration guide](docs/guides/migrating-from-mcplib-selfupdate.md), one
 section per release, and each entry links its section and its records.
 
+## Unreleased
+
+### Changed
+
+- The doc comments of the exported calls that take no context say why:
+  `systemd.Notify` and `Available`, `service.SameExecutable`,
+  `ReportFunc`, `WriteHandOffResult`, `ReadHandOffResult` and
+  `WriteHandOffEnv`, and `InstallSession.Close`
+  ([0025-PLAN](docs/decisions/0025-PLAN-align-with-go-sdk-design-practices.md),
+  deviation D5).
+
 ## v1.16.0 - 2026-10-19
 
 See [the guide](docs/guides/migrating-from-mcplib-selfupdate.md#16-from-v115-to-v116),

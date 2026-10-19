@@ -22,7 +22,8 @@ const maxHandOffEnv = 1 << 20
 
 // WriteHandOffEnv writes vars ("NAME=value") to a new file, handoff-<id>.env,
 // of mode 0600 in dir, which it makes with mode 0700. It returns the file's
-// path. The detached run applies it with LoadHandOffEnv.
+// path. The detached run applies it with LoadHandOffEnv. It takes no
+// context: it writes one small local file (0025-MADR D3).
 func WriteHandOffEnv(dir, id string, vars []string) (string, error) {
 	if !filepath.IsAbs(dir) || strings.ContainsAny(id, `/\`) || id == "" {
 		return "", fmt.Errorf("selfupdate: service: environment file %q in %q is not a plain name in an absolute directory", id, dir)

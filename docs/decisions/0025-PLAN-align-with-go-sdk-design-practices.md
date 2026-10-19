@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 date: 2026-10-19
 associated-madr: "0025-MADR-align-with-go-sdk-design-practices.md"
 ---
@@ -2158,3 +2158,163 @@ migration guide's §16.
 * **Documentation:** concurrency contracts and "Errors" paragraphs, the
   API evolution policy, the trust model, `SECURITY.md` and
   `CHANGELOG.md`.
+
+The owner committed and pushed the pin commit as `9972996` ("pushed").
+
+### S15: the scorecard, re-run (2026-10-19)
+
+Each row of the MADR's scorecard that a decision set out to change is
+read again against `9972996`. "Aligned" means the practice holds as far
+as v1 allows. Rows no decision touched keep their verdict, and are named
+at the end.
+
+| § | Practice | Was | Now | Evidence |
+| :--- | :--- | :--- | :--- | :--- |
+| 1 | Accept interfaces, return concrete types | Partial | Aligned within v1 | `NewGitHubUpdater` returns `*Updater`; the new strategies (`NewSlogReporter`, `NewVersionProberWith`, `signednote.New`) return their interfaces, as D6's policy allows; the 16 older constructors cannot change in v1 (F6) |
+| 1 | Small interfaces; growth without breakage | Partial | Aligned | the optional-interface rule is written (`architecture.md`, API evolution; the extending guide's "Evolve with the library") |
+| 1 | Minimize the public surface | Partial | Aligned | S12's surface review: no accidental export |
+| 1 | Least surprise; a one-line common path | Partial | Aligned | `NewGitHubUpdater`; README's quickstart |
+| 1 | No global mutable state | Aligned / Partial | Aligned (exported) / Partial (internal) | `lastCoInit` is atomic (S1); the internal test seams stay, Out of scope |
+| 2 | `NewClient(required)` works out of the box | Gap | Aligned | `NewGitHubUpdater(GitHubUpdaterOptions{Repository, Product, Version})` |
+| 3 | Context on every blocking operation | Partial | Aligned | the two waits take a context (S1, S4); the local calls say why they take none (G1, deviation D5) |
+| 3 | Cancellation; documented timeouts | Aligned | Aligned | `GitHubOptions.Client` documents its timeout (S5) |
+| 4 | Errors a caller can distinguish, documented | Partial | Aligned | `HTTPError`, `service.CommandError`, and 17 "Errors" paragraphs (S3) |
+| 4 | No secrets in errors or logs | Partial | Aligned, with Amendment A3's limit | the redacting formatters (S2); a `Credential` inside another value still reaches slog's JSON handler through `encoding/json`, as decided |
+| 5 | Deprecate before removal | Aligned | Aligned | the policy is written (S12) |
+| 5 | CHANGELOG; tags | Partial | Aligned | `CHANGELOG.md`; `v1.16.0` |
+| 5 | A clean version list | Gap | Aligned | the proxy lists nothing below `v1.5.0` (S14) |
+| 5 | A floor adopters can meet | Gap | Aligned | `go 1.26.9`; the `go126` CI job; `govulncheck` clean on 1.26.9 |
+| 6 | Godoc covers concurrency and errors | Partial | Aligned | S3 and S5; `ExitCode`, `Run` and `Result` no longer claim the module never exits |
+| 6 | Runnable Examples | Partial | Aligned | `ExamplePollHealthy`, `ExampleNewGitHubUpdater`, `signednote.ExampleNew` |
+| 6 | Package comment with the happy path | Partial | Aligned | `selfupdate/doc.go`'s `# Updating` block |
+| 6 | Common case obvious | Partial | Aligned | as in §1 |
+| 7 | Easy to test | Partial | Aligned | `Clock`, `NewVersionProberWith`, `VerifyReleaseSource` |
+| 8 | Document concurrency safety | Partial | Aligned | S5 |
+| 9 | Verify signatures; pin the key | Partial | Aligned as opt-in | `signednote`, rehearsed live (S13); opt-in by v1's constraint (D10-D rejected) |
+| 9 | Platform variants | Partial | Partial, by decision | D13-A: the recipes are written; `Platform.Variant` waits for a consumer |
+| 9 | Source abstraction for a later host | Partial | Aligned for the seam | host-neutral docs, `VerifyReleaseSource`, the GitHub Enterprise test; mutable releases stay with 0004 §6 |
+| 9 | Trust model documented | Partial | Aligned | `docs/architecture.md`, Trust model; `SECURITY.md` |
+| 10 | Exports reviewed | Partial | Aligned | S12 |
+| 10 | README quickstart | Partial | Aligned | README, `### Quickstart`, and the pkg.go.dev badge |
+| 10 | CHANGELOG and tag | Partial | Aligned | as in §5 |
+
+Unchanged, because no decision set out to change them:
+
+* §7, a small core (Partial);
+* §8, locks across I/O (Partial: `installSession` serializes on purpose).
+
+**Open at this re-run:**
+
+* **G1, D3-A's sentence.** D3-A says to "Leave the local socket and stat
+  calls as they are, with a sentence saying why". S4, as this plan wrote
+  it, has no step for that sentence, and none was added. `go doc
+  systemd.Notify` shows no word on why it takes no context, and neither
+  do `SameExecutable`, `HandOffFunc`, `WriteHandOffResult`,
+  `ReadHandOffResult`, `systemd.Available` or `InstallSession.Close`. The
+  plan's gap, not the code's.
+* **V9, the repository settings** (S14 step 3): not yet applied. The
+  three GETs still give `{"enabled":false}`, 404 and `[]`.
+* **The throwaway repository** (S13 step 8): not yet deleted.
+
+### Deviation D5 (2026-10-19): D3-A's sentence on the calls that take no context
+
+**Found** (S15, G1 above). D3-A's sentence was never written, because S4
+had no step for it.
+
+**Decided** (the owner, 2026-10-19, "fix it"): one sentence in the doc of
+each exported call that does I/O without a context, saying why. Each
+sentence was read against the code first:
+
+* `systemd.Notify`: one datagram to a local socket, with no reply waited
+  for. Its helpers (`Ready`, `Reloading`, `Stopping`, `Watchdog`,
+  `Status`) send through `Notify` (`notify.go:45-62`), so its sentence
+  covers them.
+* `systemd.Available`: a stat of `/run/systemd/system`, and of
+  `systemctl` in the fixed tool directories (`unit.go:168-174`); it
+  starts nothing.
+* `service.SameExecutable`: file metadata only.
+* `service.WriteHandOffResult`, `ReadHandOffResult` and
+  `WriteHandOffEnv`: one small local file each.
+* `service.ReportFunc`: its wait is `LoadHandOffEnv`'s. A program that
+  needs a context calls `LoadHandOffEnvContext` first, and the hook then
+  waits for nothing.
+* `InstallSession.Close` (on the interface's doc): it releases the lock
+  and removes the session's own files, with no retry
+  (`session.go:542-580`).
+
+`HandOffFunc`, which the S8 facts listed, is left out: building the hook
+does no I/O, and the hook it returns takes a context.
+
+A doc comment reaches pkg.go.dev only with a release. These ship in the
+next one, and the changelog's `Unreleased` says so.
+
+### Deviation D6 (2026-10-19): the repository settings stay off
+
+**Found** (S15, V9 above). S14 step 3's settings were prepared and not
+applied.
+
+**Decided** (the owner, 2026-10-19, "keep them off for now"):
+
+* private vulnerability reporting, Dependabot alerts and the `v*` tag
+  ruleset stay off;
+* `SECURITY.md` names private vulnerability reporting, which is not yet
+  on, so it is changed to say so, and gives the owner's profile contact
+  as the channel until it is;
+* V9 is recorded as deferred by the owner, not met. The plan is complete
+  without it, since the owner changed the criterion.
+
+The MADR gains Amendment A5.
+
+The owner deletes the throwaway repository later ("i will delete it
+later"). S13 step 8 is recorded as left to the owner.
+
+### S15, as closed (2026-10-19)
+
+1. **G1, done (deviation D5):**
+   * the sentence is in the doc of `systemd.Notify` (covering its
+     helpers), `systemd.Available`, `service.SameExecutable`, `ReportFunc`,
+     `WriteHandOffResult`, `ReadHandOffResult`, `WriteHandOffEnv`, and
+     `InstallSession` (for `Close`);
+   * `go doc` shows each;
+   * `CHANGELOG.md`'s new `## Unreleased` lists it for the next release.
+
+   The scorecard's §3 context row now reads Aligned. No test is added,
+   since the change is to comments only. Vet for linux, windows and darwin
+   is clean.
+2. **V9, deferred by the owner (deviation D6, MADR Amendment A5).**
+   `SECURITY.md` says private reporting is not yet on, and names the
+   owner's profile contact until it is.
+3. **The throwaway repository** is left to the owner to delete.
+
+### Verification, at closing (2026-10-19)
+
+* **V1 (decisions):** D1–D14 are built, with deviations D1–D6 recorded.
+  The MADR's amendments are A1 (the floor, and the outlines refined), A2
+  (the receipt write), A3 (redaction's limit), A4 (the `Clock`
+  interface) and A5 (the settings).
+* **V2 (seen failing):** every new test and gate has its plant and the
+  failure quoted in its phase's record. Four plants first failed for the
+  wrong reason or not at all, and were redone; each is recorded: S1's
+  `TestWindowsCommitReceiptNotCancelled`, S9's depguard import, S11's
+  floor plant, and S2's struct-field JSON case (deviation D2).
+* **V3 (compatibility):** `make apicheck` was compatible with `v1.15.2`
+  at every phase. One attempt was refused, the S7 func field, and it was
+  rebuilt (deviation D4).
+* **V4 (the floor):** the `go126` CI job passed on `0509a51`, `86f6e70`,
+  the tag and `9972996`. `govulncheck` reports nothing with 1.26.9 or
+  1.27.2.
+* **V5 (signing):** S13's four runs and the three hosts' updates matched
+  their expected outcomes.
+* **V6 (versions):** the proxy lists nothing below `v1.5.0`.
+* **V7 (checks):** links, identifiers, the arch table, markdownlint and
+  actionlint were clean at each phase. `make gate` ended `overall=0`
+  before the push.
+* **V8 (release):** `v1.16.0` is tagged on `86f6e70`. Its CI passed 18 of
+  18 jobs with ten identity legs, and the proxy serves it.
+* **V9 (settings):** deferred by the owner (deviation D6). `main` is
+  untouched.
+* **V10 (scorecard):** recorded above. Every row a decision set out to
+  change reads Aligned, Aligned within v1's constraint, or (§9 platform
+  variants) Partial by decision D13.
+
+The plan is `complete`. The MADR stays `accepted`.

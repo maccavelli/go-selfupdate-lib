@@ -14,7 +14,10 @@ import (
 // when it begins with "@", an abstract socket (sd_notify(3); 0011-MADR §7,
 // owner answer Q3). With $NOTIFY_SOCKET unset it returns false and no
 // error, as sd_notify returns 0: the process is not a Type=notify service.
-// It never unsets the variable.
+// It never unsets the variable. It takes no context: it sends one datagram
+// to a local socket and waits for no reply, and so do the helpers below,
+// which send through it
+// (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D3).
 func Notify(states ...string) (sent bool, err error) {
 	socket := os.Getenv("NOTIFY_SOCKET")
 	if socket == "" {

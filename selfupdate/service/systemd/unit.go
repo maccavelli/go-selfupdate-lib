@@ -164,7 +164,9 @@ func tool(given, name string) (string, error) {
 }
 
 // Available reports whether this host runs systemd (sd_booted(3): the
-// directory /run/systemd/system exists) and has systemctl.
+// directory /run/systemd/system exists) and has systemctl. It takes no
+// context: it only stats that directory and the tool's fixed paths, and
+// starts nothing (0025-MADR D3).
 func Available() bool {
 	if _, err := statFile("/run/systemd/system"); err != nil {
 		return false

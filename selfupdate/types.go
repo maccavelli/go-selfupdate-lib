@@ -540,7 +540,9 @@ type Installer interface {
 
 // InstallSession owns the per-target lock, anchored directory, staging names,
 // and cleanup through Close. The sessions this package returns serialize
-// their methods; a session of your own need not (0025-MADR D4).
+// their methods; a session of your own need not (0025-MADR D4). Close takes
+// no context: it releases the lock and removes the session's own files, with
+// no retry (0025-MADR D3).
 type InstallSession interface {
 	Target() Target
 	CreateStaging(context.Context) (*os.File, string, error)

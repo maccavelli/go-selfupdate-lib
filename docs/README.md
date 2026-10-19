@@ -68,7 +68,7 @@ name, and the files they cite moved with the rename
 | 0024 | MADR | [Correct the documentation against v1.15.1, settle how Go comments cite records, add the missing Examples, and fix the four defects the audit found](decisions/0024-MADR-documentation-pass-after-v1-15-1.md) | accepted |
 | 0024 | PLAN | [Implement the documentation pass after v1.15.1, the Examples, and the four defect fixes](decisions/0024-PLAN-documentation-pass-after-v1-15-1.md) | complete |
 | 0025 | MADR | [Align go-selfupdate-lib with Go SDK design practices: redact secrets, type and document errors, write the concurrency and evolution contracts, add a one-call quickstart, retract the pre-rename tags, lower the Go floor to 1.26.9, and ship release signing as an opt-in verifier](decisions/0025-MADR-align-with-go-sdk-design-practices.md) | accepted |
-| 0025 | PLAN | [Implement the Go SDK practices alignment as `v1.16.0`: redaction, typed errors, contexts, contracts, a quickstart, seams, a source conformance check, opt-in release signing, the Go 1.26.9 floor, `retract`, a changelog and a trust model](decisions/0025-PLAN-align-with-go-sdk-design-practices.md) | proposed |
+| 0025 | PLAN | [Implement the Go SDK practices alignment as `v1.16.0`: redaction, typed errors, contexts, contracts, a quickstart, seams, a source conformance check, opt-in release signing, the Go 1.26.9 floor, `retract`, a changelog and a trust model](decisions/0025-PLAN-align-with-go-sdk-design-practices.md) | complete |
 
 ## I want to…
 

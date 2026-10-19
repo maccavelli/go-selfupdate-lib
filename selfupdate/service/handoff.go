@@ -175,6 +175,10 @@ func HandOffFunc(d Detacher, spec HandOff) func(context.Context, selfupdate.Requ
 //
 // It first applies a private environment file, LoadHandOffEnv. A failure to
 // load it is reported in the result, and returned, with the run's outcome.
+// It takes no context, and in a hop's real run waits as LoadHandOffEnv does;
+// a program that needs its context to bound that wait calls
+// LoadHandOffEnvContext first, and the hook then waits for nothing
+// (0025-MADR D3).
 func ReportFunc() func(selfupdate.Result, error) error {
 	started := time.Now().UTC()
 	loadErr := LoadHandOffEnv()
@@ -205,7 +209,8 @@ func ReportFunc() func(selfupdate.Result, error) error {
 // another user than the detached run.
 //
 // path must be absolute and clean: in a detached run it comes from
-// EnvHandOffResult, which the process that handed off set.
+// EnvHandOffResult, which the process that handed off set. It takes no
+// context: it writes one small local file (0025-MADR D3).
 func WriteHandOffResult(path string, r HandOffResult) error {
 	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
 		return fmt.Errorf("selfupdate: service: handoff result path %q is not absolute and clean", path)
@@ -251,7 +256,8 @@ func writeAndClose(f *os.File, body []byte) error {
 // maxHandOffResult bounds a result file.
 const maxHandOffResult = 64 << 10
 
-// ReadHandOffResult reads what a detached run wrote to path.
+// ReadHandOffResult reads what a detached run wrote to path. It takes no
+// context: it reads one small local file (0025-MADR D3).
 func ReadHandOffResult(path string) (HandOffResult, error) {
 	f, err := os.Open(path) //nolint:gosec // the caller names its own result file
 	if err != nil {

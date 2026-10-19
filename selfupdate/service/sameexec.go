@@ -12,7 +12,8 @@ import (
 // same file, by os.SameFile. The second matches a Windows 8.3 short name, a
 // junction, or a path through a symlinked directory. A path that cannot be
 // read matches only by its text. Each backend's Reconcile uses it to
-// recognise the binary a definition runs (0011-MADR amendment A5).
+// recognise the binary a definition runs (0011-MADR amendment A5). It takes
+// no context: it reads file metadata only (0025-MADR D3).
 func SameExecutable(a, b string) bool {
 	ca, cb := filepath.Clean(a), filepath.Clean(b)
 	if ca == cb || (runtime.GOOS == "windows" && strings.EqualFold(ca, cb)) {

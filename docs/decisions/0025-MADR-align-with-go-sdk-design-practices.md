@@ -791,6 +791,16 @@ The owner chose an interface instead:
 
 D12-A is otherwise unchanged.
 
+### Amendment A5 (2026-10-19): the repository settings wait
+
+D9-A recommended four repository settings, among them private
+vulnerability reporting and a tag ruleset limiting `v*` to the owner. At
+closing, the owner chose to keep them off for now (the PLAN's deviation
+D6). `SECURITY.md` says reporting is not yet on. The Consequences' and
+D9-A's claim, that the tag ruleset closes the repository-compromise
+threat, therefore does not hold until the owner applies it; the trust
+model's advice to restrict `v*` tags stands.
+
 ### Consequences
 
 * Good, because a program that logs its updater, its options or a
