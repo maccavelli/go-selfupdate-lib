@@ -1666,3 +1666,43 @@ S7's items 1, 4 and 5 above describe the first shape. As built:
    | `Probe` ignores `Run`; `EventFailed` at Info | as in S7 item 5 |
 
 4. **Checks:** `make apicheck` is `compatible with v1.15.2`.
+5. Phase checks: links, markdownlint and ids clean; `pre-add-check` 11
+   files clean; arch 0 differ; `apicheck` compatible. The owner committed
+   S7 as `45d9813` ("committed, proceed").
+
+### S8 (2026-10-19)
+
+1. **Docs:**
+   * `Release` and `Asset` say what each field means to the Updater: ID,
+     Tag, URL, Draft, Prerelease, Immutable; ID > 0, a basename Name,
+     `AssetStateUploaded`, Size, Digest. Each rule was traced to
+     `checker.go:183-189` and `github.go:489-547`.
+   * `ReleaseSource` names `selfupdatetest.VerifyReleaseSource`.
+   * `GitHubSource` gains the GitHub mapping (IDs, `html_url`, the flags,
+     the state and digest) and the `/api/v3` base.
+   * `Result.ReleaseURL` drops "GitHub".
+2. **`selfupdatetest/conformance.go`:**
+   * `SourceCase` and `VerifyReleaseSource`, with the checks step 2 lists,
+     every violation joined;
+   * a nil source and an empty `SourceCase` are refused;
+   * the digest rule mirrors `parseGitHubDigest`: the `sha256:` prefix and
+     64 hex characters, in either case.
+3. **Tests:**
+   * `conformance_test.go`:
+     * `TestVerifyReleaseSourcePasses` covers `NewFakeSource`, and a
+       `GitHubSource` over `NewGitHubServer`;
+     * `TestVerifyReleaseSourceFails` covers seven broken sources (a
+       `broken` wrapper over a `FakeSource`), each named by its rule, plus
+       the nil and empty refusals.
+   * `github_test.go` gains `TestGitHubAPIBasePathPrefix`. Latest and
+     OpenAsset requests go to `/api/v3/repos/maccavelli/demo/releases/latest`
+     and `…/releases/assets/7`.
+4. **Seen failing:**
+
+   | Plant | Failure |
+   | :--- | :--- |
+   | `normalizeAPIBase` drops the path | `github_test.go:577: paths = ["/repos/maccavelli/demo/releases/latest" …], want ["/api/v3/repos/…" …]` |
+   | `VerifyReleaseSource` skips the `ErrNoRelease` check | `conformance_test.go:107: unwrapped missing release: err = <nil>; want it to name "wraps selfupdate.ErrNoRelease"` |
+
+5. Arch: `selfupdatetest` 3/3. The "by file" list names the source
+   contract.

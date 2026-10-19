@@ -131,7 +131,7 @@ type Result struct {
 	CurrentVersion string
 	// TargetVersion is the selected release tag.
 	TargetVersion string
-	// ReleaseURL is the selected GitHub release HTML URL when known.
+	// ReleaseURL is the selected release's page, Release.URL, when known.
 	ReleaseURL string
 	// AssetName is the exact selected asset name: the executable, or the
 	// archive holding it when the selection is Packed.
@@ -233,35 +233,49 @@ type GitHubOptions struct {
 	Observer CredentialObserver
 }
 
-// Release is one GitHub release after JSON decoding and field validation.
+// Release is one release from a ReleaseSource, after its fields are
+// validated. Each field says what it means to the Updater; GitHubSource
+// fills them from GitHub's release JSON
+// (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D11).
 type Release struct {
-	// ID is the GitHub release identifier.
+	// ID is the source's identifier for the release. The Updater passes it
+	// back to OpenAsset and reads it no further.
 	ID int64
-	// Tag is the release tag name.
+	// Tag is the release tag name, which the VersionPolicy validates.
 	Tag string
-	// URL is the HTML URL for the release.
+	// URL is the release's page, copied to Result.ReleaseURL and
+	// Availability.ReleaseURL.
 	URL string
-	// Draft reports whether the release is still a draft.
+	// Draft reports a release that is not published. The Updater never
+	// installs one.
 	Draft bool
-	// Prerelease reports whether GitHub marked the release as a prerelease.
+	// Prerelease reports a prerelease, which the Updater installs only on a
+	// Request.Channel that admits it.
 	Prerelease bool
-	// Immutable reports whether GitHub marked the release immutable.
+	// Immutable reports that the host keeps the release's files unchanged.
+	// The Updater refuses a release without it with ErrMutableRelease.
 	Immutable bool
-	// Assets are the release assets as returned by the API.
+	// Assets are the release's assets.
 	Assets []Asset
 }
 
-// Asset is one GitHub release asset.
+// Asset is one release asset. Each field says what the Updater requires of
+// it (0025-MADR D11).
 type Asset struct {
-	// ID is the GitHub asset identifier used for API downloads.
+	// ID is the source's identifier for the asset, which its OpenAsset
+	// uses. The Updater requires it to be positive.
 	ID int64
-	// Name is the exact asset filename.
+	// Name is the exact asset filename: a basename, with no separator or
+	// control character.
 	Name string
-	// State is the GitHub asset state; uploaded is required to install.
+	// State is AssetStateUploaded for a complete asset. The Updater refuses
+	// any other state.
 	State string
-	// Size is the advertised byte length.
+	// Size is the advertised byte length: positive, within the Limits, and
+	// exactly what OpenAsset returns.
 	Size int64
-	// Digest is GitHub's sha256:<hex> field when supplied.
+	// Digest is sha256:<64 hex>, or empty when the source has none. When it
+	// is set, the downloaded bytes must match it.
 	Digest string
 }
 
@@ -284,6 +298,10 @@ type Selection struct {
 // ByTag return an error that wraps ErrNoRelease when the release asked for
 // does not exist, as GitHubSource's do; Checker.CheckCached saves that
 // outcome as CheckNoRelease.
+//
+// A source for another host meets the field rules on Release and Asset.
+// selfupdatetest.VerifyReleaseSource checks a source against them in its
+// tests (0025-MADR D11).
 type ReleaseSource interface {
 	Latest(context.Context) (Release, error)
 	ByTag(context.Context, string) (Release, error)

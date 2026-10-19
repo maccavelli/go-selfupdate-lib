@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -533,5 +534,46 @@ func TestLatestNotFoundIsNoRelease(t *testing.T) {
 		if _, err := get(); !errors.Is(err, ErrNoRelease) || !strings.Contains(err.Error(), "github http 404") {
 			t.Errorf("%s: err = %v; want ErrNoRelease with the status", name, err)
 		}
+	}
+}
+
+// TestGitHubAPIBasePathPrefix: a GitHub Enterprise API base keeps its
+// path, so release and asset requests go under /api/v3
+// (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D11).
+func TestGitHubAPIBasePathPrefix(t *testing.T) {
+	var mu sync.Mutex
+	var paths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		paths = append(paths, r.URL.Path)
+		mu.Unlock()
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	base, err := url.Parse(srv.URL + "/api/v3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	src, err := NewGitHubSource(GitHubOptions{
+		Repository: Repository{Owner: "maccavelli", Name: "demo"},
+		Client:     srv.Client(), APIBaseURL: base, UserAgent: "demo/v1.0.0", Limits: testGitHubLimits(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if _, err := src.Latest(ctx); !errors.Is(err, ErrNoRelease) {
+		t.Fatalf("Latest: %v", err)
+	}
+	rel := Release{ID: 1, Tag: "v1.0.0", Assets: []Asset{{ID: 7, Name: "demo", State: AssetStateUploaded, Size: 4}}}
+	if rc, err := src.OpenAsset(ctx, rel, rel.Assets[0]); err == nil {
+		_ = rc.Close()
+		t.Fatal("OpenAsset succeeded against a server that has nothing")
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	want := []string{"/api/v3/repos/maccavelli/demo/releases/latest", "/api/v3/repos/maccavelli/demo/releases/assets/7"}
+	if !reflect.DeepEqual(paths, want) {
+		t.Fatalf("paths = %q, want %q", paths, want)
 	}
 }

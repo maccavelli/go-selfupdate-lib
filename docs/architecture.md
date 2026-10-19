@@ -117,7 +117,7 @@ docs/
 | `buildinfo/` | `buildinfo` | 1 | 3 | none |
 | `selfupdate/` | `selfupdate` | 47 | 88, including five fuzz targets, plus `testdata/SHA256SUMS.{valid,invalid}`, 23 `testdata/manifest-parity/` cases and 14 `testdata/golden/` files | `x/mod/semver`, `x/sys/unix`, `x/sys/windows`, `x/term` (and `internal/winproc`) |
 | `selfupdate/cli/` | `cli` | 4 | 9, plus 53 `testdata/golden/` and 9 `testdata/migration/` files | `x/term` (and `selfupdate`, `buildinfo`) |
-| `selfupdate/selfupdatetest/` | `selfupdatetest` | 2 | 2 | none (`selfupdate` itself) |
+| `selfupdate/selfupdatetest/` | `selfupdatetest` | 3 | 3 | none (`selfupdate` itself) |
 | `selfupdate/archive/` | `archive` | 3 | 8, including three fuzz targets, plus a real GoReleaser `testdata/` checksum file | none (`selfupdate`) |
 | `selfupdate/codesign/` | `codesign` | 2 | 4 | none (`selfupdate`, `service`) |
 | `selfupdate/verify/ghattest/` | `ghattest` | 2 | 3, plus a `testdata/` capture of `gh attestation verify --format json` | none (`selfupdate`, `service`) |
@@ -170,6 +170,9 @@ docs/
     `CheckerConfig.Clock` (`types.go`, `adapters.go`, `checker.go`),
     `NewVersionProberWith` and `VersionProbeOptions`
     (`probe.go`), and `slogreporter.go` (`NewSlogReporter`);
+  - **the source contract:** host-neutral `Release` and `Asset` docs
+    (`types.go`), and `selfupdatetest`'s `conformance.go`
+    (`VerifyReleaseSource`, `SourceCase`);
 - The Phase 2 core API:
   - **per-run options:** `runoptions.go` (`RunOption`, `RunWith`,
     `WithReporter`, `WithConfirmer`, `WithCredentials`,

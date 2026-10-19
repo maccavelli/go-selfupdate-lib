@@ -38,6 +38,12 @@ var (
 //
 // A GitHubSource is safe for concurrent use. It resolves a credential at
 // most once at a time, with no lock held during network I/O (0025-MADR D4).
+//
+// It maps GitHub's release JSON onto Release and Asset: the release and
+// asset IDs, html_url as URL, GitHub's draft, prerelease and immutable
+// flags, the asset state, and the asset's sha256:<hex> digest when GitHub
+// supplies one. APIBaseURL may carry a path, as a GitHub Enterprise Server
+// API base does (/api/v3).
 type GitHubSource struct {
 	repo      Repository
 	client    *http.Client
