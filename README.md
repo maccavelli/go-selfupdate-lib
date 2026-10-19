@@ -58,7 +58,7 @@ failure. The behaviour a consumer can see is listed in the
 GitHub digest when present), and replaces the running binary under a lock.
 It proves release-asset integrity, not publisher signature authenticity.
 
-The library never reads flags or calls `os.Exit`. The program binds:
+`selfupdate` never reads flags or calls `os.Exit`; only `service.HandOffHop`, in a hand-off hop, exits. The program binds:
 
 - a **source** (`NewGitHubSource`, with a required product/version
   `User-Agent`; `GH_TOKEN` or `GITHUB_TOKEN` is used when set),

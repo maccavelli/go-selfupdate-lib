@@ -11,6 +11,10 @@ import (
 
 // ManagedInstaller composes standalone replacement with consumer lifecycle
 // and definition reconciliation.
+//
+// A ManagedInstaller is safe for concurrent use. Updates of one target are
+// serialized by the target's lock file, as StandaloneInstaller's are
+// (0025-MADR D4).
 type ManagedInstaller struct {
 	inner Installer
 	life  Lifecycle

@@ -12,6 +12,10 @@ import (
 
 // StandaloneInstaller owns target resolution, session construction, and
 // binary replacement without service lifecycle.
+//
+// A StandaloneInstaller is safe for concurrent use. Updates of one target
+// are serialized by the target's lock file: a second waits up to
+// LockTimeout, then returns ErrConcurrentUpdate (0025-MADR D4).
 type StandaloneInstaller struct {
 	policy       TargetPolicy
 	lockTimeout  time.Duration

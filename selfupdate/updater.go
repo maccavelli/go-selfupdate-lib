@@ -116,8 +116,9 @@ func validUnpacker(cfg Config) error {
 	return nil
 }
 
-// Run executes one self-update request. The library never calls os.Exit.
-// It is RunWith with no options.
+// Run executes one self-update request. Package selfupdate never calls
+// os.Exit. It is RunWith with no options, and may be called from any
+// goroutine: a run that overlaps another on u returns ErrConcurrentUpdate.
 //
 // Errors: match them with errors.Is. ErrUpdateAvailable answers a
 // CheckOnly request that found an update. ErrConfirmationRequired,

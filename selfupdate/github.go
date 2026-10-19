@@ -35,6 +35,9 @@ var (
 // GitHubSource is the canonical GitHub Releases implementation of ReleaseSource.
 // Formatting one with fmt or log/slog prints its repository and API origin,
 // never its token (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D1).
+//
+// A GitHubSource is safe for concurrent use. It resolves a credential at
+// most once at a time, with no lock held during network I/O (0025-MADR D4).
 type GitHubSource struct {
 	repo      Repository
 	client    *http.Client

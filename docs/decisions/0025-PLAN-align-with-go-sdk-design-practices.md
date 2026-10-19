@@ -1462,3 +1462,28 @@ asserted redaction for the JSON case too, which D1-A cannot give.
    | the Windows wait back to one `WaitForSingleObject(h, d)` | Windows | `--- FAIL: TestHandOffHopContextCancelled (10.01s)` / `handoffhop_test.go:94: err = <nil>, want the context's deadline` |
 
 6. `service/doc.go` names both new functions.
+7. Phase checks: links, markdownlint, ids clean; `pre-add-check` 8
+   files clean; arch 0 differ; `apicheck` compatible with `v1.15.2`.
+   Committed as `2e3b6e9`.
+
+### S5 (2026-10-19)
+
+1. **Concurrency sentences**, as step 1 words them, on:
+   * `Updater`, `Run` and `RunWith`;
+   * `GitHubSource`;
+   * `StandaloneInstaller` and `ManagedInstaller`. The behaviour was read
+     first: `lock_unix.go:25-42` waits up to the timeout, then returns
+     `ErrConcurrentUpdate`;
+   * `InstallSession`;
+   * `systemd.Unit`, `launchd.Job`, `scm.Service` and
+     `taskscheduler.Task`.
+2. **"Package selfupdate never calls os.Exit"** at `errors.go:116`,
+   `updater.go:119` and `types.go:125`. README's "The library never reads
+   flags or calls `os.Exit`" (`README.md:61`) was the same claim in
+   Markdown. It now says that `selfupdate` never does, and that only
+   `service.HandOffHop` exits, in a hand-off hop.
+3. **`GitHubOptions.Client`** gains the timeout paragraph. Its last
+   sentence, "NewGitHubUpdater's default client does that", waits for S6,
+   which adds the constructor.
+4. `go doc` shows the new text. Vet for darwin, linux and windows is
+   clean.

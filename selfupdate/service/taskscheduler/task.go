@@ -83,7 +83,9 @@ type instance struct {
 	born uint64
 }
 
-// Task manages one registered task.
+// Task manages one registered task. It is safe for concurrent use; the
+// Updater drives one product's Stop, Start and WaitHealthy in order, and a
+// program that calls them itself must do the same (0025-MADR D4).
 type Task struct {
 	o     Options
 	s     scheduler

@@ -122,7 +122,8 @@ func (o Operation) String() string {
 	}
 }
 
-// Result is the typed outcome of Updater.Run. The library never calls os.Exit.
+// Result is the typed outcome of Updater.Run. Package selfupdate never calls
+// os.Exit.
 type Result struct {
 	// Product is the requested product name.
 	Product string
@@ -208,6 +209,11 @@ type GitHubOptions struct {
 	// rules: at most 10 hops, HTTPS only (plain http only between loopback
 	// hosts), and no credential to another origin. Client.CheckRedirect is
 	// never called.
+	//
+	// Client.Timeout bounds each request including the whole asset
+	// download; prefer a context deadline, or a Transport with
+	// ResponseHeaderTimeout, so a slow large download is not cut off
+	// (0025-MADR D14).
 	Client *http.Client
 	// APIBaseURL is the GitHub API origin. Nil means https://api.github.com.
 	APIBaseURL *url.URL
@@ -515,7 +521,8 @@ type Installer interface {
 }
 
 // InstallSession owns the per-target lock, anchored directory, staging names,
-// and cleanup through Close.
+// and cleanup through Close. The sessions this package returns serialize
+// their methods; a session of your own need not (0025-MADR D4).
 type InstallSession interface {
 	Target() Target
 	CreateStaging(context.Context) (*os.File, string, error)
@@ -854,6 +861,11 @@ type Config struct {
 // Updater is the coordinator. Unexported collaborator fields are populated
 // by New and are immutable afterwards. One that New did not make, such as
 // a zero value, returns ErrNotConstructed.
+//
+// An Updater is safe for concurrent use. Run, RunWith and Start may be
+// called from any goroutine; a run that overlaps another on the same
+// Updater returns ErrConcurrentUpdate
+// (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D4).
 type Updater struct {
 	source      ReleaseSource
 	versions    VersionPolicy

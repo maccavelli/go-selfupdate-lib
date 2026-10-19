@@ -113,7 +113,7 @@ func (e *HTTPError) Error() string {
 
 // ExitCode maps a Run outcome to the canonical process status. It returns 10
 // only when ErrUpdateAvailable is in the error chain, 1 for any other error,
-// and 0 otherwise. The library never calls os.Exit.
+// and 0 otherwise. Package selfupdate never calls os.Exit.
 func ExitCode(result Result, err error) int {
 	_ = result
 	if err == nil {

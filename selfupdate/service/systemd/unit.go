@@ -65,7 +65,9 @@ type Options struct {
 	DropInDir string
 }
 
-// Unit manages one systemd service unit.
+// Unit manages one systemd service unit. It is safe for concurrent use; the
+// Updater drives one product's Stop, Start and WaitHealthy in order, and a
+// program that calls them itself must do the same (0025-MADR D4).
 type Unit struct {
 	o         Options
 	systemctl string

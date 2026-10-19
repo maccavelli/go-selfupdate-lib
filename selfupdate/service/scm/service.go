@@ -50,7 +50,9 @@ type Options struct {
 	TriggerStartEnabled bool
 }
 
-// Service manages one Windows service.
+// Service manages one Windows service. It is safe for concurrent use; the
+// Updater drives one product's Stop, Start and WaitHealthy in order, and a
+// program that calls them itself must do the same (0025-MADR D4).
 type Service struct {
 	o     Options
 	m     manager
