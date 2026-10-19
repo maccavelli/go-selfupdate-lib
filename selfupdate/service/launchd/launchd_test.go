@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -377,4 +378,37 @@ func readString(t *testing.T, path string) string {
 		t.Fatal(err)
 	}
 	return string(b)
+}
+
+// TestCommandErrorAs: a failed launchctl run is a *service.CommandError,
+// still classified by its exit code, with the text it had before
+// (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D2).
+func TestCommandErrorAs(t *testing.T) {
+	testproc.CheckNoLeak(t)
+	for _, c := range []struct {
+		name   string
+		code   int
+		class  error
+		prefix string
+		suffix string
+	}{
+		{"not permitted", exitNotPermitted, service.ErrPermission, service.ErrPermission.Error() + ": ", ""},
+		{"SIP", exitSIP, service.ErrPermission, service.ErrPermission.Error() + ": ", ""},
+		{"not found", exitNotFound, service.ErrNotInstalled, service.ErrNotInstalled.Error() + ": ", ""},
+		{"disabled", exitDisabled, nil, "", " (the job is disabled; launchctl enable clears it)"},
+		{"other", 3, nil, "", ""},
+	} {
+		err := launchctlError("bootout", "system/com.example.demo", service.Output{Stderr: []byte("nope\n"), ExitCode: c.code})
+		var ce *service.CommandError
+		if !errors.As(err, &ce) || ce.Backend != "launchd" || ce.Step != "bootout" || ce.Name != "system/com.example.demo" || ce.ExitCode != c.code {
+			t.Errorf("%s: err = %v, want a *service.CommandError", c.name, err)
+			continue
+		}
+		if c.class != nil && !errors.Is(err, c.class) {
+			t.Errorf("%s: err = %v, want %v", c.name, err, c.class)
+		}
+		if want := c.prefix + "selfupdate: launchd: bootout system/com.example.demo: exit " + strconv.Itoa(c.code) + ": nope" + c.suffix; err.Error() != want {
+			t.Errorf("%s: Error() = %q, want %q", c.name, err.Error(), want)
+		}
+	}
 }

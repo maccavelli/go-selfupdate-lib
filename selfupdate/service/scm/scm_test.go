@@ -79,6 +79,21 @@ func TestDriverRefused(t *testing.T) {
 	}
 }
 
+// TestMissingServiceNotInstalled: Stop and Start of a service the SCM does
+// not know are service.ErrNotInstalled, as their docs say
+// (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D2).
+func TestMissingServiceNotInstalled(t *testing.T) {
+	testproc.CheckNoLeak(t)
+	s, _ := testService(t, newFake(), Options{})
+	ctx := context.Background()
+	if err := s.Stop(ctx, "demo"); !errors.Is(err, service.ErrNotInstalled) {
+		t.Fatalf("Stop: %v", err)
+	}
+	if err := s.Start(ctx, "demo"); !errors.Is(err, service.ErrNotInstalled) {
+		t.Fatalf("Start: %v", err)
+	}
+}
+
 func TestEnabled(t *testing.T) {
 	testproc.CheckNoLeak(t)
 	for _, c := range []struct {

@@ -118,6 +118,17 @@ func validUnpacker(cfg Config) error {
 
 // Run executes one self-update request. The library never calls os.Exit.
 // It is RunWith with no options.
+//
+// Errors: match them with errors.Is. ErrUpdateAvailable answers a
+// CheckOnly request that found an update. ErrConfirmationRequired,
+// ErrForceRequired and ErrLatestOlder refuse the request as it was asked.
+// ErrNoRelease, ErrMutableRelease and ErrUnsupportedPlatform describe the
+// release. ErrIntegrity is any failed verification. ErrRateLimited, a
+// *RateLimitError, and an *HTTPError, which errors.As finds, come from the
+// source. ErrManagedInstall wraps a service lifecycle's error.
+// ErrBatchFile refuses a batch file on Windows. ErrConcurrentUpdate is
+// another run, on this Updater or on the same target. ErrNotConstructed is
+// an Updater that New did not make. When ctx ends, its error is returned.
 func (u *Updater) Run(ctx context.Context, req Request) (Result, error) {
 	return u.RunWith(ctx, req)
 }

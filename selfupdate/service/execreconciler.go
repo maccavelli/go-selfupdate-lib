@@ -217,7 +217,7 @@ func childError(product, step string, out Output) error {
 	if len(msg) > maxChildMessage {
 		msg = msg[:maxChildMessage] + "…"
 	}
-	return fmt.Errorf("selfupdate: service: %s %s: exit %d: %s", step, product, out.ExitCode, msg)
+	return &CommandError{Backend: "service", Step: step, Name: product, ExitCode: out.ExitCode, Message: msg}
 }
 
 // absExecutable resolves path, or this process's executable when path is

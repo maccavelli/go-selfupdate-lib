@@ -1367,3 +1367,60 @@ asserted redaction for the JSON case too, which D1-A cannot give.
    * arch: `selfupdate` 45/84, 16 rows, 0 differ.
 5. **Seen and left** (Out of scope): `ghattest.Options.Env` and
    `service.Command.Env` can hold `GH_TOKEN=…` and have no formatter.
+6. Committed as `6006fcf`.
+   * The commit command ran the link check over every changed file, Go
+     included, and did not stop on its exit status (1). It reported
+     `selfupdate/github.go:652: broken link: err`: the existing expression
+     `errors.AsType[*url.Error](err)` read as a Markdown link.
+   * Run as the Rules say, on the changed Markdown files only, it reports
+     `27 links in 3 files, 0 broken`. The commit's content is unaffected.
+   * From S3 on, each commit is chained to its checks' exit statuses, and
+     `--links` takes Markdown files only.
+
+### S3 (2026-10-19)
+
+1. **`HTTPError`:**
+   * `selfupdate/errors.go` gains `HTTPError{Source, StatusCode,
+     Diagnostic}`, nil-safe. Its text is "selfupdate: <source> http N: …",
+     or "selfupdate: http N: …" with no source.
+   * `mapStatus` returns it, and so does `refresh`'s `Cause`.
+   * Every existing text assertion passed unchanged: `go test
+     ./selfupdate/...` was `ok` before any new test was added.
+2. **`service.CommandError`:**
+   * `{Backend, Step, Name, ExitCode, Message}` in `service/errors.go`,
+     nil-safe.
+   * `systemd.commandError`, `launchd.launchctlError` and
+     `service.childError` build it. The classifying wraps and the
+     disabled-job suffix are unchanged, and so is `childError`'s cap.
+3. **Tests:**
+   * `selfupdate/httperror_test.go`:
+     * `TestHTTPErrorAs` (latest 500, latest 404 with `ErrNoRelease`,
+       asset 404);
+     * `TestRefreshCauseIsHTTPError` (a provider asked again after a 401
+       gets an `*HTTPError` with the old text);
+     * `TestHTTPErrorText`.
+   * `selfupdate/service/commanderror_test.go`: `TestCommandErrorText`,
+     `TestChildErrorIsCommandError` (the text, the cap).
+   * `TestCommandErrorAs` appended to `systemd/systemd_test.go` and
+     `launchd/launchd_test.go`, as the plan allows. The cases cover each
+     classification, a plain failure, and the exact old text.
+4. **"Errors" paragraphs:**
+   * written on `Updater.Run`, `RunWith`, `Start`, `Checker.Check` and
+     `CheckCached`, and on `Stop`, `Start` and `WaitHealthy` of the four
+     backends: 17 doc comments, through a script with asserted
+     insertions;
+   * every sentinel named is asserted by at least one existing test
+     (counted with `grep -l 'errors.Is(…'`), except one: `scm` had no test
+     reaching `ErrNotInstalled`. `TestMissingServiceNotInstalled` was added
+     to `scm_test.go`, and passes.
+5. **Seen failing:**
+
+   | Plant | Failure |
+   | :--- | :--- |
+   | `mapStatus` back to `fmt.Errorf` | `httperror_test.go:49: latest 500: err = selfupdate: github http 500: boom, want an *HTTPError` |
+   | `systemd.commandError` back to `fmt.Errorf` | `systemd_test.go:317: permission: err = selfupdate: service: permission denied: selfupdate: systemd: stop demo.service: exit 4: …, want a *service.CommandError` |
+
+6. Arch: `selfupdate` 45/85; `service` 16/15. `go test ./selfupdate/...`
+   `ok`; vet windows, linux clean. Phase checks: links 0 broken,
+   markdownlint 0 issues, ids 0 findings, `pre-add-check` 20 files clean,
+   arch 0 differ, `apicheck` compatible with `v1.15.2`.

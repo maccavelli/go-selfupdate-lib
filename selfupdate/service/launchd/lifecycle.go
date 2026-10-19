@@ -88,6 +88,12 @@ func (j *Job) disabled(ctx context.Context) (bool, error) {
 // default) and the plist's ExitTimeOut (5 s by default) plus 30 s, and
 // ctx's error is returned after it (0015-MADR B3). It refuses with
 // service.ErrInsideService when this process would die with the job.
+//
+// Errors, matched with errors.Is: service.ErrInsideService when this
+// process would stop with the job; service.ErrPermission and
+// service.ErrNotInstalled; service.ErrTimeout when the job outlives
+// the stop's bound; and service.ErrUnsupported where the backend cannot
+// run. errors.As finds the failed command as a *service.CommandError. When ctx ends, its error is returned.
 func (j *Job) Stop(ctx context.Context, _ string) error {
 	inside, err := j.Inside(ctx)
 	if err != nil {
@@ -180,6 +186,9 @@ func (j *Job) waitGone(ctx context.Context, pid int, bound time.Duration) error 
 // transient 5 and 37 within the deadline, then kickstarts it. A process
 // that Reconcile's reload started is not taken for the one before the
 // update (0015-MADR D3).
+//
+// Errors, matched with errors.Is: service.ErrPermission,
+// service.ErrNotInstalled and service.ErrUnsupported. errors.As finds the failed command as a *service.CommandError.
 func (j *Job) Start(ctx context.Context, _ string) error {
 	s, err := j.probe(ctx)
 	if err != nil {
@@ -257,6 +266,10 @@ func (j *Job) bootstrap(ctx context.Context) error {
 // WaitHealthy waits until the job runs as a new process, the same one for
 // the settle window, at least launchd's ThrottleInterval, so a job crashing
 // and being relaunched does not pass; then runs Options.Probe.
+//
+// Errors, matched with errors.Is: service.ErrUnhealthy when the job
+// failed, crashed or restarted, and service.ErrTimeout when it was not
+// healthy in time. When ctx ends, its error is returned.
 func (j *Job) WaitHealthy(ctx context.Context, _ string) error {
 	j.mu.Lock()
 	previous := j.previous

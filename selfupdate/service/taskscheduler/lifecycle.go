@@ -123,6 +123,12 @@ func switches(r registered) (bool, []trigger, error) {
 // Once the task is being stopped, the wait is bounded by Options.Poll's
 // timeout alone, and the caller's context error is returned after
 // (0015-MADR B3). A task that is not running is still disabled.
+//
+// Errors, matched with errors.Is: service.ErrInsideService when this
+// process would stop with the task; service.ErrPermission and
+// service.ErrNotInstalled; service.ErrTimeout when the task outlives
+// the stop's bound; and service.ErrUnsupported where the backend cannot
+// run. When ctx ends, its error is returned.
 func (t *Task) Stop(ctx context.Context, product string) (err error) {
 	name, path, err := t.task(product)
 	if err != nil {
@@ -263,6 +269,9 @@ func (t *Task) waitGone(ctx context.Context, path string, inst instance, limit t
 // it (0021-MADR Amendment A4, Q7). A task disabled by anyone but Stop is
 // not enabled, and Task Scheduler refuses to run it: Start returns
 // ErrTaskDisabled (0022-MADR Amendment A1).
+//
+// Errors, matched with errors.Is: service.ErrPermission,
+// service.ErrNotInstalled and service.ErrUnsupported. ErrTaskDisabled is a task Start cannot run.
 func (t *Task) Start(_ context.Context, product string) (err error) {
 	name, path, err := t.task(product)
 	if err != nil {
@@ -329,6 +338,10 @@ const runClockSlack = time.Second
 // Options.Probe. It fails at once with service.ErrUnhealthy, and the
 // program's exit code, when no instance runs and the last run began at or
 // after Start ran the task (0021-MADR D3).
+//
+// Errors, matched with errors.Is: service.ErrUnhealthy when the task
+// failed, crashed or restarted, and service.ErrTimeout when it was not
+// healthy in time. When ctx ends, its error is returned.
 func (t *Task) WaitHealthy(ctx context.Context, product string) error {
 	name, path, err := t.task(product)
 	if err != nil {

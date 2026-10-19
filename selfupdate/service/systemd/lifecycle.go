@@ -63,6 +63,12 @@ func (u *Unit) Enabled(ctx context.Context, product string) (bool, error) {
 // Stop stops the unit and waits until it is inactive or failed. It
 // refuses with service.ErrInsideService when this process would die with
 // the unit: the update must be handed off (0011-MADR §3).
+//
+// Errors, matched with errors.Is: service.ErrInsideService when this
+// process would stop with the unit; service.ErrPermission and
+// service.ErrNotInstalled; service.ErrTimeout when the unit outlives
+// the stop's bound; and service.ErrUnsupported where the backend cannot
+// run. errors.As finds the failed command as a *service.CommandError. When ctx ends, its error is returned.
 func (u *Unit) Stop(ctx context.Context, product string) error {
 	unit, err := u.unit(product)
 	if err != nil {
@@ -124,6 +130,9 @@ func (u *Unit) stopBound(ctx context.Context, unit string) time.Duration {
 // Start records the unit's invocation, so WaitHealthy can require a new
 // one, then starts it. For Type=notify or Type=exec, systemctl returns once
 // the start succeeded or failed.
+//
+// Errors, matched with errors.Is: service.ErrPermission,
+// service.ErrNotInstalled and service.ErrUnsupported. errors.As finds the failed command as a *service.CommandError.
 func (u *Unit) Start(ctx context.Context, product string) error {
 	unit, err := u.unit(product)
 	if err != nil {
@@ -158,6 +167,10 @@ func (u *Unit) Start(ctx context.Context, product string) error {
 // automatic restart, for the settle window; then runs Options.Probe. It
 // fails at once on failed, on a return to inactive, or on a restart
 // (0011-MADR §7).
+//
+// Errors, matched with errors.Is: service.ErrUnhealthy when the unit
+// failed, crashed or restarted, and service.ErrTimeout when it was not
+// healthy in time. When ctx ends, its error is returned.
 func (u *Unit) WaitHealthy(ctx context.Context, product string) error {
 	unit, err := u.unit(product)
 	if err != nil {

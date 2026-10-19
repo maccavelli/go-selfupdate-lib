@@ -790,7 +790,7 @@ func (s *GitHubSource) refresh(ctx context.Context, refused *Credential) *Creden
 	s.cred.mu.Unlock()
 	c, err := s.provider.Credential(ctx, CredentialRequest{
 		Origin:      s.origin(),
-		Cause:       fmt.Errorf("selfupdate: github http %d: credential from %s refused", http.StatusUnauthorized, sanitizeText(refused.Source)),
+		Cause:       &HTTPError{Source: "github", StatusCode: http.StatusUnauthorized, Diagnostic: "credential from " + sanitizeText(refused.Source) + " refused"},
 		Interactive: inStream(ctx),
 	})
 	if err != nil || validateCredential(c) != nil || sameCredential(c, *refused) {
@@ -902,8 +902,7 @@ func (s *GitHubSource) mapStatus(resp *http.Response, body []byte) error {
 	if resp.StatusCode == http.StatusTooManyRequests || rateLimitedForbidden(resp, body) {
 		return parseRateLimit(resp, s.now)
 	}
-	diag := sanitizeDiagnostic(string(body), s.limits.ErrorBody)
-	return fmt.Errorf("selfupdate: github http %d: %s", resp.StatusCode, diag)
+	return &HTTPError{Source: "github", StatusCode: resp.StatusCode, Diagnostic: sanitizeDiagnostic(string(body), s.limits.ErrorBody)}
 }
 
 // maxRetryAfterSeconds is the largest Retry-After, in seconds, that fits in a

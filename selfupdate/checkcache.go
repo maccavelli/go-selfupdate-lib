@@ -149,6 +149,9 @@ var (
 //
 // Whatever the error, a returned record with a non-zero CheckedAt holds a
 // real answer as of CheckedAt, and its Outcome says which.
+//
+// Errors: those of Check, and ErrCheckDeferred, which matches
+// ErrRateLimited.
 func (c *Checker) CheckCached(ctx context.Context, cr CheckRequest, store CheckStore, maxAge time.Duration) (CheckRecord, error) {
 	if !c.constructed() {
 		return CheckRecord{}, ErrNotConstructed

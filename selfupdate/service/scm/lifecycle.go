@@ -88,6 +88,12 @@ func (s *Service) query(name string) (status, error) {
 // recorded, for Start to start again (0015-MADR D6). Stop
 // refuses with service.ErrInsideService when this process descends from
 // the service: the update must be handed off (0011-MADR §3).
+//
+// Errors, matched with errors.Is: service.ErrInsideService when this
+// process would stop with the service; service.ErrPermission and
+// service.ErrNotInstalled; service.ErrTimeout when the service outlives
+// the stop's bound; and service.ErrUnsupported where the backend cannot
+// run. When ctx ends, its error is returned.
 func (s *Service) Stop(ctx context.Context, product string) (err error) {
 	name, err := s.name(product)
 	if err != nil {
@@ -195,6 +201,9 @@ func (s *Service) stopHandle(ctx context.Context, name string, h handle, st stat
 // until it leaves START_PENDING. A service already running is left alone.
 // Then it starts the dependents Stop stopped, in reverse stop order; one
 // that fails is the error (0015-MADR D6).
+//
+// Errors, matched with errors.Is: service.ErrPermission,
+// service.ErrNotInstalled and service.ErrUnsupported.
 func (s *Service) Start(ctx context.Context, product string) error {
 	name, err := s.name(product)
 	if err != nil {
@@ -257,6 +266,10 @@ func (s *Service) startOne(ctx context.Context, name string) (err error) {
 // the one Stop saw, as that process for the settle window; then runs
 // Options.Probe. It fails at once with service.ErrUnhealthy, and the exit
 // code, when the service stops.
+//
+// Errors, matched with errors.Is: service.ErrUnhealthy when the service
+// failed, crashed or restarted, and service.ErrTimeout when it was not
+// healthy in time. When ctx ends, its error is returned.
 func (s *Service) WaitHealthy(ctx context.Context, product string) error {
 	name, err := s.name(product)
 	if err != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -292,5 +293,39 @@ func TestWaitHealthyFailsFast(t *testing.T) {
 				t.Fatalf("err = %v, want ErrUnhealthy", err)
 			}
 		})
+	}
+}
+
+// TestCommandErrorAs: a failed systemctl run is a *service.CommandError,
+// still classified, with the text it had before
+// (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D2).
+func TestCommandErrorAs(t *testing.T) {
+	testproc.CheckNoLeak(t)
+	for _, c := range []struct {
+		name   string
+		out    service.Output
+		class  error
+		prefix string
+	}{
+		{"permission", service.Output{Stderr: []byte("Failed to stop demo.service: Access denied\n"), ExitCode: 4}, service.ErrPermission, service.ErrPermission.Error() + ": "},
+		{"missing", service.Output{Stderr: []byte("Unit demo.service not loaded.\n"), ExitCode: 5}, service.ErrNotInstalled, service.ErrNotInstalled.Error() + ": "},
+		{"other", service.Output{Stdout: []byte("something else\n"), ExitCode: 1}, nil, ""},
+	} {
+		err := commandError("stop", "demo.service", c.out)
+		var ce *service.CommandError
+		if !errors.As(err, &ce) || ce.Backend != "systemd" || ce.Step != "stop" || ce.Name != "demo.service" || ce.ExitCode != c.out.ExitCode {
+			t.Errorf("%s: err = %v, want a *service.CommandError", c.name, err)
+			continue
+		}
+		if c.class != nil && !errors.Is(err, c.class) {
+			t.Errorf("%s: err = %v, want %v", c.name, err, c.class)
+		}
+		msg := strings.TrimSpace(string(c.out.Stderr))
+		if msg == "" {
+			msg = strings.TrimSpace(string(c.out.Stdout))
+		}
+		if want := c.prefix + "selfupdate: systemd: stop demo.service: exit " + strconv.Itoa(c.out.ExitCode) + ": " + msg; err.Error() != want {
+			t.Errorf("%s: Error() = %q, want %q", c.name, err.Error(), want)
+		}
 	}
 }

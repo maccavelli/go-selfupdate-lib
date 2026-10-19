@@ -320,7 +320,7 @@ func launchctlError(step, what string, out service.Output) error {
 	if msg == "" {
 		msg = strings.TrimSpace(string(out.Stdout))
 	}
-	err := fmt.Errorf("selfupdate: launchd: %s %s: exit %d: %s", step, what, out.ExitCode, msg)
+	err := &service.CommandError{Backend: "launchd", Step: step, Name: what, ExitCode: out.ExitCode, Message: msg}
 	switch out.ExitCode {
 	case exitNotPermitted, exitSIP:
 		return fmt.Errorf("%w: %w", service.ErrPermission, err)

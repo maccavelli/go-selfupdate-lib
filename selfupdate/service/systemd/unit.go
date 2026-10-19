@@ -234,7 +234,7 @@ func commandError(step, unit string, out service.Output) error {
 	if msg == "" {
 		msg = strings.TrimSpace(string(out.Stdout))
 	}
-	err := fmt.Errorf("selfupdate: systemd: %s %s: exit %d: %s", step, unit, out.ExitCode, msg)
+	err := &service.CommandError{Backend: "systemd", Step: step, Name: unit, ExitCode: out.ExitCode, Message: msg}
 	lower := strings.ToLower(msg)
 	switch {
 	case strings.Contains(lower, "access denied"), strings.Contains(lower, "authentication required"),

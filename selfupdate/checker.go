@@ -111,6 +111,12 @@ func (u *Updater) Checker() *Checker {
 // it resolves no target and needs no Installer, Confirmer or Reporter, and
 // it reports availability as a value rather than as ErrUpdateAvailable. A
 // latest release older than the running one is ErrLatestOlder, as in Run.
+//
+// Errors: ErrLatestOlder, ErrNoRelease, ErrMutableRelease,
+// ErrUnsupportedPlatform and ErrIntegrity, matched with errors.Is;
+// ErrRateLimited, a *RateLimitError, and an *HTTPError from the source;
+// ErrNotConstructed for a Checker that NewChecker or Updater.Checker did
+// not make; and ctx's error when it ends.
 func (c *Checker) Check(ctx context.Context, cr CheckRequest) (Availability, error) {
 	if !c.constructed() {
 		return Availability{}, ErrNotConstructed

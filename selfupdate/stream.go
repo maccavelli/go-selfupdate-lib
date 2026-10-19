@@ -146,6 +146,8 @@ type streamKey struct{}
 //
 // A nil u, an invalid option, or a run already in progress gives a Stream
 // whose only interaction is Finished with that error.
+//
+// Errors: those of RunWith, delivered as Finished.Err.
 func Start(ctx context.Context, u *Updater, req Request, opts ...RunOption) *Stream {
 	runCtx, cancel := context.WithCancel(ctx)
 	s := &Stream{cancel: cancel, wake: make(chan struct{}, 1), closed: make(chan struct{})}

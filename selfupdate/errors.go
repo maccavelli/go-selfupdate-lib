@@ -86,6 +86,31 @@ func (e *RateLimitError) Unwrap() error {
 	return ErrRateLimited
 }
 
+// HTTPError is a non-2xx HTTP response that no sentinel describes, from a
+// ReleaseSource that speaks HTTP, such as GitHubSource. A missing release
+// also wraps ErrNoRelease around it, and a rate limit is a *RateLimitError
+// instead (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D2).
+type HTTPError struct {
+	// Source names the source, such as "github".
+	Source string
+	// StatusCode is the HTTP status.
+	StatusCode int
+	// Diagnostic is the sanitized, bounded response body, or the reason.
+	Diagnostic string
+}
+
+// Error implements the error interface:
+// "selfupdate: <source> http <status>: <diagnostic>".
+func (e *HTTPError) Error() string {
+	if e == nil {
+		return "selfupdate: http error"
+	}
+	if e.Source == "" {
+		return fmt.Sprintf("selfupdate: http %d: %s", e.StatusCode, e.Diagnostic)
+	}
+	return fmt.Sprintf("selfupdate: %s http %d: %s", e.Source, e.StatusCode, e.Diagnostic)
+}
+
 // ExitCode maps a Run outcome to the canonical process status. It returns 10
 // only when ErrUpdateAvailable is in the error chain, 1 for any other error,
 // and 0 otherwise. The library never calls os.Exit.

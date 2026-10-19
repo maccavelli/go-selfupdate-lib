@@ -1,6 +1,9 @@
 package service
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 // The errors every backend returns, so a caller can tell them apart with
 // errors.Is (0011-MADR §2). The managed installer wraps a lifecycle error
@@ -26,3 +29,34 @@ var (
 	// during a health wait.
 	ErrUnhealthy = errors.New("selfupdate: service: not healthy")
 )
+
+// CommandError is a service manager command that exited non-zero: a
+// systemctl, systemd-run or launchctl run, or the exec reconciler's child.
+// A failure the backend classifies wraps it with ErrPermission or
+// ErrNotInstalled, so errors.Is sees the class and errors.As the command
+// (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D2). The
+// scm and taskscheduler backends fail through Windows API errors, not
+// commands, and return none.
+type CommandError struct {
+	// Backend names the backend: "systemd", "launchd", or "service" for the
+	// exec reconciler.
+	Backend string
+	// Step is what was run, such as "stop" or "bootout".
+	Step string
+	// Name is the unit, the job, or the product.
+	Name string
+	// ExitCode is the command's exit status.
+	ExitCode int
+	// Message is the command's standard error, or its standard output when
+	// that is empty, trimmed, and bounded as the backend quotes it.
+	Message string
+}
+
+// Error implements the error interface:
+// "selfupdate: <backend>: <step> <name>: exit <code>: <message>".
+func (e *CommandError) Error() string {
+	if e == nil {
+		return "selfupdate: service: command failed"
+	}
+	return fmt.Sprintf("selfupdate: %s: %s %s: exit %d: %s", e.Backend, e.Step, e.Name, e.ExitCode, e.Message)
+}

@@ -130,6 +130,8 @@ func (u *Updater) newRun(s runScope) (*run, error) {
 // RunWith executes one self-update request with opts applied to this run
 // only. It shares Run's guard: one run at a time per Updater. An invalid
 // option fails before anything else, and nothing is reported for it.
+//
+// Errors: those of Run, and an invalid option's, which comes first.
 func (u *Updater) RunWith(ctx context.Context, req Request, opts ...RunOption) (Result, error) {
 	if !u.constructed() {
 		return Result{}, ErrNotConstructed
