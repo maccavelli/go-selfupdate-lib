@@ -10,8 +10,25 @@ section per release, and each entry links its section and its records.
 
 ## Unreleased
 
+See [0026-MADR](docs/decisions/0026-MADR-before-uninstall-installer-hook.md)
+and [0026-PLAN](docs/decisions/0026-PLAN-before-uninstall-installer-hook.md),
+from [issue #1](https://github.com/maccavelli/go-selfupdate-lib/issues/1).
+
+### Added
+
+- `releasespec.HookBeforeUninstall`, a third installer hook time:
+  `before_uninstall` runs the installed copy of a selected product before
+  `--uninstall` / `-Uninstall` removes it. A failure removes nothing (exit
+  1); the installers' new `--force` / `-Force` removes anyway (exit 3).
+  With `--uninstall`, `--dry-run` / `-DryRun` lists the hooks it would
+  run.
+
 ### Changed
 
+- The build workflow's plan step refuses a spec with a `before_uninstall`
+  hook in a module that requires a release below `v1.17.0`, which cannot
+  parse it. When a module misses more than one floor, the message names
+  the highest.
 - The doc comments of the exported calls that take no context say why:
   `systemd.Notify` and `Available`, `service.SameExecutable`,
   `ReportFunc`, `WriteHandOffResult`, `ReadHandOffResult` and

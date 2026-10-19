@@ -453,3 +453,58 @@ Decision Outcome, and U2, U3 and U4 carry it. The MADR became
      runs the installed copy before removal", `relay.exe` was gone right
      after its hook. That held in each PowerShell and form, so no change was
      made for it.
+
+### U4 (2026-10-19)
+
+1. **`building-releases.md`:**
+   * `### Hooks` gains `before_uninstall` (`:505-511`): the selected
+     products only; a failure removes nothing and exits 1; `--force` runs
+     every hook and exits 3; since `v1.17.0`.
+   * `### Options` (`:488-490`):
+     * `--no-hooks` already read "skip the hooks";
+     * `--uninstall` runs "after the `before_uninstall` hooks";
+     * `--dry-run` names what it shows with `--uninstall`;
+     * the new `--force` / `-Force` row.
+   * `### Exit codes` (`:526-528`):
+     * row 1 gains `--force` without `--uninstall`, and a failed
+       `before_uninstall` hook (nothing removed);
+     * row 3 gains removal under `--force` with a failed hook.
+   * **The spec example, a correction to step 1:** §1's example has
+     `"installer": {}` and no hooks; the hooks example is §12's `installer`
+     block. That block gains `{"when": "before_uninstall", "product":
+     "relay", "args": ["service", "uninstall"]}` (`:419`), and the
+     `hooks` bullet says "around the install and before an uninstall".
+   * **The floor, which step 1 did not name:** the guide states the
+     `v1.10.0` floor in three places, and each now names the hook's
+     `v1.17.0` floor too:
+     * step 4's `module-dir` bullet (`:211-213`);
+     * step 9's message table (`:366`), which also says the message's
+       `go get` names the highest floor missed;
+     * §12's floor paragraph (`:408`).
+2. **`docs/architecture.md`, a correction to step 2:** it names no hook
+   time. Its installer passages are the stage step's rendering (`:451`)
+   and the package tree (`:109`), so there was no paragraph to extend, and
+   it is unchanged. 0014-MADR's pointer was added in U0.
+3. **`CHANGELOG.md`** (`:11-33`): `## Unreleased` gains a line citing this
+   pair and issue #1. It also gains Added (`HookBeforeUninstall` and the
+   uninstall hooks, `--force`, the dry-run listing) and Changed (the floor,
+   and naming the highest floor missed).
+4. **The migration guide:**
+   * `## 17. From v1.16 to v1.17` (`:1245-1305`) has the guide's usual
+     parts: what is new, the behaviour you may notice, adopting it, and the
+     check;
+   * its order for adopting is to require `v1.17.0`, pin both workflows,
+     then add the hook;
+   * the version index (`:57-58`) points to it.
+
+   The current-release pointers (§2's `go get` and the workflow pins) move
+   at U5's pin commit, as 0025-PLAN S14 moved them.
+5. **The snippet:**
+   * The session's `snip/u4` module, with a `replace` of this tree, takes
+     §1's spec with §12's `installer` block in its place and runs
+     `releasespec.Parse` on it. It prints `ok: installer "relay", hooks
+     [{When:after_install …} {When:before_uninstall Product:relay
+     Args:[service uninstall]}]`.
+   * The same spec with the hook's time written `after_uninstall` is
+     refused: `releasespec: installer.hooks[1].when: "after_uninstall" is
+     not "before_install", "after_install" or "before_uninstall"`.

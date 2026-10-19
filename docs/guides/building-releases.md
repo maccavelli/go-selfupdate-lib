@@ -208,8 +208,9 @@ jobs:
   spec. The Go version is its `toolchain` line, or its `go` line when it
   has none (`setup-go`'s `go-version-file`). Since `v1.11.0` the plan
   step also checks that module's requirement of this library: a spec
-  that uses a field an older release refuses, such as `installer`
-  (`v1.10.0`), needs a module that requires a release that reads it. A
+  that uses a field or value an older release refuses, such as
+  `installer` (`v1.10.0`) or a `before_uninstall` hook (`v1.17.0`), needs
+  a module that requires a release that reads it. A
   `replace` with a directory is not checked, and the job summary says so.
 - **`artifact-name`** overrides the staged artifact's name. Set it when one
   run calls the build workflow twice. Without it, the name is
@@ -362,7 +363,7 @@ CGO_ENABLED=0 GOOS=<os> GOARCH=<arch> GOFLAGS=-mod=readonly GOTOOLCHAIN=local GO
 | `releasespec: …args[…]: "…" must match …, as the installers embed it` | a hook argument or `identity_args` entry with a space, quote or `$`; with `installer`, both keep to `[A-Za-z0-9._:=/,+@%-]` |
 | `releasespec: installer.env_prefix: the prefix made from …; set installer.env_prefix` | the repository's name makes no valid variable prefix, such as one that starts with a digit |
 | `releasespec: "…": null is not allowed; leave the field out` | a field set to `null`, which the spec does not read as absent |
-| `module … requires go-selfupdate-lib …; this spec's "installer" needs v1.10.0 or later …` | your program's `go.mod` requires a release that cannot parse the spec it embeds; move it to the version the workflow is pinned to |
+| `module … requires go-selfupdate-lib …; this spec's "…" needs v… or later …` | your program's `go.mod` requires a release that cannot parse the spec it embeds: `"installer"` needs `v1.10.0`, and `"installer.hooks[].when before_uninstall"` `v1.17.0`. Move it to the version the workflow is pinned to; the message's `go get` names the highest floor the module misses |
 | `module … does not require github.com/maccavelli/go-selfupdate-lib, whose releasespec reads the spec` | the module `module-dir` names does not require this library; add it |
 | `extra … has no path, and no extras directory was given` | an extra without `path`, and no `extras-artifact-name`; give one or the other (step 6) |
 
@@ -404,16 +405,18 @@ release, and not listed in `SHA256SUMS`.
 Your program's module should require the version the workflow is pinned
 to, and must require at least `v1.10.0`: an older `releasespec.Parse`
 refuses the spec's `installer` field, and the shipped program cannot
-update itself. Since `v1.11.0` the plan step refuses a requirement below
-that floor; it does not check that the requirement matches the pin. Move
-`go.mod` and both pins together.
+update itself. A `before_uninstall` hook raises that floor to `v1.17.0`,
+for the same reason. Since `v1.11.0` the plan step refuses a requirement
+below the floor; it does not check that the requirement matches the pin.
+Move `go.mod` and both pins together.
 
 ```json
 "installer": {
   "name": "relay",
   "env_prefix": "RELAY",
   "hooks": [
-    {"when": "after_install", "product": "relay", "args": ["configure", "--defaults"]}
+    {"when": "after_install", "product": "relay", "args": ["configure", "--defaults"]},
+    {"when": "before_uninstall", "product": "relay", "args": ["service", "uninstall"]}
   ]
 }
 ```
@@ -424,7 +427,7 @@ that floor; it does not check that the requirement matches the pin. Move
   `RELAY_VERSION`. The default is `name` in upper case, with every other
   character as `_`.
 - **`hooks`,** at most eight, run one of your products around the install
-  (below).
+  and before an uninstall (below).
 
 ### The one-liners
 
@@ -482,8 +485,9 @@ is no race and no rate limit.
 | `--no-hooks` | `-NoHooks` | `<PREFIX>_NO_HOOKS=1` | skip the hooks |
 | | `-NoPathUpdate` | `<PREFIX>_NO_PATH_UPDATE=1` | print PATH advice instead of updating it |
 | `--allow-root` | | | allow running as root |
-| `--dry-run` | `-DryRun` | | print what would be downloaded and where it would go, and change nothing |
-| `--uninstall` | `-Uninstall` | | remove the binaries and `.prev` files, and on Windows the folder's PATH entry with the last program; configuration is left, and so are Windows' `.old-` and `.bad-` files |
+| `--dry-run` | `-DryRun` | | print what would be downloaded and where it would go, and change nothing; with `--uninstall`, the `before_uninstall` hooks it would run and the files it would remove |
+| `--uninstall` | `-Uninstall` | | after the `before_uninstall` hooks, remove the binaries and `.prev` files, and on Windows the folder's PATH entry with the last program; configuration is left, and so are Windows' `.old-` and `.bad-` files |
+| `--force` | `-Force` | | with `--uninstall` only: remove even when a `before_uninstall` hook fails, and exit 3; refused (exit 1) without it |
 
 `irm … | iex` cannot pass options: use the variables, or the scriptblock
 form. A switch takes no value: `-DryRun`, not `-DryRun:$true`, which is
@@ -498,6 +502,13 @@ refused.
 - **`after_install`** runs the new copy after the swap and the identity
   check: for example, to write a default configuration. If it fails, the
   program stays installed and the installer exits 3.
+- **`before_uninstall`** runs the installed copy, when there is one,
+  before `--uninstall` removes it: for example, to remove the service it
+  registered. Only the selected products' hooks run, so `--product`
+  narrows them as it narrows the removal. If one fails, the rest are
+  skipped, nothing is removed and the installer exits 1. With `--force`,
+  every hook runs, the binaries are removed anyway, and a failure gives
+  exit 3. Since `v1.17.0`.
 - **Arguments** keep to `[A-Za-z0-9._:=/,+@%-]`, with no space, quote or
   `$`, because the installers embed them in shell and PowerShell code. With
   `installer` present, so do `identity_args`. A step that needs more
@@ -512,9 +523,9 @@ refused.
 | Code | Meaning |
 | :--- | :--- |
 | 0 | installed (or removed, or a dry run) |
-| 1 | a usage or environment error: an unknown option, an empty or unsafe `--product`, an unsupported platform, root, a missing tool, a refused version, a directory where a program or its `.prev` goes, a failed `before_install` hook |
+| 1 | a usage or environment error: an unknown option, an empty or unsafe `--product`, `--force` without `--uninstall`, an unsupported platform, root, a missing tool, a refused version, a directory where a program or its `.prev` goes, a failed `before_install` hook (nothing changed) or `before_uninstall` hook (nothing removed) |
 | 2 | a verification failure: a download, `SHA256SUMS`, a checksum, an attestation or the identity; nothing was changed, or the previous binaries were put back |
-| 3 | installed, but an `after_install` hook failed |
+| 3 | installed, but an `after_install` hook failed; or removed under `--force`, but a `before_uninstall` hook failed |
 
 Through `iex` or the scriptblock form, `install.ps1` never exits your
 session: a failure is the error `install failed (exit N)`.

@@ -54,6 +54,8 @@ changes no API either; its fixes are in
 [From v1.15.1 to v1.15.2](#from-v1151-to-v1152).
 `v1.16.0` adds to the API, lowers the Go floor to 1.26.9, and makes
 release signing opt-in: see [16. From v1.15 to v1.16](#16-from-v115-to-v116).
+`v1.17.0` adds a `before_uninstall` installer hook: see
+[17. From v1.16 to v1.17](#17-from-v116-to-v117).
 
 Replace every `github.com/maccavelli/mcplib/selfupdate` import with
 `github.com/maccavelli/go-selfupdate-lib/selfupdate`. No identifier or signature
@@ -1239,3 +1241,65 @@ Adopting it:
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
 - `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.16.0`.
+
+## 17. From v1.16 to v1.17
+
+```bash
+go get github.com/maccavelli/go-selfupdate-lib@v1.17.0
+```
+
+`v1.17.0` adds a third installer hook time, `before_uninstall`, which
+[issue #1](https://github.com/maccavelli/go-selfupdate-lib/issues/1) asked
+for. `make apicheck` reports it compatible with `v1.16.0`: its one exported
+change, `releasespec.HookBeforeUninstall`, is an addition. Why, and how,
+is in [0026-MADR](../decisions/0026-MADR-before-uninstall-installer-hook.md);
+what each change does is in the [changelog](../../CHANGELOG.md).
+
+### What is new
+
+- **`before_uninstall`** runs the installed copy of a selected product
+  before `--uninstall` / `-Uninstall` removes it: for example, to remove
+  the service it registered. It keeps the install hooks' rules: the same
+  argument characters, no standard input, and skipped by `--no-hooks` or
+  `<PREFIX>_NO_HOOKS=1`. See
+  [the building guide's hooks](building-releases.md#hooks).
+- **A failed hook removes nothing,** and the installer exits 1.
+  **`--force`** / **`-Force`**, with `--uninstall` only, runs every hook,
+  removes the binaries anyway and exits 3.
+- **`--uninstall --dry-run`** lists the hooks it would run, as
+  `would run <product> <args>`.
+
+### Behaviour you may notice
+
+- **The plan step's floor:** a spec with a `before_uninstall` hook needs a
+  module that requires `v1.17.0`. Below it, the plan step stops and names
+  `go get github.com/maccavelli/go-selfupdate-lib@v1.17.0`. When a module
+  misses more than one floor, the message names the highest; before, it
+  named the first, which could be too low.
+- **Nothing changes without the hook.** An installer from a spec with no
+  `before_uninstall` hook uninstalls as before. The usage line for
+  `--no-hooks` now reads "skip the release's hooks", and `--force` is a
+  new option: before, it was an unknown one, also exit 1.
+
+### Adopting it
+
+- **Nothing is required.**
+- **To add the hook,** in this order:
+  1. require `v1.17.0` in your program's module;
+  2. pin both workflows to `v1.17.0`;
+  3. add the hook to the spec.
+
+  The plan step refuses the spec in a module that requires an older
+  release, and a program built against one would refuse the spec it
+  embeds at start-up.
+- **A script that uninstalls your program** can now get exit 1, when a hook
+  fails. `--force` removes the program anyway; `--no-hooks` skips the
+  hooks.
+
+### Check
+
+- `go build ./...`, `go vet ./...` and `go test ./...` pass.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.17.0`.
+- With the hook, a rehearsal's staged `install.sh` holds a
+  `before_uninstall` line in its `HOOKS` block, and `install.ps1` one in
+  its `$Hooks` list.
