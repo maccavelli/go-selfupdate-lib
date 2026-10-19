@@ -11,10 +11,11 @@ the fixes, and the behaviour they change, are in
 Do the migration under your own repository's records. This guide is the
 checklist, not the authorization.
 
-## 1. Go 1.27.1
+## 1. Go 1.26.9 or later
 
-go-selfupdate-lib requires `go 1.27.1`, so `go get` raises your `go` directive to
-at least that. Move it deliberately first, and run your full test suite
+go-selfupdate-lib requires `go 1.26.9` from `v1.16.0` (`go 1.27.1` from
+`v1.5.0` to `v1.15.2`), so `go get` raises your `go` directive to at least
+that. Move it deliberately first, and run your full test suite
 before changing anything else. Build and test with Go 1.27.2, a
 `toolchain go1.27.2` line, as this module is: it fixes ten standard-library
 advisories ([From v1.11.0 to v1.11.1](#from-v1110-to-v1111)). A program

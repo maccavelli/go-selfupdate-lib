@@ -14,11 +14,15 @@ package, and no released binary. `internal/cmd/selfupdate-release` and
 It also hosts the two reusable GitHub Actions workflows that programs using
 `selfupdate` build and publish their releases through.
 
-The module requires Go 1.27.1 and three modules: `golang.org/x/mod v0.40.0`,
+The module requires Go 1.26.9 and three modules: `golang.org/x/mod v0.40.0`,
 `golang.org/x/sys v0.47.0` and `golang.org/x/term v0.43.0`. `go.mod`'s
 `toolchain go1.27.2` line makes CI and the publish workflow's release tools
 build with Go 1.27.2, which fixes ten advisories in 1.27.1's standard
 library ([0018-MADR](decisions/0018-MADR-move-toolchain-to-go-1-27-2.md)).
+The `go` line is 1.26.9, the advisory-free patch of the older supported
+line, because the library needs nothing from 1.27; CI's `go126` job builds,
+vets and tests with it
+([0025-MADR](decisions/0025-MADR-align-with-go-sdk-design-practices.md) D8).
 Its current
 release is `v1.15.2`, an annotated tag on commit
 `436a7f5976a6815491c7384527fef90869574a1b`. `v1.5.0`, the first under this

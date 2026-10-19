@@ -38,7 +38,7 @@ func TestStampedBinary(t *testing.T) {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
-	gomod := "module example.com/stamp\n\ngo 1.27.1\n\nrequire github.com/maccavelli/go-selfupdate-lib v0.0.0\n\nreplace github.com/maccavelli/go-selfupdate-lib => " + filepath.ToSlash(root) + "\n"
+	gomod := "module example.com/stamp\n\ngo 1.26.9\n\nrequire github.com/maccavelli/go-selfupdate-lib v0.0.0\n\nreplace github.com/maccavelli/go-selfupdate-lib => " + filepath.ToSlash(root) + "\n"
 	sum, err := os.ReadFile(filepath.Join(root, "go.sum"))
 	if err != nil {
 		t.Fatal(err)

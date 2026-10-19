@@ -1,6 +1,6 @@
 module github.com/maccavelli/go-selfupdate-lib
 
-go 1.27.1
+go 1.26.9
 
 toolchain go1.27.2
 

@@ -1872,3 +1872,47 @@ S7's items 1, 4 and 5 above describe the first shape. As built:
    44 passed; actionlint clean; links 0 broken (187 links), markdownlint 0
    issues, ids 0 findings, `pre-add-check` clean, arch 0 differ,
    `apicheck` compatible. The live run is S13.
+7. The owner committed S10 as `2ea4d35` ("committed, proceed").
+
+### S11 (2026-10-19)
+
+1. `go.mod`: `go 1.26.9`; `toolchain go1.27.2` is unchanged, and `go mod
+   tidy -diff` is clean.
+2. `selfupdate/managed_stopped_test.go`'s three literals are rewritten as
+   step 2 says, each old string asserted once.
+3. The ten fixtures are moved to `go 1.26.9`. `testproc_test.go`'s is at
+   `:183`, not `:151`, because S1 added `TestCheckNoLeakSeesLeak` above
+   it. A `git grep 'go 1\.27'` over Go, shell and `go.mod` files outside
+   `docs/` then finds none.
+4. **CI:** a new job `go126`, as step 4 words it, between `validate` and
+   `installer-containers`. Vet's three targets share one step.
+   `actionlint` exits 0, and `check-workflows.sh` passes its expressions,
+   permissions and pins rules on `ci.yml`.
+5. **Docs:**
+   * AGENTS.md: "Requires Go 1.26.9", naming 0025-MADR D8 and the `go126`
+     job.
+   * README `## Status`: from `v1.16.0` the module requires 1.26.9, and
+     `v1.15.2` and earlier require 1.27.1.
+   * `docs/architecture.md`'s opening says why the line is 1.26.9.
+   * The migration guide: `## 1. Go 1.26.9 or later`. `git grep
+     '#1-go-1271'` found no link outside this plan.
+   * Left for S14's pin commit, because each names `v1.15.2` beside its
+     `go` line: README's current-release sentence, and the migration
+     guide's §5 "Require go-selfupdate-lib `v1.15.2`, with `go 1.27.1`".
+6. **Under Go 1.26.9** (`GOTOOLCHAIN=go1.26.9`, `go1.26.9 darwin/arm64`):
+   * `go vet ./...` exits 0 for linux, darwin, windows and freebsd;
+   * `go test -count=1 ./...` exits 0;
+   * `govulncheck ./...` exits 0, "No vulnerabilities found."
+7. **Seen failing:** a plant of `var _ = strings.CutLast` in
+   `buildinfo/buildinfo.go`.
+   * Go 1.26.9's build reports `buildinfo/buildinfo.go:29:17: undefined:
+     strings.CutLast`.
+   * Go 1.27.2's vet reports `buildinfo/buildinfo.go:29:17:
+     strings.CutLast requires go1.27 or later (file is go1.26)`.
+   * A first plant placed the declaration above the import block, and
+     failed on `syntax error: imports must appear before other
+     declarations` instead, which proves nothing about the floor. It was
+     redone below the imports.
+8. **Checks (Go 1.27.2):** `go test ./...` and `go-fuzz_test.sh` pass;
+   links 0 broken, markdownlint 0 issues, ids 0 findings, `pre-add-check`
+   9 files clean, arch 0 differ, `apicheck` compatible, actionlint clean.

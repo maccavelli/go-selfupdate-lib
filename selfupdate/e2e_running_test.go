@@ -68,7 +68,7 @@ var runtimePlatform = selfupdate.Platform{OS: runtime.GOOS, Arch: runtime.GOARCH
 func buildHelper(t *testing.T, version, goos string) []byte {
 	t.Helper()
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/demo\n\ngo 1.27.1\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/demo\n\ngo 1.26.9\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(helperSource), 0o600); err != nil {

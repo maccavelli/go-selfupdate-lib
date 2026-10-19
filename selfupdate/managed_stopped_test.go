@@ -92,11 +92,11 @@ func TestManagedStartRule(t *testing.T) {
 			return l, &l.seqLife
 		}, []string{"start", "health"}},
 		{"running, not enabled", func() (Lifecycle, *seqLife) {
-			l := &seqEnabledLife{running: true}
+			l := &seqEnabledLife{seqLife: seqLife{running: true}}
 			return l, &l.seqLife
 		}, []string{"stop", "start", "health"}},
 		{"running, Enabled fails", func() (Lifecycle, *seqLife) {
-			l := &seqEnabledLife{running: true, enabledErr: errors.New("fixture: unit unreadable")}
+			l := &seqEnabledLife{seqLife: seqLife{running: true}, enabledErr: errors.New("fixture: unit unreadable")}
 			return l, &l.seqLife
 		}, []string{"stop", "start", "health"}},
 		{"stopped, no Enabled", func() (Lifecycle, *seqLife) {
@@ -223,7 +223,7 @@ func TestManagedRecoveryRestartsOnlyWhatRan(t *testing.T) {
 			return l, l
 		}, &fakeRec{err: errors.New("fixture: reconcile")}, nil},
 		{"stopped, enabled, unhealthy", func() (Lifecycle, *seqLife) {
-			l := &seqEnabledLife{enabled: true, healthErr: unhealthy}
+			l := &seqEnabledLife{seqLife: seqLife{healthErr: unhealthy}, enabled: true}
 			return l, &l.seqLife
 		}, &fakeRec{}, []string{"start", "health", "stop", "start", "health"}},
 		{"running, reconcile fails", func() (Lifecycle, *seqLife) {

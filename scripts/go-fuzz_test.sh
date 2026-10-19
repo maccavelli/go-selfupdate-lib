@@ -27,7 +27,7 @@ check() { # name want got
 # module DIR NAME BODY: a module whose package has one test file.
 module() {
 	mkdir -p "$1"
-	printf 'module example.com/%s\n\ngo 1.27.1\n' "$2" >"$1/go.mod"
+	printf 'module example.com/%s\n\ngo 1.26.9\n' "$2" >"$1/go.mod"
 	printf 'package %s\n\nimport "testing"\n\n%s\n' "$2" "$3" >"$1/fz_test.go"
 }
 

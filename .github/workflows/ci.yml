@@ -291,6 +291,31 @@ jobs:
           ./scripts/check-workflows_test.sh
           ./scripts/workflow-shape_test.sh
 
+  # The module's floor, go 1.26.9; GOTOOLCHAIN=local stops the toolchain
+  # line switching to 1.27.2, and go-version, not go-version-file, keeps
+  # setup-go from reading it (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md
+  # D8, Amendment A1).
+  go126:
+    runs-on: ubuntu-24.04
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.9'
+      - name: the floor toolchain
+        run: test "$(go env GOVERSION)" = go1.26.9
+      - run: go build ./...
+      - name: go vet, three targets
+        run: |
+          go vet ./...
+          CGO_ENABLED=0 GOOS=windows go vet ./...
+          CGO_ENABLED=0 GOOS=darwin go vet ./...
+      - run: go test -count=1 ./...
+
   # install.sh under shells the runners lack: BusyBox ash, with BusyBox
   # wget, in Alpine (musl), and dash with curl in Debian. The releases are
   # staged on the runner, which has go and git; the static test binary then

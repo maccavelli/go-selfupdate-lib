@@ -180,7 +180,7 @@ func TestGoBuildIgnoresParentGit(t *testing.T) {
 		t.Fatal(err)
 	}
 	files := map[string]string{
-		"go.mod":  "module fixture\n\ngo 1.27\n",
+		"go.mod":  "module fixture\n\ngo 1.26.9\n",
 		"main.go": "package main\n\nfunc main() { println(\"fixture\") }\n",
 	}
 	for name, body := range files {
