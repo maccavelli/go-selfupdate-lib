@@ -1988,3 +1988,85 @@ S7's items 1, 4 and 5 above describe the first shape. As built:
      vulnerabilities found."), scripts ("all script tests passed"),
      shellcheck, crossvet, links ("563 links in 71 files, 0 broken"),
      arch, and ids.
+9. The owner committed S12 as `0509a51` ("committed, proceed").
+
+### S13 (2026-10-19)
+
+1. **The push:**
+   * The disclosure guard ran over the 13 outgoing commits (`a705460` to
+     `0509a51`): exit 0, no findings.
+   * The owner pushed `main` ("pushed"). `origin/main` is `0509a51`.
+   * CI on it, run `39321797633`: `success`, 18 of 18 jobs, among them the
+     new `go126`.
+2. **The throwaway repository:**
+   * created public with `gh repo create`; immutable releases turned on
+     (`PUT …/immutable-releases`, 204; then `{"enabled":true}`);
+   * the program `rehearsal`: `version` prints `buildinfo.Identity()`, and
+     `update` runs `cli.Command`, configured from an embedded spec (linux
+     amd64, darwin arm64, windows amd64, `packaging: binary`), with a
+     `signednote` verifier (`RequiredFrom: v0.0.2`) whose key is a
+     constant;
+   * a `wrongkey` build tag embeds the other key;
+   * `go.mod` requires the library at `v1.15.3-0.20261019204035-0509a51e3bad`,
+     from `proxy.golang.org`;
+   * the caller workflow is pinned to `0509a51…`, with `sign: ${{
+     vars.SELFUPDATE_SIGN == 'true' }}`, `note-verifier-key: ${{
+     vars.SELFUPDATE_NOTE_VKEY }}`, and the secret passed by name.
+3. **Signing setup:**
+   * keys: `rehearsal-ci` and `rehearsal-other`, made on this Mac with
+     `selfupdate-note keygen` (signer keys mode 0600, in the scratchpad
+     only);
+   * the environment `selfupdate-signing` with a `v*` tag deployment
+     policy;
+   * its secret `SELFUPDATE_NOTE_KEY` (the CI signer key), and the
+     variables `SELFUPDATE_NOTE_VKEY` and `SELFUPDATE_SIGN`.
+4. **Runs:**
+
+   | Tag | Setup | Run | Jobs | Release |
+   | :--- | :--- | :--- | :--- | :--- |
+   | `v0.0.1` | `SIGN=false` | `39322593004` success | build, 3 identity legs, publish: success; sign: skipped | immutable; three binaries and `SHA256SUMS`, no note |
+   | `v0.0.2` | `SIGN=true` | `39323217187` success | build, 3 identity legs, sign, publish: success | immutable; the binaries, `SHA256SUMS` and `SHA256SUMS.note` |
+   | `v0.0.3` | the environment secret deleted | `39323964085` failure | sign: failure ("selfupdate-note: SELFUPDATE_NOTE_KEY is empty: the caller must pass the secret to the workflow"); publish: skipped | `release not found` |
+   | `v0.0.4` | secret restored; `SELFUPDATE_NOTE_VKEY` the other key | `39324422415` failure | sign: failure ("selfupdate-note: the note does not open with -verifier-key: … note has no verifiable signatures"); publish: skipped | `release not found` |
+
+5. **The published note** (`v0.0.2`, downloaded with `SHA256SUMS`):
+   * `signednote.Open` with the CI verifier key gives `repository
+     github.com/<owner>/<repo> tag v0.0.2 products [rehearsal] manifest
+     SHA256SUMS`, with a digest that equals the downloaded `SHA256SUMS`'s
+     SHA-256;
+   * with the other key, it gives `note has no verifiable signatures`;
+   * `gh attestation verify SHA256SUMS.note --repo <the throwaway
+     repository> --signer-workflow
+     maccavelli/go-selfupdate-lib/.github/workflows/publish-selfupdate-release.yml`
+     exits 0, so the note is attested with the rest;
+   * the signer key's text and material appear 0 times in the `v0.0.2`
+     run's log and 0 times in `v0.0.4`'s.
+6. **Updates on the three test hosts.** Each started from `v0.0.1`'s
+   published binary in a new directory under home, after `shasum -a 256
+   -c SHA256SUMS` passed for all three assets:
+
+   | Host | `--check` | `--yes` | `--version v0.0.1 --yes` | `wrongkey` build `--yes` |
+   | :--- | :--- | :--- | :--- | :--- |
+   | this Mac, darwin/arm64 | 10 | 0, then `v0.0.2 (release) 7fd79c420773` | 0, then `v0.0.1 (release) 7fd79c420773` | 1, stays `v0.0.1` |
+   | the Linux test host, linux/amd64 | 10 | 0, `v0.0.2 …` | 0, `v0.0.1 …` | 1, stays `v0.0.1` |
+   | the Windows test host, windows/amd64 | 10 | 0, `v0.0.2 …` | 0, `v0.0.1 …` | 1, stays `v0.0.1` |
+
+   The `wrongkey` refusal, on this Mac and on the Windows test host, reads
+   `update failed: selfupdate: rehearsal: selfupdate: manifest verification
+   failed: selfupdate: integrity check failed selfupdate: signednote: open
+   note: note has no verifiable signatures`.
+7. **The two unverified points, settled:**
+   * **Whose environment:** the repository's deployments list
+     `selfupdate-signing` for `v0.0.2`, `v0.0.3` and `v0.0.4`. The
+     environment exists only in the caller's repository, so the reusable
+     job resolved it there.
+   * **A `deployments` permission:** not needed. The `sign` job ran, and
+     created its deployment, with `permissions: contents: read` only.
+8. **Teardown:**
+   * the test directories on the three hosts and the S1 bundle directory
+     on the Windows test host were removed, and none remain;
+   * the two signer keys were deleted, leaving only the verifier keys,
+     which are public.
+   * The throwaway repository is not deleted yet: the CLI's token has no
+     `delete_repo` scope. The owner deletes it, or refreshes the scope
+     with `gh auth refresh -s delete_repo` for the agent to.
