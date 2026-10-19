@@ -335,3 +335,32 @@ func TestCheckCachedChannelIsolation(t *testing.T) {
 		}
 	}
 }
+
+// TestCheckCachedUsesConfigClock: CheckerConfig.Clock, and an Updater's
+// Clock through Updater.Checker, decide a record's age with no seam on the
+// package clock (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D12,
+// Amendment A4).
+func TestCheckCachedUsesConfigClock(t *testing.T) {
+	base, src, req, key := cacheEnv(t)
+	// The package clock is far from cacheNow, so only Clock can make the
+	// record fresh.
+	setSeam(t, &timeNow, func() time.Time { return cacheNow.Add(24 * time.Hour) })
+	fixed := ClockFunc(func() time.Time { return cacheNow })
+	fromConfig, err := NewChecker(CheckerConfig{Source: base.source, Versions: base.versions, Assets: base.assets, Limits: base.limits, Clock: fixed})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fromUpdater := (&Updater{source: base.source, versions: base.versions, assets: base.assets, limits: base.limits, clock: fixed}).Checker()
+	for name, c := range map[string]*Checker{"CheckerConfig.Clock": fromConfig, "Config.Clock": fromUpdater} {
+		store := &memStore{rec: CheckRecord{Request: key, Availability: Availability{Available: true, TargetVersion: "v9.9.9"},
+			CheckedAt: cacheNow.Add(-time.Minute)}}
+		rec, err := c.CheckCached(context.Background(), req, store, time.Hour)
+		if err != nil || rec.Availability.TargetVersion != "v9.9.9" || networkCalls(src) != 0 {
+			t.Errorf("%s: rec=%+v err=%v calls=%v; want the record, fresh by Clock", name, rec, err, src.calls)
+		}
+	}
+	var typedNil ClockFunc
+	if _, err := NewChecker(CheckerConfig{Source: base.source, Versions: base.versions, Assets: base.assets, Limits: base.limits, Clock: typedNil}); err == nil {
+		t.Error("NewChecker accepted a typed-nil Clock")
+	}
+}

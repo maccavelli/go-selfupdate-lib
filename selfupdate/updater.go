@@ -71,6 +71,9 @@ func New(cfg Config) (*Updater, error) {
 	if cfg.ProgressInterval < 0 {
 		return nil, fmt.Errorf("selfupdate: progress interval must not be negative")
 	}
+	if cfg.Clock != nil && isNil(cfg.Clock) {
+		return nil, fmt.Errorf("selfupdate: clock is a typed nil")
+	}
 	transformer := cfg.Transformer
 	if transformer == nil {
 		transformer = noopTransformer{}
@@ -90,6 +93,7 @@ func New(cfg Config) (*Updater, error) {
 		progress:    cfg.ProgressInterval,
 		manifestVfy: append([]ManifestVerifier(nil), cfg.ManifestVerifiers...),
 		probes:      append([]Prober(nil), cfg.Probes...),
+		clock:       cfg.Clock,
 	}, nil
 }
 
@@ -590,7 +594,7 @@ func (u *run) newProgress(ctx context.Context, req Request, rel Release, sel Sel
 		Kind: EventProgress, Product: req.Product, Target: rel.Tag, Asset: sel.Binary.Name, Total: sel.Binary.Size,
 	}}
 	p.emit(0)
-	p.last = timeNow()
+	p.last = clockNow(u.clock)
 	return p
 }
 
@@ -607,7 +611,7 @@ func (p *downloadProgress) written(done int64) {
 	if done >= p.template.Total {
 		return
 	}
-	if now := timeNow(); now.Sub(p.last) >= p.u.progress {
+	if now := clockNow(p.u.clock); now.Sub(p.last) >= p.u.progress {
 		p.last = now
 		p.emit(done)
 	}

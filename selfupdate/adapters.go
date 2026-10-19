@@ -4,10 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 )
 
 // Function adapters and small defaults for the seams
 // (docs/decisions/0004-MADR-evolve-selfupdate-api-and-tui-support.md G6).
+
+// ClockFunc adapts a function to Clock
+// (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md Amendment A4).
+type ClockFunc func() time.Time
+
+// Now implements Clock.
+func (f ClockFunc) Now() time.Time { return f() }
 
 // ReporterFunc adapts a function to Reporter.
 type ReporterFunc func(context.Context, Event) error

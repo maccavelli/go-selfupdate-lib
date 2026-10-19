@@ -3,6 +3,7 @@ package selfupdate
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"golang.org/x/mod/semver"
 )
@@ -20,6 +21,11 @@ type CheckerConfig struct {
 	Assets AssetSelector
 	// Limits bound the selected assets' advertised sizes.
 	Limits Limits
+	// Clock is the clock for CheckCached's record ages. Nil means the real
+	// time; a typed nil is rejected
+	// (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D12,
+	// Amendment A4).
+	Clock Clock
 }
 
 // Checker answers "is there an update?" without resolving, locking or
@@ -35,6 +41,16 @@ type Checker struct {
 	// selection against the Updater's Unpacker, as Run does (0015-MADR C4).
 	unpacker    Unpacker
 	fromUpdater bool
+	clock       Clock
+}
+
+// clockNow is c's time, or the package clock when c is nil. It reads
+// timeNow at the call, so the tests' seam on it still holds.
+func clockNow(c Clock) time.Time {
+	if c != nil {
+		return c.Now()
+	}
+	return timeNow()
 }
 
 // CheckRequest is one availability question.
@@ -96,15 +112,18 @@ func NewChecker(cfg CheckerConfig) (*Checker, error) {
 	if err := cfg.Limits.valid(); err != nil {
 		return nil, err
 	}
-	return &Checker{source: cfg.Source, versions: cfg.Versions, assets: cfg.Assets, limits: cfg.Limits}, nil
+	if cfg.Clock != nil && isNil(cfg.Clock) {
+		return nil, fmt.Errorf("selfupdate: clock is a typed nil")
+	}
+	return &Checker{source: cfg.Source, versions: cfg.Versions, assets: cfg.Assets, limits: cfg.Limits, clock: cfg.Clock}, nil
 }
 
 // Checker returns a Checker that shares the Updater's source, version
-// policy, asset selector, unpacker and limits: it fails a selection the
-// Updater's Unpacker cannot handle, as Run does.
+// policy, asset selector, unpacker, limits and clock: it fails a selection
+// the Updater's Unpacker cannot handle, as Run does.
 func (u *Updater) Checker() *Checker {
 	return &Checker{source: u.source, versions: u.versions, assets: u.assets, limits: u.limits,
-		unpacker: u.unpacker, fromUpdater: true}
+		unpacker: u.unpacker, fromUpdater: true, clock: u.clock}
 }
 
 // Check reports whether an update is available. Unlike Run with CheckOnly,

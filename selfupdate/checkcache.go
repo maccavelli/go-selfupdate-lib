@@ -168,7 +168,7 @@ func (c *Checker) CheckCached(ctx context.Context, cr CheckRequest, store CheckS
 	}
 	key := cr
 	key.Platform = req.Platform
-	now := timeNow()
+	now := clockNow(c.clock)
 	rec, lerr := store.Load(ctx)
 	// An outcome this package does not know is not one it wrote.
 	matched := lerr == nil && rec.Request == key && rec.Outcome.valid()

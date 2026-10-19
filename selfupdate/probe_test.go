@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -332,4 +333,52 @@ func TestVersionProberHonoursRunContext(t *testing.T) {
 			t.Fatalf("err = %v, class %q; want the run's cancellation", err, failureClass(err))
 		}
 	})
+}
+
+// TestVersionProberWithRun: a Run in place of the process is called with
+// the path and arguments, its output is searched, and the prober's own
+// timeout still bounds it
+// (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D12).
+func TestVersionProberWithRun(t *testing.T) {
+	printing := func(text string, gotPath *string, gotArgs *[]string) func(context.Context, string, []string, io.Writer) error {
+		return func(_ context.Context, path string, args []string, stdout io.Writer) error {
+			*gotPath, *gotArgs = path, args
+			_, err := io.WriteString(stdout, text)
+			return err
+		}
+	}
+	req := ProbeRequest{Product: "demo", TargetVersion: "v1.2.3", Path: "/staged/demo", Phase: ProbeStaged}
+	var path string
+	var args []string
+	p, err := NewVersionProberWith(VersionProbeOptions{Args: []string{"--version"}, Timeout: time.Second, Run: printing("demo v1.2.3\n", &path, &args)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Probe(context.Background(), req); err != nil || path != req.Path || !slices.Equal(args, []string{"--version"}) {
+		t.Fatalf("matching run: err %v, path %q, args %q", err, path, args)
+	}
+	p, err = NewVersionProberWith(VersionProbeOptions{Args: []string{"--version"}, Timeout: time.Second, Run: printing("demo v1.2.4\n", &path, &args)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Probe(context.Background(), req); err == nil || !strings.Contains(err.Error(), "printed") {
+		t.Fatalf("a mismatch: err %v, want the printed-text refusal", err)
+	}
+	blocking := func(ctx context.Context, _ string, _ []string, _ io.Writer) error {
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	p, err = NewVersionProberWith(VersionProbeOptions{Args: []string{"--version"}, Timeout: 100 * time.Millisecond, Run: blocking})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Probe(context.Background(), req); err == nil || !strings.Contains(err.Error(), "timed out after 100ms") {
+		t.Fatalf("a blocking run: err %v, want the prober's timeout", err)
+	}
+	if _, err := NewVersionProberWith(VersionProbeOptions{Timeout: time.Second}); err == nil {
+		t.Fatal("no arguments was accepted")
+	}
+	if _, err := NewVersionProberWith(VersionProbeOptions{Args: []string{"-v"}}); err == nil {
+		t.Fatal("no timeout was accepted")
+	}
 }

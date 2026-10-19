@@ -777,6 +777,20 @@ The owner kept D1-A (the PLAN's deviation D2). `Credential`'s doc says
 this, and a test pins it. The Consequences' first bullet holds for a
 credential logged directly or through fmt.
 
+### Amendment A4 (2026-10-19): the clock is a `Clock` interface
+
+D12-A's `CheckerConfig.Now` and `Config.Now`, of type `func() time.Time`,
+would make `Checker` and `CheckerConfig` non-comparable, and `apicheck`
+reports that as incompatible with `v1.15.2` (the PLAN's deviation D4).
+The owner chose an interface instead:
+
+* `type Clock interface{ Now() time.Time }`, with the adapter
+  `ClockFunc`;
+* fields `Config.Clock` and `CheckerConfig.Clock`, nil meaning the real
+  time.
+
+D12-A is otherwise unchanged.
+
 ### Consequences
 
 * Good, because a program that logs its updater, its options or a

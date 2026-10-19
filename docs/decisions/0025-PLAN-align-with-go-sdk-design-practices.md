@@ -1574,3 +1574,95 @@ tags need their own word.
      `pre-add-check` 6 files clean, arch 0 differ, `apicheck` compatible
      with `v1.15.2`. `go test ./selfupdate/` `ok`.
    * Not committed: waiting for "commit to main" (deviation D3).
+8. The owner committed S6 as `b5a556a` ("committed, proceed").
+
+### S7 (2026-10-19)
+
+1. **The clock:**
+   * `Config.Now` and `CheckerConfig.Now` (`func() time.Time`).
+   * The `Updater` and the `Checker` keep it in an unexported `now`, copied
+     by `New`, `NewChecker`, `Updater.Checker()` and `run.checker()`
+     (`runoptions.go:169-172`, a fourth construction site the plan did not
+     list).
+   * `clockNow(now)` reads `timeNow()` at the call when `now` is nil, so
+     the existing `setSeam(&timeNow, …)` tests hold. `checkcache.go:171`
+     and `updater.go:593`, `:610` use it.
+2. **The prober:** `VersionProbeOptions` and `NewVersionProberWith`.
+   `NewVersionProber` returns `NewVersionProberWith`. With a nil `Run`,
+   `Probe` keeps today's path byte for byte, including the early return
+   when `winproc.Command` refuses. With a `Run`, the timeout, the 64 KiB
+   cap and the context classification wrap it, and `Run` gets a copy of
+   the arguments.
+3. **`selfupdate/slogreporter.go`:** `NewSlogReporter`, with levels and
+   attributes as step 3 says, through `LogAttrs`. A nil logger fails
+   `Report`.
+4. **Tests:**
+   * `TestCheckCachedUsesConfigNow` (`checkcache_test.go`): the package
+     clock is set a day away, so only `Now` makes the record fresh. It
+     checks both `CheckerConfig.Now` and `Config.Now` through
+     `Updater.Checker()`.
+   * `TestVersionProberWithRun` (`probe_test.go`): it checks a match, the
+     path and arguments, a mismatch, a blocking `Run` that hits "timed out
+     after 100ms", and both refusals.
+   * New `slogreporter_test.go`: `TestSlogReporterLevelsAndAttrs` checks
+     five kinds, their levels, their exact attributes, and the
+     sanitization of an ESC byte. `TestSlogReporterNilLogger`.
+5. **Seen failing:**
+
+   | Plant | Failure |
+   | :--- | :--- |
+   | `clockNow` ignores `now` | `checkcache_test.go:358: CheckerConfig.Now: rec={…} …; want the record, fresh by Now` |
+   | `Probe` ignores `Run` | `probe_test.go:358: matching run: err selfupdate: staged probe of demo failed: fork/exec /staged/demo: no such file or directory, path "", args []` |
+   | `EventFailed` at Info | `slogreporter_test.go:49: line 4: level INFO msg failed, want ERROR failed` |
+
+6. Arch: `selfupdate` 47/88. The "by file" list names the seams.
+
+### Deviation D4 (2026-10-19): the clock is an interface, not a func field
+
+**Found** (S7, at the phase checks). `make apicheck` refused the step as
+written:
+
+```text
+check-api-compat: incompatible with v1.15.2:
+- ./selfupdate.Checker: old is comparable, new is not
+- ./selfupdate.CheckerConfig: old is comparable, new is not
+```
+
+A `func` field makes a struct non-comparable. `Config` already holds
+slices, so it was never comparable, but `Checker` and `CheckerConfig` were.
+D12-A's `Now func() time.Time` therefore broke the MADR's own first
+driver. The MADR was wrong to specify it.
+
+**Decided** (the owner, 2026-10-19, "Clock interface + ClockFunc"):
+
+* `type Clock interface{ Now() time.Time }`;
+* the adapter `type ClockFunc func() time.Time`, whose `Now` method calls
+  it, as `ReporterFunc` and `ProberFunc` do;
+* fields `Config.Clock` and `CheckerConfig.Clock`, with nil meaning the
+  real time, and a typed nil refused;
+* the `Updater` and the `Checker` keep it as `clock Clock`.
+
+An interface field keeps both structs comparable. The MADR gains
+Amendment A4.
+
+### S7, as built (2026-10-19)
+
+S7's items 1, 4 and 5 above describe the first shape. As built:
+
+1. **The clock:**
+   * `Clock` (`types.go`), `ClockFunc` (`adapters.go`), `Config.Clock`
+     and `CheckerConfig.Clock`, with the unexported `clock Clock` on the
+     `Updater` and the `Checker`;
+   * `New` and `NewChecker` refuse a typed-nil `Clock`;
+   * `clockNow(c Clock)` reads `timeNow()` when `c` is nil.
+2. **The test** is `TestCheckCachedUsesConfigClock`, with a
+   `ClockFunc` fixture and a typed-nil refusal case.
+3. **Seen failing:**
+
+   | Plant | Failure |
+   | :--- | :--- |
+   | `clockNow` ignores its `Clock` | `checkcache_test.go:359: CheckerConfig.Clock: rec={…}; want the record, fresh by Clock` |
+   | `NewChecker` keeps a typed nil | `checkcache_test.go:364: NewChecker accepted a typed-nil Clock` |
+   | `Probe` ignores `Run`; `EventFailed` at Info | as in S7 item 5 |
+
+4. **Checks:** `make apicheck` is `compatible with v1.15.2`.

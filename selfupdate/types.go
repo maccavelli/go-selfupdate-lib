@@ -857,6 +857,17 @@ type Config struct {
 	// transform and before anything is replaced (0004-MADR G9). No element
 	// may be nil.
 	Probes []Prober
+	// Clock is the clock for check-record ages and the progress throttle.
+	// Nil means the real time; a typed nil is rejected
+	// (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D12,
+	// Amendment A4).
+	Clock Clock
+}
+
+// Clock tells the time. ClockFunc adapts a function, such as a test's
+// fixed clock.
+type Clock interface {
+	Now() time.Time
 }
 
 // Updater is the coordinator. Unexported collaborator fields are populated
@@ -882,4 +893,5 @@ type Updater struct {
 	progress    time.Duration
 	manifestVfy []ManifestVerifier
 	probes      []Prober
+	clock       Clock
 }

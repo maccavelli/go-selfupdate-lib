@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -71,6 +72,24 @@ type versionProber struct {
 	args    []string
 	want    func(string) string
 	timeout time.Duration
+	run     func(ctx context.Context, path string, args []string, stdout io.Writer) error
+}
+
+// VersionProbeOptions configure NewVersionProberWith
+// (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D12).
+type VersionProbeOptions struct {
+	// Args are the arguments the binary runs with. Required.
+	Args []string
+	// Want maps the target tag to the text stdout must contain. Nil is the
+	// tag itself.
+	Want func(tag string) string
+	// Timeout bounds one probe. It must be positive.
+	Timeout time.Duration
+	// Run starts path with args, writes its standard output to stdout, and
+	// returns when it exits; a non-zero exit is an error. Nil runs it as
+	// NewVersionProber does. The probe keeps the timeout, the 64 KiB cap
+	// on stdout, and its context classification around Run.
+	Run func(ctx context.Context, path string, args []string, stdout io.Writer) error
 }
 
 // NewVersionProber returns a Prober that runs the binary with args, with no
@@ -84,6 +103,14 @@ type versionProber struct {
 // ErrBatchFile, and a probe from a process with no console opens no window
 // (0021-MADR D7, D8).
 func NewVersionProber(args []string, want func(tag string) string, timeout time.Duration) (Prober, error) {
+	return NewVersionProberWith(VersionProbeOptions{Args: args, Want: want, Timeout: timeout})
+}
+
+// NewVersionProberWith is NewVersionProber with its options in a struct,
+// and an optional Run that replaces how the binary is started, for a
+// program that runs probes its own way or tests them without a process.
+func NewVersionProberWith(o VersionProbeOptions) (Prober, error) {
+	args, want, timeout := o.Args, o.Want, o.Timeout
 	if len(args) == 0 {
 		return nil, fmt.Errorf("selfupdate: version prober needs arguments")
 	}
@@ -93,7 +120,7 @@ func NewVersionProber(args []string, want func(tag string) string, timeout time.
 	if want == nil {
 		want = func(tag string) string { return tag }
 	}
-	return versionProber{args: append([]string(nil), args...), want: want, timeout: timeout}, nil
+	return versionProber{args: append([]string(nil), args...), want: want, timeout: timeout, run: o.Run}, nil
 }
 
 func (p versionProber) Probe(parent context.Context, r ProbeRequest) error {
@@ -104,13 +131,18 @@ func (p versionProber) Probe(parent context.Context, r ProbeRequest) error {
 	// path is the library's own staging or target file (0004-MADR G9).
 	// winproc keeps a console-less caller from opening a window for it,
 	// and refuses a batch file (0021-MADR D7, D8).
-	cmd, err := winproc.Command(ctx, r.Path, p.args...)
-	if err != nil {
-		return fmt.Errorf("selfupdate: %s probe of %s failed: %w", r.Phase, sanitizeText(r.Product), err)
+	var err error
+	if p.run != nil {
+		err = p.run(ctx, r.Path, append([]string(nil), p.args...), out)
+	} else {
+		cmd, cerr := winproc.Command(ctx, r.Path, p.args...)
+		if cerr != nil {
+			return fmt.Errorf("selfupdate: %s probe of %s failed: %w", r.Phase, sanitizeText(r.Product), cerr)
+		}
+		cmd.Stdout = out
+		cmd.WaitDelay = time.Second
+		err = cmd.Run()
 	}
-	cmd.Stdout = out
-	cmd.WaitDelay = time.Second
-	err = cmd.Run()
 	if perr := parent.Err(); perr != nil {
 		// The run's deadline or cancellation ended the probe: say so, so
 		// the failure is the run's and not the prober's own timeout
