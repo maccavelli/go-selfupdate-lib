@@ -6,6 +6,7 @@ import (
 	"errors"
 	"math"
 	"runtime"
+	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
@@ -45,8 +46,10 @@ var (
 	procSysFreeString    = oleaut32.NewProc("SysFreeString")
 )
 
-// lastCoInit is the HRESULT of the most recent CoInitializeEx, for TestCOMLayout.
-var lastCoInit hresult
+// lastCoInit is the HRESULT of the most recent CoInitializeEx, for
+// TestCOMLayout. It is atomic because every COM call writes it, from any
+// goroutine (0025-MADR-align-with-go-sdk-design-practices.md D4).
+var lastCoInit atomic.Uint32
 
 // IUnknown + IDispatch occupy slots 0-6. Interface methods start at 7
 // (0021-MADR Amendment A3). Values are absolute vtable indexes.
@@ -149,7 +152,7 @@ func withCOM(fn func() error) (err error) {
 	defer runtime.UnlockOSThread()
 	r, _, _ := procCoInitializeEx.Call(0, uintptr(windows.COINIT_MULTITHREADED)) //nolint:errcheck // HRESULT is r
 	hr := hresult(uint32(r))                                                     //nolint:gosec // HRESULT is the low 32 bits
-	lastCoInit = hr
+	lastCoInit.Store(uint32(hr))
 	switch {
 	case !hr.failed():
 		defer windows.CoUninitialize()

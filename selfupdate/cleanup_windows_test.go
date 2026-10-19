@@ -28,7 +28,7 @@ func TestWindowsCleanupReceiptRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := writeCleanupReceipt(target, applyResult{backup: backup, oldDigest: digest}); err != nil {
+	if err := writeCleanupReceipt(context.Background(), target, applyResult{backup: backup, oldDigest: digest}); err != nil {
 		t.Fatal(err)
 	}
 	root, err := os.OpenRoot(target.Dir)
@@ -36,7 +36,7 @@ func TestWindowsCleanupReceiptRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = root.Close() }()
-	if err := processCleanupReceipt(target, root); err != nil {
+	if err := processCleanupReceipt(context.Background(), target, root); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(backup); !os.IsNotExist(err) {
@@ -67,7 +67,7 @@ func TestWindowsCleanupReceiptDigestMismatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = root.Close() }()
-	if err := processCleanupReceipt(target, root); !errors.Is(err, ErrIntegrity) {
+	if err := processCleanupReceipt(context.Background(), target, root); !errors.Is(err, ErrIntegrity) {
 		t.Fatalf("err = %v, want the digest mismatch (ErrIntegrity)", err)
 	}
 }
@@ -111,7 +111,7 @@ func oldBytesDigest(t *testing.T) string {
 func TestWindowsCleanupReceiptMissingBackup(t *testing.T) {
 	name := ".demo.selfupdate-bak-gone"
 	target, root := receiptEnv(t, name, cleanupReceipt{Version: 1, Backup: name, Digest: oldBytesDigest(t)}, false)
-	if err := processCleanupReceipt(target, root); err != nil {
+	if err := processCleanupReceipt(context.Background(), target, root); err != nil {
 		t.Fatalf("stale receipt blocked the update: %v", err)
 	}
 	if _, err := os.Lstat(cleanupReceiptPath(target)); !errors.Is(err, os.ErrNotExist) {
@@ -143,7 +143,7 @@ func TestWindowsCleanupReceiptMalformed(t *testing.T) {
 				backupName = ".demo.selfupdate-bak-1"
 			}
 			target, root := receiptEnv(t, backupName, rec, true)
-			if err := processCleanupReceipt(target, root); err == nil {
+			if err := processCleanupReceipt(context.Background(), target, root); err == nil {
 				t.Fatal("accepted")
 			}
 			if _, err := os.Lstat(cleanupReceiptPath(target)); err != nil {
@@ -168,7 +168,7 @@ func TestWindowsCleanupReceiptMalformed(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = root.Close() }()
-	if err := processCleanupReceipt(target, root); err == nil {
+	if err := processCleanupReceipt(context.Background(), target, root); err == nil {
 		t.Fatal("accepted a non-JSON receipt")
 	}
 }
@@ -185,7 +185,7 @@ func TestWindowsCleanupReceiptReparseBackup(t *testing.T) {
 	if err := os.Symlink("victim", filepath.Join(target.Dir, name)); err != nil {
 		t.Fatalf("symlink (Developer Mode is required on the Windows test host): %v", err)
 	}
-	if err := processCleanupReceipt(target, root); err == nil {
+	if err := processCleanupReceipt(context.Background(), target, root); err == nil {
 		t.Fatal("accepted a symlinked backup")
 	}
 	if _, err := os.Lstat(victim); err != nil {

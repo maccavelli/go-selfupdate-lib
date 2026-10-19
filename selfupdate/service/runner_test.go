@@ -5,9 +5,12 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 )
 
 func TestExecRunnerExitCodeIsNotAnError(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	c := fakeCommand(t, "receipt", "FAKE_OUT=out", "FAKE_ERR=err", "FAKE_EXIT=7")
 	out, err := ExecRunner().Run(context.Background(), c)
 	if err != nil || out.ExitCode != 7 || string(out.Stdout) != "out" || string(out.Stderr) != "err" {
@@ -16,6 +19,7 @@ func TestExecRunnerExitCodeIsNotAnError(t *testing.T) {
 }
 
 func TestExecRunnerRefusesRelativePath(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	if _, err := ExecRunner().Run(context.Background(), Command{Path: "systemctl"}); err == nil ||
 		!strings.Contains(err.Error(), "not an absolute path") {
 		t.Fatalf("a PATH lookup was allowed: %v", err)
@@ -23,6 +27,7 @@ func TestExecRunnerRefusesRelativePath(t *testing.T) {
 }
 
 func TestExecRunnerCapsOutput(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	// The cap is 1 MiB (0011-PLAN V1 step 1), written as a literal so a
 	// change to the constant shows.
 	out, err := ExecRunner().Run(context.Background(), fakeCommand(t, "big"))
@@ -32,6 +37,7 @@ func TestExecRunnerCapsOutput(t *testing.T) {
 }
 
 func TestExecRunnerContextKills(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 	start := time.Now()
@@ -42,6 +48,7 @@ func TestExecRunnerContextKills(t *testing.T) {
 }
 
 func TestExecRunnerStdinAndEnv(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	c := fakeCommand(t, "env")
 	c.Env = []string{fakeEnv + "=env", "ONLY=this"}
 	out, err := ExecRunner().Run(context.Background(), c)

@@ -81,7 +81,7 @@ func parseCleanupReceipt(target Target, data []byte) ([]cleanupEntry, error) {
 	return entries, nil
 }
 
-func processCleanupReceipt(target Target, root *os.Root) error {
+func processCleanupReceipt(ctx context.Context, target Target, root *os.Root) error {
 	name := cleanupReceiptName(target.Base)
 	info, err := root.Lstat(name)
 	if err != nil {
@@ -124,7 +124,7 @@ func processCleanupReceipt(target Target, root *os.Root) error {
 			return fmt.Errorf("selfupdate: remove cleanup receipt: %w", err)
 		}
 	default:
-		if err := writeCleanupEntries(target, kept); err != nil {
+		if err := writeCleanupEntries(ctx, target, kept); err != nil {
 			return fmt.Errorf("selfupdate: rewrite cleanup receipt: %w", err)
 		}
 	}
@@ -169,13 +169,13 @@ func removePendingBackup(target Target, root *os.Root, e cleanupEntry) (keep boo
 
 // writeCleanupReceipt adds result's backup to the target's receipt,
 // creating it when there is none. The caller holds the session's lock.
-func writeCleanupReceipt(target Target, result applyResult) error {
+func writeCleanupReceipt(ctx context.Context, target Target, result applyResult) error {
 	entries, err := readCleanupEntries(target)
 	if err != nil {
 		return err
 	}
 	entries = append(entries, cleanupEntry{Backup: filepath.Base(result.backup), Digest: result.oldDigest})
-	return writeCleanupEntries(target, entries)
+	return writeCleanupEntries(ctx, target, entries)
 }
 
 // readCleanupEntries reads the target's receipt by path, under the lock:
@@ -216,8 +216,10 @@ func listedBackups(target Target) (names map[string]bool, ok bool) {
 
 // writeCleanupEntries replaces the target's receipt with one listing
 // entries: a new file, restricted to the current user, then a replace, so a
-// reader never sees a partial receipt.
-func writeCleanupEntries(target Target, entries []cleanupEntry) error {
+// reader never sees a partial receipt. ctx bounds the replace's retries:
+// its retry budget, and its cancellation when it has one
+// (0025-MADR-align-with-go-sdk-design-practices.md Amendment A2).
+func writeCleanupEntries(ctx context.Context, target Target, entries []cleanupEntry) error {
 	data, err := json.Marshal(receiptFor(entries))
 	if err != nil {
 		return err
@@ -242,7 +244,7 @@ func writeCleanupEntries(target Target, entries []cleanupEntry) error {
 	if err := restrictToCurrentUser(tmp); err != nil {
 		return joinRemove(err, tmp)
 	}
-	if err := moveFileReplace(context.Background(), tmp, cleanupReceiptPath(target)); err != nil {
+	if err := moveFileReplace(ctx, tmp, cleanupReceiptPath(target)); err != nil {
 		return joinRemove(err, tmp)
 	}
 	return nil

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
 )
 
@@ -17,6 +18,7 @@ import (
 // over the scripted fake.
 
 func TestNewRefuses(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	ok := Options{Label: "com.example.demo", Domain: System(), Plist: filepath.Join(t.TempDir(), "x.plist")}
 	if _, err := newJob(ok, "linux", 0, 0); !errors.Is(err, service.ErrUnsupported) {
 		t.Fatalf("off macOS: %v", err)
@@ -43,6 +45,7 @@ func TestNewRefuses(t *testing.T) {
 }
 
 func TestDomainString(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	for d, want := range map[Domain]string{System(): "system", GUI(501): "gui/501", User(0): "user/0"} {
 		if d.String() != want {
 			t.Errorf("%v = %q, want %q", d, d.String(), want)
@@ -53,6 +56,7 @@ func TestDomainString(t *testing.T) {
 // TestProbeUsesListWhenItSees: list for the caller's own GUI domain;
 // print, and only its top-level lines, otherwise.
 func TestProbeUsesListWhenItSees(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	j := testJob(t, f, Options{})
 	if running, err := j.Running(context.Background(), "demo"); err != nil || !running {
@@ -85,6 +89,7 @@ func TestProbeUsesListWhenItSees(t *testing.T) {
 }
 
 func TestInstalledAndRunning(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	j := testJob(t, f, Options{})
 	ctx := context.Background()
@@ -106,6 +111,7 @@ func TestInstalledAndRunning(t *testing.T) {
 }
 
 func TestEnabled(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	for _, c := range []struct {
 		name     string
 		keys     map[string]string
@@ -141,6 +147,7 @@ func TestEnabled(t *testing.T) {
 // would start must not be left stopped
 // (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md D7).
 func TestEnabledRefusesUnreadablePlist(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	f.corrupt = true
 	if got, err := testJob(t, f, Options{}).Enabled(context.Background(), "demo"); err == nil {
@@ -149,6 +156,7 @@ func TestEnabledRefusesUnreadablePlist(t *testing.T) {
 }
 
 func TestStopWaitsUntilGone(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	f.pid = 99999999 // a PID no process has
 	f.goneAfter = 3  // bootout returns while the job is still loaded
@@ -164,6 +172,7 @@ func TestStopWaitsUntilGone(t *testing.T) {
 }
 
 func TestStopTimesOut(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	f.pid = 99999999
 	f.goneAfter = 1 << 30
@@ -177,6 +186,7 @@ func TestStopTimesOut(t *testing.T) {
 }
 
 func TestStopNotLoadedAndRefused(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	f.loaded, f.pid = false, 0
 	if err := testJob(t, f, Options{}).Stop(context.Background(), "demo"); err != nil || slices.Contains(f.verbs(), "bootout") {
@@ -191,6 +201,7 @@ func TestStopNotLoadedAndRefused(t *testing.T) {
 }
 
 func TestStopRefusesInsideJob(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	f.pid = os.Getpid() // this process is the job
 	j := testJob(t, f, Options{})
@@ -203,6 +214,7 @@ func TestStopRefusesInsideJob(t *testing.T) {
 }
 
 func TestInsideByAncestry(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	f.pid = 4242
 	f.parents = map[int]int{os.Getpid(): 777, 777: 4242}
@@ -234,6 +246,7 @@ func TestInsideByAncestry(t *testing.T) {
 // TestLaunchctlError: the exit codes of 0011-MADR §5 map to the typed
 // errors; others pass through with launchctl's message.
 func TestLaunchctlError(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	for _, c := range []struct {
 		code int
 		is   error
@@ -258,6 +271,7 @@ func TestLaunchctlError(t *testing.T) {
 }
 
 func TestStartBootstrapsAndRetries(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	f.loaded, f.pid = false, 0
 	f.bootstrapCodes = []int{exitIO, exitAlready, 0}
@@ -280,6 +294,7 @@ func TestStartBootstrapsAndRetries(t *testing.T) {
 // TestStartLoadedSkipsBootstrap: a job still loaded, such as an on-demand
 // one, is only kickstarted.
 func TestStartLoadedSkipsBootstrap(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	f.pid, f.state = 0, "not running"
 	if err := testJob(t, f, Options{}).Start(context.Background(), "demo"); err != nil || slices.Contains(f.verbs(), "bootstrap") {
@@ -288,6 +303,7 @@ func TestStartLoadedSkipsBootstrap(t *testing.T) {
 }
 
 func TestWaitHealthy(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	f.pid = 99999999
 	j := testJob(t, f, Options{})
@@ -322,6 +338,7 @@ func TestWaitHealthy(t *testing.T) {
 // TestWaitHealthySettlesAtLeastThrottle: a settle window shorter than
 // launchd's ThrottleInterval is raised to it.
 func TestWaitHealthySettlesAtLeastThrottle(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	// New refuses these options (0015-MADR D10); WaitHealthy must still
 	// raise the settle when they are set afterwards.
@@ -333,6 +350,7 @@ func TestWaitHealthySettlesAtLeastThrottle(t *testing.T) {
 }
 
 func TestReconcile(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	j := testJob(t, f, Options{})
 	ctx := context.Background()

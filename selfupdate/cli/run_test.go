@@ -11,7 +11,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -22,6 +21,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/maccavelli/go-selfupdate-lib/buildinfo"
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/selfupdatetest"
 )
@@ -381,30 +381,10 @@ func TestNoStdoutOutsideStdio(t *testing.T) {
 	}
 }
 
-// checkNoLeak fails the test when more goroutines run once it has cleaned
-// up than when it was called. It polls for up to 2 s, because a goroutine
-// that is ending is still counted for a moment (0004-MADR H6). The sleep
-// only paces that poll; it orders nothing. Call it first.
-func checkNoLeak(t testing.TB) {
-	t.Helper()
-	base := runtime.NumGoroutine()
-	t.Cleanup(func() {
-		deadline := time.Now().Add(2 * time.Second)
-		for runtime.NumGoroutine() > base {
-			if time.Now().After(deadline) {
-				t.Errorf("goroutines: %d now, %d when the test began", runtime.NumGoroutine(), base)
-				return
-			}
-			runtime.Gosched()
-			time.Sleep(10 * time.Millisecond)
-		}
-	})
-}
-
 // TestRunsLeakNothing: the runs that drive a prompt confirmer, a timeout
 // and a cancellation end every goroutine they start (0010-MADR C12).
 func TestRunsLeakNothing(t *testing.T) {
-	checkNoLeak(t)
+	testproc.CheckNoLeak(t)
 	for _, sc := range []scenario{
 		{name: "prompt yes", latest: "v1.1.0", id: releaseID, stdin: "y\n", interactive: true},
 		{name: "prompt no", latest: "v1.1.0", id: releaseID, stdin: "n\n", interactive: true},

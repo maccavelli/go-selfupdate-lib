@@ -8,12 +8,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
 )
 
 // TestNotInstalled: the probes and Inside report a missing task as absent;
 // every other method returns service.ErrNotInstalled.
 func TestNotInstalled(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	ctx := context.Background()
 	task, _ := testTask(t, newFake(), Options{Poll: service.PollOptions{Timeout: 20 * time.Millisecond}})
 	if ok, err := task.Installed(ctx, "demo"); ok || err != nil {
@@ -44,6 +46,7 @@ func TestNotInstalled(t *testing.T) {
 
 // TestPermission: a refused open is service.ErrPermission.
 func TestPermission(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	f.openErr = hrAccessDenied
 	task, _ := testTask(t, f, Options{})
@@ -54,6 +57,7 @@ func TestPermission(t *testing.T) {
 
 // TestRunningByState: Running is TASK_STATE_RUNNING, or any instance.
 func TestRunningByState(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	for _, c := range []struct {
 		st   int32
 		pids []uint32
@@ -79,6 +83,7 @@ func TestRunningByState(t *testing.T) {
 // TestEnabledRule: an enabled task with an enabled logon, boot or
 // repeating time trigger counts; nothing else does (0021-MADR D3).
 func TestEnabledRule(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	for _, c := range []struct {
 		name string
 		on   bool
@@ -108,6 +113,7 @@ func TestEnabledRule(t *testing.T) {
 // TestStopOrder: Stop disables the task, asks the program to exit, ends
 // the task, and waits; Start then enables it again and runs it.
 func TestStopOrder(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	f.add(`\demo`, 4242).stopKeeps = true
 	var asked []uint32
@@ -141,6 +147,7 @@ func TestStopOrder(t *testing.T) {
 // TestStopRequestHonoured: a program that exits within StopGrace is never
 // ended by Task Scheduler.
 func TestStopRequestHonoured(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	ft := f.add(`\demo`, 4242)
 	task, clock := testTask(t, f, Options{
@@ -167,6 +174,7 @@ func TestStopRequestHonoured(t *testing.T) {
 // TestStopGraceRunsOut: a program that does not exit within StopGrace is
 // ended once the grace has passed.
 func TestStopGraceRunsOut(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	f.add(`\demo`, 4242)
 	task, clock := testTask(t, f, Options{
@@ -189,6 +197,7 @@ func TestStopGraceRunsOut(t *testing.T) {
 // ending the task then works, Stop succeeds; when it fails, both errors
 // are reported (0021-MADR D4).
 func TestStopRequestFails(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	refused := errors.New("admin socket refused")
 	f := newFake()
 	f.add(`\demo`, 4242)
@@ -216,6 +225,7 @@ func TestStopRequestFails(t *testing.T) {
 // still start the program; one whose program has gone leaves it disabled,
 // for Start (0024-MADR D4-A).
 func TestStopFailureEnablesAgain(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	ft := f.add(`\demo`, 4242)
 	ft.stopErr = hresult(0x80004005)
@@ -246,6 +256,7 @@ func TestStopFailureEnablesAgain(t *testing.T) {
 // TestStopWithoutRequest: without RequestStop, Stop ends the task at once,
 // after disabling it, and Start enables it again and runs it.
 func TestStopWithoutRequest(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	ft := f.add(`\demo`, 4242)
 	task, _ := testTask(t, f, Options{})
@@ -269,6 +280,7 @@ func TestStopWithoutRequest(t *testing.T) {
 // Task Scheduler would not run the task again after the update
 // (0022-MADR Amendment A1).
 func TestStopRefusesDisabled(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	ft := f.add(`\demo`, 4242)
 	ft.on = false
@@ -285,6 +297,7 @@ func TestStopRefusesDisabled(t *testing.T) {
 // TestStopDisabledIdle: a disabled task with no program running is left
 // as it is; the update starts nothing, since Enabled reports false.
 func TestStopDisabledIdle(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	ft := f.add(`\demo`, 0)
 	ft.on = false
@@ -301,6 +314,7 @@ func TestStopDisabledIdle(t *testing.T) {
 // it, and Task Scheduler's refusal is ErrTaskDisabled (0022-MADR
 // Amendment A1).
 func TestStartDisabled(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	ft := f.add(`\demo`, 0)
 	ft.on = false
@@ -317,6 +331,7 @@ func TestStartDisabled(t *testing.T) {
 // TestStopNotRunning: a task that is not running is still disabled, so its
 // trigger cannot start it mid-update, and nothing is ended.
 func TestStopNotRunning(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	f.add(`\demo`, 0)
 	task, _ := testTask(t, f, Options{})
@@ -332,6 +347,7 @@ func TestStopNotRunning(t *testing.T) {
 // context that ends does not cut the wait short; Stop waits until the
 // instance has gone, then reports the cancellation (0015-MADR B3).
 func TestStopFinishesAfterCancel(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	ft := f.add(`\demo`, 4242)
 	ft.stopKeeps = true
@@ -353,6 +369,7 @@ func TestStopFinishesAfterCancel(t *testing.T) {
 // TestStopTimesOut: an instance that never goes is service.ErrTimeout once
 // Poll's timeout has passed.
 func TestStopTimesOut(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	ft := f.add(`\demo`, 4242)
 	ft.stopKeeps, ft.exitIn = true, -1
@@ -365,6 +382,7 @@ func TestStopTimesOut(t *testing.T) {
 // TestStopInside: Stop from inside the instance is refused, before
 // anything changes.
 func TestStopInside(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	f.add(`\demo`, 6000)
 	task, _ := testTask(t, f, Options{})
@@ -378,6 +396,7 @@ func TestStopInside(t *testing.T) {
 
 // TestStartRunning: Start leaves a running task alone.
 func TestStartRunning(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	f.add(`\demo`, 4242)
 	task, _ := testTask(t, f, Options{})
@@ -390,6 +409,7 @@ func TestStartRunning(t *testing.T) {
 // Scheduler's list, which can still name it after it has exited
 // (0021-MADR Amendment A4).
 func TestStopStaleInstance(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	f.add(`\demo`, 4242).staleList = true
 	task, _ := testTask(t, f, Options{Poll: service.PollOptions{Timeout: 50 * time.Millisecond}})
@@ -403,6 +423,7 @@ func TestStopStaleInstance(t *testing.T) {
 // A recorded instance whose process still runs is counted (0021-MADR
 // Amendment A4, Q7).
 func TestStartStaleInstance(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	f.add(`\demo`, 4242).staleList = true
 	task, _ := testTask(t, f, Options{})
@@ -430,6 +451,7 @@ func TestStartStaleInstance(t *testing.T) {
 // TestWaitHealthyNewInstance: after Stop and Start, the new instance is
 // healthy; the probe runs after it.
 func TestWaitHealthyNewInstance(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	f.add(`\demo`, 4242)
 	probed := false
@@ -451,6 +473,7 @@ func TestWaitHealthyNewInstance(t *testing.T) {
 
 // TestWaitHealthyOldInstance: the instance Stop saw never counts.
 func TestWaitHealthyOldInstance(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	ft := f.add(`\demo`, 4242)
 	ft.stopKeeps, ft.exitIn = true, -1 // stop does nothing
@@ -465,6 +488,7 @@ func TestWaitHealthyOldInstance(t *testing.T) {
 // TestWaitHealthyFailedRun: a run that ended after Start fails the wait at
 // once, with the program's exit code (Amendment A1, probe 3).
 func TestWaitHealthyFailedRun(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	ft := f.add(`\demo`, 4242)
 	code := int32(7)
@@ -485,6 +509,7 @@ func TestWaitHealthyFailedRun(t *testing.T) {
 
 // TestWaitHealthyBeforeRun: a last run from before Start is not a failure.
 func TestWaitHealthyBeforeRun(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	ft := f.add(`\demo`, 0)
 	ft.last = lastRun{Result: 1, Time: time.Unix(1_600_000_000, 0)}

@@ -144,23 +144,23 @@ func isReadOnlyDenial(err error, to *uint16) bool {
 
 // keepAsPending puts result's backup on the cleanup receipt when err is a
 // running image's refusal (0010-MADR B6). ok reports that it applied.
-func keepAsPending(target Target, result applyResult, err error) (pending string, ok bool, kerr error) {
+func keepAsPending(ctx context.Context, target Target, result applyResult, err error) (pending string, ok bool, kerr error) {
 	if !isBusyRunningImage(err) {
 		return "", false, nil
 	}
-	if werr := writeCleanupReceipt(target, result); werr != nil {
+	if werr := writeCleanupReceipt(ctx, target, result); werr != nil {
 		return "", true, errors.Join(fmt.Errorf("selfupdate: keep previous: %w", err), werr)
 	}
 	return result.backup, true, syncDirFn(target.Dir)
 }
 
-func commitReplacement(target Target, result applyResult) (pending string, err error) {
+func commitReplacement(ctx context.Context, target Target, result applyResult) (pending string, err error) {
 	if result.backup == "" {
 		return "", nil
 	}
 	if err := osRemove(result.backup); err != nil {
 		if isBusyRunningImage(err) {
-			if werr := writeCleanupReceipt(target, result); werr != nil {
+			if werr := writeCleanupReceipt(ctx, target, result); werr != nil {
 				return "", errors.Join(fmt.Errorf("selfupdate: remove backup: %w", err), werr)
 			}
 			return result.backup, nil

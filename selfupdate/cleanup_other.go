@@ -3,10 +3,11 @@
 package selfupdate
 
 import (
+	"context"
 	"os"
 )
 
-func processCleanupReceipt(target Target, root *os.Root) error {
+func processCleanupReceipt(_ context.Context, target Target, root *os.Root) error {
 	name := cleanupReceiptName(target.Base)
 	_, err := root.Lstat(name)
 	if err == nil {

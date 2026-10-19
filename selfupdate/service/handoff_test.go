@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 )
 
@@ -30,6 +31,7 @@ func (f *fakeDetacher) Detach(_ context.Context, spec HandOff) (Detached, error)
 }
 
 func TestHandOffIfInside(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	t.Setenv(EnvHandOff, "")
 	exe := selfExe(t)
 
@@ -60,6 +62,7 @@ func TestHandOffIfInside(t *testing.T) {
 // TestHandOffIfInsideFailsClosed: an unanswerable Inside is an error, not
 // "outside": proceeding could stop the caller's own service.
 func TestHandOffIfInsideFailsClosed(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	t.Setenv(EnvHandOff, "")
 	probe := errors.New("fixture: cgroup unreadable")
 	d := &fakeDetacher{insideErr: probe}
@@ -80,6 +83,7 @@ func TestHandOffIfInsideFailsClosed(t *testing.T) {
 // TestWriteHandOffResultNeedsCleanAbsolutePath: the path comes from the
 // environment, so a relative or unclean one is refused.
 func TestWriteHandOffResultNeedsCleanAbsolutePath(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	dir := t.TempDir()
 	// Built by hand: filepath.Join would clean the second one.
 	sep := string(filepath.Separator)
@@ -99,6 +103,7 @@ func TestWriteHandOffResultNeedsCleanAbsolutePath(t *testing.T) {
 // TestDetachedRunNeverHandsOffAgain: with SELFUPDATE_HANDOFF set, nothing
 // is asked or started.
 func TestDetachedRunNeverHandsOffAgain(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	t.Setenv(EnvHandOff, "abc")
 	d := &fakeDetacher{inside: true}
 	if _, handed, err := HandOffIfInside(context.Background(), d, HandOff{}); err != nil || handed || d.got != nil {
@@ -107,6 +112,7 @@ func TestDetachedRunNeverHandsOffAgain(t *testing.T) {
 }
 
 func TestHandOffFunc(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	t.Setenv(EnvHandOff, "")
 	result := filepath.Join(t.TempDir(), "x")
 	f := HandOffFunc(&fakeDetacher{inside: true}, HandOff{ID: "abc", ResultPath: result})
@@ -127,6 +133,7 @@ func TestHandOffFunc(t *testing.T) {
 }
 
 func TestReportFunc(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	path := filepath.Join(t.TempDir(), "result")
 	t.Setenv(EnvHandOff, "")
 	t.Setenv(EnvHandOffResult, path)
@@ -159,6 +166,7 @@ func TestReportFunc(t *testing.T) {
 }
 
 func TestReadHandOffResultRefuses(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	dir := t.TempDir()
 	for name, body := range map[string]string{"malformed": "not json", "huge": strings.Repeat(" ", maxHandOffResult+2)} {
 		p := filepath.Join(dir, name)
@@ -175,6 +183,7 @@ func TestReadHandOffResultRefuses(t *testing.T) {
 }
 
 func TestProcessDetacherNeedsInside(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	if _, err := ProcessDetacher(nil).Inside(context.Background()); err == nil {
 		t.Fatal("no inside check was accepted")
 	}
@@ -209,6 +218,7 @@ func (d *refusingDetacher) Detach(context.Context, HandOff) (Detached, error) {
 // through ExecReconciler's Reconcile and Restore, and through
 // HandOffIfInside and HandOffFunc (0022-MADR Amendment A2, D5-A).
 func TestBatchErrorReachesServiceCallers(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	t.Setenv(EnvHandOff, "")
 	is := func(t *testing.T, name string, ran bool, err error) {
 		t.Helper()

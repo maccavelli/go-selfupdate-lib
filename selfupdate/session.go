@@ -209,10 +209,13 @@ func (s *installSession) Install(ctx context.Context, req InstallRequest) (Insta
 // keepPrevious, renames it to previousPath over any older one. On Windows
 // the backup is a hard link to the running image, and renaming it works
 // while that image runs (0004-PLAN-v1-1-0-core-api.md Step 10). The
-// caller holds s.mu.
+// caller holds s.mu. The cleanup receipt is written after the replace, so
+// its write is bounded by LockTimeout but not cancelled, as a rollback is
+// (0025-MADR-align-with-go-sdk-design-practices.md Amendment A2).
 func (s *installSession) commitLocked(ctx context.Context, applied applyResult) (pending, previous string, err error) {
+	receiptCtx := withRetryBudget(context.WithoutCancel(ctx), s.lockTimeout)
 	if !s.keepPrevious || applied.backup == "" {
-		pending, err = commitReplacement(s.target, applied)
+		pending, err = commitReplacement(receiptCtx, s.target, applied)
 		return pending, "", err
 	}
 	previous = previousPath(s.target)
@@ -225,7 +228,7 @@ func (s *installSession) commitLocked(ctx context.Context, applied applyResult) 
 		// A .previous a running image holds cannot be replaced: on Windows
 		// the new backup goes on the cleanup receipt instead, and the
 		// commit stands (0010-MADR B6).
-		if pending, ok, kerr := keepAsPending(s.target, applied, err); ok {
+		if pending, ok, kerr := keepAsPending(receiptCtx, s.target, applied, err); ok {
 			return pending, "", kerr
 		}
 		return "", "", fmt.Errorf("selfupdate: keep previous: %w", err)
@@ -602,7 +605,7 @@ func beginSession(ctx context.Context, policy TargetPolicy, original Target, tim
 	// A dry run changes nothing beside the target, so it neither processes
 	// the receipt nor sweeps (0015-MADR B1).
 	if !isDryRun(ctx) {
-		if err := processCleanupReceipt(original, root); err != nil {
+		if err := processCleanupReceipt(withRetryBudget(ctx, timeout), original, root); err != nil {
 			return nil, errors.Join(err, lock.release(), root.Close())
 		}
 		// Under the lock, what a crashed update left behind is no one's

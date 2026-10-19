@@ -168,6 +168,10 @@ A1).
      `withRetryBudget(ctx, s.lockTimeout)`, as it already does for
      `replacePath` (`:223`). `beginSession` (`session.go:572`, `:605`)
      passes `withRetryBudget(ctx, timeout)`.
+     *(Deviation D1, 2026-10-19: `commitLocked` passes
+     `withRetryBudget(context.WithoutCancel(ctx), s.lockTimeout)` instead,
+     because its receipt write runs after the binary is replaced. A second
+     test bounds the commit path by `LockTimeout`.)*
    * Tests: update the call sites in `cleanup_windows_test.go`,
      `cleanup_busy_windows_test.go` and `lifecycle_windows_test.go`. Add
      `TestCleanupReceiptHonoursContext` to `cleanup_busy_windows_test.go`.
@@ -1192,3 +1196,102 @@ The plan became `in-progress`.
 4. 0004-REPORT gains `## Since (2026-10-19)`: the correction of the
    secrets bullet, and the build.
 5. 0018-MADR gains `## Amendments` with `A1 (2026-10-19)`.
+6. Checks: links (146 links in 6 files, 0 broken), identifiers (0
+   findings), and markdownlint. markdownlint first failed on
+   `0004-REPORT…:347` (MD004, an asterisk list in a dash-list file). The
+   list was changed to dashes, and it then reported 0 issues.
+7. Committed as `a705460`.
+
+### Deviation D1 (2026-10-19): the commit path's receipt write is not cancellable
+
+**Found** (S1 step 1, before any edit). Step 1 had `commitLocked` pass
+`withRetryBudget(ctx, s.lockTimeout)` to the receipt write. But
+`commitLocked` runs after the new binary is in place. `session.go:196`
+says "The commit has run, whatever it returned: the backup is gone, kept
+as .previous, or on the cleanup receipt". A cancellation there would
+leave a busy backup off the receipt and turn a committed update into an
+error. The code already finishes post-replace work without
+cancellation: the rollback at `session.go:297` uses
+`withRetryBudget(context.WithoutCancel(ctx), s.lockTimeout)`. The defect
+in F3 is the fixed default budget, not the missing cancellation. This
+was a gap in the plan, not a defect found in the code.
+
+**Decided** (the owner, 2026-10-19, "Budget yes, cancel only
+pre-commit"):
+
+* `commitLocked`'s two calls pass
+  `withRetryBudget(context.WithoutCancel(ctx), s.lockTimeout)`, so
+  bookkeeping after the commit always finishes, within the session's
+  `LockTimeout`;
+* `beginSession`'s `processCleanupReceipt` passes
+  `withRetryBudget(ctx, timeout)`, which is cancellable, because nothing
+  has changed yet;
+* two tests:
+  * a cancelled context makes `processCleanupReceipt` return at once;
+  * a busy receipt destination with `LockTimeout` 200 ms makes the
+    commit path give up in about 200 ms, not the default 5 s.
+
+The MADR gains Amendment A2.
+
+### S1 (2026-10-19)
+
+1. **The cleanup retry's context:**
+   * `writeCleanupEntries`, `writeCleanupReceipt`, `processCleanupReceipt`,
+     `keepAsPending` and `commitReplacement` take a leading
+     `context.Context`. The Unix stubs and `cleanup_other.go` take it and
+     ignore it.
+   * `commitLocked` builds `receiptCtx :=
+     withRetryBudget(context.WithoutCancel(ctx), s.lockTimeout)` for both of
+     its calls (deviation D1). `beginSession` passes
+     `withRetryBudget(ctx, timeout)`.
+   * The fixed `context.Background()` at `cleanup_windows.go:245` is gone.
+   * New tests in `cleanup_busy_windows_test.go`:
+     * `TestWindowsReceiptRewriteHonoursContext`;
+     * `TestWindowsCommitReceiptNotCancelled`, whose receipt is held for
+       200 ms and then released, so its replace must retry;
+     * `TestWindowsCommitReceiptBoundedByLockTimeout`;
+     * the helpers `lockedSession` and `busyBackup`.
+2. **`lastCoInit`** is an `atomic.Uint32`. `TestWithCOMConcurrent` runs
+   400 `withCOM` calls from 8 goroutines.
+3. **The leak check:**
+   * `internal/testproc.CheckNoLeak` holds the former
+     `selfupdate/leak_test.go` body. `selfupdate`'s `checkNoLeak` is an
+     alias, and `cli`'s copy is deleted.
+   * `testproc.CheckNoLeak(t)` is first in 103 tests: `service`'s
+     `poll_test.go` (9), `handoff_test.go` (9), `execreconciler_test.go`
+     (8) and `runner_test.go` (5); `systemd_test.go` (13);
+     `launchd_test.go` (17); `scm_test.go` (18); and taskscheduler's
+     `lifecycle_test.go` (24).
+   * No test needed an exception.
+   * `TestCheckNoLeakSeesLeak` checks the helper itself through a recording
+     `testing.TB`.
+4. **Runs:**
+   * This Mac: `go test` on `internal/testproc`, `selfupdate`, `cli` and
+     `selfupdate/service/...` all `ok`. `go vet` for windows, linux and
+     darwin is clean.
+   * The Windows test host (Go 1.27.2, cgo with gcc 16.2.0), from a copy of
+     the tree: `go test ./selfupdate/` `ok` (41.5 s); the three new tests
+     `ok`; `./selfupdate/service/...` `ok`; and `go test -race -run
+     '^TestWithCOMConcurrent$' ./selfupdate/service/taskscheduler/` `ok`.
+   * A first bundle made with macOS `tar` carried AppleDouble `._*` files,
+     which failed four unrelated tests (`illegal character NUL` in
+     `._adapters.go`). The bundle was rebuilt without them; the tree was
+     never at fault.
+5. **Seen failing**, each a `scripts/plant-copy.sh` copy:
+
+   | Plant | Where | Failure |
+   | :--- | :--- | :--- |
+   | `context.Background()` back at the receipt's replace | Windows | `cleanup_busy_windows_test.go:311: err = selfupdate: rewrite cleanup receipt: Access is denied., want context.Canceled` (after 5.02 s) |
+   | `receiptCtx := withRetryBudget(ctx, s.lockTimeout)` (cancellable) | Windows | `cleanup_busy_windows_test.go:375: commit with a cancelled context: pending = "", err = selfupdate: remove backup: … being used by another process.` |
+   | `receiptCtx := context.WithoutCancel(ctx)` (default budget) | Windows | `cleanup_busy_windows_test.go:401: gave up after 5.0117871s, want about the 200ms LockTimeout, not 5s` |
+   | `lastCoInit` a plain `hresult` again | Windows, `-race` | `WARNING: DATA RACE` at `com_windows.go:157` from `com_windows_test.go:34`; `--- FAIL: TestWithCOMConcurrent` |
+   | a goroutine leaked at the start of `PollHealthy` | this Mac | `testproc.go:225: goroutines: 3 now, 2 when the test began` |
+   | `CheckNoLeak`'s loop never compares | this Mac | `testproc_test.go:162: a blocked goroutine reported [], want one goroutines: error` |
+
+   The first version of `TestWindowsCommitReceiptNotCancelled` did not
+   fail on its plant, because the receipt's destination was free and the
+   first attempt succeeded. It was rewritten as above before this record.
+6. **Checks:** `make pre-add-check` on the 22 changed Go files
+   (`go-precheck: 22 file(s) clean (gofmt, golangci-lint, go vet, go
+   test, govulncheck).`). `make apicheck` is `compatible with v1.15.2`.
+   `--arch`: 16 rows, 0 differ (no `.go` file added).

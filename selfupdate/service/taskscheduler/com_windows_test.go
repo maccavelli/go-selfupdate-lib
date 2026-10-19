@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 	"unsafe"
@@ -21,13 +22,35 @@ func TestVARIANTSize(t *testing.T) {
 	}
 }
 
+// TestWithCOMConcurrent runs withCOM from several goroutines at once, so
+// that go test -race sees any unsynchronised state it writes
+// (0025-MADR-align-with-go-sdk-design-practices.md D4).
+func TestWithCOMConcurrent(t *testing.T) {
+	var wg sync.WaitGroup
+	errs := make(chan error, 8*50)
+	for range 8 {
+		wg.Go(func() {
+			for range 50 {
+				errs <- withCOM(func() error { return nil })
+			}
+		})
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("withCOM: %v", err)
+		}
+	}
+}
+
 func TestCOMLayout(t *testing.T) {
 	exe, name, dir, r := newLayoutTask(t)
 	_, err := systemScheduler().open(`\`, "no-such-"+name)
 	if !errors.Is(err, hrFileNotFound) {
-		t.Fatalf("missing: %v, want hrFileNotFound (init HRESULT 0x%08X)", err, uint32(lastCoInit))
+		t.Fatalf("missing: %v, want hrFileNotFound (init HRESULT 0x%08X)", err, lastCoInit.Load())
 	}
-	t.Logf("CoInitializeEx HRESULT 0x%08X", uint32(lastCoInit))
+	t.Logf("CoInitializeEx HRESULT 0x%08X", lastCoInit.Load())
 	never, err := r.lastRun()
 	if err != nil {
 		t.Fatal(err)

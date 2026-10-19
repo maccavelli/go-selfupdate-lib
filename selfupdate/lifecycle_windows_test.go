@@ -25,7 +25,7 @@ func plantPendingCleanup(t *testing.T, target Target) []string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := writeCleanupReceipt(target, applyResult{backup: backup, oldDigest: digest}); err != nil {
+	if err := writeCleanupReceipt(context.Background(), target, applyResult{backup: backup, oldDigest: digest}); err != nil {
 		t.Fatal(err)
 	}
 	return []string{backup, cleanupReceiptPath(target)}

@@ -742,6 +742,28 @@ While the PLAN was being written, the owner said: "set the floor to go
     * `releasespec` reserves that name as `verify-selfupdate-release.sh`
       does, with a parity case.
 
+### Amendment A2 (2026-10-19): the receipt write after a commit is bounded, not cancelled
+
+F3's second bullet was right about the defect and wrong about the fix it
+implied. The receipt write at `cleanup_windows.go:245` is reached from
+two places:
+
+* from session start, before anything changes (`session.go:605`);
+* from `commitLocked`, after the new binary is in place
+  (`session.go:213-228`).
+
+Honouring cancellation in the second would leave a busy backup off the
+receipt after a committed update. The owner chose, during the PLAN's S1
+(deviation D1):
+
+* session start passes the caller's cancellable context, with the
+  session's timeout as the retry budget;
+* the commit path passes `context.WithoutCancel`, with the session's
+  `LockTimeout` as the budget, as the rollback already does
+  (`session.go:297`).
+
+The fixed 5 s default is gone from both.
+
 ### Consequences
 
 * Good, because a program that logs its updater, its options or a

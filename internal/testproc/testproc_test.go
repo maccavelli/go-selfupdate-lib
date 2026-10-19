@@ -136,6 +136,38 @@ func TestBudget(t *testing.T) {
 	}
 }
 
+// recordingTB records what CheckNoLeak reports instead of failing the
+// test that runs it.
+type recordingTB struct {
+	testing.TB
+	errs []string
+}
+
+func (r *recordingTB) Helper()        {}
+func (r *recordingTB) Cleanup(func()) {}
+func (r *recordingTB) Errorf(format string, args ...any) {
+	r.errs = append(r.errs, fmt.Sprintf(format, args...))
+}
+
+// TestCheckNoLeakSeesLeak: a goroutine still blocked when the check runs
+// is reported, and a test that leaks nothing is not (0025-MADR D4).
+func TestCheckNoLeakSeesLeak(t *testing.T) {
+	leaky := &recordingTB{TB: t}
+	check := CheckNoLeak(leaky)
+	stop := make(chan struct{})
+	go func() { <-stop }()
+	check()
+	close(stop)
+	if len(leaky.errs) != 1 || !strings.Contains(leaky.errs[0], "goroutines:") {
+		t.Fatalf("a blocked goroutine reported %q, want one goroutines: error", leaky.errs)
+	}
+	clean := &recordingTB{TB: t}
+	CheckNoLeak(clean)()
+	if len(clean.errs) != 0 {
+		t.Fatalf("no leak reported %q", clean.errs)
+	}
+}
+
 // TestGoBuildIgnoresParentGit: a fixture builds in a directory whose
 // parent holds a .git that git cannot read, and runs (0023-MADR D1-A).
 func TestGoBuildIgnoresParentGit(t *testing.T) {

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 )
 
@@ -32,6 +33,7 @@ func fakeReconciler(t *testing.T, out string, code string, extra ...string) *Exe
 }
 
 func TestExecReconcilerVerdicts(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	for _, c := range []struct {
 		out     string
 		changed bool
@@ -59,6 +61,7 @@ func TestExecReconcilerVerdicts(t *testing.T) {
 // TestExecReconcilerKeepsReceiptOnFailure: a child that wrote, then failed,
 // still hands back its receipt, so Restore can run (0011-MADR §6).
 func TestExecReconcilerKeepsReceiptOnFailure(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	out := `{"verdict":"refreshed","path":"/u/x","backup":"/u/x.prev","changed":true,"reloaded":false,"reason":"daemon-reload failed"}`
 	res, err := fakeReconciler(t, out, "1").Reconcile(context.Background(), "demo", selfExe(t))
 	if err == nil || !strings.Contains(err.Error(), "exit 1: fixture stderr") {
@@ -70,6 +73,7 @@ func TestExecReconcilerKeepsReceiptOnFailure(t *testing.T) {
 }
 
 func TestExecReconcilerNoReceipt(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	for _, c := range []struct{ out, code, want string }{
 		{"", "3", "exit 3"},
 		{"not json", "0", "malformed receipt"},
@@ -84,6 +88,7 @@ func TestExecReconcilerNoReceipt(t *testing.T) {
 }
 
 func TestExecReconcilerRestoreByNewBinary(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	stdin := filepath.Join(t.TempDir(), "stdin")
 	out := `{"verdict":"refreshed","path":"/u/x","backup":"/u/x.prev","changed":true}`
 	r := fakeReconciler(t, out, "0", "FAKE_STDIN="+stdin)
@@ -105,6 +110,7 @@ func TestExecReconcilerRestoreByNewBinary(t *testing.T) {
 }
 
 func TestExecReconcilerRestoreFunc(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	var got Receipt
 	r, err := NewExecReconciler(ExecOptions{
 		Reconcile: []string{"refresh"},
@@ -127,6 +133,7 @@ func TestExecReconcilerRestoreFunc(t *testing.T) {
 }
 
 func TestExecReconcilerRestoreNothing(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	r := fakeReconciler(t, `{"verdict":"unchanged","changed":false}`, "0")
 	unchanged := selfupdate.ReconcileResult{State: ExecState{Receipt: Receipt{Verdict: VerdictUnchanged}}}
 	for name, res := range map[string]selfupdate.ReconcileResult{"unchanged": unchanged, "empty": {}} {
@@ -140,6 +147,7 @@ func TestExecReconcilerRestoreNothing(t *testing.T) {
 }
 
 func TestNewExecReconcilerValidates(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	for name, o := range map[string]ExecOptions{
 		"no reconcile": {Restore: []string{"r"}},
 		"no restore":   {Reconcile: []string{"r"}},
@@ -157,6 +165,7 @@ func TestNewExecReconcilerValidates(t *testing.T) {
 // rewrite the service manager was not told about, reach the
 // ReconcileResult (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md G4).
 func TestExecReconcilerSurfacesWarnings(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	out := `{"schema_version":1,"verdict":"refreshed","path":"/u/demo.service","changed":true,"reloaded":false,"warnings":["unit is masked"]}`
 	res, err := fakeReconciler(t, out, "0").Reconcile(context.Background(), "demo", selfExe(t))
 	if err != nil {

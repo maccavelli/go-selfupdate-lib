@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 )
 
 // fakeClock advances only when a wait is asked for, so the tests never
@@ -42,6 +44,7 @@ func script(steps ...Health) (HealthProbe, *int) {
 }
 
 func TestPollHealthySettles(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	c := useFakeClock(t)
 	start := c.now
 	probe, calls := script(Health{}, Health{Ready: true, Instance: "b"})
@@ -56,6 +59,7 @@ func TestPollHealthySettles(t *testing.T) {
 }
 
 func TestPollHealthyInstanceChangeRestartsSettle(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	c := useFakeClock(t)
 	start := c.now
 	probe, _ := script(Health{Ready: true, Instance: "b"}, Health{Ready: true, Instance: "b"},
@@ -70,6 +74,7 @@ func TestPollHealthyInstanceChangeRestartsSettle(t *testing.T) {
 }
 
 func TestPollHealthyPreviousNeverCounts(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	useFakeClock(t)
 	for _, h := range []Health{{Ready: true, Instance: "old"}, {Ready: true}} {
 		probe, _ := script(h)
@@ -82,6 +87,7 @@ func TestPollHealthyPreviousNeverCounts(t *testing.T) {
 }
 
 func TestPollHealthyFailedStopsAtOnce(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	c := useFakeClock(t)
 	start := c.now
 	probe, calls := script(Health{Ready: true, Instance: "b"}, Health{Failed: true, Detail: "ActiveState=failed"})
@@ -95,6 +101,7 @@ func TestPollHealthyFailedStopsAtOnce(t *testing.T) {
 }
 
 func TestPollHealthyTimeoutReportsLastError(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	useFakeClock(t)
 	probeErr := errors.New("fixture: show failed")
 	probe := func(context.Context) (Health, error) { return Health{}, probeErr }
@@ -105,6 +112,7 @@ func TestPollHealthyTimeoutReportsLastError(t *testing.T) {
 }
 
 func TestPollHealthyContextEnds(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	useFakeClock(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	probe := func(context.Context) (Health, error) {
@@ -117,6 +125,7 @@ func TestPollHealthyContextEnds(t *testing.T) {
 }
 
 func TestPollHealthyNoSettle(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	c := useFakeClock(t)
 	start := c.now
 	probe, calls := script(Health{Ready: true})
@@ -129,6 +138,7 @@ func TestPollHealthyNoSettle(t *testing.T) {
 }
 
 func TestPollHealthyDefaults(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	o := PollOptions{}.withDefaults()
 	if o.Interval != DefaultPollInterval || o.Timeout != DefaultPollTimeout || o.Settle != DefaultPollSettle {
 		t.Fatalf("defaults %+v", o)
@@ -143,6 +153,7 @@ func TestPollHealthyDefaults(t *testing.T) {
 // negative settle is no window
 // (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md D10).
 func TestPollOptionsValidate(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	for _, c := range []struct {
 		o  PollOptions
 		ok bool

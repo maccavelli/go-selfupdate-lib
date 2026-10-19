@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
 )
@@ -16,6 +17,7 @@ import (
 // steps 1 to 7, over the fake SCM.
 
 func TestNewRefuses(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	if _, err := newService(Options{Name: "demo"}, "linux", newFake()); !errors.Is(err, service.ErrUnsupported) {
 		t.Fatalf("off Windows: %v", err)
 	}
@@ -37,6 +39,7 @@ func TestNewRefuses(t *testing.T) {
 }
 
 func TestProbes(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	ctx := context.Background()
 	f := newFake()
 	svc := f.add("demo", 4242)
@@ -67,6 +70,7 @@ func TestProbes(t *testing.T) {
 }
 
 func TestDriverRefused(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	f.add("demo", 1).st.Type = 1 // SERVICE_KERNEL_DRIVER
 	s, _ := testService(t, f, Options{})
@@ -76,6 +80,7 @@ func TestDriverRefused(t *testing.T) {
 }
 
 func TestEnabled(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	for _, c := range []struct {
 		name          string
 		start         uint32
@@ -104,6 +109,7 @@ func TestEnabled(t *testing.T) {
 // TestOpenRights: each call opens the service with only the rights it
 // needs (0011-MADR §7).
 func TestOpenRights(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	ctx := context.Background()
 	for _, c := range []struct {
 		name string
@@ -140,6 +146,7 @@ func TestOpenRights(t *testing.T) {
 }
 
 func TestStopWaits(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	svc := f.add("demo", 4242)
 	svc.onStop = func(s *fakeSvc) {
@@ -164,6 +171,7 @@ func TestStopWaits(t *testing.T) {
 }
 
 func TestStopWaitHintClamp(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	for _, c := range []struct {
 		hint uint32
 		want time.Duration
@@ -186,6 +194,7 @@ func TestStopWaitHintClamp(t *testing.T) {
 // TestStopStalledCheckpoint: a checkpoint that does not advance for the
 // wait hint, at least stallFloor, is a hang.
 func TestStopStalledCheckpoint(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	f.add("demo", 1).onStop = func(s *fakeSvc) {
 		s.queue = append(s.queue, status{State: stateStopPending, CheckPoint: 3, WaitHint: 2000})
@@ -202,6 +211,7 @@ func TestStopStalledCheckpoint(t *testing.T) {
 }
 
 func TestStopNotActiveAndStopped(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	f.add("demo", 1).controlErr = []error{errNotActive}
 	s, _ := testService(t, f, Options{})
@@ -219,6 +229,7 @@ func TestStopNotActiveAndStopped(t *testing.T) {
 // TestStopWhileStarting: a service still starting cannot take the stop;
 // it is waited out and asked again.
 func TestStopWhileStarting(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	svc := f.add("demo", 4242)
 	svc.st.State = stateStartPending
@@ -241,6 +252,7 @@ func TestStopWhileStarting(t *testing.T) {
 }
 
 func TestStopDependents(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	f.add("demo", 1).deps = []string{"child", "grandchild"}
 	f.add("child", 2)
@@ -274,6 +286,7 @@ func TestStopDependents(t *testing.T) {
 // service's own stop failed
 // (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md D6).
 func TestStopDependentsAreRestarted(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	ctx := context.Background()
 	f := newFake()
 	f.add("demo", 1).deps = []string{"child", "grandchild"}
@@ -321,6 +334,7 @@ func TestStopDependentsAreRestarted(t *testing.T) {
 }
 
 func TestStopRefusesInside(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	f.add("demo", 6000) // this process's parent
 	s, _ := testService(t, f, Options{})
@@ -333,6 +347,7 @@ func TestStopRefusesInside(t *testing.T) {
 }
 
 func TestStart(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	ctx := context.Background()
 	f := newFake()
 	svc := f.add("demo", 0)
@@ -364,6 +379,7 @@ func TestStart(t *testing.T) {
 }
 
 func TestStartStopsWhileStarting(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	svc := f.add("demo", 0)
 	svc.st.State = stateStopped
@@ -378,6 +394,7 @@ func TestStartStopsWhileStarting(t *testing.T) {
 }
 
 func TestWaitHealthy(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	ctx := context.Background()
 	f := newFake()
 	svc := f.add("demo", 4242)
@@ -405,6 +422,7 @@ func TestWaitHealthy(t *testing.T) {
 }
 
 func TestInside(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	for _, c := range []struct {
 		name     string
 		procs    []process
@@ -450,6 +468,7 @@ func TestInside(t *testing.T) {
 }
 
 func TestReconcile(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	ctx := context.Background()
 	const exe = `C:\Program Files\Demo\demo.exe`
 	for _, line := range []string{

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
 )
 
@@ -15,6 +16,7 @@ import (
 // steps 1 to 4, over the scripted fake.
 
 func TestValidUnitName(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	for name, ok := range map[string]bool{
 		"relay.service":                       true,
 		"relay@eu-1.service":                  true,
@@ -35,6 +37,7 @@ func TestValidUnitName(t *testing.T) {
 }
 
 func TestEscapeAndTemplateInstance(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	for in, want := range map[string]string{
 		"eu/1":    "eu-1",
 		".hidden": `\x2ehidden`,
@@ -57,6 +60,7 @@ func TestEscapeAndTemplateInstance(t *testing.T) {
 }
 
 func TestNewRefuses(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	env := func(string) string { return "" }
 	if _, err := newUnit(Options{}, "darwin", env); !errors.Is(err, service.ErrUnsupported) {
 		t.Fatalf("off Linux: %v", err)
@@ -82,6 +86,7 @@ func TestNewRefuses(t *testing.T) {
 }
 
 func TestProbes(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	u := testUnit(t, f, Options{})
 	ctx := context.Background()
@@ -116,6 +121,7 @@ func TestProbes(t *testing.T) {
 // TestCommandShape: --user in user scope, -- before the unit, and the
 // built environment, never this process's.
 func TestCommandShape(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	t.Setenv("HOME", "/home/<user>")
 	f := newFake()
 	u := testUnit(t, f, Options{Scope: User})
@@ -135,6 +141,7 @@ func TestCommandShape(t *testing.T) {
 }
 
 func TestDefaultUnitFromProduct(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	u := testUnit(t, f, Options{})
 	u.o.Unit = ""
@@ -150,6 +157,7 @@ func TestDefaultUnitFromProduct(t *testing.T) {
 }
 
 func TestStopWaitsForInactive(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	u := testUnit(t, f, Options{})
 	// The first probe after the stop sees deactivating, the next inactive.
@@ -171,6 +179,7 @@ func TestStopWaitsForInactive(t *testing.T) {
 }
 
 func TestStopStalls(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	u := testUnit(t, f, Options{Poll: service.PollOptions{Interval: 1, Timeout: 20e6}})
 	f.onStop = func(p map[string]string) { p["ActiveState"] = "deactivating" }
@@ -180,6 +189,7 @@ func TestStopStalls(t *testing.T) {
 }
 
 func TestStopRefusesInsideUnit(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	u := testUnit(t, f, Options{})
 	setCgroup(t, "0::/system.slice/demo.service/agent\n")
@@ -192,6 +202,7 @@ func TestStopRefusesInsideUnit(t *testing.T) {
 }
 
 func TestCommandErrors(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	u := testUnit(t, f, Options{})
 	f.fail["stop"] = service.Output{ExitCode: 4, Stderr: []byte("Failed to stop demo.service: Access denied")}
@@ -219,6 +230,7 @@ func TestCommandErrors(t *testing.T) {
 }
 
 func TestStartThenWaitHealthy(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	appProbed := 0
 	u := testUnit(t, f, Options{Probe: func(context.Context) (service.Health, error) {
@@ -237,6 +249,7 @@ func TestStartThenWaitHealthy(t *testing.T) {
 // TestWaitHealthyNeedsNewInvocation: the invocation from before the start
 // never counts.
 func TestWaitHealthyNeedsNewInvocation(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	f := newFake()
 	u := testUnit(t, f, Options{Poll: service.PollOptions{Interval: 1, Timeout: 20e6}})
 	f.onStart = func(p map[string]string) { p["ActiveState"] = "active" } // same InvocationID
@@ -249,6 +262,7 @@ func TestWaitHealthyNeedsNewInvocation(t *testing.T) {
 }
 
 func TestWaitHealthyFailsFast(t *testing.T) {
+	testproc.CheckNoLeak(t)
 	for name, after := range map[string]func(map[string]string){
 		"failed":   func(p map[string]string) { p["ActiveState"], p["InvocationID"] = "failed", "bbb" },
 		"inactive": func(p map[string]string) { p["ActiveState"], p["InvocationID"] = "inactive", "bbb" },
