@@ -18,7 +18,10 @@ its `taskscheduler` backend
 workflow reads
 (`docs/decisions/0013-MADR-build-and-stage-release-workflow.md`);
 `selfupdate/verify/ghattest`, an opt-in provenance check
-(`docs/decisions/0017-MADR-verify-build-provenance-and-close-0015-open-items.md`); and
+(`docs/decisions/0017-MADR-verify-build-provenance-and-close-0015-open-items.md`);
+`selfupdate/verify/signednote`, an opt-in check of a signed release
+statement (`docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md`
+D10); and
 `buildinfo`, which stamps the identity `selfupdate` decides on. A package
 that does not serve self-update belongs in another module. It is a library
 only: no packaged binary. Commands under `internal/cmd/` are build and
@@ -60,7 +63,8 @@ pre-add check and CI fail on a breach
   `service`, `service-launchd`, `service-scm`, `service-systemd`,
   `service-taskscheduler`,
   `selfupdate-archive`, `selfupdate-codesign`, `selfupdate-releasespec`,
-  `selfupdate-verify-ghattest`, `internal-winproc` and
+  `selfupdate-verify-ghattest`, `selfupdate-verify-signednote`,
+  `internal-cmd-selfupdate-note`, `internal-winproc` and
   `internal-testproc` allow each package, outside its tests, only the
   imports its record names;
 - `other-packages` allows any other package, an `internal/` helper with

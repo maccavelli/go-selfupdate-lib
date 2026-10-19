@@ -139,6 +139,8 @@ func TestVerifierParity(t *testing.T) {
 			func(in verifierInput) verifierInput { in.platforms = `[{"os":"Linux","arch":"amd64"}]`; return in }, "invalid platform os"},
 		{"extra SHA256SUMS", func(m map[string]any) { m["extras"] = []any{map[string]any{"name": "SHA256SUMS-1"}} },
 			func(in verifierInput) verifierInput { in.extras = `["SHA256SUMS-1"]`; return in }, "invalid or duplicate extra asset"},
+		{"extra SHA256SUMS.note", func(m map[string]any) { m["extras"] = []any{map[string]any{"name": "SHA256SUMS.note"}} },
+			func(in verifierInput) verifierInput { in.extras = `["SHA256SUMS.note"]`; return in }, "invalid or duplicate extra asset"},
 		{"extra bad name", func(m map[string]any) { m["extras"] = []any{map[string]any{"name": "-notes"}} },
 			func(in verifierInput) verifierInput { in.extras = `["-notes"]`; return in }, "invalid extra asset"},
 		{"ascending channels", func(m map[string]any) { m["prerelease_channels"] = []any{"beta", "rc"} },

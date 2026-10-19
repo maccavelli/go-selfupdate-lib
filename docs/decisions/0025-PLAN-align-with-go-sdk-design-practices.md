@@ -1706,3 +1706,104 @@ S7's items 1, 4 and 5 above describe the first shape. As built:
 
 5. Arch: `selfupdatetest` 3/3. The "by file" list names the source
    contract.
+6. Phase checks: links, markdownlint and ids clean; `pre-add-check` 5
+   files clean; arch 0 differ; `apicheck` compatible. The owner committed
+   S8 as `2defd50` ("committed, proceed").
+
+### S9 (2026-10-19)
+
+1. **A correction to step 1.** The step names the note
+   `m.Selection.ManifestName + Suffix`, and compares the statement's
+   `Manifest` with `m.Selection.ManifestName`. But `Selection.ManifestName`
+   is "the binary basename looked up in SHA256SUMS" (`types.go`). The
+   manifest asset's name is `Selection.Manifest.Name`. MADR Amendment A1
+   says "<manifest name>.note", which is right. The step's field name was a
+   slip in this plan. The code uses `Selection.Manifest.Name`, and the
+   tests set `ManifestName` to a binary name, so the two cannot be
+   confused. No decision changes.
+2. **`selfupdate/verify/signednote`** has three files: `doc.go`,
+   `statement.go` (`Header`, `Suffix`, `MaxNoteSize`, `Statement`, `Text`,
+   `ParseStatement`, `Open`) and `signednote.go` (`Config`, `New`).
+   * `ParseStatement` refuses anything that does not render back to the
+     same text, so canonical form is the one rule.
+   * Tags must be canonical (`semver.Canonical(t) == t`), which also
+     refuses build metadata and the short forms (`v1.2`).
+   * Duplicate keys are refused by name and hash.
+   * Errors are prefixed `selfupdate: signednote: `, as `ghattest`'s are
+     prefixed `selfupdate: ghattest: `.
+3. **depguard:**
+   * new rules `selfupdate-verify-signednote` and
+     `internal-cmd-selfupdate-note`, as step 2 says;
+   * `other-packages` excludes both directories;
+   * `go.mod` is unchanged.
+4. **`internal/cmd/selfupdate-note/main.go`:**
+   * `keygen` and `sign` work as step 3 says.
+   * `sign` sorts the products it is given, so the workflow passes the
+     spec's order.
+   * An unparsable secret is reported without quoting it.
+5. **The reserved name:**
+   * `SHA256SUMS.note` in `verify-selfupdate-release.sh` (`extra in
+     ("SHA256SUMS", "SHA256SUMS.note")`) and in `releasespec`'s
+     `checkExtraName`, "reserved for the release statement";
+   * new cases in `parity_test.go`, `spec_test.go` and
+     `verify-selfupdate-release_test.sh` (`run_refused`).
+6. **Tests:**
+   * `statement_test.go`: round trip and determinism, 18 refused texts,
+     6 refused statements.
+   * `signednote_test.go`:
+     * `TestVerifyManifest` covers 15 cases, among them rotation (a note
+       signed by two keys opens with the new one alone), each case in step
+       5, a prerelease of `RequiredFrom`, and a wrong note below
+       `RequiredFrom`;
+     * `TestNewRefuses` covers 5 cases;
+     * `TestUpdaterRefusesWrongKey` uses an Updater dry run over
+       `FakeSource` with the note as an asset: the trusted key passes, and
+       another key fails with `selfupdate.ErrIntegrity`.
+   * `example_test.go`: `ExampleNew`, compile-only, with placeholder keys.
+   * `fuzz_test.go`: `FuzzParseStatement`. The Makefile's `fuzz` gains the
+     package; `go-fuzz.sh -t 5s` ran clean.
+   * `internal/cmd/selfupdate-note/main_test.go`:
+     * `TestKeygen`: mode 0600, a parsable verifier key, the signer key
+       never printed, an existing file refused, `+` in a name refused;
+     * `TestSign`: two runs give byte-identical notes; the note opens with
+       the products sorted; it covers the empty secret, another verifier
+       key, an existing output, an unparsable secret, a missing flag and an
+       unknown subcommand; the signer key appears in no output.
+7. **Seen failing:**
+
+   | Plant | Failure |
+   | :--- | :--- |
+   | the tag comparison skipped | `signednote_test.go:132: another tag: err = <nil>, want ok false` |
+   | the manifest digest skipped | `signednote_test.go:132: a changed manifest byte: err = <nil>, want ok false` |
+   | `verify-selfupdate-release.sh` without the name | `not ok - extra named SHA256SUMS.note (expected exit 1 with [invalid or duplicate extra asset], got 0: verify-selfupdate-release: ok)` |
+   | `sign` without its self-check | `main_test.go:127: another verifier key: exit 0, want 1 ()` |
+   | `golang.org/x/sys/unix` imported by `signednote` | `statement.go:12:2: import 'golang.org/x/sys/unix' is not allowed from list 'selfupdate-verify-signednote' (depguard)` |
+   | the same import in `selfupdate-note` | `main.go:30:2: import 'golang.org/x/sys/unix' is not allowed from list 'internal-cmd-selfupdate-note' (depguard)` |
+
+   A first `signednote` plant used a blank import placed in the standard
+   library's group. golangci-lint reported only gofmt, goimports and
+   revive, not depguard, which proved nothing about the rule. The plant
+   was redone with the import in its own group and used.
+
+8. **Docs:**
+   * AGENTS.md names the package and the two rules.
+   * `docs/architecture.md`: the opening paragraph's tools, the tree
+     lines, two table rows (`signednote` 3/4, `selfupdate-note` 1/1), the
+     rule count (18 to 20) and the rules list.
+   * README's package table has a row.
+   * The Makefile's `fuzz` comment.
+9. **Checks:**
+   * The first `pre-add-check` failed on two `gosec` findings in the
+     signer: G301 (`MkdirAll` 0755) and G304 (`OpenFile` on a variable).
+     The mode became 0750. The `OpenFile` carries
+     `//nolint:gosec // the -out path the operator names; O_EXCL refuses
+     an existing file`.
+   * Then:
+     * `go test ./selfupdate/... ./internal/...` `ok`, with
+       `SELFUPDATE_REQUIRE_PYTHON=1`;
+     * vet clean for windows, linux and darwin;
+     * the verify script's tests "all fixtures passed";
+     * links 0 broken, markdownlint 0 issues, ids 0 findings;
+     * `pre-add-check` 12 files clean;
+     * arch 18 rows, 0 differ;
+     * `apicheck` compatible with `v1.15.2`.

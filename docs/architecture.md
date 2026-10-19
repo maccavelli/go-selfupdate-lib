@@ -9,8 +9,8 @@ argument, and [README.md](README.md) indexes them.
 A Git repository for the Go module `github.com/maccavelli/go-selfupdate-lib`,
 the fleet's self-update library: `buildinfo` and `selfupdate` at the top,
 each `selfupdate` subpackage in a directory under `selfupdate/`, no root
-package, and no released binary. `internal/cmd/selfupdate-release` is a
-tool the workflows build from source. It was `go-core-lib` up to `v1.4.1`.
+package, and no released binary. `internal/cmd/selfupdate-release` and
+`internal/cmd/selfupdate-note` are tools the workflows build from source. It was `go-core-lib` up to `v1.4.1`.
 It also hosts the two reusable GitHub Actions workflows that programs using
 `selfupdate` build and publish their releases through.
 
@@ -82,6 +82,8 @@ selfupdate/                 the self-update package
                             and extraction
   codesign/                 opt-in macOS re-signing and signature checks
   verify/ghattest/          opt-in build-provenance check, through gh
+  verify/signednote/        opt-in check of a signed release statement over
+                            SHA256SUMS
   releasespec/              the release spec: products, platforms, packaging,
                             extras, channels and installers, for the program
                             and CI
@@ -96,6 +98,8 @@ internal/winproc/           the library's process starts: no console
                             the liveness check
 internal/testproc/          test support: fixture builds that ignore the
                             git state around them, helper-process waits
+internal/cmd/selfupdate-note/  the release signer: keygen, and sign for the
+                            publish workflow; never released
 internal/cmd/selfupdate-release/  the workflows' logic: plan, build, stage,
                             check, identity, installer; never released
   installer/                the install.sh and install.ps1 templates, each a
@@ -121,6 +125,7 @@ docs/
 | `selfupdate/archive/` | `archive` | 3 | 8, including three fuzz targets, plus a real GoReleaser `testdata/` checksum file | none (`selfupdate`) |
 | `selfupdate/codesign/` | `codesign` | 2 | 4 | none (`selfupdate`, `service`) |
 | `selfupdate/verify/ghattest/` | `ghattest` | 2 | 3, plus a `testdata/` capture of `gh attestation verify --format json` | none (`selfupdate`, `service`) |
+| `selfupdate/verify/signednote/` | `signednote` | 3 | 4, including a fuzz target | `x/mod/semver`, `x/mod/sumdb/note` (and `selfupdate`) |
 | `selfupdate/releasespec/` | `releasespec` | 4 | 5, including a fuzz target, plus 4 `testdata/` specs | none (`selfupdate`, `archive`) |
 | `selfupdate/service/` | `service` | 16 | 15 | `x/sys/windows` (and `selfupdate`, `internal/winproc`) |
 | `selfupdate/service/systemd/` | `systemd` | 9 | 18, plus 3 `testdata/` captures of `systemctl show` | none (`selfupdate`, `service`) |
@@ -129,6 +134,7 @@ docs/
 | `selfupdate/service/taskscheduler/` | `taskscheduler` | 9 | 11 | `x/sys/windows` (and `selfupdate`, `service`, `internal/winproc`) |
 | `internal/winproc/` | `winproc` | 5 | 4 | `x/sys/windows` |
 | `internal/testproc/` | `testproc` | 1 | 1 | none |
+| `internal/cmd/selfupdate-note/` | `main` | 1 | 1 | `x/mod/sumdb/note` (and `signednote`) |
 | `internal/cmd/selfupdate-release/` | `main` | 12, plus the 2 `installer/` templates | 11, plus the `testdata/fixture/` module (2 programs, 2 specs, an extra) | none (`buildinfo`, `selfupdate`, `archive`, `releasespec`) |
 
 - `selfupdate` began as `mcplib` `v1.6.0`'s `selfupdate` (commit
@@ -516,7 +522,7 @@ interpolated into shell.
   `BASE=`), and any incompatible change fails it.
 - **`make lint`** runs `golangci-lint run -c .golangci.yml ./...` three
   times: `GOOS=linux`, `darwin` and `windows`, each with `CGO_ENABLED=0`.
-- **Import rules** are 18 `depguard` rules in `.golangci.yml`
+- **Import rules** are 20 `depguard` rules in `.golangci.yml`
   ([0008-MADR](decisions/0008-MADR-enforce-import-rules-with-depguard.md)):
   - `banned`: mcplib, the MCP go-sdk, go-llmprovider-sdk and Charm, in
     every file;
@@ -525,8 +531,9 @@ interpolated into shell.
   - `buildinfo`, `internal-testproc`, `internal-winproc`, `selfupdate`,
     `selfupdate-cli`, `selfupdatetest`, `service`, `service-launchd`,
     `service-scm`, `service-taskscheduler`, `service-systemd`,
-    `selfupdate-archive`, `selfupdate-codesign`, `selfupdate-releasespec`
-    and `selfupdate-verify-ghattest`: each package's own allowed imports,
+    `selfupdate-archive`, `selfupdate-codesign`, `selfupdate-releasespec`,
+    `selfupdate-verify-ghattest`, `selfupdate-verify-signednote` and
+    `internal-cmd-selfupdate-note`: each package's own allowed imports,
     outside its tests;
   - `other-packages`: any other package, such as
     `internal/cmd/selfupdate-release`, an `internal/` package with no rule

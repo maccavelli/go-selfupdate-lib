@@ -243,6 +243,7 @@ func TestParseRefuses(t *testing.T) {
 		}, want: "extras: 33 listed"},
 		{name: "extra SHA256SUMS", edit: func(m map[string]any) { m["extras"] = []any{map[string]any{"name": "SHA256SUMS"}} }, want: "extras[0].name: \"SHA256SUMS\" is reserved"},
 		{name: "extra SHA256SUMS-", edit: func(m map[string]any) { m["extras"] = []any{map[string]any{"name": "SHA256SUMS-1.0"}} }, want: "extras[0].name"},
+		{name: "extra SHA256SUMS.note", edit: func(m map[string]any) { m["extras"] = []any{map[string]any{"name": "SHA256SUMS.note"}} }, want: "is reserved for the release statement"},
 		{name: "extra canonical name", edit: func(m map[string]any) { m["extras"] = []any{map[string]any{"name": "relay-linux-amd64"}} }, want: "is already a canonical asset's name"},
 		{name: "extra canonical name in another case", edit: func(m map[string]any) {
 			m["extras"] = []any{map[string]any{"name": "Relay-Linux-AMD64"}}

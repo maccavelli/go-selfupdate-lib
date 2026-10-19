@@ -261,6 +261,12 @@ make_valid "$SUMSX"
 printf 'x' >"$SUMSX/SHA256SUMS-x"
 run_fail "extra named SHA256SUMS-x" \
 	--dir "$SUMSX" --products "$PRODUCTS" --platforms "$PLATFORMS" --extras '["install.sh","SHA256SUMS-x"]'
+# 0025-MADR D10: the release statement's name is reserved.
+NOTEX="$WORKDIR/note-x"
+make_valid "$NOTEX"
+printf 'x' >"$NOTEX/SHA256SUMS.note"
+run_refused "extra named SHA256SUMS.note" "invalid or duplicate extra asset" \
+	--dir "$NOTEX" --products "$PRODUCTS" --platforms "$PLATFORMS" --extras '["install.sh","SHA256SUMS.note"]'
 
 # 0010-MADR D8: the client refuses an asset of size 0, so the verifier must.
 EMPTYBIN="$WORKDIR/empty-binary"

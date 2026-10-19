@@ -223,6 +223,31 @@ linters:
             - $gostd
             - github.com/maccavelli/go-selfupdate-lib/selfupdate$
             - github.com/maccavelli/go-selfupdate-lib/selfupdate/service$
+        # selfupdate/verify/signednote: the standard library, x/mod's semver
+        # and sumdb/note, and selfupdate
+        # (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D10).
+        selfupdate-verify-signednote:
+          list-mode: strict
+          files:
+            - "**/selfupdate/verify/signednote/*.go"
+            - "!$test"
+          allow:
+            - $gostd
+            - golang.org/x/mod/semver$
+            - golang.org/x/mod/sumdb/note$
+            - github.com/maccavelli/go-selfupdate-lib/selfupdate$
+        # internal/cmd/selfupdate-note, the release signer: the standard
+        # library, x/mod's sumdb/note, and signednote, whose statement it
+        # signs (0025-MADR D10).
+        internal-cmd-selfupdate-note:
+          list-mode: strict
+          files:
+            - "**/internal/cmd/selfupdate-note/*.go"
+            - "!$test"
+          allow:
+            - $gostd
+            - golang.org/x/mod/sumdb/note$
+            - github.com/maccavelli/go-selfupdate-lib/selfupdate/verify/signednote$
         # Every other package, such as a new internal/ helper, gets only the
         # standard library and this module until a record gives it its own
         # rule (docs/decisions/0010-MADR-remediate-second-debugging-pass-findings.md
@@ -246,6 +271,8 @@ linters:
             - "!**/selfupdate/codesign/*.go"
             - "!**/selfupdate/releasespec/*.go"
             - "!**/selfupdate/verify/ghattest/*.go"
+            - "!**/selfupdate/verify/signednote/*.go"
+            - "!**/internal/cmd/selfupdate-note/*.go"
             - "!**/internal/winproc/*.go"
             - "!**/internal/testproc/*.go"
           allow:

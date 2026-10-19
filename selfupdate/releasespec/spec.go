@@ -368,6 +368,10 @@ func checkExtraName(name string, taken map[string]string) error {
 	if name == "SHA256SUMS" || strings.HasPrefix(name, "SHA256SUMS-") {
 		return fmt.Errorf("%q is reserved for the checksum manifest", name)
 	}
+	// The release statement the publish workflow signs (0025-MADR D10).
+	if name == "SHA256SUMS.note" {
+		return fmt.Errorf("%q is reserved for the release statement", name)
+	}
 	if what, ok := taken[strings.ToLower(name)]; ok {
 		return fmt.Errorf("%q is already %s's name", name, what)
 	}

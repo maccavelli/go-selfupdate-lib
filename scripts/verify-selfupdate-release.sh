@@ -153,7 +153,9 @@ for extra in extras:
     # (0003-MADR D5).
     if not isinstance(extra, str) or not product_re.fullmatch(extra):
         fail("invalid extra asset %r" % extra)
-    if extra in seen_extras or extra == "SHA256SUMS" or extra.startswith("SHA256SUMS-"):
+    # SHA256SUMS.note is the release statement the publish workflow signs
+    # (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D10).
+    if extra in seen_extras or extra in ("SHA256SUMS", "SHA256SUMS.note") or extra.startswith("SHA256SUMS-"):
         fail("invalid or duplicate extra asset %r" % extra)
     seen_extras.add(extra)
 

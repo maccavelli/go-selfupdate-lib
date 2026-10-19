@@ -70,11 +70,14 @@ FUZZTIME ?= 20s
 # selfupdate/archive's three targets run after selfupdate's
 # (docs/decisions/0012-PLAN-archive-assets-and-macos-codesign.md U3), then
 # selfupdate/releasespec's one
-# (docs/decisions/0013-PLAN-build-and-stage-release-workflow.md B1).
-fuzz: ## Fuzzes every selfupdate, archive and releasespec fuzz target for FUZZTIME each (default 20s)
+# (docs/decisions/0013-PLAN-build-and-stage-release-workflow.md B1), then
+# selfupdate/verify/signednote's one
+# (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D10).
+fuzz: ## Fuzzes every selfupdate, archive, releasespec and signednote fuzz target for FUZZTIME each (default 20s)
 	@./scripts/go-fuzz.sh -t $(FUZZTIME) -m 5 ./selfupdate
 	@./scripts/go-fuzz.sh -t $(FUZZTIME) -m 3 ./selfupdate/archive
 	@./scripts/go-fuzz.sh -t $(FUZZTIME) -m 1 ./selfupdate/releasespec
+	@./scripts/go-fuzz.sh -t $(FUZZTIME) -m 1 ./selfupdate/verify/signednote
 
 # The pre-add rule (AGENTS.md). scripts/go-precheck.sh is the one
 # implementation; the agent gate at `git commit` runs the same file.
