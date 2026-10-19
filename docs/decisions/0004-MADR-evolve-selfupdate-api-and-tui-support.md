@@ -1148,7 +1148,7 @@ this record:
   | Item | Where it is described |
   | :--- | :--- |
   | Releases that are not immutable: the §6 record, and with it the `selfupdate/gitlab` and `selfupdate/httpmanifest` sources | this record, §6 (`:765-773`) and §1 (`:262-263`) |
-  | `selfupdate/verify/signednote`, the signed-note release statement | this record, §1 (`:260`) and "Release signing" (`:788-830`); [0004-REPORT-release-signing-research.md](../reports/0004-REPORT-release-signing-research.md) |
+  | ~~`selfupdate/verify/signednote`, the signed-note release statement~~ built by 0025 (`v1.16.0`); see amendment P4 | this record, §1 (`:260`) and "Release signing" (`:788-830`); [0004-REPORT-release-signing-research.md](../reports/0004-REPORT-release-signing-research.md) |
   | `selfupdate/verify/ghattest`'s `sigstore-go` variant | 0017-MADR, "Not decided here": its own repository and records |
   | `go-tui-lib/updatetea`, the Bubble Tea adapter | this record, §4 (`:636`) and §1 (`:264`); a record in go-tui-lib |
   | A D-Bus systemd backend | 0011-MADR, Consequences (`:536-537`) and option B (`:579`) |
@@ -1177,6 +1177,31 @@ this record:
 
   §6's prerelease channels were built under
   [0005-MADR-opt-in-prerelease-channels.md](0005-MADR-opt-in-prerelease-channels.md).
+
+### P4 (2026-10-19): release signing is built, opt-in, by 0025
+
+*Status: accepted (2026-10-19), as 0025-MADR D10-A.*
+
+**Found.** The owner supplied a list of Go SDK practices. One of them
+reads "Always verify signatures and checksums before applying an update.
+Embed or pin the public key." Under "Release signing: deferred, with the
+hook built", this record deferred signing until the §6 record on
+releases that are not immutable.
+
+**Decided (owner, 2026-10-19).**
+[0025-MADR-align-with-go-sdk-design-practices.md](0025-MADR-align-with-go-sdk-design-practices.md)
+D10-A reopens that deferral. It builds the design kept in
+[0004-REPORT-release-signing-research.md](../reports/0004-REPORT-release-signing-research.md),
+opt-in from end to end:
+
+* `selfupdate/verify/signednote`, a `ManifestVerifier` over
+  `SHA256SUMS.note`;
+* `internal/cmd/selfupdate-note`, the unreleased signer;
+* a `sign` job in the publish workflow, off by default.
+
+The refinements are in 0025-MADR's Amendment A1. §6 itself (mutable
+releases, the `gitlab` and `httpmanifest` sources) stays deferred.
+The deferral's text above is kept as written.
 
 ## More Information
 

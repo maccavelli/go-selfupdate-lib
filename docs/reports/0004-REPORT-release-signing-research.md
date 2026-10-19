@@ -326,6 +326,29 @@ settled by later records:
   `internal/cmd/selfupdate-release` is one
   ([0013-MADR-build-and-stage-release-workflow.md](../decisions/0013-MADR-build-and-stage-release-workflow.md)).
 
+## Since (2026-10-19)
+
+- **A correction to "Signing in the workflow".** The bullet "Environment
+  secrets cannot be passed through `secrets:` to a reusable workflow"
+  is contradicted by GitHub's "Reuse workflows" page, read on 2026-10-19.
+  The page says that the caller "must still pass the secret … You can pass
+  a secret by name even if it only exists in the environment", and that
+  if the caller "doesn't pass an environment secret, the secret resolves
+  to an empty string in the reusable workflow. The workflow run doesn't
+  show an error." A design built on the bullet as written would sign with
+  an empty key, or fail without a clear cause.
+- **The design is built.**
+  [0025-MADR-align-with-go-sdk-design-practices.md](../decisions/0025-MADR-align-with-go-sdk-design-practices.md)
+  D10-A builds it opt-in, with the refinements of its Amendment A1:
+  - signing runs in a separate `sign` job, which has the environment
+    `selfupdate-signing`;
+  - the caller passes `SELFUPDATE_NOTE_KEY` by name, and the verifier key
+    as an input;
+  - the signer refuses an empty key and checks its own note before it is
+    uploaded.
+
+  The rest of this report is kept as written.
+
 ## Sources
 
 - C2SP signed-note specification,

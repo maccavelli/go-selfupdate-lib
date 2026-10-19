@@ -169,6 +169,25 @@ advisories, while consumers keep `go 1.27.1` as their floor.
 * Bad, because it loosens a gate to get green, which this repository's
   rules forbid.
 
+## Amendments
+
+### A1 (2026-10-19): the floor moves to 1.26.9
+
+*Status: accepted (2026-10-19), as 0025-MADR D8-A and its Amendment A1.*
+
+[0025-MADR-align-with-go-sdk-design-practices.md](0025-MADR-align-with-go-sdk-design-practices.md)
+sets `go 1.26.9` in place of this record's kept `go 1.27.1`, and keeps
+`toolchain go1.27.2`, so every build this repository runs stays on
+1.27.2. The reasons are those it records:
+
+* the library code needs nothing from Go 1.27, as vet's `stdversion`
+  and the compiler's language check show;
+* Go 1.26 is still a supported release;
+* `govulncheck` reports no advisory at 1.26.9, against ten at 1.26.8.
+
+A CI job builds and tests with 1.26.9. The rest of this record is kept as
+written.
+
 ## More Information
 
 * `govulncheck ./...` output of 2026-10-08, in 0017 Q2's gate output: the
