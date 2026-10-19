@@ -8,10 +8,11 @@ listed in the
 [migration guide](docs/guides/migrating-from-mcplib-selfupdate.md), one
 section per release, and each entry links its section and its records.
 
-## Unreleased
+## v1.17.0 - 2026-10-19
 
-See [0026-MADR](docs/decisions/0026-MADR-before-uninstall-installer-hook.md)
-and [0026-PLAN](docs/decisions/0026-PLAN-before-uninstall-installer-hook.md),
+See [the guide](docs/guides/migrating-from-mcplib-selfupdate.md#17-from-v116-to-v117),
+[0026-MADR](docs/decisions/0026-MADR-before-uninstall-installer-hook.md) and
+[0026-PLAN](docs/decisions/0026-PLAN-before-uninstall-installer-hook.md),
 from [issue #1](https://github.com/maccavelli/go-selfupdate-lib/issues/1).
 
 ### Added

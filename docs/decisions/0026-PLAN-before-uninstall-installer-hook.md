@@ -508,3 +508,22 @@ Decision Outcome, and U2, U3 and U4 carry it. The MADR became
    * The same spec with the hook's time written `after_uninstall` is
      refused: `releasespec: installer.hooks[1].when: "after_uninstall" is
      not "before_install", "after_install" or "before_uninstall"`.
+
+### U5 (2026-10-19), before the tag
+
+1. **The pre-tag change:** this is the 0017 procedure's first change, as
+   0025-PLAN S14 made it. U5's steps did not list it.
+   * `CHANGELOG.md`: `## Unreleased` becomes `## v1.17.0 - 2026-10-19`,
+     linking §17, 0026-MADR, this plan and issue #1. The entry also holds
+     the doc-comment change committed after `v1.16.0` (`902808d`).
+   * `docs/README.md`'s guide row reads "§6 to §17".
+   * The guide's version paragraph already links §17 (U4). Its `go get`,
+     workflow-pin and `go.mod` lines that name `v1.16.0` are left for the
+     pin commit after the tag.
+2. **Checks:**
+   * `scripts/check-release-tag.sh v1.17.0` exits 0.
+   * `make gate` with `SELFUPDATE_REQUIRE_PYTHON=1` ends `overall=0`: all 15 steps passed, `apicheck` reported
+     "compatible with v1.16.0", and the links were 634 in 75 files, 0 broken.
+   * The disclosure guard exits 0 over the five unpushed commits
+     (`27519b7` to `03383bc`), against `origin/main` at `902808d`. It is
+     run again over the pre-tag commit before the push.
