@@ -1424,3 +1424,41 @@ asserted redaction for the JSON case too, which D1-A cannot give.
    `ok`; vet windows, linux clean. Phase checks: links 0 broken,
    markdownlint 0 issues, ids 0 findings, `pre-add-check` 20 files clean,
    arch 0 differ, `apicheck` compatible with `v1.15.2`.
+7. Committed as `10cb69b`.
+
+### S4 (2026-10-19)
+
+1. **The new functions:**
+   * `HandOffHopContext(ctx)` holds `HandOffHop`'s body. In the real run it
+     waits through `waitHopExit(ctx, …)`, unsets `EnvHandOffHopParent`
+     whatever the wait returned, and returns the wait's error, joined with
+     an `Unsetenv` error if there is one. `HandOffHop()` calls it with
+     `context.Background()`.
+   * `LoadHandOffEnvContext(ctx)` holds `LoadHandOffEnv`'s body and calls
+     `HandOffHopContext(ctx)`.
+2. **`waitHopExit(ctx, pid, d) error`:**
+   * Unix: a 5 ms timer in a `select` on `ctx.Done()`.
+   * Windows: `WaitForSingleObject` in slices of at most `hopWaitSlice`
+     (50 ms), checking `ctx.Err()` between slices; it stops on anything
+     but `WAIT_TIMEOUT`.
+   * Other: returns nil.
+   * `service/main_test.go`'s "hopparent" helper passes
+     `context.Background()`.
+3. **The test**, `TestHandOffHopContextCancelled`, runs in the test
+   process: its own parent stands in for the hop, since it outlives the
+   test on every OS. The plan named the `fakeParent`/"hopchild" machinery,
+   which this test does not need. The test checks:
+   * a 50 ms deadline returns `context.DeadlineExceeded` in under 1 s;
+   * the variable is unset afterwards.
+4. **Runs:** this Mac, the hop and environment tests `ok`; vet for
+   darwin, linux, windows and freebsd clean. On the Windows test host,
+   `go test ./selfupdate/service/` `ok` (11.2 s), and the new test with
+   `TestWaitHopExit` and `TestHandOffHopProcess` `ok`.
+5. **Seen failing:**
+
+   | Plant | Where | Failure |
+   | :--- | :--- | :--- |
+   | the Unix wait back to `time.Sleep` | this Mac | `handoffhop_test.go:94: err = <nil>, want the context's deadline` |
+   | the Windows wait back to one `WaitForSingleObject(h, d)` | Windows | `--- FAIL: TestHandOffHopContextCancelled (10.01s)` / `handoffhop_test.go:94: err = <nil>, want the context's deadline` |
+
+6. `service/doc.go` names both new functions.

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -63,8 +64,16 @@ func WriteHandOffEnv(dir, id string, vars []string) (string, error) {
 // reads its environment before it calls ReportFunc calls it first.
 //
 // It calls HandOffHop first: in a hop it starts the real run and exits.
+// It is LoadHandOffEnvContext with context.Background().
 func LoadHandOffEnv() error {
-	if err := HandOffHop(); err != nil {
+	return LoadHandOffEnvContext(context.Background())
+}
+
+// LoadHandOffEnvContext is LoadHandOffEnv with ctx bounding
+// HandOffHopContext's wait for the hop
+// (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D3).
+func LoadHandOffEnvContext(ctx context.Context) error {
+	if err := HandOffHopContext(ctx); err != nil {
 		return err
 	}
 	path := os.Getenv(EnvHandOffEnv)

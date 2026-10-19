@@ -1,6 +1,8 @@
 package service
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -38,8 +40,17 @@ const hopWait = 10 * time.Second
 // nothing.
 //
 // LoadHandOffEnv and ReportFunc call it first, so a program that calls
-// either at start-up needs nothing more.
+// either at start-up needs nothing more. It is HandOffHopContext with
+// context.Background().
 func HandOffHop() error {
+	return HandOffHopContext(context.Background())
+}
+
+// HandOffHopContext is HandOffHop with ctx bounding the real run's wait for
+// the hop: when ctx ends during the wait, it stops waiting, unsets
+// EnvHandOffHopParent, and returns ctx's error. In a hop it exits, as
+// HandOffHop does (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D3).
+func HandOffHopContext(ctx context.Context) error {
 	if os.Getenv(EnvHandOffHop) != "" {
 		os.Exit(hop(os.Executable, os.Args[1:], os.Environ(), os.Getpid(), startDetached))
 	}
@@ -47,10 +58,14 @@ func HandOffHop() error {
 	if !ok {
 		return nil
 	}
+	var werr error
 	if pid, err := strconv.Atoi(v); err == nil && pid > 0 {
-		waitHopExit(pid, hopWait)
+		werr = waitHopExit(ctx, pid, hopWait)
 	}
-	return os.Unsetenv(EnvHandOffHopParent)
+	if err := os.Unsetenv(EnvHandOffHopParent); err != nil {
+		return errors.Join(werr, err)
+	}
+	return werr
 }
 
 // hop is HandOffHop's work in a hop, with its process inputs passed in;

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"os"
 	"os/exec"
@@ -76,6 +77,30 @@ func TestHandOffHopIdleWithoutMarker(t *testing.T) {
 // long the run took to start
 // (docs/decisions/0017-PLAN-verify-build-provenance-and-close-0015-open-items.md
 // Q0).
+// TestHandOffHopContextCancelled: in the real run, a context that ends
+// while the hop is still alive stops the wait at once, and the variable is
+// unset (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D3).
+// This test's own parent stands in for the hop: it outlives the test.
+func TestHandOffHopContextCancelled(t *testing.T) {
+	if runtime.GOOS == "js" || runtime.GOOS == "wasip1" || runtime.GOOS == "plan9" {
+		t.Skip("no hop to wait for on " + runtime.GOOS)
+	}
+	t.Setenv(EnvHandOffHopParent, strconv.Itoa(os.Getppid()))
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	err := HandOffHopContext(ctx)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v, want the context's deadline", err)
+	}
+	if d := time.Since(start); d > time.Second {
+		t.Fatalf("returned after %v, want under 1s of hopWait's %v", d, hopWait)
+	}
+	if v, ok := os.LookupEnv(EnvHandOffHopParent); ok {
+		t.Fatalf("%s is still %q", EnvHandOffHopParent, v)
+	}
+}
+
 func TestWaitHopExit(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "child")
 	exe, err := os.Executable()

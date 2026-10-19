@@ -85,7 +85,7 @@ func fakeTool(mode string) int {
 			return 7
 		}
 		start := time.Now()
-		waitHopExit(parent, 5*time.Second)
+		_ = waitHopExit(context.Background(), parent, 5*time.Second)
 		body := strconv.FormatInt(time.Since(start).Milliseconds(), 10) + " " + strconv.FormatBool(processRunning(parent) && os.Getppid() == parent)
 		_ = os.WriteFile(out+".tmp", []byte(body), 0o600)
 		_ = os.Rename(out+".tmp", out)
