@@ -24,7 +24,7 @@ The pieces:
   12).
 
 Both workflows are pinned to the same commit of this repository; the
-examples below pin `v1.15.2`'s.
+examples below pin `v1.16.0`'s.
 
 ## 1. Write the spec
 
@@ -175,7 +175,7 @@ permissions:
 
 jobs:
   build:
-    uses: maccavelli/go-selfupdate-lib/.github/workflows/build-selfupdate-release.yml@436a7f5976a6815491c7384527fef90869574a1b # v1.15.2
+    uses: maccavelli/go-selfupdate-lib/.github/workflows/build-selfupdate-release.yml@86f6e700f663bc7fee93ea4b58f30f8c281c7013 # v1.16.0
     with:
       spec-path: internal/updateclient/selfupdate-release.json
 
@@ -186,7 +186,7 @@ jobs:
       contents: write
       id-token: write
       attestations: write
-    uses: maccavelli/go-selfupdate-lib/.github/workflows/publish-selfupdate-release.yml@436a7f5976a6815491c7384527fef90869574a1b # v1.15.2
+    uses: maccavelli/go-selfupdate-lib/.github/workflows/publish-selfupdate-release.yml@86f6e700f663bc7fee93ea4b58f30f8c281c7013 # v1.16.0
     with:
       artifact-name: ${{ needs.build.outputs.artifact-name }}
       products-json: ${{ needs.build.outputs.products-json }}
@@ -199,7 +199,7 @@ jobs:
   `SELFUPDATE_NOTE_KEY` secret are left out above; step 13 adds them.
 - **Pin both to the full commit SHA of a release tag,** as the publish
   workflow has always required. Tags are annotated; resolve the commit with
-  `git ls-remote https://github.com/maccavelli/go-selfupdate-lib 'refs/tags/v1.15.2^{}'`.
+  `git ls-remote https://github.com/maccavelli/go-selfupdate-lib 'refs/tags/v1.16.0^{}'`.
 - **The build job needs only `contents: read`.** A called workflow cannot
   raise its token beyond what the calling workflow grants, so grant at
   least that.
@@ -282,7 +282,7 @@ in its own job, and name the artifact:
 
   build:
     needs: apk
-    uses: maccavelli/go-selfupdate-lib/.github/workflows/build-selfupdate-release.yml@436a7f5976a6815491c7384527fef90869574a1b # v1.15.2
+    uses: maccavelli/go-selfupdate-lib/.github/workflows/build-selfupdate-release.yml@86f6e700f663bc7fee93ea4b58f30f8c281c7013 # v1.16.0
     with:
       spec-path: internal/updateclient/selfupdate-release.json
       extras-artifact-name: extras

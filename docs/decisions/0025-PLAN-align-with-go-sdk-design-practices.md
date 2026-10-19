@@ -2088,3 +2088,73 @@ S7's items 1, 4 and 5 above describe the first shape. As built:
    * `scripts/check-release-tag.sh v1.16.0` exits 0;
    * links 0 broken (213 links in 3 files), markdownlint 0 issues, ids 0
      findings, arch 0 differ.
+
+### S14, `v1.16.0` (2026-10-19)
+
+1. **CI on `main`:** the owner committed and pushed the pre-tag change
+   as `86f6e70`. Run `39325801229`: `success`, 18 of 18 jobs.
+2. **The tag:**
+   * The disclosure guard over the outgoing tag (`refs/tags/v1.16.0` on
+     `86f6e70`) exits 0. `check-release-tag.sh v1.16.0` exits 0.
+   * The owner tagged ("tagged"). `v1.16.0` is an annotated tag object on
+     `86f6e700f663bc7fee93ea4b58f30f8c281c7013`, and `git ls-remote …
+     'refs/tags/v1.16.0^{}'` gives that commit.
+3. **The tag's CI:** run `39327772020`, `success`, 18 of 18 jobs. Its ten
+   identity legs each print `v1.16.0 (release) 86f6e700f663`.
+4. **The pin commit** (uncommitted, for the owner):
+   * Changed:
+     * README: the current release, the `go get` line, and the publish
+       pin;
+     * `docs/architecture.md`: the current release and its commit;
+     * `building-releases.md`: "pin `v1.16.0`'s", three workflow pins, and
+       the peeled ref;
+     * the migration guide: eleven `go get` lines, nine `go list` checks,
+       §3's publish pin, the peeled ref, and §3's sentence;
+     * §5's `go.mod` step: "Require go-selfupdate-lib `v1.16.0`, with `go
+       1.26.9`".
+   * §3's sentence now says `v1.16.0` adds the optional `sign` and
+     `note-verifier-key` inputs and the secret, changes nothing a current
+     call passes, and that the example pins `v1.16.0`.
+   * Kept, because each says what `v1.15.2` itself changed or bounds a
+     range: `README.md:26`; `building-releases.md:157`, `:506`;
+     `extending-selfupdate.md:560`, `:666`, `:692`, `:893`; and the
+     migration guide's `:17`, `:52`, `:54`, `:126`, `:731`, `:1124`,
+     `:1126`, `:1148`, `:1174`, with `CHANGELOG.md:59`.
+   * The script's first count of the guide's `go list` lines (10) was
+     wrong. It asserts before writing, so the guide was untouched, and it
+     reran on the guide alone with 9.
+   * Links 0 broken, markdownlint 0 issues, ids 0 findings, arch 0 differ.
+5. **The proxy,** from a new module cache under the scratchpad:
+   * `go list -m -json …@v1.16.0` gives `v1.16.0`, `GoVersion 1.26.9`,
+     origin hash `86f6e700f663bc7fee93ea4b58f30f8c281c7013`, ref
+     `refs/tags/v1.16.0`;
+   * `@latest` resolves to `v1.16.0`.
+6. **`retract` confirmed:** `go list -m -versions` gives `v1.5.0 … v1.16.0`,
+   with nothing below `v1.5.0`; `-retracted` still lists `v1.0.0` onward.
+
+### Release notes for v1.16.0 (2026-10-19)
+
+`v1.16.0` changes no exported API incompatibly: `make apicheck` reports it
+compatible with `v1.15.2`. Everything below is in `CHANGELOG.md` and the
+migration guide's §16.
+
+* **The common path:** `NewGitHubUpdater` composes a standalone updater in
+  one call, with safe defaults.
+* **Typed errors:** `HTTPError` and `service.CommandError`; every message
+  is unchanged.
+* **Contexts:** `service.HandOffHopContext` and `LoadHandOffEnvContext`.
+* **Seams:** `Clock` and `ClockFunc` (`Config.Clock`,
+  `CheckerConfig.Clock`), `NewVersionProberWith`, `NewSlogReporter`, and
+  `selfupdatetest.VerifyReleaseSource`.
+* **Release signing, opt-in:** `selfupdate/verify/signednote`, and the
+  publish workflow's `sign` job, rehearsed live (S13).
+* **The Go floor is 1.26.9;** builds stay on 1.27.2.
+* **Hardening:**
+  * `fmt` and `slog` redact credentials;
+  * the Windows cleanup receipt honours the session's `LockTimeout`;
+  * a Task Scheduler data race is fixed;
+  * `SHA256SUMS.note` is reserved.
+* **Versions:** `v1.0.0` to `v1.4.1` are retracted.
+* **Documentation:** concurrency contracts and "Errors" paragraphs, the
+  API evolution policy, the trust model, `SECURITY.md` and
+  `CHANGELOG.md`.
