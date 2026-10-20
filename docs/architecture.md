@@ -24,8 +24,8 @@ line, because the library needs nothing from 1.27; CI's `go126` job builds,
 vets and tests with it
 ([0025-MADR](decisions/0025-MADR-align-with-go-sdk-design-practices.md) D8).
 Its current
-release is `v1.16.0`, an annotated tag on commit
-`86f6e700f663bc7fee93ea4b58f30f8c281c7013`. `v1.5.0`, the first under this
+release is `v1.17.0`, an annotated tag on commit
+`adc2c757d7e2fa9ed7e5eb5ff33a076eba34f4bd`. `v1.5.0`, the first under this
 path, is the annotated tag on commit
 `6deaa524cfb28aad90bea97a6d9162e5b4257204`.
 

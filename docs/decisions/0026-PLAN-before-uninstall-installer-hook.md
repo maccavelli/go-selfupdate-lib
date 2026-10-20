@@ -527,3 +527,75 @@ Decision Outcome, and U2, U3 and U4 carry it. The MADR became
    * The disclosure guard exits 0 over the five unpushed commits
      (`27519b7` to `03383bc`), against `origin/main` at `902808d`. It is
      run again over the pre-tag commit before the push.
+
+### U5 (2026-10-19), `v1.17.0`
+
+1. **The push and CI on `main`:**
+   * The owner committed the pre-tag change as `adc2c75` and pushed
+     ("pushed"); `origin/main` is `adc2c75`.
+   * The guard was not rerun over `adc2c75` before that push, as the
+     pre-tag record said it would be. The owner's push passed through the
+     same global pre-push guard. Run afterwards over all six pushed
+     commits (`27519b7` to `adc2c75`, against `902808d`), it exits 0 with
+     no findings.
+   * Run `39343441262` on `adc2c75`: `success`, 18 of 18 jobs.
+2. **The tag:**
+   * The owner had tagged it already ("i had already tagged it verify").
+     `scripts/check-release-tag.sh v1.17.0` exits 0.
+   * `v1.17.0` is an annotated tag object, `7b6222c`, with the message
+     `v1.17.0`, as `v1.16.0` has. It points to
+     `adc2c757d7e2fa9ed7e5eb5ff33a076eba34f4bd`, and `git ls-remote origin
+     'refs/tags/v1.17.0^{}'` gives that commit.
+3. **The tag's CI:** run `39348399974`, `success`, 18 of 18 jobs. Its ten
+   identity legs each print `v1.17.0 (release) adc2c757d7e2`: five bare
+   binaries and five archives, across linux, darwin and windows.
+4. **The pin commit** (uncommitted, for the owner). The edits are the
+   session's script, which asserts each count before it writes:
+   * Changed:
+     * README: the current release, the `go get` line, and the publish
+       pin;
+     * `docs/architecture.md`: the current release and its commit;
+     * `building-releases.md`: "pin `v1.17.0`'s", three workflow pins, and
+       the peeled ref;
+     * the migration guide: twelve `go get` lines (§2 and §6 to §16), ten
+       `go list` checks (§7 to §16), §2's "current release", §3's publish
+       pin and peeled ref, and §5's `go.mod` step.
+   * §3's sentence gains "`v1.17.0` changes nothing in it; the example
+     pins `v1.17.0`". `git diff v1.16.0 v1.17.0 -- .github/` is empty; the
+     release changes only the build-side tool, `internal/cmd/selfupdate-release`.
+   * **A correction, past `v1.16.0`'s pin:** §5's "§6 to §15 list the
+     behaviour later releases changed" was stale from `v1.16.0`, and reads
+     "§6 to §17", as `docs/README.md`'s row does.
+   * Kept, because each says what one release changed or bounds a range:
+     `README.md:26`; the guide's `:16`, `:55`, `:130`, `:1174`, `:1233`
+     and `:1254`; and `CHANGELOG.md:40`.
+5. **The proxy,** from a new module cache under the scratchpad:
+   * `go list -m -json …@v1.17.0` gives `v1.17.0`, `GoVersion 1.26.9`,
+     origin hash `adc2c757d7e2fa9ed7e5eb5ff33a076eba34f4bd`, ref
+     `refs/tags/v1.17.0`;
+   * `@latest` resolves to `v1.17.0`;
+   * `go mod download -json …@v1.17.0` against `sum.golang.org` exits 0,
+     `Sum` `h1:jOuxe7uPnq8KAYPvjE+HGmTJCEjjM50IsUCcfEycqvs=`.
+6. **`retract` holds:** `go list -m -versions` gives `v1.5.0 … v1.17.0`,
+   with nothing below `v1.5.0`; `-retracted` still lists `v1.0.0` onward.
+
+### Release notes for v1.17.0 (2026-10-19)
+
+`v1.17.0` changes no exported API incompatibly: `make apicheck` reports it
+compatible with `v1.16.0`. Everything below is in `CHANGELOG.md` and the
+migration guide's §17. It answers
+[issue #1](https://github.com/maccavelli/go-selfupdate-lib/issues/1).
+
+* **A third installer hook time:** `releasespec.HookBeforeUninstall`,
+  `before_uninstall`, runs the installed copy of each selected product
+  before `install.sh --uninstall` or `install.ps1 -Uninstall` removes it.
+* **A failed hook removes nothing,** and the installer exits 1.
+  `--force` / `-Force`, with the uninstall only, removes anyway and exits
+  3.
+* **`--uninstall --dry-run`** lists the hooks it would run.
+* **The plan step's floor:** a spec with the hook needs a module that
+  requires `v1.17.0`; the message names the highest floor a module misses.
+* **Nothing changes without the hook.** Callers adopt it by requiring
+  `v1.17.0`, pinning both workflows to it, then adding the hook.
+* **Documentation:** the doc comments of the exported calls that take no
+  context say why (0025-PLAN, deviation D5).
