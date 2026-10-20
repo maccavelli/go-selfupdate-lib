@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 date: 2026-10-20
 associated-madr: "0027-MADR-documentation-pass-after-v1-17-0.md"
 ---
@@ -829,3 +829,67 @@ guide's "From v1.17.0 to v1.17.1".
 * **Documentation:** 123 findings fixed across the guides, the
   architecture page, `go doc` and the script and workflow headers. Two
   Examples fixed, and four added.
+
+### X8 (2026-10-20)
+
+1. **The pin commit:** the owner committed it as `33aa6f5` and pushed it
+   ("committed and pushed"). The disclosure guard over `e8d4904..33aa6f5`
+   exits 0. Run `39464144680` on `33aa6f5`:
+   * attempt 1 lost two macOS jobs, `validate (macos-15)` and the
+     darwin/arm64 identity leg, to runner capacity: "The job was not
+     acquired by Runner of type hosted even after multiple attempts".
+     No step ran, and `release-rehearsal-check` was skipped after them;
+     the other 15 passed;
+   * the owner's rerun did not register (the run stayed at attempt 1), so
+     `gh run rerun 39464144680 --failed` was run, as the owner meant;
+   * attempt 2: `success`, 18 of 18 jobs.
+2. The plan's `status` becomes `complete`, and `docs/README.md`'s row for
+   it reads `complete`. The MADR stays `accepted`.
+
+### Verification, at closing (2026-10-20)
+
+* **V1 (findings):** all 123 rows are closed:
+  * 47 A5 rows in X4, 6 in X5 and 2 in X2;
+  * 66 A1–A4 rows in X6, and A1-12 in X7's changelog.
+  * One A5 row, A5-36, was not changed: an `ExampleNewExecReconciler`
+    is out of scope, as the Scope says.
+  * Where a row's premise differed from the code, the phase record says
+    what was done instead: A1-03's "first in every test", A2-07's
+    missing `GoString`, A4-11's `install.ps1` help, A5-10's save error,
+    A5-39's `ErrNotInstalled`, and A5-48's `Detach` lines.
+* **V2 (defects):** C1's tests passed on both installers and every shell
+  and PowerShell form, C2's and C3's under `-race`, and each failed on
+  its plants (X1, X2). CI ran them on Linux, macOS and Windows at
+  `e8d4904`. X2's C3 test checks order, not a data race; the record says
+  why.
+* **V3 (CI):** the `go126` job runs govulncheck and passes: `No
+  vulnerabilities found.` at `e8d4904`. The step was seen failing under
+  Go 1.26.0, with 30 standard-library advisories (X3). The corpus upload
+  lists four directories.
+* **V4 (Examples):** `go test -run '^Example' ./...` passes, with
+  `ExampleNewSlogReporter`, `ExampleNewVersionProberWith`,
+  `ExampleVerifyReleaseSource` and signednote's `ExampleNew` running and
+  checking their output. Each was seen failing on a plant (X5).
+* **V5 (checks):** at every phase, links, ids, arch and markdownlint were
+  clean, and so was actionlint for X3 and X4's workflow edits. `make
+  gate` ended `overall=0` at X4, X6 and X7, with `apicheck` compatible
+  with `v1.17.0`.
+* **V6 (release):** `v1.17.1` is an annotated tag on `e8d4904`. Its CI
+  passed 18 of 18 jobs with ten identity legs, and the proxy serves it as
+  `@latest` (X7).
+
+Deviations and corrections, each recorded in its phase:
+
+* X1: the `$left` name collision, caught before any run, and the plant
+  text made unique;
+* X2: C3's test checks order, not a race;
+* X4: the line numbers corrected in its record, and the `usage()` string
+  fixed after the gate;
+* X5: the Example name `ExampleStandaloneInstaller_CleanupPending`, and
+  the launchd plant redone after a build failure;
+* X6: the follow-ups after the four reports;
+* X7: the pin script's first count.
+
+No decision changed, so the MADR has no amendment.
+
+The plan is `complete`. The MADR stays `accepted`.
