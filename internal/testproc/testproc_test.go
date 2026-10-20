@@ -150,7 +150,9 @@ func (r *recordingTB) Errorf(format string, args ...any) {
 }
 
 // TestCheckNoLeakSeesLeak: a goroutine still blocked when the check runs
-// is reported, and a test that leaks nothing is not (0025-MADR D4).
+// is reported, also when a goroutine that ran before the check began ends
+// during the test, and a test that leaks nothing is not (0025-MADR D4,
+// Amendment A6).
 func TestCheckNoLeakSeesLeak(t *testing.T) {
 	leaky := &recordingTB{TB: t}
 	check := CheckNoLeak(leaky)
@@ -161,6 +163,26 @@ func TestCheckNoLeakSeesLeak(t *testing.T) {
 	if len(leaky.errs) != 1 || !strings.Contains(leaky.errs[0], "goroutines:") {
 		t.Fatalf("a blocked goroutine reported %q, want one goroutines: error", leaky.errs)
 	}
+
+	release := make(chan struct{})
+	go func() { <-release }()
+	masked := &recordingTB{TB: t}
+	check = CheckNoLeak(masked)
+	hold := make(chan struct{})
+	go func() { <-hold }()
+	n := runtime.NumGoroutine()
+	close(release)
+	for deadline := time.Now().Add(Budget(t)); runtime.NumGoroutine() >= n; time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the goroutine that ran before the check did not end")
+		}
+	}
+	check()
+	close(hold)
+	if len(masked.errs) != 1 || !strings.Contains(masked.errs[0], "goroutines: 1 started") {
+		t.Fatalf("a leak beside an ending goroutine reported %q, want one goroutines: error", masked.errs)
+	}
+
 	clean := &recordingTB{TB: t}
 	CheckNoLeak(clean)()
 	if len(clean.errs) != 0 {

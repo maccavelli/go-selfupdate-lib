@@ -1,5 +1,5 @@
 ---
-status: complete
+status: in-progress
 date: 2026-10-19
 associated-madr: "0025-MADR-align-with-go-sdk-design-practices.md"
 ---
@@ -2379,4 +2379,60 @@ The failure reproduced here: 4 of 200 `-race` runs of the test alone, and
 0 of 100 after `TestStart*` and `TestBudget`. The cause, and why it
 reaches the 140 other calls of the check, is in the MADR's Amendment A6.
 
-**Proposed:** Phase S16. It waits for the owner's approval.
+**Decided** (the owner, 2026-10-19, "approved, proceed"): Phase S16.
+This plan is `in-progress` again until S16 closes.
+
+### S16 (2026-10-19)
+
+1. **`internal/testproc/testproc.go`:**
+   * `CheckNoLeak` keeps the set that `goroutines()` returns when it is
+     called. Its check polls for up to 2 s, as before, for goroutines that
+     are not in that set, and fails with `goroutines: N started during
+     the test still run:` and one line for each, sorted.
+   * `goroutines()` reads `runtime.Stack(buf, true)`, doubling `buf`
+     from 64 KiB until the dump fits. It keys each goroutine by the ID in
+     its header, and describes it by that header and its `created by`
+     line.
+   * The doc says that IDs are compared, not a count, and why, citing
+     Amendment A6. The import gains `slices`, which `$gostd` allows.
+2. **`internal/testproc/testproc_test.go`:** `TestCheckNoLeakSeesLeak`
+   gains the masking case between its leak and no-leak cases.
+   * A goroutine blocked on `release` starts before `CheckNoLeak`. The
+     leak, blocked on `hold`, starts after it. `release` is then closed,
+     and the test waits within `Budget(t)` until `runtime.NumGoroutine()`
+     falls below its count with both.
+   * The check must report one error holding `goroutines: 1 started`.
+   * **Fixed during the step:** the first draft reused `stop` for the
+     second leak. `-race` reported the write at `testproc_test.go:171`
+     against the first leaked goroutine's read of the variable at `:160`.
+     The second leak has its own channel, `hold`.
+3. **Seen failing,** on `scripts/plant-copy.sh` copies of `testproc.go`,
+   each with `go test -race -count=5 -run '^TestCheckNoLeakSeesLeak$'`:
+
+   | Plant | Failure |
+   | :--- | :--- |
+   | `gs[id] = desc` → `gs[fmt.Sprint(len(gs))] = desc`: keyed by position, so the check compares a count, as before | 5 of 5: `testproc_test.go:183: a leak beside an ending goroutine reported [], want one goroutines: error` |
+   | `if len(started) == 0 {` → `if true {`: it never compares | 5 of 5: `testproc_test.go:164: a blocked goroutine reported [], want one goroutines: error` |
+
+   The first plant keeps the new message. Its failure is therefore the
+   masking alone, not the wording.
+4. **The flake is gone:**
+   * **Here:** `go test -race -timeout 30m -v -count=200 -run
+     '^TestCheckNoLeakSeesLeak$' ./internal/testproc/` passed 200 of 200,
+     where the old check failed 4 of 200. A first attempt without
+     `-timeout` hit `go test`'s 10 min default, with no test failed: each
+     run waits out two 2 s polls.
+   * **Callers:** `go test -race -count=1 ./selfupdate/... ./internal/...
+     ./buildinfo/...`, with `SELFUPDATE_REQUIRE_PYTHON=1`, passed all 18
+     packages. No caller's test reported a leak that the old check had
+     missed.
+   * **On the Windows test host,** with Go 1.27.2 and no `-race`, as CI's
+     Windows job runs: the test passed 50 of 50, and `go test -count=1
+     ./...` passed all 19 packages. `scm` and `taskscheduler` ran their
+     unit tests; their live tests skip without their switches.
+5. **Checks:**
+   * `make pre-add-check` on the two files is clean: gofmt, golangci-lint
+     for linux, darwin and windows, vet, test and govulncheck.
+   * `make gate` with `SELFUPDATE_REQUIRE_PYTHON=1` ends `overall=0`, all
+     15 steps passing. `apicheck` reports it compatible with `v1.17.0`,
+     and the links are 634 in 75 files, 0 broken.

@@ -18,6 +18,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -204,11 +205,14 @@ func (b *tail) last(n int) string {
 	return strings.Join(lines, "\n")
 }
 
-// CheckNoLeak fails the test when more goroutines run than when it was
-// called. It checks once the test has cleaned up, and also whenever the
-// returned function is called. It polls for up to 2 s, because a goroutine
-// that is ending is still counted for a moment (0004-MADR H6). The sleep
-// only paces that poll; it orders nothing. Every package's tests share it
+// CheckNoLeak fails the test when a goroutine that started after it was
+// called still runs. It checks once the test has cleaned up, and also
+// whenever the returned function is called. It compares goroutine IDs, not
+// a count: a goroutine that ran before the call and ends during the test
+// would bring a count back down and hide a leak (0025-MADR Amendment A6).
+// It polls for up to 2 s, because a goroutine that is ending is still
+// listed for a moment (0004-MADR H6). The sleep only paces that poll; it
+// orders nothing. Every package's tests share it
 // (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D4).
 //
 // Call it first. A test whose cleanup would release a leaked goroutine,
@@ -217,12 +221,22 @@ func (b *tail) last(n int) string {
 //	defer testproc.CheckNoLeak(t)()
 func CheckNoLeak(t testing.TB) (checkNow func()) {
 	t.Helper()
-	base := runtime.NumGoroutine()
+	base := goroutines()
 	check := func() {
 		deadline := time.Now().Add(2 * time.Second)
-		for runtime.NumGoroutine() > base {
+		for {
+			var started []string
+			for id, g := range goroutines() {
+				if _, ok := base[id]; !ok {
+					started = append(started, g)
+				}
+			}
+			if len(started) == 0 {
+				return
+			}
 			if time.Now().After(deadline) {
-				t.Errorf("goroutines: %d now, %d when the test began", runtime.NumGoroutine(), base)
+				slices.Sort(started)
+				t.Errorf("goroutines: %d started during the test still run:\n%s", len(started), strings.Join(started, "\n"))
 				return
 			}
 			runtime.Gosched()
@@ -231,4 +245,37 @@ func CheckNoLeak(t testing.TB) (checkNow func()) {
 	}
 	t.Cleanup(check)
 	return check
+}
+
+// goroutines returns the running goroutines from runtime.Stack, keyed by
+// ID, each as its header line and the line naming what created it. The
+// runtime never reuses an ID within a process.
+func goroutines() map[string]string {
+	buf := make([]byte, 64<<10)
+	for {
+		n := runtime.Stack(buf, true)
+		if n < len(buf) {
+			buf = buf[:n]
+			break
+		}
+		buf = make([]byte, 2*len(buf))
+	}
+	gs := make(map[string]string)
+	for _, g := range strings.Split(string(buf), "\n\n") {
+		head, rest, _ := strings.Cut(g, "\n")
+		id, ok := strings.CutPrefix(head, "goroutine ")
+		if !ok {
+			continue
+		}
+		id, _, _ = strings.Cut(id, " ")
+		desc := head
+		for _, line := range strings.Split(rest, "\n") {
+			if strings.HasPrefix(line, "created by ") {
+				desc += " " + line
+				break
+			}
+		}
+		gs[id] = desc
+	}
+	return gs
 }
