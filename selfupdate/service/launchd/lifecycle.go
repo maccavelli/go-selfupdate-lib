@@ -89,11 +89,14 @@ func (j *Job) disabled(ctx context.Context) (bool, error) {
 // ctx's error is returned after it (0015-MADR B3). It refuses with
 // service.ErrInsideService when this process would die with the job.
 //
+// A job that is not loaded is already stopped, and Stop returns nil.
+//
 // Errors, matched with errors.Is: service.ErrInsideService when this
-// process would stop with the job; service.ErrPermission and
-// service.ErrNotInstalled; service.ErrTimeout when the job outlives
-// the stop's bound; and service.ErrUnsupported where the backend cannot
-// run. errors.As finds the failed command as a *service.CommandError. When ctx ends, its error is returned.
+// process would stop with the job; service.ErrPermission;
+// service.ErrTimeout when the job outlives the stop's bound; and
+// service.ErrUnsupported where the backend cannot run. errors.As finds
+// the failed command as a *service.CommandError. When ctx ends, its
+// error is returned.
 func (j *Job) Stop(ctx context.Context, _ string) error {
 	inside, err := j.Inside(ctx)
 	if err != nil {
@@ -188,7 +191,10 @@ func (j *Job) waitGone(ctx context.Context, pid int, bound time.Duration) error 
 // update (0015-MADR D3).
 //
 // Errors, matched with errors.Is: service.ErrPermission,
-// service.ErrNotInstalled and service.ErrUnsupported. errors.As finds the failed command as a *service.CommandError.
+// service.ErrNotInstalled and service.ErrUnsupported; and
+// service.ErrTimeout when launchd still refuses to load the job at the
+// bootstrap's bound. errors.As finds the failed command as a
+// *service.CommandError. When ctx ends, its error is returned.
 func (j *Job) Start(ctx context.Context, _ string) error {
 	s, err := j.probe(ctx)
 	if err != nil {

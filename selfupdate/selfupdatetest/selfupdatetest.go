@@ -1,10 +1,12 @@
 // Package selfupdatetest provides test doubles for programs built on
 // selfupdate: release fixtures, an in-memory selfupdate.ReleaseSource, a recording
 // Reporter, a scripted Confirmer, and a fake GitHub API whose asset
-// downloads redirect to a second TLS origin (0004-MADR H3).
+// downloads redirect to a second TLS origin (0004-MADR H3). Its
+// VerifyReleaseSource and SourceCase check a ReleaseSource of another host
+// against the contract the updater relies on (0025-MADR D11).
 //
-// It is standard library only and is meant for tests; nothing in it is
-// hardened for production use.
+// It uses only the standard library and selfupdate, and is meant for
+// tests; nothing in it is hardened for production use.
 package selfupdatetest
 
 import (

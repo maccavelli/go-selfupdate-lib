@@ -31,8 +31,9 @@ const (
 	HookBeforeUninstall = "before_uninstall"
 )
 
-// Installer asks the build workflow to generate install.sh and install.ps1
-// for the release. Present, even empty, it turns them on; null is refused,
+// Installer asks the build workflow to generate the installers the
+// release's platforms need, install.sh, install.ps1 or both, as
+// InstallerScripts decides. Present, even empty, it turns them on; null is refused,
 // not read as absent (0015-MADR E7).
 type Installer struct {
 	// Name names the Windows install folder,
@@ -43,7 +44,8 @@ type Installer struct {
 	// such as <EnvPrefix>_VERSION. Empty means Name in upper case, with
 	// every character other than a letter or digit as "_".
 	EnvPrefix string `json:"env_prefix,omitempty"`
-	// Hooks run release products around the install, at most 8.
+	// Hooks run release products around the install and before
+	// --uninstall, at most 8.
 	Hooks []Hook `json:"hooks,omitempty"`
 }
 
@@ -53,7 +55,9 @@ type Hook struct {
 	When string `json:"when"`
 	// Product is a product the spec lists.
 	Product string `json:"product"`
-	// Args are its arguments, 1 to 16, each non-empty and without NUL.
+	// Args are its arguments, 1 to 16. Each matches
+	// ^[A-Za-z0-9._:=/,+@%-]+$: the installers embed it in a shell and a
+	// PowerShell script, so no space, quote or expansion character.
 	Args []string `json:"args"`
 }
 

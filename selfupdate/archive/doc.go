@@ -29,7 +29,8 @@
 // COM0-COM9 or LPT0-LPT9, before its first dot and in any case
 // (0017-MADR 4C).
 //
-// The package uses only the standard library and compiles on every OS.
+// The package uses only the standard library and selfupdate, and compiles
+// on every OS.
 // This module's release workflows build and publish archives from a
 // release spec with "packaging": "archive" (selfupdate/releasespec;
 // docs/decisions/0013-MADR-build-and-stage-release-workflow.md). Archives

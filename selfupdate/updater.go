@@ -240,7 +240,7 @@ func (u *run) apply(ctx context.Context, req Request, result Result, target Targ
 		return resultOut, wrapRun(req, err)
 	}
 	// Close runs exactly once: explicitly before the terminal event on the
-	// success path (PLAN §4.6 step 15), otherwise from this safety net.
+	// success path (0003-MADR C14), otherwise from this safety net.
 	closed := false
 	closeSession := func() error {
 		if closed {
@@ -262,7 +262,7 @@ func (u *run) apply(ctx context.Context, req Request, result Result, target Targ
 		return resultOut, wrapRun(req, err)
 	}
 	// Parse the manifest and find the one required entry before any staging
-	// or binary download (PLAN §4.6 step 9).
+	// or binary download (0003-MADR C9).
 	entries, err := ParseSHA256SUMS(manifestBuf.Bytes())
 	if err != nil {
 		return resultOut, wrapRun(req, err)
@@ -316,7 +316,7 @@ func (u *run) apply(ctx context.Context, req Request, result Result, target Targ
 		return resultOut, wrapRun(req, err)
 	}
 	// Verified precedes the optional transform (the EventKind order, and
-	// PLAN §4.6 step 12); the transformed staging is revalidated below.
+	// 0003-MADR C8); the transformed staging is revalidated below.
 	if rerr := u.report(ctx, Event{Kind: EventVerified, Product: req.Product, Target: rel.Tag, Asset: sel.Binary.Name}); rerr != nil {
 		return resultOut, wrapRun(req, rerr)
 	}

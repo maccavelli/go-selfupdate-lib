@@ -90,8 +90,8 @@
 // # Events and output
 //
 // A Reporter receives one Event per stage. NewTextReporter writes plain
-// lines, NewJSONReporter writes JSON Lines, and MultiReporter fans out to
-// several. EventProgress is opt-in: Config.ProgressInterval is zero by
+// lines, NewJSONReporter writes JSON Lines, NewSlogReporter logs to a
+// log/slog Logger, and MultiReporter fans out to several. EventProgress is opt-in: Config.ProgressInterval is zero by
 // default, which reports none, and the text reporter skips it. The outcome
 // events EventDeclined, EventFailed, EventRolledBack and EventWarning are
 // advisory: a reporter error there never changes the run's result. A run has
@@ -174,7 +174,9 @@
 // (docs/decisions/0004-MADR-evolve-selfupdate-api-and-tui-support.md §5).
 //
 // The selfupdatetest package provides test doubles: release fixtures, a fake
-// source, reporter and confirmer, and a fake GitHub API.
+// source, reporter and confirmer, and a fake GitHub API; and
+// VerifyReleaseSource, a conformance check for a ReleaseSource of another
+// host.
 //
 // Package selfupdate/archive selects and unpacks a release published as
 // archives, selfupdate/codesign signs and checks the installed binary on

@@ -8,7 +8,9 @@ const resultDocumentSchema = 4
 
 // ResultDocument is the JSON form of a Result, with stable snake_case keys
 // and Operation as a string. The enums keep their own JSON encoding; this
-// document is the string form (0004-MADR §3, "Structured output").
+// document is the string form (0004-MADR §3, "Structured output"). Apart
+// from SchemaVersion, each field mirrors the Result field of the same name;
+// an omitempty field is left out when it is empty.
 type ResultDocument struct {
 	SchemaVersion      int      `json:"schema_version"`
 	Product            string   `json:"product"`

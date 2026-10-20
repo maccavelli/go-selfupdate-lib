@@ -2,7 +2,9 @@
 // reading the git state around the build, and starts a helper process and
 // waits for it to be ready without a fixed time budget
 // (docs/decisions/0023-MADR-robust-test-fixtures-and-process-waits.md).
-// Only _test.go files import it.
+// CheckNoLeak fails a test that leaves a goroutine running
+// (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D4,
+// Amendment A6). Only _test.go files import it.
 //
 // A fixture built in a temporary directory with Go's default -buildvcs=auto
 // fails when a .git above that directory cannot be read, though no fixture
@@ -212,7 +214,8 @@ func (b *tail) last(n int) string {
 // would bring a count back down and hide a leak (0025-MADR Amendment A6).
 // It polls for up to 2 s, because a goroutine that is ending is still
 // listed for a moment (0004-MADR H6). The sleep only paces that poll; it
-// orders nothing. Every package's tests share it
+// orders nothing. The tests of selfupdate, selfupdate/cli,
+// selfupdate/service and its backends share it
 // (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D4).
 //
 // Call it first. A test whose cleanup would release a leaked goroutine,

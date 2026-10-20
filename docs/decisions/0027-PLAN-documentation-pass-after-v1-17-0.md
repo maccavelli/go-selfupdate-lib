@@ -488,3 +488,103 @@ to start with X0. The MADR became `accepted`, and this plan
    .github/workflows/ci.yml`; `scripts/check-workflows_test.sh`; and
    `scripts/workflow-shape_test.sh`. All pass. The step itself runs on CI
    after the push, and its log is recorded then (V3).
+
+### X4 (2026-10-20)
+
+47 of the 56 A5 rows, in 41 files. The other nine are elsewhere: A5-02
+and A5-03 in X2; A5-13, A5-15, A5-21, A5-32, A5-33 and A5-37 in X5;
+A5-36 out of scope. Each comment was read against its code before it
+changed. Below, a row is "as its fix" unless what was found differs.
+
+1. **`buildinfo`, `selfupdate`, `cli`:**
+   * A5-01: the two `-X` stamps `LDFlags` returns, with `-s -w` added by
+     the workflow (`build.go:27-28`). The cli doc says "the stamps
+     buildinfo.LDFlags returns".
+   * A5-04, A5-06, A5-07, A5-09, A5-11, A5-12 and A5-18, as their fixes.
+   * A5-05: the source applies ReleaseJSON, ErrorBody, and Executable to
+     every asset's declared size (`github.go:334`, `:346`, `:567`). The
+     Updater applies Manifest and Executable to the downloads
+     (`updater.go:261`, `:291`).
+   * A5-08: `Lifecycle` gains a paragraph:
+     * the string is `Request.Product`, and Installed false means a plain
+       install;
+     * Running is asked again after a Stop error;
+     * recovery runs under a 2-minute context the caller's cancellation
+       does not end (`managed.go:288`, `recoveryTimeout` at `:306`).
+   * A5-10: CheckCached's comment already said that a record with a
+     non-zero CheckedAt holds a real answer whatever the error. So only
+     the argument refusals were added, with a pointer to that sentence for
+     a save error.
+   * A5-14: "Apart from SchemaVersion": SchemaVersion has no Result field.
+     The other 21 do, checked against `go doc ./selfupdate Result`.
+   * A5-16: the five "PLAN §4.6" anchors now cite 0003-MADR's own rows:
+     * step 4's order → C4;
+     * step 4's selected assets → A1 and A5, already cited;
+     * step 9 → C9;
+     * step 12 → C8, the Verified-before-Transforming order;
+     * step 15 → C14.
+   * A5-17: both other-repository pointers dropped. 0003-MADR A3 restates
+     the HTTPS rule, and 0021-MADR D7 the ConPTY one.
+2. **`selfupdatetest`, `archive`, `releasespec`, `signednote`:**
+   * A5-19, A5-20, A5-22, A5-23, A5-24, A5-27, A5-29, A5-30 and A5-31, as
+     their fixes.
+   * A5-25: the class `^[A-Za-z0-9._:=/,+@%-]+$` (`installer.go:69`), and
+     why.
+   * A5-26: the two rules, from `validate.go:101-104` and
+     `installer.go:103-109`.
+   * A5-28: "the before_uninstall hook of 0026-MADR D1".
+3. **`service` and its backends:**
+   * A5-34: each `HandOffResult` field documented from `ReportFunc`
+     (`handoff.go:180-200`) and the hop's failure write
+     (`handoffhop.go:91-99`).
+   * A5-35: Name lists what launchd names (label, plist, domain). Message
+     states both bounds: the Runner's 1 MiB per stream
+     (`runner.go:52`) and the exec reconciler's 4 KiB
+     (`execreconciler.go:210`).
+   * A5-38: launchd `Start` gains `ErrTimeout`, from the bootstrap's bound
+     (`lifecycle.go:259`), and the ctx sentence.
+   * A5-39: launchd `Stop` never returns `ErrNotInstalled`. The probe maps
+     launchctl's not-found exit to "not loaded" (`job.go:261`, `:274`),
+     and Stop returns nil for a job not loaded. The comment says so, and
+     the sentinel is dropped.
+   * A5-40, A5-41, A5-42, A5-44, A5-45, A5-46 and A5-47, as their fixes.
+   * A5-43: scm `Start` gains `ErrUnhealthy` (`lifecycle.go:260`) and
+     `ErrTimeout`, for a hung pending state or a ctx that ends in
+     `waitPending` (`:321-341`).
+   * A5-48: one sentence on each type, `Task` and `Service`, naming the
+     methods whose parameter is `_ context.Context`:
+     * `Task`: Installed, Running, Enabled, Start, Reconcile and Restore;
+     * `Service`: the same less Start.
+
+     The two `detach.go` lines the row listed pass ctx to
+     `service.DetachProcess`, so they are not named. `Task.Start` was
+     read: it runs the task and does not wait.
+4. **`internal/testproc`, scripts, workflows:**
+   * A5-49 and A5-50, as their fixes. A5-50 names the packages that call
+     the check (`git grep -l CheckNoLeak -- '*_test.go'`).
+   * A5-51: "no .go file" in `check-docs.sh`, and "the tree's files" in
+     `gate.sh`.
+   * A5-52: "the nearest v1.* tag reachable from HEAD", in
+     `check-api-compat.sh` and `ci.yml`.
+   * A5-53, as its fix.
+   * A5-54: Usage and Exit lines, with `--extras` optional and defaulting
+     to `[]` (`:27`). Exit 1 covers a finding or a missing directory
+     (`:72-75`), and 2 a usage error (`:21`).
+   * A5-55: a header for the publish workflow in the build workflow's
+     style: what it publishes, tag only, the publish job's order, and the
+     sign job.
+   * A5-56: the parity test named beside the manifest differential.
+5. **Checks:**
+   * `gofmt` clean; `actionlint` on the three workflows;
+     `scripts/check-workflows.sh`, all rules and `--rule pins` on
+     `ci.yml`;
+   * the workflow-shape, check-workflows, check-docs, check-api-compat,
+     refuse-existing-release and verify-selfupdate-release script tests;
+   * `make gate` with `SELFUPDATE_REQUIRE_PYTHON=1`: `overall=0`, 15 steps
+     passing. `apicheck` compatible with `v1.17.0`; links 642 in 77
+     files, 0 broken; ids 42 files, 0 findings.
+6. **After the gate,** A5-54's `usage()` string in
+   `verify-selfupdate-release.sh` still showed `--extras JSON` as
+   required. It reads `[--extras JSON]`, as the header now does.
+   `verify-selfupdate-release_test.sh`, shellcheck and the
+   workflow-shape test pass again.

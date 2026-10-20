@@ -16,8 +16,8 @@
 // the platform list, the product names and the asset names the program
 // selects cannot drift from what the workflow builds and publishes.
 //
-// The file must sit in the directory of the package that embeds it, since
-// an embed pattern cannot reach a parent directory. Parse refuses unknown
+// The file must sit in the directory of the package that embeds it, or
+// below it, since an embed pattern cannot reach a parent directory. Parse refuses unknown
 // fields, trailing data, a schema other than SchemaVersion, and null for
 // any value: leave a field out instead.
 //

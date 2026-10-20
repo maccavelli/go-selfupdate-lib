@@ -203,7 +203,10 @@ func (s *Service) stopHandle(ctx context.Context, name string, h handle, st stat
 // that fails is the error (0015-MADR D6).
 //
 // Errors, matched with errors.Is: service.ErrPermission,
-// service.ErrNotInstalled and service.ErrUnsupported.
+// service.ErrNotInstalled and service.ErrUnsupported;
+// service.ErrUnhealthy when the service stops while starting; and
+// service.ErrTimeout when a pending state hangs, or ctx ends while it
+// waits, wrapping ctx's error.
 func (s *Service) Start(ctx context.Context, product string) error {
 	name, err := s.name(product)
 	if err != nil {

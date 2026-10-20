@@ -31,8 +31,8 @@
 // Command builds the updater only after the flags and the request are
 // valid. A program that parses its own flags, such as one using cobra,
 // binds Flags on its flag set and calls Flags.Request, Run and Exit itself.
-// The version comes from package buildinfo, stamped at link time with
-// buildinfo.LDFlags.
+// The version comes from package buildinfo, stamped at link time with the
+// stamps buildinfo.LDFlags returns.
 //
 // A program that runs as a service sets Options.HandOff, so an update
 // started inside the service, such as by an agent the service spawned,

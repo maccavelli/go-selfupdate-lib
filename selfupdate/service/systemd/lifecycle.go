@@ -132,7 +132,9 @@ func (u *Unit) stopBound(ctx context.Context, unit string) time.Duration {
 // the start succeeded or failed.
 //
 // Errors, matched with errors.Is: service.ErrPermission,
-// service.ErrNotInstalled and service.ErrUnsupported. errors.As finds the failed command as a *service.CommandError.
+// service.ErrNotInstalled and service.ErrUnsupported. errors.As finds
+// the failed command as a *service.CommandError. When ctx ends, its
+// error is returned.
 func (u *Unit) Start(ctx context.Context, product string) error {
 	unit, err := u.unit(product)
 	if err != nil {

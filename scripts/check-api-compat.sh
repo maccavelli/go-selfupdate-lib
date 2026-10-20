@@ -4,7 +4,8 @@
 # Confirmation).
 #
 # Usage: check-api-compat.sh [BASE]
-# BASE is a git revision; it defaults to the newest v1.* tag. The base is
+# BASE is a git revision; it defaults to the nearest v1.* tag reachable
+# from HEAD, which on main is the newest. The base is
 # checked out as a detached worktree in a temporary directory, its export data
 # is written with apidiff, and the working tree is compared against it.
 #

@@ -51,8 +51,9 @@ func (s *Service) insideService(name string) (bool, error) {
 // Detach implements service.Detacher: it starts spec as a hop, which
 // starts the real run detached and exits (service.HandOffHop), so the run
 // does not descend from this process or the service (0011-MADR amendment
-// A4). The program must call service.ReportFunc or
-// service.LoadHandOffEnv at start-up, as a detached run does anyway.
+// A4). The program must call service.ReportFunc,
+// service.LoadHandOffEnv or service.LoadHandOffEnvContext at start-up,
+// as a detached run does anyway.
 func (s *Service) Detach(ctx context.Context, spec service.HandOff) (service.Detached, error) {
 	spec.Env = append(append([]string(nil), spec.Env...), service.EnvHandOffHop+"=1")
 	det, err := service.DetachProcess(ctx, spec)

@@ -12,8 +12,8 @@ const maxUnitName = 255
 // ValidUnitName checks name against systemd.unit(5)'s grammar, for the
 // service units this package manages: a name of ASCII letters, digits and
 // ":-_.\", ending ".service", at most 255 bytes, with "@" only as a
-// template's separator, directly before an instance or the suffix. A name
-// may not begin with "-".
+// template's separator, directly before a non-empty instance: a bare
+// template, "name@.service", is refused. A name may not begin with "-".
 func ValidUnitName(name string) error {
 	if len(name) > maxUnitName {
 		return fmt.Errorf("selfupdate: systemd: unit name is longer than %d bytes", maxUnitName)

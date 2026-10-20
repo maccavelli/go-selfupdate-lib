@@ -69,13 +69,23 @@ const HandOffResultSchema = 1
 
 // HandOffResult is what a detached run writes when its update ends.
 type HandOffResult struct {
-	SchemaVersion int                       `json:"schema_version"`
-	ID            string                    `json:"id"`
-	StartedAt     time.Time                 `json:"started_at"`
-	FinishedAt    time.Time                 `json:"finished_at"`
-	ExitCode      int                       `json:"exit_code"`
-	Error         string                    `json:"error,omitempty"`
-	Result        selfupdate.ResultDocument `json:"result"`
+	// SchemaVersion is HandOffResultSchema.
+	SchemaVersion int `json:"schema_version"`
+	// ID is the hand-off's ID, from EnvHandOff.
+	ID string `json:"id"`
+	// StartedAt is when the detached run called ReportFunc, or when the
+	// hop started, for a hop that could not start the run.
+	StartedAt time.Time `json:"started_at"`
+	// FinishedAt is when the result was written.
+	FinishedAt time.Time `json:"finished_at"`
+	// ExitCode is selfupdate.ExitCode of the run's Result and error.
+	ExitCode int `json:"exit_code"`
+	// Error is the run's error, joined with a failure to load the
+	// hand-off environment; empty when there was none.
+	Error string `json:"error,omitempty"`
+	// Result is the run's Result as a ResultDocument. It is empty when
+	// the hop could not start the run.
+	Result selfupdate.ResultDocument `json:"result"`
 }
 
 // HandOffIfInside asks d whether this process is inside the service, and

@@ -8,10 +8,16 @@
 # (docs/decisions/0013-MADR-build-and-stage-release-workflow.md §8).
 # --github-output FILE appends packed=true or packed=false to FILE after a
 # successful verification, and nothing on a failure.
+#
+# Usage: verify-selfupdate-release.sh --dir DIR --products JSON
+#        --platforms JSON [--extras JSON] [--tag TAG [--channels JSON]]
+#        [--github-output FILE]
+# --extras defaults to [].
+# Exit:  0 verified; 1 a finding, or a missing directory; 2 a usage error
 set -eu
 
 usage() {
-	echo "usage: verify-selfupdate-release.sh --dir DIR --products JSON --platforms JSON --extras JSON [--tag TAG [--channels JSON]] [--github-output FILE]" >&2
+	echo "usage: verify-selfupdate-release.sh --dir DIR --products JSON --platforms JSON [--extras JSON] [--tag TAG [--channels JSON]] [--github-output FILE]" >&2
 	exit 2
 }
 

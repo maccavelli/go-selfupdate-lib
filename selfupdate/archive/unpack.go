@@ -56,7 +56,8 @@ type UnpackOptions struct {
 	// (docs/decisions/0017-PLAN-verify-build-provenance-and-close-0015-open-items.md
 	// N6).
 	Member string
-	// MaxEntries bounds the entries an archive may hold. Zero means 4096.
+	// MaxEntries bounds the entries an archive may hold. Zero means 4096;
+	// a negative value is refused.
 	MaxEntries int
 }
 

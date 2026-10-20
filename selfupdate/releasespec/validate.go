@@ -41,8 +41,9 @@ var (
 // names; ExtraNames checks them again with the real tag.
 const exampleTag = "v1.2.3"
 
-// Validate checks every rule of 0013-MADR §2, and the installer and hooks
-// rules of 0014-MADR §2. Parse calls it; a program
+// Validate checks every rule of 0013-MADR §2, the installer and hooks
+// rules of 0014-MADR §2, and the before_uninstall hook of 0026-MADR D1.
+// Parse calls it; a program
 // that builds a Spec in Go can too. Errors name the field:
 // "releasespec: <field>: <reason>".
 func (s Spec) Validate() error {

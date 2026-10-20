@@ -150,8 +150,9 @@ var (
 // Whatever the error, a returned record with a non-zero CheckedAt holds a
 // real answer as of CheckedAt, and its Outcome says which.
 //
-// Errors: those of Check, and ErrCheckDeferred, which matches
-// ErrRateLimited.
+// Errors: those of Check; ErrCheckDeferred, which matches
+// ErrRateLimited; and a refusal of a nil store or a maxAge that is not
+// positive. A store's save error comes with the new record, as above.
 func (c *Checker) CheckCached(ctx context.Context, cr CheckRequest, store CheckStore, maxAge time.Duration) (CheckRecord, error) {
 	if !c.constructed() {
 		return CheckRecord{}, ErrNotConstructed

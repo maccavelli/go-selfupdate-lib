@@ -16,10 +16,10 @@ import (
 // only once both succeed, and runs it with Run and Exit.
 //
 //   - -h or --help writes Help(product) to o.Stderr and returns 0.
-//   - A usage error, a refused request or a failed newUpdater is reported
-//     like a failed run: o.HandOff.Report, when set; under --json (as parsed
-//     so far) one result object on o.Stdout; then Exit's line on o.Stderr. It
-//     returns 1.
+//   - A usage error, a refused request, Options that Run refuses, or a
+//     failed newUpdater is reported like a failed run: o.HandOff.Report,
+//     when set; under --json (as parsed so far) one result object on
+//     o.Stdout; then Exit's line on o.Stderr. It returns 1.
 //
 // o.JSON is set from the parsed flags; the caller's value is ignored. A nil
 // o.Stderr leaves nothing to report on, so Command returns 1 at once.

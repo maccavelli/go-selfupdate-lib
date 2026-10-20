@@ -207,7 +207,7 @@ func (c *Checker) discover(ctx context.Context, req Request) (Release, Selection
 	if err != nil {
 		return Release{}, Selection{}, OperationNone, err
 	}
-	// PLAN §4.6 step 4 order: immutable, then state, then tag. The tag is
+	// Immutable, then state, then tag (0003-MADR C4). The tag is
 	// untrusted until Validate passes, so it is always quoted.
 	if !rel.Immutable {
 		return Release{}, Selection{}, OperationNone, fmt.Errorf("selfupdate: release %q is not immutable: %w", rel.Tag, ErrMutableRelease)
@@ -227,7 +227,7 @@ func (c *Checker) discover(ctx context.Context, req Request) (Release, Selection
 	}
 	// Only the selected binary and manifest are checked for state, size and
 	// digest syntax, each against its own limit, and before check mode can
-	// report anything (PLAN §4.6 step 4; 0003-MADR A1 and A5).
+	// report anything (0003-MADR A1 and A5).
 	if err := validateAssetMetadata(sel.Binary, c.limits.Executable); err != nil {
 		return Release{}, Selection{}, OperationNone, err
 	}

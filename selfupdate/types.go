@@ -158,9 +158,9 @@ type Result struct {
 	// InstallResult.ServiceStarted does.
 	ServiceStarted bool
 	// PendingBackup is a backup of the previous binary left beside the
-	// target. With Applied true, it is the Windows running-image backup the
-	// active image kept open after commit; it is validated and removed
-	// before the next download. With Applied false, on any OS, the new
+	// target. With Applied true, it is a backup the commit could not
+	// remove: on Windows, the one the running image keeps open; it is
+	// validated and removed before the next download. With Applied false, on any OS, the new
 	// binary is live and restoring the previous one failed; the backup is
 	// the only copy of the previous binary, and the caller must restore or
 	// remove it. That backup is .<base>.selfupdate-kept-<n> beside the
@@ -222,11 +222,14 @@ type GitHubOptions struct {
 	// Token is an explicit GitHub token. Empty falls back to Credentials,
 	// then GH_TOKEN, then GITHUB_TOKEN.
 	Token string
-	// Limits bound JSON, error, manifest, and executable bodies.
+	// Limits bound the bodies the source reads: ReleaseJSON for release
+	// JSON, ErrorBody for an error response, and Executable for every
+	// asset's declared size. The Updater applies Manifest and Executable
+	// to the downloads.
 	Limits Limits
 	// Credentials is asked lazily, on the first API request, after Token
-	// and before GH_TOKEN and GITHUB_TOKEN (0004-MADR G10). Nil keeps the
-	// v1.0 behaviour.
+	// and before GH_TOKEN and GITHUB_TOKEN (0004-MADR G10). Nil means
+	// Token, then GH_TOKEN, then GITHUB_TOKEN.
 	Credentials CredentialProvider
 	// Observer learns when a credential was accepted by a successful
 	// API response. It is called once per source.
@@ -583,7 +586,14 @@ type TwoPhaseSession interface {
 	Rollback(context.Context, AppliedReplacement) error
 }
 
-// Lifecycle is the consumer-owned service control seam.
+// Lifecycle is the consumer-owned service control seam a ManagedInstaller
+// drives. Each method's string is Request.Product. Installed false means
+// no service is defined, and the update is a plain binary install.
+// Running says whether the service is stopped first and started again
+// after; Stop, Start and WaitHealthy do those, and Running is asked again
+// after a Stop error, to learn whether the stop took effect. A recovery
+// after a failure runs under its own 2-minute context, which the caller's
+// cancellation does not end, so a service is not left down.
 type Lifecycle interface {
 	Installed(context.Context, string) (bool, error)
 	Running(context.Context, string) (bool, error)
@@ -664,7 +674,8 @@ const (
 	EventSelected
 	// EventDownloadingManifest is emitted before the SHA256SUMS body.
 	EventDownloadingManifest
-	// EventDownloadingBinary is emitted before the executable body.
+	// EventDownloadingBinary is emitted before the release asset's body:
+	// the executable, or the archive that holds it.
 	EventDownloadingBinary
 	// EventVerified is emitted after integrity checks succeed.
 	EventVerified
@@ -767,7 +778,8 @@ type Event struct {
 	Current string
 	// Target is the selected release tag.
 	Target string
-	// Asset is the selected executable name when known.
+	// Asset is the selected release asset's name when known: the
+	// executable, or the archive that holds it.
 	Asset string
 	// Bytes is a size or progress count when meaningful.
 	Bytes int64
@@ -809,7 +821,9 @@ type Limits struct {
 	ErrorBody int64
 	// Manifest is the maximum SHA256SUMS body in bytes.
 	Manifest int64
-	// Executable is the maximum executable body in bytes.
+	// Executable is the maximum release asset body in bytes: the
+	// executable, or the archive that holds it, and the program unpacked
+	// from it.
 	Executable int64
 }
 

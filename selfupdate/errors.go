@@ -27,8 +27,10 @@ var (
 	// health fails. Recovery errors are joined with it.
 	ErrManagedInstall = errors.New("selfupdate: managed install failed")
 	// ErrUnsupportedPlatform is returned when the requested platform is not
-	// in the selector's caller-supplied matrix, and when the release has no
-	// asset for a platform that is.
+	// in the selector's caller-supplied matrix, when the release has no
+	// asset for a platform that is, when an install names a platform other
+	// than the running one, and when there is no executable image check
+	// for the platform.
 	ErrUnsupportedPlatform = errors.New("selfupdate: unsupported platform")
 	// ErrIntegrity is returned when size, digest, or checksum verification
 	// fails.

@@ -21,9 +21,7 @@ var getConsoleProcessList = windows.NewLazySystemDLL("kernel32.dll").NewProc("Ge
 // hasConsole reports whether this process is attached to a console:
 // GetConsoleProcessList returns how many processes share it, and 0 when
 // there is none. GetConsoleWindow is not used, because it returns 0 under
-// ConPTY for a process that has a console (0021-MADR D7, from
-// magic-cli-remote's
-// docs/decisions/0159-MADR-the-windows-service-path-is-half-wired.md D17).
+// ConPTY for a process that has a console (0021-MADR D7).
 // The answer is read once.
 var hasConsole = sync.OnceValue(func() bool {
 	var pids [1]uint32

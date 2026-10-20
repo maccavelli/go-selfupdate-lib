@@ -34,8 +34,8 @@
 // failure fails the update, and the updater joins the error with
 // selfupdate.ErrIntegrity.
 //
-// The build workflow's publish step signs when it is called with sign: true;
-// docs/guides/building-releases.md, "Sign a release", says how. Keys are
-// embedded in the program as Go constants, never set with -ldflags -X: a
-// build without the flag would trust no key.
+// The publish workflow, publish-selfupdate-release.yml, signs when it is
+// called with sign: true; docs/guides/building-releases.md, "Sign a
+// release", says how. Keys are embedded in the program as Go constants,
+// never set with -ldflags -X: a build without the flag would trust no key.
 package signednote

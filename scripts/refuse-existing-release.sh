@@ -10,7 +10,8 @@
 #
 # Usage: refuse-existing-release.sh <tag>
 # Exit:  0 the tag has no release and publication may proceed
-#        1 the release exists, or its existence could not be determined
+#        1 the release exists, or its existence could not be determined;
+#          also a usage error
 set -euo pipefail
 
 # GH is the tool this guard queries with. It is an explicit seam rather than a

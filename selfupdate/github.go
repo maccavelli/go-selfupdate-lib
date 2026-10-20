@@ -231,9 +231,7 @@ func (s *GitHubSource) checkRedirect(req *http.Request, via []*http.Request) err
 	if len(via) >= maxRedirects {
 		return fmt.Errorf("selfupdate: too many redirects")
 	}
-	// Any non-loopback hop must stay on HTTPS (mcplib's
-	// docs/0005-PLAN-canonicalize-cli-self-update-in-mcplib.md §4.2;
-	// 0003-MADR A3), and a plain-http loopback hop is allowed only from an
+	// Any non-loopback hop must stay on HTTPS (0003-MADR A3), and a plain-http loopback hop is allowed only from an
 	// API that is itself on loopback (0010-MADR A10). The URL is not
 	// echoed: a redirect target can carry signed query parameters.
 	if !strings.EqualFold(req.URL.Scheme, "https") &&

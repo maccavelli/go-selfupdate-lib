@@ -3,7 +3,7 @@
 // selfupdate.Lifecycle, selfupdate.EnabledLifecycle, selfupdate.Reconciler
 // and service.Detacher for one LaunchDaemon or LaunchAgent.
 //
-// It runs launchctl and plutil at absolute paths, and relies on launchctl's
+// It runs launchctl, plutil and ps at absolute paths, and relies on launchctl's
 // exit codes and its documented-stable `list` output. `print` output, which
 // launchctl(1) says is not an interface, is read only for a domain `list`
 // cannot see, and only its "pid =" and "state =" lines. It compiles on every

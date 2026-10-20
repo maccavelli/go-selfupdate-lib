@@ -43,12 +43,14 @@ type CommandError struct {
 	Backend string
 	// Step is what was run, such as "stop" or "bootout".
 	Step string
-	// Name is the unit, the job, or the product.
+	// Name is what was acted on: the unit; the job's label, plist or
+	// domain; or the product.
 	Name string
 	// ExitCode is the command's exit status.
 	ExitCode int
 	// Message is the command's standard error, or its standard output when
-	// that is empty, trimmed, and bounded as the backend quotes it.
+	// that is empty, trimmed. The Runner keeps at most 1 MiB of each
+	// stream, and the exec reconciler quotes at most 4 KiB.
 	Message string
 }
 

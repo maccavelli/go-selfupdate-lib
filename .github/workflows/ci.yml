@@ -29,7 +29,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       # The Linux leg fetches every commit and tag: the API gate compares
-      # with the newest v1.* tag (0004-PLAN-v1-1-0-core-api.md Step 12).
+      # with the nearest v1.* tag reachable from HEAD
+      # (0004-PLAN-v1-1-0-core-api.md Step 12).
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: ${{ runner.os == 'Linux' && '0' || '1' }}
@@ -120,8 +121,9 @@ jobs:
         run: go test -count=1 -v -run '^TestLiveTask' -skip '^TestLiveTaskUpdate$' ./selfupdate/service/taskscheduler
       # The race detector needs cgo, which the Linux and macOS runners have
       # (0003-MADR D9; 0002-PLAN V3; 0004-MADR H7).
-      # The manifest differential must run, not skip, where python3 is on
-      # PATH; the Windows runner names it python
+      # The manifest differential, and releasespec's parity test, which also
+      # needs sh, must run, not skip, where python3 is on PATH; the Windows
+      # runner names it python
       # (0004-PLAN-h2-fuzzing-and-manifest-differential.md Step 3).
       - name: go test -race
         if: runner.os != 'Windows'

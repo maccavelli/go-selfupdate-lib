@@ -125,7 +125,8 @@ func switches(r registered) (bool, []trigger, error) {
 // (0015-MADR B3). A task that is not running is still disabled.
 //
 // Errors, matched with errors.Is: service.ErrInsideService when this
-// process would stop with the task; service.ErrPermission and
+// process would stop with the task; ErrTaskDisabled when the task is
+// disabled but its program runs; service.ErrPermission and
 // service.ErrNotInstalled; service.ErrTimeout when the task outlives
 // the stop's bound; and service.ErrUnsupported where the backend cannot
 // run. When ctx ends, its error is returned.

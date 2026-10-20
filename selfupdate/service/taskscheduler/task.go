@@ -86,6 +86,10 @@ type instance struct {
 // Task manages one registered task. It is safe for concurrent use; the
 // Updater drives one product's Stop, Start and WaitHealthy in order, and a
 // program that calls them itself must do the same (0025-MADR D4).
+//
+// Installed, Running, Enabled, Start, Reconcile and Restore ignore their
+// context: each makes a few Task Scheduler calls that take none, and
+// Start runs the task without waiting for it.
 type Task struct {
 	o     Options
 	s     scheduler

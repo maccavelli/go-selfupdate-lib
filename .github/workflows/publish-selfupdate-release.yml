@@ -1,5 +1,12 @@
 name: Publish self-update release
 
+# Publishes a staged self-update release, such as the one
+# build-selfupdate-release.yml uploads, as the GitHub release of the pushed
+# tag, and runs only on a tag. The publish job checks the staged set,
+# refuses a tag that already has a release, creates a draft, uploads and
+# attests every asset, then publishes it. With sign: true, the sign job
+# first signs SHA256SUMS in its own job and hands publish the note
+# (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D10).
 on:
   workflow_call:
     inputs:

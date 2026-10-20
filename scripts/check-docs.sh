@@ -33,7 +33,7 @@
 #                    (docs/decisions/0022-MADR-documentation-pass-after-v1-14-0.md
 #                    D2). A row that differs prints the file, the line and
 #                    both counts. A missing table or a directory with no
-#                    tracked .go file exits 2. Run it from inside the
+#                    .go file exits 2. Run it from inside the
 #                    repository.
 #
 # Exit 0 when clean, 1 on a finding, 2 on a usage, deny-list or table error.

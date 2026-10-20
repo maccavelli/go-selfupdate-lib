@@ -57,7 +57,8 @@ type Spec struct {
 	// descending ASCII order.
 	PrereleaseChannels []string `json:"prerelease_channels,omitempty"`
 	// Installer, when present, asks the build workflow to generate
-	// install.sh and install.ps1 (docs/decisions/0014-MADR-shared-installer-templates.md).
+	// install.sh, install.ps1 or both, as InstallerScripts decides
+	// (docs/decisions/0014-MADR-shared-installer-templates.md).
 	Installer *Installer `json:"installer,omitempty"`
 }
 
@@ -74,7 +75,9 @@ type Product struct {
 	// IdentityArgs, when present, are the arguments that make the program
 	// print buildinfo.Identity().String() as the first line of its
 	// stdout. The workflow then runs it on each platform that has a
-	// runner. At most 16, and never an empty list.
+	// runner. At most 16, and never an empty list. Each is non-empty and
+	// holds no NUL; with Installer set, each also matches Hook.Args's
+	// characters, as the installers embed it.
 	IdentityArgs []string `json:"identity_args,omitempty"`
 }
 
@@ -332,7 +335,8 @@ func (s Spec) Unpacker() (selfupdate.Unpacker, error) {
 // ExtraNames returns the extras' asset names for the release tag, in spec
 // order, with TagPlaceholder replaced, then the generated installers
 // (InstallerScripts). Each extra must still be a valid, unique asset name
-// that is not SHA256SUMS, a canonical asset's name or an installer's.
+// that is not SHA256SUMS, SHA256SUMS-*, SHA256SUMS.note, a canonical
+// asset's name or an installer's.
 func (s Spec) ExtraNames(tag string) ([]string, error) {
 	canonical, err := s.assetNames()
 	if err != nil {

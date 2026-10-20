@@ -37,7 +37,7 @@ type registered interface {
 	// Amendment A1, probe 2).
 	stop() error
 	// instances are the running instances' engine process IDs, which are
-	// the Exec action's own processes (Amendment A1, probe 1).
+	// the Exec action's own processes (0021-MADR Amendment A1, probe 1).
 	instances() ([]uint32, error)
 	// triggers are the task's triggers.
 	triggers() ([]trigger, error)
@@ -77,7 +77,7 @@ type action struct {
 // lastRun describes the task's last run.
 type lastRun struct {
 	// Result is the run's result: the program's exit code for an Exec
-	// action (Amendment A1, probe 3).
+	// action (0021-MADR Amendment A1, probe 3).
 	Result int32
 	// Time is when the run began.
 	Time time.Time

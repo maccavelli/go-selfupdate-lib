@@ -3,8 +3,8 @@
 // (docs/decisions/0004-MADR-evolve-selfupdate-api-and-tui-support.md §5,
 // amendments F1 and F2).
 //
-// A release build is linked with exactly one -ldflags string, which LDFlags
-// returns:
+// A release build carries two -X stamps, which LDFlags returns as one
+// -ldflags fragment; the build workflow adds -s -w to them:
 //
 //	-X github.com/maccavelli/go-selfupdate-lib/buildinfo.version=v1.2.3
 //	-X github.com/maccavelli/go-selfupdate-lib/buildinfo.kind=release

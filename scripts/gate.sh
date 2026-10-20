@@ -23,7 +23,7 @@
 # ~/.config/git/disclosure-deny).
 #
 # The arch step runs scripts/check-docs.sh --arch on docs/architecture.md:
-# its package table's file counts against the tracked files
+# its package table's file counts against the tree's files
 # (docs/decisions/0022-MADR-documentation-pass-after-v1-14-0.md D2).
 # shellcheck disable=SC2329 # the step functions run through step's "$@"
 set -uo pipefail

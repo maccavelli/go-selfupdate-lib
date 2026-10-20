@@ -63,8 +63,9 @@ func (t *Task) insideTask(name, path string) (bool, error) {
 // does not descend from this process or the task. Stop ends only the
 // task's own process, so the run survives it, even inside the task's job,
 // which refuses breakaway (0021-MADR D6; Amendment A1, probe 2). The
-// program must call service.ReportFunc or service.LoadHandOffEnv at
-// start-up, as a detached run does anyway.
+// program must call service.ReportFunc, service.LoadHandOffEnv or
+// service.LoadHandOffEnvContext at start-up, as a detached run does
+// anyway.
 func (t *Task) Detach(ctx context.Context, spec service.HandOff) (service.Detached, error) {
 	spec.Env = append(append([]string(nil), spec.Env...), service.EnvHandOffHop+"=1")
 	det, err := service.DetachProcess(ctx, spec)
