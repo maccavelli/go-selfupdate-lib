@@ -5,7 +5,12 @@ on:
     # (docs/decisions/0018-MADR-move-toolchain-to-go-1-27-2.md).
     branches: [main, 'release/**']
     tags: ['v*']
+    # A change to Markdown alone runs docs.yml instead. GitHub does not
+    # evaluate path filters for a tag push, so every tag runs this in full
+    # (docs/decisions/0028-MADR-skip-full-ci-for-docs-only-pushes.md).
+    paths-ignore: ['**.md']
   pull_request:
+    paths-ignore: ['**.md']
 
 # The token is read-only: CI fetches and runs tools (markdownlint, actionlint),
 # and needs no write access
@@ -291,6 +296,9 @@ jobs:
           ./scripts/check-workflows.sh --rule expressions .github/workflows/ci.yml
           ./scripts/check-workflows.sh --rule permissions .github/workflows/ci.yml
           ./scripts/check-workflows.sh --rule pins .github/workflows/ci.yml
+          ./scripts/check-workflows.sh --rule expressions .github/workflows/docs.yml
+          ./scripts/check-workflows.sh --rule permissions .github/workflows/docs.yml
+          ./scripts/check-workflows.sh --rule pins .github/workflows/docs.yml
           ./scripts/check-workflows_test.sh
           ./scripts/workflow-shape_test.sh
 

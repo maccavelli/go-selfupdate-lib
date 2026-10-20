@@ -138,3 +138,51 @@ MADR became `accepted`, and this plan `in-progress`.
 
 This pair, and `docs/README.md`'s rows for it: the MADR `accepted`, this
 plan `in-progress`. Links, ids and markdownlint clean.
+
+### Y1 (2026-10-20)
+
+1. **`ci.yml`:**
+   * `on.push` gains `paths-ignore: ['**.md']` beside `branches` and
+     `tags`, and `on.pull_request` the same. A comment cites this pair and
+     says a tag push is never filtered.
+   * The "Verify the workflow contract" step runs the expression,
+     permission and pin rules on `docs.yml` too.
+2. **`.github/workflows/docs.yml`,** new:
+   * `push` to `main` and `release/**`, and `pull_request`, each with
+     `paths: ['**.md', '.markdownlint-cli2.jsonc',
+     '.github/workflows/docs.yml']`;
+   * top-level `permissions: contents: read`, and the concurrency group
+     `docs-${{ github.ref }}` with `cancel-in-progress`;
+   * one `ubuntu-24.04` job, `timeout-minutes: 10`. Its checkout is
+     pinned to `ci.yml`'s SHA with `persist-credentials: false`, and it
+     runs `ci.yml`'s three commands unchanged: markdownlint, the link check
+     over `git ls-files -z '*.md'`, and the arch check;
+   * a header comment.
+
+   Like `ci.yml`, it uses the runner image's Node and Python, with no
+   setup action.
+3. **Seen failing.** The three commands ran verbatim on the tree and on
+   `scripts/plant-copy.sh` copies. Each copy was given a throwaway git
+   index, since a copy has no `.git` and both checks list files with
+   git. All output went to the scratch directory.
+
+   | Run | markdownlint | links | arch |
+   | :--- | :--- | :--- | :--- |
+   | the tree | 0 | 0, "682 links in 79 files, 0 broken" | 0, "18 rows …, 0 differ" |
+   | a broken anchor in `building-releases.md` | 0 | **1**, `docs/guides/building-releases.md:387: missing anchor: ../../README.md#no-such-heading` | 0 |
+   | `##Status` in README | **1**, `README.md:24:1 error MD018/no-missing-space-atx` | 0 | 0 |
+   | `buildinfo`'s count 1 → 2 | 0 | 0 | **1**, `docs/architecture.md:136: buildinfo: table 2/3, tree 1/3` |
+
+   Each plant fails only its own check. `check-workflows.sh --rule pins`
+   on a copy of `docs.yml` with `actions/checkout@v7.0.1` exits 1:
+   `jobs.docs.steps[0]: action not pinned to a commit SHA`.
+4. **Checks:**
+   * `actionlint` on both workflows;
+   * `check-workflows.sh`: the expression, permission and pin rules on
+     `docs.yml`; pins on `ci.yml`; and all rules on the two release
+     workflows;
+   * `check-workflows_test.sh` and `workflow-shape_test.sh`;
+   * `make gate` with `SELFUPDATE_REQUIRE_PYTHON=1`: `overall=0`, links 682
+     in 79 files, 0 broken.
+
+   All pass. The filters themselves are proven only on GitHub, at Y3.
