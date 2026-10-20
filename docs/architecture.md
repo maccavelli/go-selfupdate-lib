@@ -760,7 +760,11 @@ D9; the threat analysis is
 - **CI** (`.github/workflows/ci.yml`) runs on pushes to `main` and to
   `release/**` branches, on `v*` tags and on pull requests, on Linux,
   macOS and Windows, with the Go version read from `go.mod`, except in the
-  `go126` job.
+  `go126` job. A push or pull request that changes only Markdown skips
+  it, and `.github/workflows/docs.yml` runs instead: markdownlint, the
+  link check over every tracked Markdown file and the architecture table
+  check, on one Linux runner. A tag push is never filtered, so every tag
+  runs CI in full ([0028-MADR](decisions/0028-MADR-skip-full-ci-for-docs-only-pushes.md)).
   - **Every OS:** `go test`, plus, under bash, the refuse-existing-release
     test. The installer tests must reach the runner's shells
     (`SELFUPDATE_INSTALL_REQUIRE_SHELLS`): dash and bash on Linux, `sh`
@@ -847,7 +851,11 @@ U5 ran it:
    [migration guide](guides/migrating-from-mcplib-selfupdate.md) gains
    its "From vX to vY" section;
 2. `make gate` ends `overall=0`;
-3. the push, on the owner's word, and CI green on `main`;
+3. the push, on the owner's word, and CI green on `main`. A docs-only
+   pre-tag commit runs only the docs workflow there, since CI skips
+   Markdown alone, and the tag's full run in step 5 is then the proof of
+   the code, which no docs-only commit changes
+   ([0028-MADR](decisions/0028-MADR-skip-full-ci-for-docs-only-pushes.md));
 4. `scripts/check-release-tag.sh` and the disclosure guard over the
    outgoing tag, then the annotated tag, pushed on the owner's word;
 5. the tag's CI run, every job, with its identity legs printing

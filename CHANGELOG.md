@@ -8,6 +8,18 @@ listed in the
 [migration guide](docs/guides/migrating-from-mcplib-selfupdate.md), one
 section per release, and each entry links its section and its records.
 
+## Unreleased
+
+See [0028-MADR](docs/decisions/0028-MADR-skip-full-ci-for-docs-only-pushes.md) and
+[0028-PLAN](docs/decisions/0028-PLAN-skip-full-ci-for-docs-only-pushes.md).
+
+### Changed
+
+- CI skips a push or pull request that changes only Markdown;
+  `.github/workflows/docs.yml` checks it instead, with markdownlint, the
+  link check and the architecture table check. Every tag still runs CI
+  in full.
+
 ## v1.17.1 - 2026-10-20
 
 See [the guide](docs/guides/migrating-from-mcplib-selfupdate.md#from-v1170-to-v1171),

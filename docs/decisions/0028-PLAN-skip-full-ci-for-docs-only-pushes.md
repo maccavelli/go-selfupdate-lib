@@ -186,3 +186,25 @@ plan `in-progress`. Links, ids and markdownlint clean.
      in 79 files, 0 broken.
 
    All pass. The filters themselves are proven only on GitHub, at Y3.
+
+### Y2 (2026-10-20)
+
+1. **The push of Y1:** the owner committed Y1 as `d16b58a` and pushed
+   `efee0cb`, `286d32e` and `d16b58a` together ("committed and pushed").
+   The guard over `33aa6f5..d16b58a` exits 0. The push changed workflow
+   files and Markdown, so both workflows started: "CI" `39479631637` and
+   "Docs" `39479631571`, the first Docs run. Their results go in Y3.
+2. **`docs/architecture.md`:**
+   * the CI bullet: a Markdown-only push or pull request skips CI, and
+     `docs.yml` runs its three checks on one Linux runner instead; a tag
+     push is never filtered;
+   * "Releasing this module", step 3: a docs-only pre-tag commit runs only
+     the docs workflow on `main`, and the tag's full run in step 5 is the
+     code proof.
+3. **AGENTS.md:** one sentence after the gate's by-hand list, citing the
+   MADR in backticks, as AGENTS.md cites records.
+4. **`CHANGELOG.md`:** `## Unreleased`, Changed: the split, with the pair
+   linked.
+5. **Checks:** links 102 in 3 files, 0 broken; markdownlint 0 issues;
+   ids 0 findings; arch 0 differ. This commit changes Markdown only, so
+   its push is Y3's docs-only test.

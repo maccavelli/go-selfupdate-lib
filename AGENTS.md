@@ -205,7 +205,11 @@ script tests, shellcheck, cross-target vet, the link check, the
 architecture table check and the identifier check. It ends `overall=0` when every step passed.
 It does not run markdownlint (`npx --yes markdownlint-cli2@0.23.2` on the
 changed Markdown files), `actionlint` on a changed workflow, or the
-stray-`.git` run below, which CI runs; run those by hand when they apply. Each step's
+stray-`.git` run below, which CI runs; run those by hand when they apply. A
+change to Markdown alone does not run CI: `.github/workflows/docs.yml` runs
+markdownlint, the link check and the architecture table check for it, and
+every tag runs CI in full
+(`docs/decisions/0028-MADR-skip-full-ci-for-docs-only-pushes.md`). Each step's
 output is kept in `GATE_OUT` (a new temporary directory by default);
 `GATE_SKIP=fuzz,vuln` skips named steps, and a record must say so. The
 identifier step runs `scripts/check-docs.sh --ids` on the changed and
