@@ -18,7 +18,8 @@
 # environment error, or a failed before_install or before_uninstall hook,
 # with nothing changed; 2 a verification failure, with nothing changed or
 # the previous binary restored; 3 installed, but an after_install hook
-# failed, or removed with -Force, but a before_uninstall hook failed. Under
+# failed, or removed with -Force, but a before_uninstall hook failed, or
+# removed only in part: a program could not be removed. Under
 # iex or [scriptblock]::Create it never exits the caller's session: a
 # failure is an error instead.
 
@@ -497,13 +498,22 @@ namespace SelfupdateInstall {
 
             if ($Uninstall) {
                 # A failed hook removes nothing; with -Force everything is
-                # removed, and the exit code is 3.
+                # removed, and the exit code is 3. Windows does not delete a
+                # running program's image, so a program still there is
+                # reported, the others are still removed, and the exit code
+                # is 3 too.
                 $hooksOk = Invoke-InstallHook 'before_uninstall' $dir $selected $skipHooks $DryRun $Force
                 if (-not $hooksOk -and -not $Force) { Invoke-Fail 1 'a before_uninstall hook failed; nothing was removed' }
+                $notRemoved = $false
                 foreach ($name in $selected) {
                     $exe = Join-Path $dir "$name.exe"
                     if ($DryRun) { Write-Line "would remove $exe"; continue }
                     Remove-Item -LiteralPath $exe, "$exe.prev" -Force -ErrorAction SilentlyContinue
+                    if (Test-Path -LiteralPath $exe) {
+                        [Console]::Error.WriteLine("install: could not remove $exe; stop the program and run the uninstall again")
+                        $notRemoved = $true
+                        continue
+                    }
                     Write-Line "removed $exe"
                 }
                 # The folder leaves PATH only with the last of the programs.
@@ -512,8 +522,8 @@ namespace SelfupdateInstall {
                 Write-Line 'configuration, if any, is left in place'
                 if (-not $hooksOk) {
                     [Console]::Error.WriteLine('install: removed, but a before_uninstall hook failed')
-                    return 3
                 }
+                if (-not $hooksOk -or $notRemoved) { return 3 }
                 return 0
             }
 

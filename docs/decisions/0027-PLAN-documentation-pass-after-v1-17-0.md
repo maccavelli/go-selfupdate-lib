@@ -340,3 +340,71 @@ to start with X0. The MADR became `accepted`, and this plan
    the settings stay deferred.
 3. Links, ids and arch clean; markdownlint skips the records by its
    configuration.
+
+### X1 (2026-10-20)
+
+1. **The probe (step 1),** on the Windows test host, under Windows
+   PowerShell 5.1.26100 and PowerShell 7.6.6. A copy of `PING.EXE` named
+   `relay.exe`, with a `.prev`, was started, and the installer's own line
+   run on both:
+   * `Remove-Item -LiteralPath $exe, "$exe.prev" -Force -ErrorAction
+     SilentlyContinue` left `relay.exe` (`exe=True`) and removed the
+     `.prev` (`prev=False`);
+   * with `-ErrorAction Stop`: `System.UnauthorizedAccessException: Access
+     to the path '…\relay.exe' is denied.`;
+   * a rename of the running file succeeded. The plan reports instead, so
+     the rename is noted and not used.
+
+   C1 is a defect as stated, so the phase went on.
+2. **`install.ps1`:** after `Remove-Item`, a program still there is
+   reported, `install: could not remove <exe>; stop the program and run
+   the uninstall again`, and the loop goes on. The uninstall returns 3 when
+   a hook failed or a program was not removed. The header's exit 3 gains
+   "or removed only in part: a program could not be removed".
+   * **Caught before any run:** the first draft named its flag `$left`,
+     which the PATH rule below already uses for the programs still
+     installed (`$left = @($Products | …)`). The reassignment would have
+     made a `-Product` uninstall that leaves another program installed
+     exit 3. The flag is `$notRemoved`, and `install.sh`'s is
+     `not_removed`.
+3. **`install.sh`:** `rm -f … || :`, then a program still there (`-e` or
+   `-L`) is reported, `install: could not remove <path>`, and the exit is
+   3 the same way. Without `|| :`, `set -eu` would have ended the
+   uninstall at a failing `rm`. The message leaves out "stop the program",
+   since Unix unlinks a running program's file. The header changes as
+   `install.ps1`'s does.
+4. **Tests:**
+   * `installer_ps_test.go`: "-Uninstall reports a running program it
+     cannot remove". The stand-in `relay.exe` (with a `.prev`) and
+     `relayctl.exe` are placed, PATH is set to the folder, and `relay.exe
+     hold` is started. `-Uninstall` exits 3 with the message and `removed
+     …relayctl.exe`, does not claim `relay.exe` was removed, leaves only
+     `relay.exe`, and keeps the folder on PATH. With the program stopped, a
+     second `-Uninstall` exits 0, removes it, and clears PATH.
+   * `installer_sh_test.go`: "--uninstall reports a program it cannot
+     remove". A non-empty directory stands where `relay` goes, which no
+     `rm -f` removes, even as root; `relayctl` is a stand-in.
+     `--uninstall --no-hooks` exits 3 with the message and `removed
+     …relayctl`, and leaves only `relay/`.
+5. **Seen failing,** each on a `scripts/plant-copy.sh` copy:
+
+   | Plant | Where | Failure |
+   | :--- | :--- | :--- |
+   | the `-e`/`-L` check → `if false; then` | `install.sh`, dash, sh, bash | 3 of 3: `installer_sh_test.go:405: exit 0, want 3` |
+   | exit 3 only for a hook → `if [ "$uninstall_failed" = 1 ]; then` | `install.sh`, dash, sh, bash | 3 of 3: `installer_sh_test.go:405: exit 0, want 3` |
+   | `if (Test-Path -LiteralPath $exe) {` → `if ($false) {` | `install.ps1`, both PowerShells, both forms | 4 of 4: `installer_ps_test.go:879: exit 0, want 3` |
+   | `-or $notRemoved` dropped from the return | `install.ps1`, both PowerShells, both forms | 4 of 4: `installer_ps_test.go:879: exit 0, want 3` |
+
+   The first `install.ps1` bundle failed to build: `if (Test-Path
+   -LiteralPath $exe) {` occurs more than once in the template, so
+   `plant-copy.sh` refused it. The plant takes the next line too, and each
+   copy was checked to hold its plant before it was sent.
+6. **Checks:**
+   * here: `go test -run 'TestInstallSh'` `ok`; `go vet` for darwin and
+     windows; `scripts/check-installers.sh` on `install.sh` clean;
+     `make pre-add-check` on the two test files clean;
+   * on the Windows test host, with
+     `SELFUPDATE_INSTALL_REQUIRE_SHELLS=powershell,pwsh`: `go test -run
+     '^TestInstallPs1'` `ok`, 238 subtests passing, the new case in each
+     PowerShell and form; `check-installers.sh` on `install.ps1` clean.
+   * The building guide's exit table (A4-12) changes in X6.

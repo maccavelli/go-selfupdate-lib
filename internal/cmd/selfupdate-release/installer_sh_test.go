@@ -392,6 +392,22 @@ var shCases = []struct {
 		c.expect(c.run("--uninstall"), 0, "removed "+filepath.Join(c.dir, "relay"), "configuration, if any, is left in place")
 		expectFiles(c.t, c.dir, nil)
 	}},
+	// A program that cannot be removed, here a directory in its place, is
+	// reported, the others are removed, and the exit is 3
+	// (docs/decisions/0027-MADR-documentation-pass-after-v1-17-0.md C1).
+	{"--uninstall reports a program it cannot remove", func(c *shCase) {
+		if err := os.MkdirAll(filepath.Join(c.dir, "relay"), 0o755); err != nil {
+			c.t.Fatal(err)
+		}
+		c.place("relay/keep", []byte("x"))
+		c.place("relayctl", standIn("ctl", fixtureTag))
+		r := c.run("--uninstall", "--no-hooks")
+		c.expect(r, 3, "install: could not remove "+filepath.Join(c.dir, "relay"), "removed "+filepath.Join(c.dir, "relayctl"))
+		if strings.Contains(r.out, "removed "+filepath.Join(c.dir, "relay")+"\n") {
+			c.t.Fatalf("reported a removal that failed:\n%s", r.out)
+		}
+		expectFiles(c.t, c.dir, map[string][]byte{"relay/": nil})
+	}},
 	// docs/decisions/0026-MADR-before-uninstall-installer-hook.md D2-D4.
 	{"before_uninstall runs the installed copy before removal", func(c *shCase) {
 		// The stand-in logs what it finds of itself, so the log shows the

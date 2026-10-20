@@ -856,6 +856,38 @@ var psCases = []struct {
 		expectFiles(c.t, c.dir, nil)
 		c.expectPath("REG_EXPAND_SZ", "")
 	}},
+	// A running program cannot be removed: it is reported, the others are
+	// removed, the folder stays on PATH, and the exit is 3
+	// (docs/decisions/0027-MADR-documentation-pass-after-v1-17-0.md C1).
+	{"-Uninstall reports a running program it cannot remove", argModes, func(c *psCase) {
+		old := standInExe(c.t, "old", fixtureTag)
+		c.place("relay.exe", old)
+		c.place("relay.exe.prev", old)
+		c.place("relayctl.exe", standInExe(c.t, "new", fixtureTag))
+		c.setPath("REG_EXPAND_SZ", c.dir)
+		hold := exec.Command(filepath.Join(c.dir, "relay.exe"), "hold")
+		if err := hold.Start(); err != nil {
+			c.t.Fatal(err)
+		}
+		stop := func() {
+			_ = hold.Process.Kill()
+			_ = hold.Wait()
+		}
+		c.t.Cleanup(stop)
+		exe := filepath.Join(c.dir, "relay.exe")
+		r := c.run("-Uninstall")
+		c.expect(r, 3, "install: could not remove "+exe+"; stop the program and run the uninstall again",
+			"removed "+filepath.Join(c.dir, "relayctl.exe"))
+		if strings.Contains(r.out, "removed "+exe+"\n") || strings.Contains(r.out, "removed "+exe+"\r\n") {
+			c.t.Fatalf("reported a removal that failed:\n%s", r.out)
+		}
+		expectFiles(c.t, c.dir, map[string][]byte{"relay.exe": old})
+		c.expectPath("REG_EXPAND_SZ", c.dir)
+		stop()
+		c.expect(c.run("-Uninstall"), 0, "removed "+exe)
+		expectFiles(c.t, c.dir, nil)
+		c.expectPath("REG_EXPAND_SZ", "")
+	}},
 	// docs/decisions/0026-MADR-before-uninstall-installer-hook.md D2-D4.
 	{"before_uninstall runs the installed copy before removal", argModes, func(c *psCase) {
 		c.place("relay.exe", standInExe(c.t, "old", fixtureTag))

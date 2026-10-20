@@ -15,7 +15,8 @@
 # failed before_install or before_uninstall hook, with nothing changed; 2
 # a verification failure, with nothing changed or the previous binary
 # restored; 3 installed, but an after_install hook failed, or removed with
-# --force, but a before_uninstall hook failed.
+# --force, but a before_uninstall hook failed, or removed only in part: a
+# program could not be removed.
 
 # >>> selfupdate-release values
 # The build workflow replaces this block with the release's values; the
@@ -301,10 +302,13 @@ cleanup() {
 
 # uninstall: run the before_uninstall hooks, then remove the programs. A
 # failed hook removes nothing; with --force everything is removed, and the
-# exit code is 3. The hook list goes in a work directory of its own: the
-# install directory may be about to lose its programs.
+# exit code is 3. A program that could not be removed is reported, the
+# others are still removed, and the exit code is 3 too. The hook list goes
+# in a work directory of its own: the install directory may be about to
+# lose its programs.
 uninstall() {
 	uninstall_failed=0
+	not_removed=0
 	if [ "$NO_HOOKS" != 1 ] && [ -n "$HOOKS" ]; then
 		trap cleanup EXIT
 		trap 'cleanup; exit 130' INT
@@ -320,12 +324,19 @@ uninstall() {
 			say "would remove $DIR/$prod"
 			continue
 		fi
-		rm -f "$DIR/$prod" "$DIR/$prod.prev"
+		rm -f "$DIR/$prod" "$DIR/$prod.prev" || :
+		if [ -e "$DIR/$prod" ] || [ -L "$DIR/$prod" ]; then
+			err "could not remove $DIR/$prod"
+			not_removed=1
+			continue
+		fi
 		say "removed $DIR/$prod"
 	done
 	say "configuration, if any, is left in place"
 	if [ "$uninstall_failed" = 1 ]; then
 		err "removed, but a before_uninstall hook failed"
+	fi
+	if [ "$uninstall_failed" = 1 ] || [ "$not_removed" = 1 ]; then
 		exit 3
 	fi
 }
