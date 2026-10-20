@@ -752,3 +752,80 @@ had finished. Below, a row is "as its fix" unless what was found differs.
    * The disclosure guard exits 0 over the seven unpushed commits,
      `df67aa1` to `9fe4eeb`, against `origin/main` at `c491312`. It is
      run again over the pre-tag commit before the push.
+
+### X7 (2026-10-20), `v1.17.1`
+
+1. **The push and CI on `main`:** on the owner's word ("Commit and push
+   to main"), the pre-tag change was committed as `e8d4904`. The guard
+   ran over the eight outgoing commits, `df67aa1` to `e8d4904`, exit 0,
+   and they were pushed (`c491312..e8d4904`).
+   * Run `39457464203`: `success`, 18 of 18 jobs. It was the first CI run
+     of C1–C3, G1, G2 and the new Examples.
+   * The `go126` job's "govulncheck, the floor toolchain" installed
+     v1.8.0 under `GOTOOLCHAIN: local` and printed `No vulnerabilities
+     found.` (V3).
+2. **The tag:** the owner pushed it ("i pushed the tag").
+   `scripts/check-release-tag.sh v1.17.1` exits 0. `v1.17.1` is an
+   annotated tag object, `2288228`, with the message `v1.17.1`, on
+   `e8d4904a09194d99761042a8996983e8d5b957eb`, and `git ls-remote origin
+   'refs/tags/v1.17.1^{}'` gives that commit.
+3. **The tag's CI:** run `39461928223`, `success`, 18 of 18 jobs. Its ten
+   identity legs each print `v1.17.1 (release) e8d4904a0919`: five bare
+   binaries and five archives.
+4. **The pin commit** (uncommitted, for the owner). The session's script
+   asserts every count before it writes anything.
+   * **Changed** to `v1.17.1` and `e8d4904…`:
+     * README: the current release, `go get` and the publish pin;
+     * `docs/architecture.md`: the current release and its commit;
+     * `building-releases.md`: "pin `v1.17.1`'s", three workflow pins and
+       the peeled ref;
+     * the migration guide: 13 `go get` lines (§2, and §6 to §17), 11 `go
+       list` checks (§7 to §17), §2's current release, §3's publish pin
+       and peeled ref, and §5's `go.mod` step.
+   * **§3's sentence** gains "and `v1.17.1` only its comments". `git diff
+     v1.17.0 v1.17.1` changes no non-comment line of the publish workflow,
+     and no line of the build workflow.
+   * **The script's first run stopped before writing:** it counted 14 `go
+     get` lines, not 13. The 14th is §17's floor message,
+     `go get …@v1.17.0`, which names the floor and must stay. The pattern
+     now matches only a line that starts with `go get`.
+   * **Kept,** because each says what `v1.17.0` itself changed, or is its
+     floor:
+     * `CHANGELOG.md:44`, `:63`;
+     * `docs/architecture.md:490`;
+     * `building-releases.md:215`, `:376`, `:428`, `:543`;
+     * the migration guide's `:59`, `:61`, `:136`, `:1255`, `:1279`,
+       `:1280`, `:1292`, `:1293`, `:1303`, `:1306`.
+   * Links 154 in 4 files, 0 broken; markdownlint 0 issues; ids 0
+     findings; arch 0 differ.
+5. **The proxy,** from a new module cache under the scratchpad:
+   * `go list -m -json …@v1.17.1` gives `v1.17.1`, `GoVersion 1.26.9`,
+     origin hash `e8d4904a09194d99761042a8996983e8d5b957eb`, ref
+     `refs/tags/v1.17.1`;
+   * `@latest` resolves to `v1.17.1`;
+   * `go mod download` against `sum.golang.org` exits 0, `Sum`
+     `h1:2SFtFnuxrQXs3A9/nMyAOS3IH6uk8pAQ8J7fgFQFKTw=`;
+   * `go list -m -versions` lists `v1.5.0 … v1.17.1`, nothing below
+     `v1.5.0`.
+
+### Release notes for v1.17.1 (2026-10-20)
+
+`v1.17.1` changes no exported API: `make apicheck` reports it compatible
+with `v1.17.0`. Everything below is in `CHANGELOG.md` and the migration
+guide's "From v1.17.0 to v1.17.1".
+
+* **Uninstall reports what it could not remove:** on Windows a running
+  program cannot be deleted, and `install.ps1` used to say it was removed
+  and exit 0. Both installers now report it, remove the others and exit
+  3. Callers take it by pinning the workflows to `v1.17.1`.
+* **No panic on a nil `*Updater`'s `Checker`:** it returns
+  `ErrNotConstructed`, as documented.
+* **Managed sessions serialize their methods,** as `InstallSession`'s doc
+  says.
+* **CI:** govulncheck on the Go 1.26.9 floor, and signednote's fuzz
+  corpus kept on a failure.
+* **Tests:** the leak check compares goroutine IDs (0025-MADR Amendment
+  A6).
+* **Documentation:** 123 findings fixed across the guides, the
+  architecture page, `go doc` and the script and workflow headers. Two
+  Examples fixed, and four added.
