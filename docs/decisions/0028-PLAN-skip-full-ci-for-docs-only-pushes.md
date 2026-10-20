@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 date: 2026-10-20
 associated-madr: "0028-MADR-skip-full-ci-for-docs-only-pushes.md"
 ---
@@ -208,3 +208,44 @@ plan `in-progress`. Links, ids and markdownlint clean.
 5. **Checks:** links 102 in 3 files, 0 broken; markdownlint 0 issues;
    ids 0 findings; arch 0 differ. This commit changes Markdown only, so
    its push is Y3's docs-only test.
+
+### Y3 (2026-10-20)
+
+1. **A push with a non-Markdown change:** `d16b58a`, Y1's workflows with
+   two records, started both workflows:
+   * "CI" `39479631637`: `success`, 18 of 18 jobs;
+   * "Docs" `39479631571`: `success`, 1 of 1, in 12 s.
+2. **A docs-only push:** the owner committed Y2 as `6042182`, four
+   Markdown files, and pushed it ("committed and pushed"). The guard over
+   `d16b58a..6042182` exits 0.
+   * GitHub's run list for that commit,
+     `actions/runs?head_sha=…`, holds one run: "Docs" `39482188668`,
+     `success`, in 12 s.
+   * No "CI" run started.
+3. **Tags:** not exercised here. GitHub does not evaluate path filters
+   for a tag push, so the next release's tag runs the full CI; that
+   release's PLAN records it (V4).
+4. The plan's `status` becomes `complete`, and `docs/README.md`'s row
+   for it reads `complete`. The MADR stays `accepted`.
+
+### Verification, at closing (2026-10-20)
+
+* **V1 (filters):**
+  * `ci.yml` has `paths-ignore: ['**.md']` on push and pull request;
+  * `docs.yml` runs the three checks;
+  * actionlint and the expression, permission and pin rules pass on both
+    workflows (Y1).
+* **V2 (seen failing):** a broken anchor, an MD018 error and a table
+  count each failed only their own check, and a tag-pinned checkout
+  failed the pin rule (Y1).
+* **V3 (live):** a docs-only push ran only "Docs", `39482188668`. A push
+  with workflow files ran "CI", `39479631637`, 18 of 18 (Y3).
+* **V4 (tags):** left to the next release, as step 2 of Y3's phase says.
+* **V5 (docs):** architecture's CI bullet and release step 3, AGENTS.md
+  and the changelog's Unreleased entry say so. Links, ids and
+  markdownlint are clean, and `make gate` ended `overall=0` at Y1 (Y2).
+
+Nothing deviated from the plan. Y1's seen-failing runs gave each copy a
+throwaway git index, which the plan did not name; the record says why.
+
+The plan is `complete`. The MADR stays `accepted`.

@@ -74,7 +74,7 @@ name, and the files they cite moved with the rename
 | 0027 | MADR | [Correct the documentation against v1.17.0, fill the gaps v1.16.0 and v1.17.0 left, fix the three defects and two CI gaps the audit found, and release v1.17.1](decisions/0027-MADR-documentation-pass-after-v1-17-0.md) | accepted |
 | 0027 | PLAN | [Implement the documentation pass after v1.17.0, the Examples, the three defect fixes and the two CI gaps, as v1.17.1](decisions/0027-PLAN-documentation-pass-after-v1-17-0.md) | complete |
 | 0028 | MADR | [Skip the full CI for a push or pull request that changes only Markdown, and check it with a one-job docs workflow instead](decisions/0028-MADR-skip-full-ci-for-docs-only-pushes.md) | accepted |
-| 0028 | PLAN | [Implement skipping the full CI for docs-only pushes, with a docs workflow](decisions/0028-PLAN-skip-full-ci-for-docs-only-pushes.md) | in-progress |
+| 0028 | PLAN | [Implement skipping the full CI for docs-only pushes, with a docs workflow](decisions/0028-PLAN-skip-full-ci-for-docs-only-pushes.md) | complete |
 
 ## I want to…
 
