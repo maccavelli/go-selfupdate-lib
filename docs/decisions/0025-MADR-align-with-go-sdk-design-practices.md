@@ -801,7 +801,10 @@ D9-A's claim, that the tag ruleset closes the repository-compromise
 threat, therefore does not hold until the owner applies it; the trust
 model's advice to restrict `v*` tags stands.
 
-### Amendment A6 (2026-10-19, proposed): the leak check compares goroutines, not a count
+### Amendment A6 (2026-10-19): the leak check compares goroutines, not a count
+
+Accepted by the owner ("approved, proceed"), and built in the PLAN's
+S16 (deviation D7).
 
 D4-A's leak check, `internal/testproc.CheckNoLeak`, notes
 `runtime.NumGoroutine()` when a test calls it. It fails the test only
@@ -832,7 +835,7 @@ check's doc already says that "a goroutine that is ending is still
 counted for a moment" (0004-MADR H6). That is the same effect, read only
 in the direction that delays a report.
 
-Proposed: `CheckNoLeak` records the IDs of the goroutines that run when
+Decided: `CheckNoLeak` records the IDs of the goroutines that run when
 it is called, from `runtime.Stack(buf, true)`. It reports any goroutine
 that started after that and still runs, with the first line of its
 stack. It keeps the 2 s poll, since a new goroutine that is ending is

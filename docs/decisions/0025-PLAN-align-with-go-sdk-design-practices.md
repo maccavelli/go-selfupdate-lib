@@ -1,6 +1,6 @@
 ---
-status: in-progress
-date: 2026-10-19
+status: complete
+date: 2026-10-20
 associated-madr: "0025-MADR-align-with-go-sdk-design-practices.md"
 ---
 # Implement the Go SDK practices alignment as `v1.16.0`: redaction, typed errors, contexts, contracts, a quickstart, seams, a source conformance check, opt-in release signing, the Go 1.26.9 floor, `retract`, a changelog and a trust model
@@ -2436,3 +2436,21 @@ This plan is `in-progress` again until S16 closes.
    * `make gate` with `SELFUPDATE_REQUIRE_PYTHON=1` ends `overall=0`, all
      15 steps passing. `apicheck` reports it compatible with `v1.17.0`,
      and the links are 634 in 75 files, 0 broken.
+
+### S16, as closed (2026-10-20)
+
+1. **The commits:** the owner committed the records as `97ce806`. On the
+   owner's word ("commit to main", then "Push to main"), S16 was committed
+   as `c4af46a` and pushed with it. The disclosure guard over both exits
+   0.
+2. **CI on `main`:** run `39428305200` on `c4af46a`: `success`, 18 of 18
+   jobs. `validate (ubuntu-24.04)`'s `go test -race`, which failed on
+   `b6e325d`, passes.
+3. **No release:** `internal/testproc` is imported only by `_test.go`
+   files, and no exported API changed (`apicheck` compatible with
+   `v1.17.0`). `CHANGELOG.md` is unchanged.
+4. **Verification:** V2 and V7 hold for S16 too: both plants are quoted
+   above, and the checks were clean. The MADR's A6 is accepted, and D1–D7
+   are recorded.
+
+The plan is `complete` again. The MADR stays `accepted`.
