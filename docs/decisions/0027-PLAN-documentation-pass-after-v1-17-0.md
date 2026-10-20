@@ -458,3 +458,33 @@ to start with X0. The MADR became `accepted`, and this plan
    * `go doc ./selfupdate Updater.Checker` shows the new sentence.
    * A5-02's and A5-03's doc comments stand as written; both are now
      true.
+
+### X3 (2026-10-20)
+
+1. **G1:** the `go126` job gains "govulncheck, the floor toolchain",
+   after its `go test`. It installs `golang.org/x/vuln/cmd/govulncheck@v1.8.0`
+   as the `validate` job does, and runs it under that job's
+   `GOTOOLCHAIN: local` and Go 1.26.9. A comment cites G1.
+   * Could the floor build it? `govulncheck` v1.8.0's `go.mod` says `go
+     1.26.0`, read from the module proxy.
+2. **G2:** the `fuzz corpus` step's paths gain
+   `selfupdate/verify/signednote/testdata/fuzz/`, four directories in all,
+   one per fuzzed package (`Makefile:77-80`).
+3. **Seen failing (G1),** as the job runs it, with toolchains and modules
+   in a scratch module cache:
+   * **Control,** the tree under `GOTOOLCHAIN=go1.26.9`: `No
+     vulnerabilities found.`, exit 0.
+   * **Plant,** a `scripts/plant-copy.sh` copy whose `go.mod` says `go
+     1.26.0`, under `GOTOOLCHAIN=go1.26.0`: exit 3, `Your code is affected
+     by 30 vulnerabilities from the Go standard library`. The first is
+     `GO-2026-6617`, "HTTP/2 server crash due to HPACK encoder race in
+     net/http". The copy's `go` line was lowered because Go refuses a
+     module that requires a newer toolchain than the one running.
+
+   G2 adds no check, so nothing is planted for it. The step's path list
+   and `actionlint` confirm it, as the MADR's Confirmation says.
+4. **Checks:** `actionlint .github/workflows/ci.yml`;
+   `scripts/check-workflows.sh` (all rules, 2 workflows) and `--rule pins
+   .github/workflows/ci.yml`; `scripts/check-workflows_test.sh`; and
+   `scripts/workflow-shape_test.sh`. All pass. The step itself runs on CI
+   after the push, and its log is recorded then (V3).

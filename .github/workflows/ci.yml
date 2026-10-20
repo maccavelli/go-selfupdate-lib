@@ -159,6 +159,7 @@ jobs:
             selfupdate/testdata/fuzz/
             selfupdate/archive/testdata/fuzz/
             selfupdate/releasespec/testdata/fuzz/
+            selfupdate/verify/signednote/testdata/fuzz/
           if-no-files-found: ignore
           retention-days: 14
       # Targets the matrix does not run: a build-tag gap fails here
@@ -315,6 +316,13 @@ jobs:
           CGO_ENABLED=0 GOOS=windows go vet ./...
           CGO_ENABLED=0 GOOS=darwin go vet ./...
       - run: go test -count=1 ./...
+      # A program built with the floor links its standard library, so
+      # govulncheck runs here too, as SECURITY.md says
+      # (docs/decisions/0027-MADR-documentation-pass-after-v1-17-0.md G1).
+      - name: govulncheck, the floor toolchain
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+          "$(go env GOPATH)/bin/govulncheck" ./...
 
   # install.sh under shells the runners lack: BusyBox ash, with BusyBox
   # wget, in Alpine (musl), and dash with curl in Debian. The releases are
