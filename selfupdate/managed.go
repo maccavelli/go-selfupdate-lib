@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -105,25 +106,46 @@ func (m *ManagedInstaller) Begin(ctx context.Context, target Target) (InstallSes
 	return &managedSession{inner: sess, life: m.life, rec: m.rec, opts: m.opts}, nil
 }
 
+// managedSession serializes its methods with mu, as InstallSession's doc
+// promises: the inner session locks each of its own calls, but Install
+// makes several, with the service's Stop and Start between them
+// (docs/decisions/0027-MADR-documentation-pass-after-v1-17-0.md C3).
 type managedSession struct {
+	mu    sync.Mutex
 	inner TwoPhaseSession
 	life  Lifecycle
 	rec   Reconciler
 	opts  ManagedOptions
 }
 
-func (s *managedSession) Target() Target { return s.inner.Target() }
+func (s *managedSession) Target() Target {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.inner.Target()
+}
 
 func (s *managedSession) CreateStaging(ctx context.Context) (*os.File, string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.inner.CreateStaging(ctx)
 }
 
-func (s *managedSession) Close() error { return s.inner.Close() }
+func (s *managedSession) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.inner.Close()
+}
 
 // Owns implements StagingOwner.
-func (s *managedSession) Owns(path string) bool { return s.inner.Owns(path) }
+func (s *managedSession) Owns(path string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.inner.Owns(path)
+}
 
 func (s *managedSession) Install(ctx context.Context, req InstallRequest) (InstallResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	product := req.Product
 	installed, err := s.life.Installed(ctx, product)
 	if err != nil {

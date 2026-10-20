@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"testing"
+	"time"
 )
 
 type fakeLife struct {
@@ -283,6 +284,73 @@ func TestManagedStopFailsStillRunning(t *testing.T) {
 		t.Fatalf("stops=%d starts=%d; a running service is not started again", life.stops, life.starts)
 	}
 	if got := readString(t, exe); got != "old-bytes" {
+		t.Fatalf("target holds %q", got)
+	}
+}
+
+// blockingStop is a fakeLife whose Stop waits for release, so a test can
+// call another session method while Install is inside it.
+type blockingStop struct {
+	*fakeLife
+	entered, release chan struct{}
+}
+
+func (b *blockingStop) Stop(ctx context.Context, product string) error {
+	close(b.entered)
+	<-b.release
+	return b.fakeLife.Stop(ctx, product)
+}
+
+// TestManagedSessionSerializes: Close, called while Install is inside the
+// service's Stop, waits for Install to return, as InstallSession's doc
+// says; Install then completes
+// (docs/decisions/0027-MADR-documentation-pass-after-v1-17-0.md C3). The
+// 200 ms wait only bounds how long the test looks for a Close that
+// returned early; it orders nothing.
+func TestManagedSessionSerializes(t *testing.T) {
+	ctx := context.Background()
+	_, exe := withTempHome(t)
+	inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	life := &blockingStop{fakeLife: &fakeLife{installed: true, running: true}, entered: make(chan struct{}), release: make(chan struct{})}
+	m, err := NewManagedInstaller(inner, life, &fakeRec{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := m.ResolveTarget(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := m.Begin(ctx, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := stageNew(t, sess)
+	installed := make(chan error, 1)
+	go func() {
+		_, err := sess.Install(ctx, InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: path}})
+		installed <- err
+	}()
+	<-life.entered
+	closed := make(chan error, 1)
+	go func() { closed <- sess.Close() }()
+	select {
+	case err := <-closed:
+		close(life.release)
+		<-installed
+		t.Fatalf("Close returned (%v) while Install was inside Stop", err)
+	case <-time.After(200 * time.Millisecond):
+	}
+	close(life.release)
+	if err := <-installed; err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	if err := <-closed; err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if got, _ := os.ReadFile(exe); string(got) != "new-bytes" {
 		t.Fatalf("target holds %q", got)
 	}
 }

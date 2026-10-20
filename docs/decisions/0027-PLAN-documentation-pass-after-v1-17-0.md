@@ -408,3 +408,53 @@ to start with X0. The MADR became `accepted`, and this plan
      '^TestInstallPs1'` `ok`, 238 subtests passing, the new case in each
      PowerShell and form; `check-installers.sh` on `install.ps1` clean.
    * The building guide's exit table (A4-12) changes in X6.
+
+### X2 (2026-10-20)
+
+1. **C2:** `(*Updater).Checker` returns `&Checker{}` for a nil receiver,
+   and its doc says so. A zero `Checker` already fails `constructed()`, so
+   `Check` and `CheckCached` return `ErrNotConstructed`.
+   `TestZeroValues` adds `(*Updater)(nil).Checker()` to its list of
+   unconstructed Checkers.
+2. **C3:** `managedSession` gains `mu sync.Mutex`. `Target`,
+   `CreateStaging`, `Close`, `Owns` and `Install` each hold it, and the
+   type's comment says why. Two things were checked first:
+   * nothing in `managed.go` calls the session's own methods while
+     holding it, so there is no re-entry;
+   * the Updater closes its session only in its own goroutine, from a
+     `defer` (`updater.go:244-252`), so no library path waits on the new
+     lock.
+3. **A correction to step 2's test:** the step named a `-race` test of
+   `Install` and `Close` at once. `managedSession` has no mutable field,
+   so the race detector has nothing to report. The defect is one of
+   order: `Close` ran while `Install` was between its calls.
+   `TestManagedSessionSerializes` tests that instead:
+   * `Install` runs over a `blockingStop` lifecycle, whose `Stop` waits;
+   * `Close` is called once `Install` is inside it, and must not return
+     within 200 ms;
+   * after the release, `Install` must succeed, then `Close`, and the
+     target holds the new bytes.
+
+   The 200 ms bounds the look for an early return and orders nothing, as
+   the test's comment says. With the lock, `Close` cannot return early, so
+   the test cannot fail spuriously. It passed 20 times in a row under
+   `-race`. No decision changes.
+4. **Seen failing,** each on a `scripts/plant-copy.sh` copy, under `-race`:
+
+   | Plant | Failure |
+   | :--- | :--- |
+   | the nil guard removed | `TestZeroValues`: `panic: runtime error: invalid memory address or nil pointer dereference`, today's behaviour |
+   | `Install` without the lock | `managed_test.go:343: Close returned (<nil>) while Install was inside Stop` |
+   | `Close` without the lock | the same |
+
+   The plant script's check that each plant landed failed on the first
+   one: it read the first line of the empty replacement. The panic shows
+   that plant landed.
+5. **Checks:**
+   * `go test -race -run 'TestZeroValues|TestManaged' ./selfupdate/` is
+     `ok`;
+   * `make pre-add-check` on the four files is clean;
+   * `apicheck` is compatible with `v1.17.0`, and ids and arch are clean;
+   * `go doc ./selfupdate Updater.Checker` shows the new sentence.
+   * A5-02's and A5-03's doc comments stand as written; both are now
+     true.

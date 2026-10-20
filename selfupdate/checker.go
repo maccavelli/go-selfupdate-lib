@@ -120,8 +120,12 @@ func NewChecker(cfg CheckerConfig) (*Checker, error) {
 
 // Checker returns a Checker that shares the Updater's source, version
 // policy, asset selector, unpacker, limits and clock: it fails a selection
-// the Updater's Unpacker cannot handle, as Run does.
+// the Updater's Unpacker cannot handle, as Run does. On a nil Updater it
+// returns a Checker whose methods return ErrNotConstructed.
 func (u *Updater) Checker() *Checker {
+	if u == nil {
+		return &Checker{}
+	}
 	return &Checker{source: u.source, versions: u.versions, assets: u.assets, limits: u.limits,
 		unpacker: u.unpacker, fromUpdater: true, clock: u.clock}
 }

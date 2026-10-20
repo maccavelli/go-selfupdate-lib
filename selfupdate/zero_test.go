@@ -11,6 +11,8 @@ import (
 // TestZeroValues: an Updater, Checker or Stream not made by its
 // constructor fails with ErrNotConstructed, or does nothing, instead of
 // panicking (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md C8).
+// That includes the Checker of a nil Updater
+// (docs/decisions/0027-MADR-documentation-pass-after-v1-17-0.md C2).
 func TestZeroValues(t *testing.T) {
 	ctx := context.Background()
 	req := Request{Product: "demo", CurrentVersion: "v1.0.0", CurrentBuild: ReleaseBuild, CheckOnly: true}
@@ -27,7 +29,7 @@ func TestZeroValues(t *testing.T) {
 			t.Errorf("RunWith on %#v: %v", u, err)
 		}
 	}
-	for _, c := range []*Checker{nil, {}, (&Updater{}).Checker()} {
+	for _, c := range []*Checker{nil, {}, (&Updater{}).Checker(), (*Updater)(nil).Checker()} {
 		if _, err := c.Check(ctx, cr); !errors.Is(err, ErrNotConstructed) {
 			t.Errorf("Check on %#v: %v", c, err)
 		}
