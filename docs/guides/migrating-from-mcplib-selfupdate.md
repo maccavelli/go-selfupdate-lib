@@ -28,8 +28,10 @@ to this one too: the module was renamed, and the README says how.
 go get github.com/maccavelli/go-selfupdate-lib@v1.17.0
 ```
 
-`v1.17.0` is the current release. `v1.6.0` changed a few behaviours that
-`v1.5.x` had; they are listed in [6. From v1.5 to v1.6](#6-from-v15-to-v16).
+`v1.17.0` is the current release. `v1.5.1` changes no API; its fixes are
+in [From v1.5.0 to v1.5.1](#from-v150-to-v151). `v1.6.0` changed a few
+behaviours that `v1.5.x` had; they are listed in
+[6. From v1.5 to v1.6](#6-from-v15-to-v16).
 `v1.7.0`, `v1.8.0`, `v1.9.0` and `v1.10.0` only add to the API: see
 [7. From v1.6 to v1.7](#7-from-v16-to-v17),
 [8. From v1.7 to v1.8](#8-from-v17-to-v18),
@@ -409,7 +411,7 @@ go get github.com/maccavelli/go-selfupdate-lib@v1.17.0
 ```
 
 This takes the current release; what each later release adds is in §7
-to §15, from [7. From v1.6 to v1.7](#7-from-v16-to-v17) on. Every
+to §17, from [7. From v1.6 to v1.7](#7-from-v16-to-v17) on. Every
 exported change is an addition, so a program that built on `v1.5.x` builds unchanged. These are
 the behaviours that change, and what to do about each. Why, and how, is in
 [0010-MADR](../decisions/0010-MADR-remediate-second-debugging-pass-findings.md)

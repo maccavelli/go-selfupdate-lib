@@ -68,8 +68,9 @@ linters:
             - "!$test"
           allow:
             - $gostd
-        # The process builder every package that starts a process uses: the
-        # standard library and x/sys/windows only, and nothing in this module
+        # The process builder every package under selfupdate/ that starts a
+        # process uses: the standard library and x/sys/windows only, and
+        # nothing in this module
         # (docs/decisions/0021-MADR-task-scheduler-lifecycle-and-windowless-children.md D7).
         internal-winproc:
           list-mode: strict

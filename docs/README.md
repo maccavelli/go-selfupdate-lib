@@ -85,6 +85,7 @@ name, and the files they cite moved with the rename
 | know what an update proves, and what it does not | [architecture.md, Trust model](architecture.md#trust-model) |
 | know how the API may change within `v1` | [architecture.md, API evolution](architecture.md#api-evolution) |
 | move to the current release from an earlier one of this module | [guides/migrating-from-mcplib-selfupdate.md, §6 to §17](guides/migrating-from-mcplib-selfupdate.md#6-from-v15-to-v16) |
+| update a standalone program in one call | [README.md, Quickstart](../README.md#quickstart) |
 | add the update command to my program | [guides/migrating-from-mcplib-selfupdate.md, §5](guides/migrating-from-mcplib-selfupdate.md#5-adopt-the-canonical-update-command) |
 | stamp a release build so `update` knows it is one | `buildinfo.LDFlags`; [0004-PLAN-v1-4-0, Step 2](decisions/0004-PLAN-v1-4-0-command-surface.md#step-2-buildinfo-buildinfobuildinfogo-new) |
 | show an update banner | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#show-an-update-banner) |
@@ -96,15 +97,18 @@ name, and the files they cite moved with the rename
 | check that a release was built by my workflow | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#check-build-provenance) |
 | probe the new binary | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#probe-the-new-binary) |
 | drive an update from a TUI or event loop | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#drive-an-update-from-a-tui-or-event-loop) |
+| log update events with `log/slog` | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#log-with-slog) |
 | see the update path proven end to end on each OS | `selfupdate/e2e_running_test.go`; [0004-PLAN, H4](decisions/0004-PLAN-h4-running-copy-end-to-end.md) |
-| run every check before a commit | `make gate`, one line per step, and markdownlint and actionlint by hand where they apply; see [AGENTS.md, Pre-add checks](../AGENTS.md#pre-add-checks) and [architecture.md, Tooling](architecture.md#tooling) |
+| run every check before a commit | `make gate`, one line per step, and markdownlint, actionlint and the stray-`.git` test run by hand where they apply; see [AGENTS.md, Pre-add checks](../AGENTS.md#pre-add-checks) and [architecture.md, Tooling](architecture.md#tooling) |
 | fuzz locally | `make fuzz` (each target for 20 s), or `make fuzz FUZZTIME=5m`; see [architecture.md, Tooling](architecture.md#tooling) |
-| know what to do when CI finds a crasher | download the `fuzz-corpus` artifact, copy its file into `<package>/testdata/fuzz/<Name>/` of the package that owns the target (`selfupdate`, `selfupdate/archive` or `selfupdate/releasespec`), fix the defect, and commit the file as a regression seed ([0004-PLAN, H2](decisions/0004-PLAN-h2-fuzzing-and-manifest-differential.md)) |
+| know what to do when CI finds a crasher | download the `fuzz-corpus` artifact, copy its file into `<package>/testdata/fuzz/<Name>/` of the package that owns the target (`selfupdate`, `selfupdate/archive`, `selfupdate/releasespec` or `selfupdate/verify/signednote`), fix the defect, and commit the file as a regression seed ([0004-PLAN, H2](decisions/0004-PLAN-h2-fuzzing-and-manifest-differential.md)) |
 | update from releases shipped as tar.gz, zip or gz archives, such as GoReleaser's | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#ship-an-archive) |
+| check my own release source for another host | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#use-another-release-host) |
 | describe my program's release once (products, platforms, packaging, extras) and read it in Go | [guides/building-releases.md](guides/building-releases.md#1-write-the-spec) |
 | build, check and publish my release in CI, with rehearsals on every pull request | [guides/building-releases.md](guides/building-releases.md#4-call-the-workflows) |
 | know why a release build failed a check | [guides/building-releases.md, §9](guides/building-releases.md#9-when-a-check-fails) |
 | give my users `curl … \| sh` and `irm … \| iex` installers without writing them | [guides/building-releases.md, §12](guides/building-releases.md#12-installers) |
+| run a command at install or before uninstall | [guides/building-releases.md, Hooks](guides/building-releases.md#hooks) |
 | re-sign my macOS binary on update, or require its signature | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#sign-on-macos) |
 | run my program as a systemd, launchd or Windows service, or a per-user Task Scheduler task, and update it from inside | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#run-as-a-service) |
 | write my own installer | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#write-your-own-installer) |

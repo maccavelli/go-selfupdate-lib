@@ -38,7 +38,7 @@ go get github.com/maccavelli/go-selfupdate-lib@v1.17.0
 | [`selfupdate`](selfupdate/) | GitHub Releases discovery, exact assets, SHA-256 integrity, locked replacement of the running binary |
 | [`selfupdate/cli`](selfupdate/cli/) | the canonical `update` command: flags, stdout for protocol output only, exit codes 0, 10 and 1 |
 | [`buildinfo`](buildinfo/) | the build stamps that say whether a binary is a release |
-| [`selfupdate/selfupdatetest`](selfupdate/selfupdatetest/) | test doubles: release fixtures, a fake source, a fake GitHub API |
+| [`selfupdate/selfupdatetest`](selfupdate/selfupdatetest/) | test doubles: release fixtures, a fake source, a fake GitHub API; and `VerifyReleaseSource`, the conformance check for a release source of another host |
 | [`selfupdate/archive`](selfupdate/archive/) | updating from a release asset that is a tar.gz, zip or gz holding the program |
 | [`selfupdate/codesign`](selfupdate/codesign/) | opt-in macOS re-signing of the staged binary, and signature checks, with `/usr/bin/codesign` |
 | [`selfupdate/verify/ghattest`](selfupdate/verify/ghattest/) | opt-in check that a release was built by its workflow, with `gh attestation verify` |
@@ -66,7 +66,10 @@ It proves release-asset integrity, not publisher signature authenticity,
 unless the program opts in to `selfupdate/verify/signednote`, which checks
 a signed release statement over `SHA256SUMS`.
 
-`selfupdate` never reads flags or calls `os.Exit`; only `service.HandOffHop`, in a hand-off hop, exits. The program binds:
+`selfupdate` never reads flags or calls `os.Exit`. Only
+`service.HandOffHop` and `service.HandOffHopContext` exit, and only in a
+hand-off hop; `LoadHandOffEnv`, `LoadHandOffEnvContext` and `ReportFunc`
+call one of them first, so they exit in a hop too. The program binds:
 
 - a **source** (`NewGitHubSource`, with a required product/version
   `User-Agent`; `GH_TOKEN` or `GITHUB_TOKEN` is used when set),
@@ -156,6 +159,14 @@ client's own unpacker before publishing. The optional
 default `[]` publishes stable tags only. A stable tag lower than the
 current latest, such as a backport, is published without becoming the
 latest release either, so clients keep seeing the newest one.
+
+With `sign: true`, `note-verifier-key` and the `SELFUPDATE_NOTE_KEY`
+secret, the publish workflow also signs `SHA256SUMS` with a release
+statement, `SHA256SUMS.note`, which `selfupdate/verify/signednote`
+checks; signing is opt-in
+([the building guide, §13](docs/guides/building-releases.md#13-sign-a-release-opt-in)).
+`SHA256SUMS`, `SHA256SUMS-*` and `SHA256SUMS.note` are reserved, and no
+extra may take one of those names.
 
 A program that stages its own release calls the publish workflow alone:
 

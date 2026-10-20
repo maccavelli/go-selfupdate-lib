@@ -22,7 +22,11 @@ library ([0018-MADR](decisions/0018-MADR-move-toolchain-to-go-1-27-2.md)).
 The `go` line is 1.26.9, the advisory-free patch of the older supported
 line, because the library needs nothing from 1.27; CI's `go126` job builds,
 vets and tests with it
-([0025-MADR](decisions/0025-MADR-align-with-go-sdk-design-practices.md) D8).
+([0025-MADR](decisions/0025-MADR-align-with-go-sdk-design-practices.md) D8,
+Amendment A1). `go.mod` also retracts `[v1.0.0, v1.4.1]`, the tags that
+declared `github.com/maccavelli/go-core-lib`, so the module's version
+list starts at `v1.5.0`
+([0025-MADR](decisions/0025-MADR-align-with-go-sdk-design-practices.md) D7).
 Its current
 release is `v1.17.0`, an annotated tag on commit
 `adc2c757d7e2fa9ed7e5eb5ff33a076eba34f4bd`. `v1.5.0`, the first under this
@@ -35,6 +39,9 @@ path, is the annotated tag on commit
 README.md                   repository entry; links here
 LICENSE                     Apache License 2.0
 AGENTS.md                   rules for agents: dependencies, records, checks, commits
+CHANGELOG.md                every release from v1.5.0, newest first
+SECURITY.md                 how to report a vulnerability, the supported
+                            versions, and what an update proves
 go.mod, go.sum              the module and its three requirements
 Makefile                    development targets (below)
 .golangci.yml               golangci-lint configuration
@@ -101,15 +108,19 @@ internal/winproc/           the library's process starts: no console
                             window, no batch file; the ancestor walk and
                             the liveness check
 internal/testproc/          test support: fixture builds that ignore the
-                            git state around them, helper-process waits
+                            git state around them, helper-process waits,
+                            and the goroutine leak check
 internal/cmd/selfupdate-note/  the release signer: keygen, and sign for the
                             publish workflow; never released
 internal/cmd/selfupdate-release/  the workflows' logic: plan, build, stage,
                             check, identity, installer; never released
   installer/                the install.sh and install.ps1 templates, each a
                             working script with a values block to fill
-  testdata/fixture/         a module of its own: the relay program the
-                            tests and CI's rehearsal build
+                            (Installers, below)
+  testdata/fixture/         a module of its own: cmd/relay, which the
+                            tests and CI's rehearsal build, and
+                            cmd/nostamp, with no buildinfo, which the
+                            tests check the build step refuses
 docs/
   README.md                 record index and the "I want to…" table
   architecture.md           this file
@@ -123,14 +134,14 @@ docs/
 | Directory | Package | Non-test files | Test files | Non-standard imports |
 | :--- | :--- | :--- | :--- | :--- |
 | `buildinfo/` | `buildinfo` | 1 | 3 | none |
-| `selfupdate/` | `selfupdate` | 47 | 88, including five fuzz targets, plus `testdata/SHA256SUMS.{valid,invalid}`, 23 `testdata/manifest-parity/` cases and 14 `testdata/golden/` files | `x/mod/semver`, `x/sys/unix`, `x/sys/windows`, `x/term` (and `internal/winproc`) |
+| `selfupdate/` | `selfupdate` | 47 | 88, including five fuzz targets, plus `testdata/SHA256SUMS.{valid,invalid}`, 23 `testdata/manifest-parity/` cases, 14 `testdata/golden/` files and 1 `testdata/fuzz/` seed | `x/mod/semver`, `x/sys/unix`, `x/sys/windows`, `x/term` (and `internal/winproc`) |
 | `selfupdate/cli/` | `cli` | 4 | 9, plus 53 `testdata/golden/` and 9 `testdata/migration/` files | `x/term` (and `selfupdate`, `buildinfo`) |
 | `selfupdate/selfupdatetest/` | `selfupdatetest` | 3 | 3 | none (`selfupdate` itself) |
-| `selfupdate/archive/` | `archive` | 3 | 8, including three fuzz targets, plus a real GoReleaser `testdata/` checksum file | none (`selfupdate`) |
+| `selfupdate/archive/` | `archive` | 3 | 8, including three fuzz targets, plus a real GoReleaser `testdata/` checksum file and 9 `testdata/fuzz/` seeds | none (`selfupdate`) |
 | `selfupdate/codesign/` | `codesign` | 2 | 4 | none (`selfupdate`, `service`) |
 | `selfupdate/verify/ghattest/` | `ghattest` | 2 | 3, plus a `testdata/` capture of `gh attestation verify --format json` | none (`selfupdate`, `service`) |
 | `selfupdate/verify/signednote/` | `signednote` | 3 | 4, including a fuzz target | `x/mod/semver`, `x/mod/sumdb/note` (and `selfupdate`) |
-| `selfupdate/releasespec/` | `releasespec` | 4 | 5, including a fuzz target, plus 4 `testdata/` specs | none (`selfupdate`, `archive`) |
+| `selfupdate/releasespec/` | `releasespec` | 4 | 5, including a fuzz target, plus 4 `testdata/` specs and 3 `testdata/fuzz/` seeds | none (`selfupdate`, `archive`) |
 | `selfupdate/service/` | `service` | 16 | 16 | `x/sys/windows` (and `selfupdate`, `internal/winproc`) |
 | `selfupdate/service/systemd/` | `systemd` | 9 | 18, plus 3 `testdata/` captures of `systemctl show` | none (`selfupdate`, `service`) |
 | `selfupdate/service/launchd/` | `launchd` | 7 | 14, plus 7 `testdata/` captures of `launchctl print` and `list` | none (`selfupdate`, `service`) |
@@ -183,6 +194,16 @@ docs/
   - **the source contract:** host-neutral `Release` and `Asset` docs
     (`types.go`), and `selfupdatetest`'s `conformance.go`
     (`VerifyReleaseSource`, `SourceCase`);
+  - **typed errors:** `HTTPError`, a non-2xx response that no sentinel
+    describes (`errors.go`), and `service.CommandError`, a service
+    manager command that exited non-zero (`service/errors.go`);
+  - **contexts:** `service.HandOffHopContext` (`handoffhop.go`) and
+    `service.LoadHandOffEnvContext` (`handoffenv.go`), whose context
+    bounds the real run's wait for the hop;
+  - **redaction:** `String`, `GoString`, `Format` and `LogValue` on
+    `Credential` (`credentials.go`) and `GitHubOptions` (`github.go`),
+    and `String`, `Format` and `LogValue` on `*GitHubSource`
+    (`github.go`), none of which prints a token.
 - The Phase 2 core API:
   - **per-run options:** `runoptions.go` (`RunOption`, `RunWith`,
     `WithReporter`, `WithConfirmer`, `WithCredentials`,
@@ -218,13 +239,18 @@ docs/
     named by `VersionVar` and `KindVar`. `Identity` reports a release
     only for the stamped kind `release` with a `vX.Y.Z` or
     `vX.Y.Z-NAME.N` tag, and reads `debug.ReadBuildInfo` for display
-    only;
+    only. `LDFlags` returns the `-ldflags` fragment that stamps a tag
+    as a release, the two `-X` stamps;
   - **`selfupdate/cli`**: `Flags` (`Bind`, `Parse`, `Request`), `Run`,
     `Exit`, `Summary`, `StdioOptions`, and `Command`, which is all of
     them in order. `Run` wraps the context with the signals and the
     timeout, picks the text or JSON reporter, and writes the summary
     line or the one result object. Nothing in the package names
-    `os.Stdout` outside `StdioOptions`, which a test checks;
+    `os.Stdout` outside `StdioOptions`, which a test checks. `Help`
+    returns the usage line and `HelpText`, the flags' text;
+    `DefaultTimeout`, 15 minutes, bounds a run whose `Options.Timeout`
+    is zero; and `FlagSet` is the part of a flag set `Bind` needs,
+    which `*flag.FlagSet` and pflag's `*FlagSet` both satisfy;
   - **`selfupdate.UserAgent`** (`useragent.go`) builds
     `product/version (goos/goarch)` for `GitHubOptions.UserAgent`.
 - `selfupdatetest` provides `NewRelease`, `FakeSource`,
@@ -234,8 +260,8 @@ docs/
   records the credential headers' names on each request.
 - The reference service lifecycles
   ([0011-MADR](decisions/0011-MADR-reference-service-lifecycles.md)):
-  - **`service`:** the command runner (`runner.go`), the six typed errors
-    (`errors.go`), `PollHealthy` (`poll.go`), `ExecReconciler` and its
+  - **`service`:** the command runner (`runner.go`), the six sentinel
+    errors and `CommandError` (`errors.go`), `PollHealthy` (`poll.go`), `ExecReconciler` and its
     version 1 receipt (`execreconciler.go`), and the handoff: `Detacher`,
     `HandOffIfInside`, `HandOffFunc`, `ReportFunc` and the result file
     (`handoff.go`), `DetachProcess` (`detach*.go`), the private
@@ -296,9 +322,9 @@ docs/
   It holds the ancestor walk `scm` and `taskscheduler` share, `Descends`,
   and, on Windows, `Alive`, the one check of whether a process still runs:
   a process that has exited is gone, though another process holds a
-  handle to it (0022-MADR Amendment A2). `AliveAccess` is the access it
-  opens with, which an unelevated caller is granted (0022-MADR Amendment
-  A3). On Unix the
+  handle to it ([0022-MADR](decisions/0022-MADR-documentation-pass-after-v1-14-0.md) A2). `AliveAccess` is the access
+  it opens with, which an unelevated caller is granted
+  ([0022-MADR](decisions/0022-MADR-documentation-pass-after-v1-14-0.md) A3). On Unix the
   liveness checks use `kill(pid, 0)`. `TestNoDirectProcessStart` (`selfupdate/spawn_test.go`)
   refuses any other process start in a non-test file under `selfupdate/`.
 - `internal/testproc` is test support, which only `_test.go` files
@@ -309,8 +335,14 @@ docs/
   waits for its ready file until the test's deadline, less a grace
   period, failing at once if the helper exits first. `Build` is
   `GoBuild` for a caller with no `testing.TB`, and `Budget` is the wait's
-  bound. `TestNoDirectFixtureBuild` refuses a direct `go build` in any
-  test file.
+  bound. `Proc.Wait` waits for the helper to exit and returns the same
+  error on every call. `CheckNoLeak` fails a test when a goroutine that
+  started after the call still runs once the test has cleaned up. It
+  compares goroutine IDs read from `runtime.Stack`, not a count
+  ([0025-MADR](decisions/0025-MADR-align-with-go-sdk-design-practices.md) D4,
+  Amendment A6), and the tests of `selfupdate`, `cli`, `service` and its
+  backends call it. `TestNoDirectFixtureBuild` refuses a direct
+  `go build` in any test file.
 - `cli.Options.HandOff` (`run.go`) runs `Detach` before an apply and
   `Report` after an update that ran.
 - Archive assets and macOS signing
@@ -330,12 +362,25 @@ docs/
   `NewManifestVerifier` and `NewVerifier` run `gh attestation verify`
   through `service.Runner` and check the reported certificate against a
   `Policy` again (`ghattest.go`). It is opt-in, like `codesign`.
+- Release signing ([0025-MADR](decisions/0025-MADR-align-with-go-sdk-design-practices.md) D10):
+  - **`verify/signednote`:** `New` takes a `Config` (`Repository`,
+    `Keys`, `RequiredFrom`) and returns a `ManifestVerifier`. It reads
+    `SHA256SUMS.note`, at most `MaxNoteSize` bytes, opens it against the
+    keys, and requires the statement, `Header`'s line then the
+    repository, tag, products and manifest SHA-256, to match the
+    release. `Open` and `ParseStatement` read a note and a statement on
+    their own. It is opt-in, like `codesign`;
+  - **`internal/cmd/selfupdate-note`:** the unreleased signer. `keygen`
+    writes a signer key, mode 0600, and prints its verifier key. `sign`
+    reads the signer key only from `SELFUPDATE_NOTE_KEY`, never a flag,
+    and opens the note it made with the verifier key it is given.
+    Neither overwrites a file.
 - The release spec ([0013-MADR](decisions/0013-MADR-build-and-stage-release-workflow.md), [0014-MADR](decisions/0014-MADR-shared-installer-templates.md)):
   `releasespec`'s `Parse` reads the spec a program embeds, and
   `Spec.Validate` checks it; the program takes `Spec.AssetSelector` and
   `Spec.Unpacker` from it, and the build workflow `ProductsJSON`,
   `PlatformsJSON`, `ExtrasJSON` and `ChannelsJSON`, and the installer
-  settings the release tool renders.
+  settings the release tool renders ([Installers](#installers)).
 - The coordinator (`updater.go`) owns the order of every step. It validates
   the selected binary and manifest itself, and parses `SHA256SUMS` before any
   staging. It pins an exact `--version`, and closes the session before
@@ -393,9 +438,11 @@ docs/
 - Platform code is split by build tag: `*_unix.go` (`//go:build unix`),
   `*_windows.go`, and `*_other.go` (`!windows`): `cleanup_other.go` and
   `journal_other.go`.
-- The package's GitHub `User-Agent` is supplied by the program;
-  `UserAgent` builds one. It reads
-  `GH_TOKEN`, then `GITHUB_TOKEN`, when set.
+- The package's GitHub `User-Agent` is supplied by the program, in
+  `GitHubOptions.UserAgent`; `UserAgent` builds one, and
+  `NewGitHubUpdater` builds it from `Product` and `Version`. The API
+  credential is `GitHubOptions.Token`, then `Credentials`, asked on the
+  first API request, then `GH_TOKEN`, then `GITHUB_TOKEN`.
 
 ## API evolution
 
@@ -418,7 +465,9 @@ D6):
   strategy, such as a selector, policy or reporter.
 - **A struct stays comparable** if it was: a new field of a comparable
   struct is itself comparable, such as an interface rather than a func
-  (`Config.Clock`, 0025-MADR Amendment A4).
+  (`CheckerConfig.Clock`,
+  [0025-MADR](decisions/0025-MADR-align-with-go-sdk-design-practices.md) Amendment
+  A4).
 - **Retirement:** a field or function to be retired gets `// Deprecated:`
   naming its replacement, and is removed only in a `/v2` module.
 
@@ -435,9 +484,15 @@ job, on `ubuntu-24.04`:
 3. `plan`: reads the spec, picks a release (on a tag) or a rehearsal, and
    writes the publish inputs, the artifact name and the identity matrix;
    checks that the module at `module-dir` requires a release of this
-   library that reads every field the spec uses (`-module-dir`), skipping
-   a directory `replace` with a summary note; on a tag,
-   `check-release-tag.sh` with the spec's channels;
+   library that reads every field or value the spec uses
+   (`-module-dir`), from the floors table (`specFloors` in `floor.go`):
+   `installer` needs `v1.10.0`, and a `before_uninstall` hook time
+   `v1.17.0`. A module below a floor fails with a message naming the
+   highest floor it misses and the `go get` that reaches it; a module
+   that does not require the library fails too. The library's own
+   module is not checked, and a directory `replace` is skipped with a
+   summary note. On a tag, it runs `check-release-tag.sh` with the
+   spec's channels;
 4. `build`: per product and platform, requires `buildinfo` among the
    package's dependencies, then builds with the fixed recipe
    (`CGO_ENABLED=0`, `-trimpath`, `-buildvcs=true`, `-s -w` and the
@@ -451,7 +506,8 @@ job, on `ubuntu-24.04`:
    extras; when the spec has `installer`, renders `install.sh` (for a
    platform other than Windows) and `install.ps1` (for a Windows one) from
    the embedded templates, for the calling repository (`-repository`) and
-   the stamp, refusing any value outside `[A-Za-z0-9._:=/,+@%-]`;
+   the stamp, refusing any value outside `[A-Za-z0-9._:=/,+@%-]`
+   ([Installers](#installers));
 6. runs the publish workflow's verifier on the staged set, and uploads it,
    with the tool cross-compiled for the identity runners.
 
@@ -459,8 +515,11 @@ Its `identity` job runs each staged program with the product's
 `identity_args`, on its own platform's runner (`ubuntu-24.04`,
 `ubuntu-24.04-arm`, `macos-15`, `windows-2025`, `windows-11-arm`), and
 requires `<tag> (release)` (`rehearsal-<sha12> (local)` off a tag) as its
-first line. Its outputs are `artifact-name`, `tag`, `rehearsal` and the
-four publish inputs.
+first line, optionally followed by a space and the commit's first 12
+hex characters (`identity.go`). The plan runs no leg, and its summary
+says why, for a platform with no GitHub-hosted runner (`darwin/amd64`)
+or a product with no `identity_args` (`plan.go`). Its outputs are
+`artifact-name`, `tag`, `rehearsal` and the four publish inputs.
 
 ## Release workflow
 
@@ -506,10 +565,10 @@ On a tag ref, in order, `publish`:
    end with gzip (one member, its checksum, nothing after it), then
    unpacks each archive with the client's own unpacker and checks the
    program's image;
-   with `sign: true`, then adds the `sign` job's `SHA256SUMS.note` to
-   `staging/` and requires it. The validation above refuses a staged note,
-   so the only note published is the signer's;
-8. creates a draft, uploads the files (one argument each), attests them,
+8. with `sign: true` only, downloads the `sign` job's `SHA256SUMS.note`
+   to `staging/` and requires it. The validation above refuses a staged
+   note, so the only note published is the signer's;
+9. creates a draft, uploads the files (one argument each), attests them,
    publishes, and waits for the release to be immutable and verified. A
    prerelease tag is created with `--prerelease --latest=false`, so it
    never becomes the release stable clients read. A stable tag below the
@@ -530,6 +589,42 @@ item 5). `queue: max` would keep it, once actionlint accepts the key.
 Every `gh` step that acts on the calling repository sets `GH_REPO`. Every
 `run:` block reads the ref from `env:` (`TAG`, `REF_TYPE`); no `${{ }}` is
 interpolated into shell.
+
+## Installers
+
+A release spec with an `installer` block, even an empty one, makes the
+build workflow render `install.sh`, `install.ps1` or both, as
+`Spec.InstallerScripts` decides: `install.sh` when a platform is not
+Windows, and `install.ps1` when one is. They are extras, published and
+attested with the release. The details are in the building guide's
+[Installers](guides/building-releases.md#12-installers).
+
+- **Hooks:** at most 8, each a product of the release with 1 to 16
+  arguments, each matching `^[A-Za-z0-9._:=/,+@%-]+$`. `before_install`
+  runs the installed copy before the swap, `after_install` the new copy
+  after the swap and the identity check, and `before_uninstall` the
+  installed copy before the uninstall removes it.
+- **Options:** `--uninstall` (`-Uninstall`); `--force` (`-Force`), with
+  the uninstall only, removes the programs even when a
+  `before_uninstall` hook fails; `--no-hooks` (`-NoHooks`, or
+  `<PREFIX>_NO_HOOKS=1`) skips the hooks; `--dry-run` (`-DryRun`)
+  changes nothing; `--product` (`-Product`) narrows the programs;
+  `--dir` (`-InstallDir`) names the folder; `--verify-attestation`
+  (`-VerifyAttestation`) also checks each download with `gh`; and
+  `install.sh`'s `--allow-root` lets it run as root, which it refuses
+  otherwise.
+- **Exit codes,** as the templates' headers state them:
+  - 0: installed or removed;
+  - 1: a usage or environment error, or a failed `before_install` or
+    `before_uninstall` hook, with nothing changed;
+  - 2: a verification failure, with nothing changed or the previous
+    binary restored;
+  - 3: installed, but an `after_install` hook failed; or removed with
+    `--force`, but a `before_uninstall` hook failed; or removed only in
+    part: a program could not be removed. `install.ps1` reports a
+    program Windows would not delete, such as a running one, as
+    `install: could not remove <exe>; stop the program and run the
+    uninstall again`. That case ships in `v1.17.1`.
 
 ## Trust model
 
@@ -556,7 +651,9 @@ D9; the threat analysis is
 **It does not prove:**
 
 - **a publisher signature,** unless the program configures
-  `selfupdate/verify/signednote`;
+  `selfupdate/verify/signednote`. Even then, a release below its
+  `Config.RequiredFrom` passes with no note, so an older unsigned
+  release still installs by exact version;
 - **that the manifest is independent of the binary:** `SHA256SUMS` comes
   from the same release, so anyone who can publish a release, through
   repository write access and a `v*` tag, can publish a matching manifest.
@@ -571,7 +668,11 @@ D9; the threat analysis is
 **Opt-in checks add:**
 
 - `selfupdate/verify/signednote`: a holder of an embedded key signed this
-  manifest for this repository, tag and product;
+  manifest for this repository, tag and product. A key held by an
+  auto-approved CI job adds little against a compromised repository,
+  whose write access is then key access; required reviewers on the
+  signing environment add more
+  ([0025-MADR](decisions/0025-MADR-align-with-go-sdk-design-practices.md) D10);
 - `selfupdate/verify/ghattest`: the release was built by the expected
   workflow, through `gh attestation verify`;
 - `selfupdate/codesign`: the macOS binary is signed, or is re-signed;
@@ -584,8 +685,9 @@ D9; the threat analysis is
   `vuln`, `apicheck`, `fuzz`, `pre-add-check`, `gate`, and `help`, which
   `make` alone runs.
 - **`make fuzz`** runs `scripts/go-fuzz.sh` on `selfupdate`,
-  `selfupdate/archive` and `selfupdate/releasespec`. In each it finds every
-  fuzz target, refuses fewer than the package holds (five, three and one),
+  `selfupdate/archive`, `selfupdate/releasespec` and
+  `selfupdate/verify/signednote`. In each it finds every fuzz target,
+  refuses fewer than the package holds (five, three, one and one),
   and fuzzes each for `FUZZTIME` (default 20s), with minimization capped
   at 5 s. A failing input stays in the package's
   `testdata/fuzz/<Name>/`, where it is a seed from then on.
@@ -657,7 +759,8 @@ D9; the threat analysis is
   `errcheck`, `gosec`, `unparam`, `revive`, `gocritic` and `goconst`.
 - **CI** (`.github/workflows/ci.yml`) runs on pushes to `main` and to
   `release/**` branches, on `v*` tags and on pull requests, on Linux,
-  macOS and Windows, with the Go version read from `go.mod`.
+  macOS and Windows, with the Go version read from `go.mod`, except in the
+  `go126` job.
   - **Every OS:** `go test`, plus, under bash, the refuse-existing-release
     test. The installer tests must reach the runner's shells
     (`SELFUPDATE_INSTALL_REQUIRE_SHELLS`): dash and bash on Linux, `sh`
@@ -689,8 +792,9 @@ D9; the threat analysis is
     stamped VCS information would fail on
     ([0023-MADR](decisions/0023-MADR-robust-test-fixtures-and-process-waits.md)
     D4-A);
-    the fuzz script's test, then `make fuzz`, with the corpus uploaded as
-    an artifact when it fails;
+    the fuzz script's test, then `make fuzz`, with the `testdata/fuzz/`
+    directories of all four fuzzed packages uploaded as an artifact when
+    it fails;
     `go vet` for `freebsd/amd64`, `openbsd/amd64` and `linux/386`;
     `go vet`, `gofmt`, `go mod tidy -diff`, `make lint` (golangci-lint
     v2.14.0); `make apicheck` and the API gate's test; `govulncheck` v1.8.0;
@@ -717,10 +821,42 @@ D9; the threat analysis is
     that release.
   - **The installer containers:** `install.sh`'s tests, built and staged
     on the runner, then run by the static test binary in `alpine:3.24.2`
-    (BusyBox ash and wget, musl) and `buildpack-deps:trixie-curl` (dash,
-    curl), each pinned by digest, as the runner's user.
+    (BusyBox ash and wget, musl) and `buildpack-deps:trixie-curl` (dash
+    and bash, both required, and curl), each pinned by digest, as the
+    runner's user.
+  - **`go126`,** on Linux, the floor toolchain: Go 1.26.9 from
+    `go-version`, with `GOTOOLCHAIN=local` and a step that requires
+    `go env GOVERSION` to be `go1.26.9`; `go build`; `go vet` for
+    linux, windows and darwin; `go test`; and `govulncheck` v1.8.0
+    under the same toolchain, so the floor's standard library is
+    scanned too.
   - One run per ref (`concurrency`, cancel in progress). Actions are pinned
     to commit SHAs.
+
+## Releasing this module
+
+This library's own release follows
+[0017-PLAN](decisions/0017-PLAN-verify-build-provenance-and-close-0015-open-items.md#release-procedure)'s
+"Release procedure", as
+[0025-PLAN](decisions/0025-PLAN-align-with-go-sdk-design-practices.md)
+S14 and [0026-PLAN](decisions/0026-PLAN-before-uninstall-installer-hook.md)
+U5 ran it:
+
+1. the pre-tag change: `CHANGELOG.md`'s unreleased entry becomes the
+   release's, and the
+   [migration guide](guides/migrating-from-mcplib-selfupdate.md) gains
+   its "From vX to vY" section;
+2. `make gate` ends `overall=0`;
+3. the push, on the owner's word, and CI green on `main`;
+4. `scripts/check-release-tag.sh` and the disclosure guard over the
+   outgoing tag, then the annotated tag, pushed on the owner's word;
+5. the tag's CI run, every job, with its identity legs printing
+   `<tag> (release) <12-hex>`;
+6. the pin commit, which moves every current-release pointer to the
+   tag: README's, the guides', and this page's current release and its
+   commit;
+7. the proxy: `go list -m -json` of the tag gives its commit, and
+   `@latest` resolves to it.
 
 ## What is not here
 
@@ -728,9 +864,10 @@ D9; the threat analysis is
   Each is recorded in that repository.
 - **Signing by default.** A publisher signature is verified only when a
   program configures `selfupdate/verify/signednote`, and a release is
-  signed only when its caller sets `sign: true` (0025-MADR D10).
+  signed only when its caller sets `sign: true`
+  ([0025-MADR](decisions/0025-MADR-align-with-go-sdk-design-practices.md) D10).
 - **`Platform.Variant`.** `Platform` is `{OS, Arch}`: GOARM, GOAMD64 levels
   and musl builds are reached through a `Name` function or a selector of
   your own. A variant field would move the release spec, the workflows and
   the installers together, and waits for a consumer that needs it
-  (0025-MADR D13).
+  ([0025-MADR](decisions/0025-MADR-align-with-go-sdk-design-practices.md) D13).

@@ -69,7 +69,9 @@ cannot live at the repository root unless that package does.
   none of your steps before it stages. A generated file, such as an SBOM,
   comes without `path`, from an artifact you upload (step 6).
 - **`prerelease_channels`:** the channels the publish workflow may release
-  `vX.Y.Z-NAME.N` tags for, most stable first; see
+  `vX.Y.Z-NAME.N` tags for, most stable first, in strictly descending
+  ASCII order (`rc` before `beta`); a list in another order, or with a
+  name twice, is refused. See
   [Offer a beta channel](extending-selfupdate.md#offer-a-beta-channel).
 - **`installer`:** present, even empty, it adds `install.sh` and
   `install.ps1` to every release; see step 12.
@@ -197,8 +199,9 @@ jobs:
 
 - **Signing is opt-in:** `sign`, `note-verifier-key` and the
   `SELFUPDATE_NOTE_KEY` secret are left out above; step 13 adds them.
-- **Pin both to the full commit SHA of a release tag,** as the publish
-  workflow has always required. Tags are annotated; resolve the commit with
+- **Pin both to the full commit SHA of a release tag,** as this
+  repository tells callers; neither workflow checks it. Tags are
+  annotated; resolve the commit with
   `git ls-remote https://github.com/maccavelli/go-selfupdate-lib 'refs/tags/v1.17.0^{}'`.
 - **The build job needs only `contents: read`.** A called workflow cannot
   raise its token beyond what the calling workflow grants, so grant at
@@ -216,13 +219,16 @@ jobs:
   run calls the build workflow twice. Without it, the name is
   `selfupdate-release-<tag>-<attempt>`, or
   `selfupdate-rehearsal-<first 12 hex of the commit>-<attempt>` in a
-  rehearsal.
+  rehearsal. A name must match `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`, or
+  the plan step stops with a usage error,
+  `artifact name "…" must match …`.
 - **`retention-days`** keeps the staged artifact that many days, 7 by
   default. The build job also uploads `<artifact-name>-tools`, the built
   release tool the identity jobs use, kept for 1 day: re-run failed
   identity jobs within a day, and a cancelled publish within the staged
   artifact's retention. Do not upload an artifact of your own with that
-  name.
+  name. With `sign: true` the sign job uploads a third,
+  `<artifact-name>-note` (step 13).
 - **The jobs' limits:** the build job times out after 30 minutes, and
   each identity job after 10.
 - **Its outputs** are `artifact-name`; `tag`, empty in a rehearsal;
@@ -335,6 +341,10 @@ CGO_ENABLED=0 GOOS=<os> GOARCH=<arch> GOFLAGS=-mod=readonly GOTOOLCHAIN=local GO
   `GOAMD64` or `GOARM64` level, no environment. Build tags are the one
   per-product choice. With cgo off, `netgo`, `osusergo` and
   `-extldflags -static` change nothing.
+- **Modules come from the module proxy:** `GOFLAGS=-mod=readonly`
+  ignores a `vendor/` directory, and the workflow takes no input or
+  secret for `GOPRIVATE` or for credentials, so a program that depends
+  on a private module cannot be built with it.
 - **setup-go's cache is off,** so a release build restores nothing
   another ref wrote.
 - **Each binary is then checked** from its own build information: the
@@ -356,16 +366,26 @@ CGO_ENABLED=0 GOOS=<os> GOARCH=<arch> GOFLAGS=-mod=readonly GOTOOLCHAIN=local GO
 | `… the client's unpacker refuses it` | a packed archive the client could not read; a bug to report |
 | `… the gzip stream is not whole: …` | a tar.gz or gz asset that is cut, has a wrong checksum, or has data after it, which `gzip` and `tar` would refuse; a bug to report |
 | `… printed "…" first, want "<tag> (release) …"` | the identity command does not print `buildinfo.Identity()` |
-| `… did not finish within 30s` | the identity command waits for input or the network |
+| `… did not finish within 30s` | the identity command waits on the network, or on something else; its standard input is the null device, so a read of it ends at once |
 | `the extras directory holds …, which the spec does not list` | the extras artifact holds a file the spec does not name |
 | `verify-selfupdate-release: file set mismatch …` | the staged set and the spec disagree; a bug to report |
 | `releasespec: extras[…].name: "install.sh" is already an installer's name` | the spec has `installer` and still lists a hand-written installer; delete the extra |
 | `releasespec: …args[…]: "…" must match …, as the installers embed it` | a hook argument or `identity_args` entry with a space, quote or `$`; with `installer`, both keep to `[A-Za-z0-9._:=/,+@%-]` |
-| `releasespec: installer.env_prefix: the prefix made from …; set installer.env_prefix` | the repository's name makes no valid variable prefix, such as one that starts with a digit |
+| `releasespec: installer.env_prefix: the prefix made from …; set installer.env_prefix` | the prefix made from `installer.name`, or from the repository's name when it is not set, does not match `^[A-Z][A-Z0-9_]{0,31}$`: it starts with a digit or `_`, or is longer than 32 characters (step 12) |
 | `releasespec: "…": null is not allowed; leave the field out` | a field set to `null`, which the spec does not read as absent |
 | `module … requires go-selfupdate-lib …; this spec's "…" needs v… or later …` | your program's `go.mod` requires a release that cannot parse the spec it embeds: `"installer"` needs `v1.10.0`, and `"installer.hooks[].when before_uninstall"` `v1.17.0`. Move it to the version the workflow is pinned to; the message's `go get` names the highest floor the module misses |
 | `module … does not require github.com/maccavelli/go-selfupdate-lib, whose releasespec reads the spec` | the module `module-dir` names does not require this library; add it |
 | `extra … has no path, and no extras directory was given` | an extra without `path`, and no `extras-artifact-name`; give one or the other (step 6) |
+| `refuse-existing-release: release <tag> already exists (including drafts)` | the tag already has a release, a draft left by a failed run included; see below |
+| `publish-selfupdate-release: sign needs note-verifier-key` | `sign: true` without `note-verifier-key`, or with it set from an empty variable (step 13) |
+| `selfupdate-note: SELFUPDATE_NOTE_KEY is empty: the caller must pass the secret to the workflow` | `sign: true`, but the caller's `secrets:` does not pass `SELFUPDATE_NOTE_KEY`, or the secret is empty (step 13) |
+| `selfupdate-note: the note does not open with -verifier-key: …` | `note-verifier-key` is not the verifier key of the signer key in `SELFUPDATE_NOTE_KEY` (step 13) |
+| `publish-selfupdate-release: this gh has no 'release verify'`, `… this gh's release view has no isImmutable` or `… gh <version> is older than 2.81.0` | the runner's `gh` is older than 2.81.0, which the publish job needs to check that the release is immutable; nothing was published |
+
+A failed `sign` publishes nothing. A publish that failed after it
+created the draft, or after it published it, is recovered as the
+README's [When a publish fails](../../README.md#when-a-publish-fails)
+says.
 
 ## 10. Verify an attestation
 
@@ -382,8 +402,8 @@ gh attestation verify relay-linux-amd64 --repo <owner>/<repo> \
 - **Stamps:** link `github.com/maccavelli/go-selfupdate-lib/buildinfo` and
   report `buildinfo.Identity()`. Drop your own `main.version`,
   `main.buildKind`, `RawVersion` and the like, and the `BUILD_KIND`
-  variable: the workflow always stamps a tag build as a release. A commit
-  and a build time are in `Identity()`'s `Revision` and `Time`.
+  variable: the workflow always stamps a tag build as a release. The
+  commit and its time are in `Identity()`'s `Revision` and `Time`.
 - **Versions** carry their `v`: the stamp is the tag as written.
 - **The platform list** moves into the spec, and your Go code reads it
   from there. Delete the copies in the Makefile, CI and verify scripts;
@@ -424,8 +444,12 @@ Move `go.mod` and both pins together.
 - **`name`** names the Windows install folder,
   `%LOCALAPPDATA%\Programs\<name>`. The default is the repository's name.
 - **`env_prefix`** prefixes the installers' variables, such as
-  `RELAY_VERSION`. The default is `name` in upper case, with every other
-  character as `_`.
+  `RELAY_VERSION`. The default is made from `name`, so from the
+  repository's name when `name` is not set: in upper case, with each
+  letter `A` to `Z` and each digit kept, and every other character as
+  `_`. A prefix must match `^[A-Z][A-Z0-9_]{0,31}$`, a leading letter
+  and at most 32 characters; when the one made from the name does not,
+  set `env_prefix`.
 - **`hooks`,** at most eight, run one of your products around the install
   and before an uninstall (below).
 
@@ -485,13 +509,21 @@ is no race and no rate limit.
 | `--no-hooks` | `-NoHooks` | `<PREFIX>_NO_HOOKS=1` | skip the hooks |
 | | `-NoPathUpdate` | `<PREFIX>_NO_PATH_UPDATE=1` | print PATH advice instead of updating it |
 | `--allow-root` | | | allow running as root |
+| `-h`, `--help` | | | print the options and exit 0 |
 | `--dry-run` | `-DryRun` | | print what would be downloaded and where it would go, and change nothing; with `--uninstall`, the `before_uninstall` hooks it would run and the files it would remove |
-| `--uninstall` | `-Uninstall` | | after the `before_uninstall` hooks, remove the binaries and `.prev` files, and on Windows the folder's PATH entry with the last program; configuration is left, and so are Windows' `.old-` and `.bad-` files |
+| `--uninstall` | `-Uninstall` | | after the `before_uninstall` hooks, remove the binaries and `.prev` files from `--dir` (`-InstallDir`), `<PREFIX>_INSTALL_DIR` or the default folder, so a program installed with `--dir` is uninstalled with the same `--dir`; and on Windows remove the folder's PATH entry with the last program. Configuration is left, and so are Windows' `.old-` and `.bad-` files. Since `v1.17.1`, a program that cannot be removed is reported, `install: could not remove <path>`, the others are still removed, and the exit is 3 (below) |
 | `--force` | `-Force` | | with `--uninstall` only: remove even when a `before_uninstall` hook fails, and exit 3; refused (exit 1) without it |
 
 `irm … | iex` cannot pass options: use the variables, or the scriptblock
 form. A switch takes no value: `-DryRun`, not `-DryRun:$true`, which is
 refused.
+
+On Windows a running program cannot be removed. Since `v1.17.1`,
+`-Uninstall` then reports
+`install: could not remove <exe>; stop the program and run the uninstall again`,
+removes the others, keeps the folder on PATH while a program remains,
+and exits 3; before, it reported the program removed and exited 0. A
+`before_uninstall` hook can stop the program first.
 
 ### Hooks
 
@@ -523,9 +555,9 @@ refused.
 | Code | Meaning |
 | :--- | :--- |
 | 0 | installed (or removed, or a dry run) |
-| 1 | a usage or environment error: an unknown option, an empty or unsafe `--product`, `--force` without `--uninstall`, an unsupported platform, root, a missing tool, a refused version, a directory where a program or its `.prev` goes, a failed `before_install` hook (nothing changed) or `before_uninstall` hook (nothing removed) |
+| 1 | a usage or environment error: an unknown option, an empty or unsafe `--product`, `--force` without `--uninstall`, an unsupported platform, root, a missing tool, a refused version, on install a directory where a program or its `.prev` goes, a failed `before_install` hook (nothing changed) or `before_uninstall` hook (nothing removed) |
 | 2 | a verification failure: a download, `SHA256SUMS`, a checksum, an attestation or the identity; nothing was changed, or the previous binaries were put back |
-| 3 | installed, but an `after_install` hook failed; or removed under `--force`, but a `before_uninstall` hook failed |
+| 3 | installed, but an `after_install` hook failed; or removed under `--force`, but a `before_uninstall` hook failed; or, since `v1.17.1`, removed only in part: a program could not be removed |
 
 Through `iex` or the scriptblock form, `install.ps1` never exits your
 session: a failure is the error `install failed (exit N)`.
@@ -602,6 +634,11 @@ note.
    note with `note-verifier-key`, and hands it to `publish`. `publish`
    adds it to the release, and attests it with the rest. A failed `sign`
    publishes nothing.
+
+   The note goes from `sign` to `publish` as the artifact
+   `<artifact-name>-note`, kept for 1 day: re-run a cancelled or failed
+   `publish` job within a day, since after that it finds no note and
+   fails. Do not upload an artifact of your own with that name.
 4. **Embed the verifier keys** in your program as Go constants, and add
    the verifier, with `RequiredFrom` at your first signed tag:
 

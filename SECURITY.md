@@ -24,7 +24,8 @@ In short; the [trust model](docs/architecture.md#trust-model) has the
 whole of it:
 
 - The release came over TLS from the API origin, is immutable on GitHub,
-  and each asset matches its `SHA256SUMS` entry and its GitHub digest.
+  and each asset matches its `SHA256SUMS` entry and, when GitHub gives
+  one, its digest.
 - `SHA256SUMS` comes from the same release as the binary, so anyone who
   can publish a release can publish a matching manifest: protect who may
   create `v*` tags.
@@ -36,7 +37,8 @@ whole of it:
 
 ## How this repository checks itself
 
-`govulncheck` runs in CI and in `make gate`, on the Go 1.27.2 toolchain the
-module builds with and on its 1.26.9 floor. `make gate` also runs the
-linters, the race and shuffle tests and the fuzz targets; see
-[AGENTS.md](AGENTS.md#pre-add-checks).
+`govulncheck` runs twice in CI, both on Linux: in the `validate` job on
+the Go 1.27.2 toolchain the module builds with, and in the `go126` job
+on its 1.26.9 floor. `make gate` runs it once, on the local toolchain,
+and also runs the linters, the race and shuffle tests and the fuzz
+targets; see [AGENTS.md](AGENTS.md#pre-add-checks).

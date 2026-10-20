@@ -31,7 +31,7 @@ directories, and each `selfupdate` subpackage lives in a directory under
 `selfupdate/`, named after it, or under `selfupdate/verify/` for a
 verifier; there is no root package. Unexported helpers
 shared between packages live under `internal/`: `internal/winproc` builds
-every process the library's packages start
+every process a package under `selfupdate/` starts
 (`docs/decisions/0021-MADR-task-scheduler-lifecycle-and-windowless-children.md`
 D7), walks the process tree (`Descends`), and on Windows reads whether a
 process still runs (`Alive`;
@@ -228,7 +228,13 @@ it, uses `internal/testproc`: `GoBuild` builds with `-buildvcs=false`, so a
 `.git` above a temporary directory cannot fail it, and `Start` waits until
 the test's deadline and reports a helper that exits first at once
 (`docs/decisions/0023-MADR-robust-test-fixtures-and-process-waits.md`).
-`TestNoDirectFixtureBuild` refuses a direct `go build` in a test file. CI's
+`TestNoDirectFixtureBuild` refuses a direct `go build` in a test file.
+`testproc.CheckNoLeak` is the leak check the tests of `selfupdate`,
+`selfupdate/cli`, `selfupdate/service` and its four backends share: a
+test calls it first, and it fails the test when a goroutine that started
+after the call still runs, comparing goroutine IDs rather than a count
+(`docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md` D4 and
+Amendment A6). CI's
 Linux job runs the fixture-building packages under a stray `.git`; to do
 the same by hand:
 

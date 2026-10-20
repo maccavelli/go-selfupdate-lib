@@ -640,3 +640,88 @@ changed. Below, a row is "as its fix" unless what was found differs.
    * `gofmt` clean (it realigned `ExampleNew_standalone`'s composite
      literal around the new client line);
    * `make pre-add-check` on the four test files clean.
+
+### X6 (2026-10-20)
+
+The 66 A1–A4 rows other than A1-12, which X7 owns, in ten files. Four
+agents worked in parallel, one per group of files, each on its own files
+only. Each checked every new claim against the code, the workflows or `go
+doc`, and none staged anything. Their per-row reports were then reviewed
+here against the diffs, and the cross-file anchors checked once all four
+had finished. Below, a row is "as its fix" unless what was found differs.
+
+1. **README, AGENTS, SECURITY, `docs/README.md`, `.golangci.yml`,
+   Makefile (A1-01 to A1-11):** all done.
+   * A1-01: SECURITY.md says CI runs govulncheck twice, in `validate` on
+     go.mod's toolchain and in `go126` on 1.26.9 (X3), and `make gate`
+     once on the local toolchain.
+   * A1-03: the sentence says "a test calls it first", following `go
+     doc`, not the row's "every top-level test". The code has 33 of 51
+     `selfupdate/service` tests and 14 of 50 systemd tests calling it
+     first. AGENTS.md cites records in backticks, as its other 23
+     citations do.
+   * A1-04: only `HandOffHop` and `HandOffHopContext` exit, in a hop;
+     `LoadHandOffEnv`, `LoadHandOffEnvContext` and `ReportFunc` call one
+     of them first (the only `os.Exit` is in `handoffhop.go`).
+   * A1-08: rows for the quickstart, slog, another release host and
+     hooks, linking the new anchors in step 3.
+   * A1-11: the Makefile's lookup for `GOLANGCI_LINT` is the other tools'
+     `$(or $(wildcard …))`, and the `lint` guard names the three places.
+     The order was tried with stub binaries in scratch directories:
+     * GOBIN beats GOPATH/bin;
+     * GOPATH/bin is used without GOBIN;
+     * PATH is used without either;
+     * with none, `make lint` exits 2 with the hint.
+
+     `make lint` passes.
+2. **`docs/architecture.md` (A2-01 to A2-23):** all done, +179 −42.
+   * A2-07: `*GitHubSource` gets `String`, `Format` and `LogValue` only;
+     the code has no `GoString` for it.
+   * A2-10: a new `## Installers` section, and A2-12 a new `## Releasing
+     this module` section, which links 0017-PLAN's "Release procedure"
+     anchor.
+   * A2-16: every number-only citation is linked by filename. "The
+     0010–0014 PLANs" stays: it names a range, then links 0015-PLAN R1.
+   * A2-17: tracked fuzz seeds are counted: selfupdate 1, archive 9,
+     releasespec 3. signednote tracks none. `--arch` still reads 0
+     differ.
+3. **`extending-selfupdate.md` (A3-01 to A3-19):** all done, +201 −41.
+   * New headings: `### Log with slog` and `## Use another release
+     host`.
+   * A3-18 also checks `err` in the codesign `NewSigner` snippet, which
+     ignored it too, beyond the two snippets the row named.
+   * The five added or changed snippets compile in a scratch module
+     (`require v1.17.0` with a `replace`), and `go vet` passes for linux,
+     windows and darwin. The `VerifyReleaseSource` test snippet passes
+     `go test` against `NewFakeSource`. A script checked that each
+     snippet in the guide matches the compiled code. It was seen failing
+     on a scratch copy with one value changed: `MISS signednote.New(`,
+     exit 1.
+4. **The migration and building guides (A4-01 to A4-13):** all done.
+   * A4-10: each new §9 row's message is copied from the code:
+     * `refuse-existing-release.sh`;
+     * the publish workflow's `sign needs note-verifier-key`, and its
+       three gh checks;
+     * `selfupdate-note`'s empty-key and does-not-open messages, with
+       its prefix.
+   * A4-11: `-h`/`--help` is install.sh's only; install.ps1 has no help
+     parameter.
+   * A4-12: the partial uninstall, attributed to `v1.17.1`, with
+     install.ps1's message and the earlier exit 0 (`git show 789afa0`).
+   * A4-08: `vendor/` being ignored under `-mod=readonly` was confirmed in
+     a scratch module, with `GOPROXY=off`.
+5. **Follow-ups made here, after the four reports:**
+   * The exit-1 row's "a directory where a program or its `.prev` goes"
+     reads "on install …": on uninstall that now gives exit 3 (C1). The
+     A4 agent raised it.
+   * The extending guide's unconstructed-value sentence names a nil
+     pointer and, since `v1.17.1`, a nil `*Updater`'s `Checker` (C2). The
+     A3 agent raised it.
+   * `ExampleStandaloneInstaller_CleanupPending` (X5) joins the "Keep the
+     previous binary" pointers.
+6. **Checks:** on the eight Markdown files, links 301 and 0 broken, and
+   markdownlint 0 issues; ids 0 findings in ten files. `make gate` with
+   `SELFUPDATE_REQUIRE_PYTHON=1`: `overall=0`, 15 steps passing, `apicheck`
+   compatible with `v1.17.0`, links 671 in 77 files with 0 broken.
+   Every agent wrote only to its scratch directory and the npm and Go
+   caches.

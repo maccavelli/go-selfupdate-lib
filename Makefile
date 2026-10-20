@@ -1,10 +1,11 @@
 # go-selfupdate-lib — the fleet's self-update library
 # (no binary packaging targets).
 #
-# Prefer the user's Go toolchain install (go install ...), then PATH.
+# Each tool is looked for in GOBIN, then GOPATH/bin, then PATH; set its
+# variable to name another binary.
 GOPATH_BIN    := $(shell go env GOPATH)/bin
 GOBIN         := $(shell go env GOBIN)
-GOLANGCI_LINT ?= $(GOPATH_BIN)/golangci-lint
+GOLANGCI_LINT ?= $(or $(wildcard $(GOBIN)/golangci-lint),$(wildcard $(GOPATH_BIN)/golangci-lint),$(shell command -v golangci-lint 2>/dev/null))
 GOVULNCHECK   ?= $(or $(wildcard $(GOBIN)/govulncheck),$(wildcard $(GOPATH_BIN)/govulncheck),$(shell command -v govulncheck 2>/dev/null))
 GOTESTSUM     ?= $(or $(wildcard $(GOBIN)/gotestsum),$(wildcard $(GOPATH_BIN)/gotestsum),$(shell command -v gotestsum 2>/dev/null))
 FLEET_LINT_CFG := .golangci.yml
@@ -35,8 +36,8 @@ vet: ## Runs go vet
 LINT_GOOS := linux darwin windows
 
 lint: ## Runs golangci-lint with fleet config for linux, darwin and windows
-	@if [ ! -x "$(GOLANGCI_LINT)" ]; then \
-		echo "golangci-lint not found at $(GOLANGCI_LINT)"; \
+	@if [ -z "$(GOLANGCI_LINT)" ] || [ ! -x "$(GOLANGCI_LINT)" ]; then \
+		echo "golangci-lint not found in GOBIN, GOPATH/bin or PATH (GOLANGCI_LINT=$(GOLANGCI_LINT))"; \
 		echo "Install: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0"; \
 		exit 1; \
 	fi

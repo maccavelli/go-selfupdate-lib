@@ -1,18 +1,28 @@
 # Extending `selfupdate`
 
-For a program built on `github.com/maccavelli/go-selfupdate-lib/selfupdate` that
-needs more than the standalone default: a banner instead of an update, a
-front end that reads JSON, its own credential store, an extra check before
-install, releases shipped as archives, a macOS signature, its own installer,
-or a service to update from inside. Every section names one seam, what the
-package does around it, and a runnable pointer: an `Example` you can read
-with `go doc`, or a test in `selfupdate/`.
+The standalone default is `NewGitHubUpdater`: one call for a program
+released on GitHub with exact asset names. It fixes
+`NewStrictVersionPolicy`, `NewExactAssetSelector` and a
+`StandaloneInstaller` with `InstallOptions{}`, and has no `Unpacker`,
+`Verifiers`, `Probes`, `GitHubOptions.Credentials` or `Clock`.
+
+This guide is for a program built on
+`github.com/maccavelli/go-selfupdate-lib/selfupdate` that needs more than
+that: a banner instead of an update, a front end that reads JSON, its own
+credential store, an extra check before install, releases shipped as
+archives, a macOS signature, its own installer, a service to update from
+inside, or another release host. A program that changes a part builds the
+Updater with `New(Config)` from the same parts, with that one changed:
+`ExampleNewGitHubUpdater` is the one call, and `ExampleNew_standalone` the
+same default built with `New`. Every section
+names one seam, what the package does around it, and a runnable pointer:
+an `Example` you can read with `go doc`, or a test in `selfupdate/`.
 
 Why each seam exists is in
 [0004-MADR](../decisions/0004-MADR-evolve-selfupdate-api-and-tui-support.md);
-what `v1.1.0` added, and the one behaviour change that can need code, are in
-the release notes of
-[0004-PLAN-v1-1-0-core-api.md](../decisions/0004-PLAN-v1-1-0-core-api.md#release-notes-for-v110).
+what each release adds is in the [changelog](../../CHANGELOG.md), and the
+code a release can need is in the
+[migration guide](migrating-from-mcplib-selfupdate.md).
 
 ## Show an update banner
 
@@ -37,7 +47,15 @@ no asset, no longer asks GitHub on every start. Since `v1.11.0` it keeps
 published, which GitHub answers with a 404. Any other error is not saved.
 A record written before `v1.6.0` loads as a miss, which costs one check.
 An Updater or a Checker that its constructor did not make, such as a zero
-value, returns `ErrNotConstructed` instead of panicking.
+value or a nil pointer, returns `ErrNotConstructed` instead of panicking;
+so, since `v1.17.1`, does the `Checker` of a nil `*Updater`.
+
+From `GitHubSource`, a rate limit is a `*RateLimitError`, and any other
+non-2xx response an `*HTTPError` (since `v1.16.0`), which `errors.As` reads;
+a missing release also wraps `ErrNoRelease` around it. Since `v1.16.0`,
+`CheckerConfig.Clock`, or `Config.Clock` for `Updater.Checker`, is the clock
+`CheckCached` measures record ages by: a `ClockFunc` that returns a fixed
+time makes them deterministic in a test.
 
 - `ExampleNewChecker`, `ExampleChecker_CheckCached`
 - `selfupdate/checker_test.go`, `selfupdate/checkcache_test.go`,
@@ -75,17 +93,16 @@ a per-run choice, and a workflow input.
   a stable `v1.3.0` is an upgrade on every channel. Back on the stable
   channel while it is still at `v1.2.0`, `Run` reports `ErrLatestOlder`;
   `--version v1.2.0` is the explicit way back.
-- **Publishing.** Pass the channels to the release workflow, and tag the
-  prerelease `vX.Y.Z-NAME.N`:
-
-  ```yaml
-  with:
-    prerelease-channels-json: '["rc","beta"]'
-  ```
-
-  The workflow publishes such a tag as a GitHub prerelease that never
-  becomes the repository's latest release, so stable clients never see
-  it. Without the input, it refuses every prerelease tag.
+- **Publishing.** List the channels in the release spec's
+  `prerelease_channels`, in the same order
+  ([Building releases, step 1](building-releases.md#1-write-the-spec)),
+  and tag the prerelease `vX.Y.Z-NAME.N`. The build workflow's output
+  `prerelease-channels-json` carries them to the publish workflow, which
+  the caller passes on as `needs.build.outputs.prerelease-channels-json`
+  ([step 4](building-releases.md#4-call-the-workflows)). The publish
+  workflow publishes such a tag as a GitHub prerelease that never becomes
+  the repository's latest release, so stable clients never see it.
+  Without channels, it refuses every prerelease tag.
 
 - `ExampleNewSemverPolicy`
 - `selfupdate/channel_test.go`, and `TestE2EUpdateRunningCopyOnChannel` in
@@ -96,7 +113,8 @@ a per-run choice, and a workflow input.
 
 `NewJSONReporter` writes one JSON object per event (JSON Lines), with the keys
 `kind`, `product`, `current`, `target`, `asset`, `bytes`, `total` and
-`detail`, in that order. `Result.Document` is the stable JSON form of the
+`detail`, in that order; an empty string or a zero number is left out,
+except `kind`. `Result.Document` is the stable JSON form of the
 final `Result`. Its `schema_version` is 4 since `v1.13.0`, which added
 `replaced_before_stop` (a managed install replaced the binary while the
 service still ran: [Replace before the stop](#replace-before-the-stop));
@@ -123,6 +141,14 @@ Keep stdout for the JSON, and write human text to stderr. `MultiReporter`
 sends each event to several reporters in order: `NewTextReporter(os.Stderr)`
 plus `NewJSONReporter(os.Stdout)` is the usual pair.
 
+Under `<prog> update --json`, `selfupdate/cli` ends the stream with exactly
+one result object: `{"kind":"result","exit_code":…,"result":{…}}`, where
+`result` is the `Result.Document`, `exit_code` the process's exit status,
+`error` the error's message when the run failed, and `handed_off` the
+handoff's detail when the update was handed off. The package doc,
+`go doc github.com/maccavelli/go-selfupdate-lib/selfupdate/cli`, states the
+stream rule.
+
 Byte progress is opt-in. Set `Config.ProgressInterval` to the minimum gap
 between `EventProgress` events; zero reports none. The text reporter skips
 progress events either way.
@@ -130,6 +156,17 @@ progress events either way.
 - `ExampleNewJSONReporter`, `ExampleMultiReporter`, `ExampleResult_Document`
 - `selfupdate/testdata/golden/`: the exact text and JSON Lines output of
   seven whole runs
+
+### Log with slog
+
+Since `v1.16.0`, `NewSlogReporter(logger)` logs each event to a
+`*slog.Logger`, with the event kind as the message and its fields as
+attributes, each left out when empty or zero. `EventFailed` logs at Error,
+`EventRolledBack` and `EventWarning` at Warn, `EventProgress` at Debug, and
+every other kind at Info. Beside the text or JSON reporter, it is one more
+`MultiReporter` entry.
+
+- `ExampleNewSlogReporter`
 
 ## Plug in a credential
 
@@ -151,6 +188,11 @@ and `GITHUB_TOKEN`. `ChainCredentials` asks providers in order, and
   later `Start` from asking the provider.
 - `GitHubOptions.Observer` is told once when a credential was accepted. That
   is the moment to save a credential the user just typed.
+- Since `v1.16.0`, `fmt` and `log/slog` print `Credential`, `GitHubOptions`
+  and `*GitHubSource` with the secret as `<redacted>`. `encoding/json` still
+  carries `Credential.Value`, so a `CredentialObserver` can save it, and
+  slog's JSON handler encodes a struct that holds a `Credential` with
+  `encoding/json`, secret included: log the `Credential` itself.
 
 Pointers:
 
@@ -196,7 +238,9 @@ prompt ([0004-MADR](../decisions/0004-MADR-evolve-selfupdate-api-and-tui-support
 `Updater.RunWith` is the same per-run override without a `Stream`:
 `WithReporter`, `WithConfirmer`, `WithCredentials` and
 `WithProgressInterval` apply to that run only, so one `Updater` serves a
-`--json` CLI, a terminal prompt and a TUI.
+`--json` CLI, a terminal prompt and a TUI. It serves one run at a time: a
+`Run`, `RunWith` or `Start` that overlaps another on the same `Updater`
+fails with `ErrConcurrentUpdate`, which `Start` delivers in its `Finished`.
 
 - `ExampleStart`, `ExampleStream_All`, `ExampleUpdater_RunWith`,
   `ExamplePromptCredential`
@@ -291,19 +335,40 @@ Pointers:
 ## Verify a release signature
 
 No publisher signature is verified by default.
-`selfupdate/verify/signednote` is the opt-in check: a `ManifestVerifier`
-that requires `SHA256SUMS.note`, a signed note over the release's
-statement, to open with a key your program embeds, and to name your
-repository, the tag, your product and the exact manifest. The publish
+`selfupdate/verify/signednote`, since `v1.16.0`, is the opt-in check: a
+`ManifestVerifier` that requires `SHA256SUMS.note`, a signed note over the
+release's statement, to open with a key your program embeds, and to name
+your repository, the tag, your product and the exact manifest. The publish
 workflow signs when you ask; [the building guide, step
 13](building-releases.md#13-sign-a-release-opt-in), says how.
+
+```go
+v, err := signednote.New(signednote.Config{
+    Repository:   "github.com/example/relay",
+    Keys:         []string{ciKey}, // a verifier key constant you embed
+    RequiredFrom: "v1.4.0",
+})
+if err != nil {
+    return err
+}
+cfg.ManifestVerifiers = append(cfg.ManifestVerifiers, v)
+```
+
+- **`Keys`** are note verifier keys, embedded as Go constants. A note
+  signed by any of them is accepted, so listing an old and a new key
+  rotates from one to the other.
+- **`RequiredFrom`** is the first signed tag: a release below it may have
+  no note, so an exact `--version` can still install an older, unsigned
+  release. Empty means every tag needs one.
+- **What it does not prove:** freshness. A stale release served as the
+  latest still verifies.
 
 Two hooks run inside the update, and both make the run fail with
 `ErrIntegrity`:
 
 - **`Config.ManifestVerifiers`** run on the downloaded `SHA256SUMS`, before
   any binary byte is fetched. A signature over the manifest belongs here. The
-  verifier can read a sibling asset, such as `SHA256SUMS.sig`, through
+  verifier can read a sibling asset, such as `SHA256SUMS.note`, through
   `ManifestVerification.OpenAsset`.
 - **`Config.Verifiers`** run on the staged release asset after the built-in
   checks: the archive itself, when the selector picks one. `NewImageVerifier`
@@ -318,6 +383,7 @@ was built, opt-in, by
 D10. To check that a release was built by your workflow, see
 [Check build provenance](#check-build-provenance).
 
+- `signednote.ExampleNew`
 - `selfupdate/verify/signednote/signednote_test.go`,
   `selfupdate/manifestverify_test.go`, `selfupdate/imageverify_test.go`
 
@@ -334,6 +400,9 @@ v, err := ghattest.NewManifestVerifier(ghattest.Options{
     Policy: ghattest.Policy{Repository: selfupdate.Repository{Owner: "example", Name: "relay"}},
     GH:     "/usr/local/bin/gh",
 })
+if err != nil {
+    return err
+}
 cfg.ManifestVerifiers = append(cfg.ManifestVerifiers, v)
 ```
 
@@ -370,12 +439,18 @@ first. `InstallOptions.PostInstall` runs the installed binary before the
 replacement is committed, and rolls it back on failure.
 `NewVersionProber(args, want, timeout)` runs the binary with `args` and
 requires its stdout to contain the release's version.
+`NewVersionProberWith(VersionProbeOptions{Args, Want, Timeout, Run})`
+(since `v1.16.0`) is the same with an optional `Run`, which replaces how
+the binary is started, for a program that runs probes its own way or tests
+them without a process; the timeout and the 64 KiB cap on stdout still
+apply.
 
 An `Unpacker`, then a `Transformer` such as a re-signing step, run before
 the probes, so the probes see the bytes that will be installed.
 `selfupdate.ChainTransformers` runs several transformers in order, such as
 the codesign signer and one of your own.
 
+- `ExampleNewVersionProberWith`, `ExampleChainTransformers`
 - `selfupdate/probe_test.go`
 
 ## Sign on macOS
@@ -394,6 +469,9 @@ when `runtime.GOOS` is `"darwin"`.
       Identity:   "Developer ID Application: Example (TEAMID)",
       Identifier: "com.example.relay",
   })
+  if err != nil {
+      return err
+  }
   cfg.Transformer = signer
   ```
 
@@ -421,14 +499,17 @@ when `runtime.GOOS` is `"darwin"`.
 Pointers:
 
 - `codesign.ExampleNewSigner`, `codesign.ExampleNewChecker`
-- `selfupdate/codesign/live_darwin_test.go`: the real `codesign`, ad hoc,
-  and with your own identity when `SELFUPDATE_CODESIGN_IDENTITY` names it
+- `selfupdate/codesign/live_darwin_test.go`: the real `codesign`, ad hoc
+  when `SELFUPDATE_REQUIRE_CODESIGN=1`, and with your own identity when
+  `SELFUPDATE_CODESIGN_IDENTITY` names it
 
 ## Rehearse without installing
 
 `Request.DryRun` does everything short of the install: download, verify,
 unpack, transform and probe. It asks nobody, then discards the staging file. The
-`Result` has `DryRun` set and both digests.
+`Result` has `DryRun` set and both digests. A dry run may name another
+`Request.Platform`; this host cannot run that platform's binary, so it
+skips `Config.Probes` and sets `Result.ProbesSkipped`.
 
 - `selfupdate/lifecycle_test.go`, `selfupdate/testdata/golden/text-dry-run.golden`
 
@@ -436,8 +517,10 @@ unpack, transform and probe. It asks nobody, then discards the staging file. The
 
 `InstallOptions.KeepPrevious` renames the replaced binary to `.<base>.previous`
 beside the target at commit, over any older one, and reports it in
-`Result.Previous`. On Windows this works while the old image is still
-running. `StandaloneInstaller.CleanupPending`, called at startup, finishes
+`Result.Previous`. It keeps no setuid or setgid bit
+([below](#replace-a-setuid-or-setgid-binary)). On Windows this works while
+the old image is still running. `StandaloneInstaller.CleanupPending`,
+called at startup, finishes
 what an earlier update left behind. Since `v1.6.0` that includes the staging
 files and backups of an update that crashed: under the lock they belong to
 no one. An `ErrConcurrentUpdate` from it means another update holds the
@@ -458,6 +541,7 @@ program holds a `*ManagedInstaller`, which has its own `KeptBackups`;
 `CleanupPending` is the inner `StandaloneInstaller`'s, so keep that one to
 call it.
 
+- `ExampleStandaloneInstaller_CleanupPending`
 - `selfupdate/journal_test.go`, `selfupdate/lifecycle_windows_test.go`,
   `selfupdate/cleanup_busy_windows_test.go`
 
@@ -469,6 +553,10 @@ silently grants or drops privileges. Set
 bits. The sticky bit is always kept. On Unix the new binary also gets the
 old one's owner and group, when the updater may give them; an updater that
 may not, such as one run by the file's owner without root, keeps its own.
+A previous binary kept beside the target, by `KeepPrevious` or as a kept
+backup after a failed restore or an interrupted update, loses setuid and
+setgid, so no old copy is left privileged: a restore from it must set them
+again.
 
 - `selfupdate/lifecycle_test.go`, `selfupdate/lifecycle_windows_test.go`
 
@@ -491,7 +579,9 @@ install.
   - systemd: a `UnitFileState` of `enabled` or `enabled-runtime`, not
     `static` or `indirect`, though `systemctl is-enabled` succeeds for
     them;
-  - launchd: `RunAtLoad` or `KeepAlive`;
+  - launchd: `RunAtLoad` or `KeepAlive`, with the label not disabled in
+    launchd's override database (`launchctl disable`, which
+    `launchctl enable` undoes);
   - the SCM: an automatic start type, or a demand start with start
     triggers when `scm.Options.TriggerStartEnabled` is set;
   - Task Scheduler: an enabled task with an enabled logon, boot or
@@ -538,11 +628,16 @@ for Task Scheduler,
 - **Errors and waits.** A backend's error wraps one of `service`'s typed
   errors, which `errors.Is` matches: `ErrNotInstalled`, `ErrUnsupported`,
   `ErrInsideService`, `ErrTimeout`, `ErrUnhealthy` or `ErrPermission`.
-  `Options.Poll` bounds the waits: `Timeout` 60 s, `Interval` 250 ms and
-  `Settle` 10 s by default (`DefaultPollTimeout`, `DefaultPollInterval`,
+  Since `v1.16.0`, a failed `systemctl`, `systemd-run`, `launchctl` or
+  exec-reconciler command is also a `*service.CommandError`, which
+  `errors.As` reads for the step, the exit code and the message; the scm
+  and taskscheduler backends fail through Windows API errors, and return
+  none. `Options.Poll` bounds the waits: `Timeout` 60 s, `Interval` 250 ms
+  and `Settle` 10 s by default (`DefaultPollTimeout`, `DefaultPollInterval`,
   `DefaultPollSettle`). `Options.Probe` is a `service.HealthProbe`, a
   function that observes the service once and returns a `service.Health`;
   an error from it is kept, and reported if the wait times out.
+  `service.ExamplePollHealthy` shows a probe and the wait.
 - **What it does around the replace:**
   - `Stop` returns once the service has stopped, not when the stop was
     asked for: systemd `inactive` or `failed`; launchd out of the domain
@@ -631,11 +726,17 @@ the triggers of, or deletes a task.
 
 ```go
 task, err := taskscheduler.New(taskscheduler.Options{
-    Name:        "relay",              // in Folder; `\` when empty
-    RewritePath: true,                 // follow a binary that moved
-    RequestStop: askRelayToExit,       // optional: a polite stop
+    Name:        "relay",        // in Folder; `\` when empty
+    RewritePath: true,           // follow a binary that moved
+    RequestStop: askRelayToExit, // optional: a polite stop
 })
+if err != nil {
+    return err
+}
 m, err := selfupdate.NewManagedInstaller(inner, task, task)
+if err != nil {
+    return err
+}
 ```
 
 Off Windows, `New` returns `service.ErrUnsupported`.
@@ -831,7 +932,10 @@ func main() {
 - **Call `service.ReportFunc` first in `main`,** or `LoadHandOffEnv` if the
   program reads its environment before that. In a detached run it applies
   the private environment file the launchd handoff writes, and on Windows
-  it completes the start, which goes through a short-lived hop.
+  it completes the start, which goes through a short-lived hop. Neither
+  takes a context; a program that needs its context to bound the wait for
+  the hop calls `service.LoadHandOffEnvContext(ctx)`, or
+  `service.HandOffHopContext(ctx)`, first (since `v1.16.0`).
 - **The detached run cannot prompt,** so the update must have `--yes`, as
   an agent's does. Since `v1.11.0`, an update from inside the service
   without it is refused with `ErrConfirmationRequired` (exit 1), even when
@@ -871,6 +975,59 @@ Pointers:
   update to run at medium integrity, which a GitHub runner does not give
   it, so CI skips that one test
 
+## Use another release host
+
+`GitHubSource` is one `ReleaseSource`. A program whose releases live
+elsewhere implements the interface for that host and passes it as
+`Config.Source`; every other seam in this guide works the same over it.
+
+- **`Latest` and `ByTag`** return a `Release`, and an error that wraps
+  `ErrNoRelease` when the release asked for does not exist, so
+  `CheckCached` can save that answer. `OpenAsset` opens an asset's body.
+- **The field rules** are on `Release` and `Asset`:
+  - a release is `Immutable` only when the host keeps its files
+    unchanged, since the Updater refuses a mutable one with
+    `ErrMutableRelease`; one that is a `Draft` is never installed;
+  - each asset has a positive `ID`; a `Name` that is the exact filename,
+    a basename with no separator or control character; `State`
+    `AssetStateUploaded`; a positive `Size`, exactly what `OpenAsset`
+    returns; and a `Digest` that is empty or `sha256:<64 hex>`, which the
+    downloaded bytes must then match.
+- **Channels** need `ReleaseLister` too: `ListReleases` lists releases,
+  prereleases included. A source without it is refused on a channel.
+- **`WithCredentials`** needs a `CredentialedSource`: its
+  `WithCredentials(p)` returns a copy whose provider is `p`, with fresh
+  credential state, and leaves the receiver unchanged. A source without it
+  makes such a run fail.
+
+Since `v1.16.0`, `selfupdatetest.VerifyReleaseSource` checks a source
+against those rules, in the source's own tests:
+
+```go
+func TestSourceConforms(t *testing.T) {
+    src := newTestSource(t) // your source, against a test server
+    err := selfupdatetest.VerifyReleaseSource(t.Context(), src,
+        selfupdatetest.SourceCase{LatestTag: "v1.2.0", MissingTag: "v9.9.9"})
+    if err != nil {
+        t.Fatal(err)
+    }
+}
+```
+
+It requires `Latest` to return `LatestTag`, immutable and not a draft;
+`ByTag` to return the same release for it, and an error that wraps
+`ErrNoRelease` for `MissingTag`; every asset to meet the rules above; and
+`OpenAsset` to return exactly `Size` bytes, whose SHA-256 is `Digest` when
+it is set. It returns every violation, joined.
+
+Pointers:
+
+- `selfupdatetest.ExampleVerifyReleaseSource`
+- `go doc github.com/maccavelli/go-selfupdate-lib/selfupdate Release`, and
+  `Asset`: each field's rule
+- [0025-MADR](../decisions/0025-MADR-align-with-go-sdk-design-practices.md)
+  D11
+
 ## Evolve with the library
 
 Within `v1` the library only adds, and an interface you implement, such as
@@ -902,11 +1059,16 @@ The `selfupdate/selfupdatetest` package provides:
   it. It logs every request with whether it carried `Authorization`, and,
   in `CredentialHeaders`, the names of the credential headers it carried,
   never their values. So a test can prove a credential stays off the
-  download origin.
+  download origin;
+- `VerifyReleaseSource(ctx, src, SourceCase{LatestTag, MissingTag})`
+  (since `v1.16.0`), which checks a `ReleaseSource` for another host
+  against the contract the Updater relies on
+  ([Use another release host](#use-another-release-host)).
 
 Pointers:
 
 - `selfupdatetest.ExampleNewFakeSource`,
+  `selfupdatetest.ExampleVerifyReleaseSource`,
   `selfupdate/selfupdatetest/selfupdatetest_test.go`
 - `selfupdate/e2e_github_test.go`, `selfupdate/golden_test.go`,
   `selfupdate/credential_header_e2e_test.go`
