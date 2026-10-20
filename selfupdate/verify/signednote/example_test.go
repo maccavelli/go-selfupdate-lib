@@ -7,12 +7,13 @@ import (
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/verify/signednote"
 )
 
-// releaseKeys are the verifier keys the program trusts, embedded as Go
-// constants: a CI key and an offline backup key. These are placeholders,
-// not keys anyone holds; selfupdate-note keygen makes real ones.
+// ciKey and backupKey are the verifier keys the program trusts, embedded
+// as Go constants: a CI key and an offline backup key. They are real
+// public keys, from selfupdate-note keygen, for the example repository;
+// their signer keys were not kept.
 const (
-	ciKey     = "github.com/owner/demo/selfupdate+00000000+AX0000000000000000000000000000000000000000000"
-	backupKey = "github.com/owner/demo/selfupdate-backup+00000000+AX0000000000000000000000000000000000000000000"
+	ciKey     = "github.com/owner/demo/selfupdate+d533e23c+AZWyjkW2R4pNwZVCR12UCgKcvAen9a38ioPLNweII8c2"
+	backupKey = "github.com/owner/demo/selfupdate-backup+5c82bb68+AQT/+4AX+ymyQ4mGQ4r3jYdvYUWMOmIMXJ3ovtCn+WWh"
 )
 
 // The verifier goes in Config.ManifestVerifiers, beside the rest of the
@@ -29,4 +30,7 @@ func ExampleNew() {
 		return
 	}
 	_ = selfupdate.Config{ManifestVerifiers: []selfupdate.ManifestVerifier{v}}
+	fmt.Println("verifier ready")
+	// Output:
+	// verifier ready
 }

@@ -64,3 +64,15 @@ func ExampleNewFakeSource() {
 	// v1.1.0 true false <nil>
 	// true
 }
+
+// A ReleaseSource for another host runs the conformance check in its tests.
+// Here it checks the in-memory fake, which keeps the contract.
+func ExampleVerifyReleaseSource() {
+	plats := []selfupdate.Platform{{OS: "linux", Arch: "amd64"}}
+	src := selfupdatetest.NewFakeSource("v1.1.0", selfupdatetest.NewRelease("demo", "v1.1.0", plats,
+		func(selfupdate.Platform) []byte { return []byte("demo v1.1.0\n") }))
+	err := selfupdatetest.VerifyReleaseSource(context.Background(), src, selfupdatetest.SourceCase{LatestTag: "v1.1.0", MissingTag: "v9.9.9"})
+	fmt.Println(err)
+	// Output:
+	// <nil>
+}

@@ -588,3 +588,55 @@ changed. Below, a row is "as its fix" unless what was found differs.
    required. It reads `[--extras JSON]`, as the header now does.
    `verify-selfupdate-release_test.sh`, shellcheck and the
    workflow-shape test pass again.
+
+### X5 (2026-10-20)
+
+1. **Fixed:**
+   * A5-37: launchd's `ExampleNew` passes `Plist`, the agent's plist under
+     `~/Library/LaunchAgents` from `os.UserHomeDir`, and its comment says
+     so. It stays compile-only, since `New` refuses off macOS.
+   * A5-32 and A5-33: signednote's `ExampleNew` uses two real public keys
+     for the example repository, made with `selfupdate-note keygen` into
+     the session's scratch directory. Their signer keys were deleted from
+     there after the run, as the comment says.
+     * The comment names `ciKey` and `backupKey`.
+     * The Example prints `verifier ready` and gains `// Output:`.
+   * A5-13: `ExampleNew_standalone`'s client is
+     `&http.Client{Transport: &http.Transport{Proxy:
+     http.ProxyFromEnvironment, ResponseHeaderTimeout: 30 * time.Second}}`,
+     as `GitHubOptions.Client`'s doc advises, with a comment saying why.
+2. **Added** (A5-15, A5-21):
+   * `ExampleNewSlogReporter`, with `// Output:`. A text handler without
+     the time logs an Info and an Error event.
+   * `ExampleNewVersionProberWith`, with `// Output:`. Its `Run` prints a
+     version, and the probe passes for `v1.1.0` and refuses `v1.2.0`.
+   * `ExampleVerifyReleaseSource` in `selfupdatetest`, with `// Output:
+     <nil>` against the in-memory fake.
+   * `ExampleStandaloneInstaller_CleanupPending`, compile-only. Go names
+     an Example for a method `Example<Type>_<Method>`, so step 3's
+     `ExampleCleanupPending` takes this name. It is compile-only because
+     run, it would act on the test binary's own directory.
+3. **Seen failing,** each on a `scripts/plant-copy.sh` copy:
+
+   | Plant | Failure |
+   | :--- | :--- |
+   | slog: `// level=ERROR msg=failed` → `WARN` | `--- FAIL: ExampleNewSlogReporter`, got `level=ERROR …` |
+   | prober: `// v1.2.0 refused: true` → `false` | `--- FAIL: ExampleNewVersionProberWith`, got `v1.2.0 refused: true` |
+   | conformance: `MissingTag` set to the release that exists | `--- FAIL: ExampleVerifyReleaseSource`, got `selfupdatetest: ByTag("v1.1.0") = <nil>; want an error that wraps selfupdate.ErrNoRelease` |
+   | signednote: the old placeholder key back | `--- FAIL: ExampleNew`, got `signednote: selfupdate: signednote: verifier key: malformed verifier id` |
+   | launchd, as fixed, with an empty `// Output:` added | passes on macOS: `New` accepts it and nothing is printed |
+   | launchd, the same with a relative `Plist` | `--- FAIL: ExampleNew`, got `selfupdate: launchd: plist path "<…>" is not absolute`; the account-derived path is elided here |
+
+   * The conformance and signednote plants change code, not the
+     `// Output:` line, so each shows that the Example checks behaviour.
+   * The launchd pair runs a compile-only Example once, on a copy, to show
+     that today's `Plist` is accepted and its absence is not.
+   * The relative-`Plist` plant first broke the build ("declared and not
+     used: home"); it uses `filepath.Base(home)` instead.
+4. **Checks:**
+   * `go test -run '^Example' ./...`: 18 packages `ok`;
+   * `go vet ./...` for darwin, and with `CGO_ENABLED=0` for linux and
+     windows;
+   * `gofmt` clean (it realigned `ExampleNew_standalone`'s composite
+     literal around the new client line);
+   * `make pre-add-check` on the four test files clean.

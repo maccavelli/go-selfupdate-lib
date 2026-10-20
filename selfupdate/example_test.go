@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -24,9 +26,11 @@ import (
 func ExampleNew_standalone() {
 	src, err := selfupdate.NewGitHubSource(selfupdate.GitHubOptions{
 		Repository: selfupdate.Repository{Owner: "maccavelli", Name: "prepare-commit-msg"},
-		Client:     &http.Client{Timeout: 15 * time.Minute},
-		UserAgent:  selfupdate.UserAgent("prepare-commit-msg", buildinfo.Identity().Current()),
-		Limits:     selfupdate.DefaultLimits(),
+		// A Transport bound, not Client.Timeout, so a slow large download
+		// is not cut off; a context deadline bounds the whole run.
+		Client:    &http.Client{Transport: &http.Transport{Proxy: http.ProxyFromEnvironment, ResponseHeaderTimeout: 30 * time.Second}},
+		UserAgent: selfupdate.UserAgent("prepare-commit-msg", buildinfo.Identity().Current()),
+		Limits:    selfupdate.DefaultLimits(),
 	})
 	if err != nil {
 		fmt.Println("source:", err)
@@ -520,4 +524,63 @@ func ExampleChainTransformers() {
 	// Output:
 	// stamp
 	// sign
+}
+
+// A program that logs with log/slog reports each event there: the kind is
+// the message, and the fields are attributes; a failure logs at Error. The
+// handler here leaves the time out, so the output is fixed.
+func ExampleNewSlogReporter() {
+	h := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+		if a.Key == slog.TimeKey && len(groups) == 0 {
+			return slog.Attr{}
+		}
+		return a
+	}})
+	r := selfupdate.NewSlogReporter(slog.New(h))
+	ctx := context.Background()
+	_ = r.Report(ctx, selfupdate.Event{Kind: selfupdate.EventSelected, Product: "demo", Current: "v1.0.0", Target: "v1.1.0", Asset: "demo-linux-amd64"})
+	_ = r.Report(ctx, selfupdate.Event{Kind: selfupdate.EventFailed, Product: "demo", Detail: "checksum mismatch"})
+	// Output:
+	// level=INFO msg=selected product=demo current=v1.0.0 target=v1.1.0 asset=demo-linux-amd64
+	// level=ERROR msg=failed product=demo detail="checksum mismatch"
+}
+
+// A version probe runs the new binary before it replaces the old one. Run
+// replaces how the binary starts; here a stand-in prints a version, so the
+// probe runs, as in a program's own test, without a process.
+func ExampleNewVersionProberWith() {
+	probe, err := selfupdate.NewVersionProberWith(selfupdate.VersionProbeOptions{
+		Args:    []string{"--version"},
+		Timeout: 10 * time.Second,
+		Run: func(_ context.Context, _ string, _ []string, stdout io.Writer) error {
+			_, err := fmt.Fprintln(stdout, "demo v1.1.0 (release)")
+			return err
+		},
+	})
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	ctx := context.Background()
+	req := selfupdate.ProbeRequest{Product: "demo", TargetVersion: "v1.1.0", Path: filepath.Join(os.TempDir(), "demo")}
+	fmt.Println("v1.1.0:", probe.Probe(ctx, req))
+	req.TargetVersion = "v1.2.0"
+	fmt.Println("v1.2.0 refused:", probe.Probe(ctx, req) != nil)
+	// Output:
+	// v1.1.0: <nil>
+	// v1.2.0 refused: true
+}
+
+// A program calls CleanupPending at start-up, before it serves anything, so
+// what an earlier update left behind, such as the backup a running Windows
+// image kept open, goes now. Another update holding the lock is benign.
+func ExampleStandaloneInstaller_CleanupPending() {
+	installer, err := selfupdate.NewStandaloneInstaller(selfupdate.InstallOptions{})
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	if err := installer.CleanupPending(context.Background()); err != nil && !errors.Is(err, selfupdate.ErrConcurrentUpdate) {
+		fmt.Println("cleanup:", err)
+	}
 }
