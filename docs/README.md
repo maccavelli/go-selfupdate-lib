@@ -70,7 +70,7 @@ name, and the files they cite moved with the rename
 | 0025 | MADR | [Align go-selfupdate-lib with Go SDK design practices: redact secrets, type and document errors, write the concurrency and evolution contracts, add a one-call quickstart, retract the pre-rename tags, lower the Go floor to 1.26.9, and ship release signing as an opt-in verifier](decisions/0025-MADR-align-with-go-sdk-design-practices.md) | accepted |
 | 0025 | PLAN | [Implement the Go SDK practices alignment as `v1.16.0`: redaction, typed errors, contexts, contracts, a quickstart, seams, a source conformance check, opt-in release signing, the Go 1.26.9 floor, `retract`, a changelog and a trust model](decisions/0025-PLAN-align-with-go-sdk-design-practices.md) | complete |
 | 0026 | MADR | [Add a `before_uninstall` installer hook that runs the installed copy before `--uninstall` removes it, with the install hooks' rules, a `--force` to remove past a failed hook, and a library floor so an older program cannot embed it](decisions/0026-MADR-before-uninstall-installer-hook.md) | accepted |
-| 0026 | PLAN | [Implement the `before_uninstall` installer hook as `v1.17.0`](decisions/0026-PLAN-before-uninstall-installer-hook.md) | in-progress |
+| 0026 | PLAN | [Implement the `before_uninstall` installer hook as `v1.17.0`](decisions/0026-PLAN-before-uninstall-installer-hook.md) | complete |
 
 ## I want to…
 

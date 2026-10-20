@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 date: 2026-10-19
 associated-madr: "0026-MADR-before-uninstall-installer-hook.md"
 ---
@@ -599,3 +599,50 @@ migration guide's §17. It answers
   `v1.17.0`, pinning both workflows to it, then adding the hook.
 * **Documentation:** the doc comments of the exported calls that take no
   context say why (0025-PLAN, deviation D5).
+
+### U5 (2026-10-19), after the pin commit
+
+1. **The pin commit:** the owner committed it as `3318614` and pushed it
+   ("committed, proceed"). The disclosure guard, run after that push over
+   `adc2c75..3318614`, exits 0. Run `39349656303` on `3318614`: `success`,
+   18 of 18 jobs.
+2. **Issue #1:** the owner said "proceed" after the handoff asked for the
+   word to close it. It was closed as completed at 2026-10-20T01:19:56Z,
+   with one comment naming `v1.17.0` and linking the changelog and §17 at
+   the tag. The repository publishes tags, not GitHub releases, so the
+   comment links no release page.
+
+### U6 (2026-10-19)
+
+The plan's `status` becomes `complete`, and `docs/README.md`'s row for it
+reads `complete`.
+
+### Verification, at closing (2026-10-19)
+
+* **V1 (spec):** `before_uninstall` parses and `after_uninstall` is
+  refused (U1, and U4's snippet). `make apicheck` was compatible with
+  `v1.16.0` at U1 and in U5's `make gate`.
+* **V2 (floor):** `TestPlanRefusesAnOldLibrary` refuses a `v1.16.0`
+  module with the hook and names the floor, and a `v1.9.0` one is told
+  `go get …@v1.17.0`, the highest floor it misses (U1).
+* **V3 (installers):** the eight cases passed under `sh`, `bash` and
+  `dash` (24 runs, U2), and under Windows PowerShell and `pwsh` in both
+  forms on the Windows test host (32 runs, U3). Each template's nine
+  plants each failed their case (U2 and U3 tables). U3's first run failed
+  one case, the TLS order, which was fixed in the template.
+* **V4 (lint):** `check-installers.sh` was clean on `install.sh` here
+  (U2) and on `install.ps1` on the Windows test host (U3).
+* **V5 (release):** `v1.17.0` is an annotated tag on `adc2c75`. Its CI
+  passed 18 of 18 jobs, its ten identity legs report `v1.17.0 (release)
+  adc2c757d7e2`, and the proxy serves it as `@latest` (U5).
+* **V6 (issue):** issue #1 is closed with `v1.17.0` named.
+
+Deviations and corrections, each recorded in its phase: U1's highest-floor
+refinement; U2's fixture correction; U3's `$Force` parameter, the missing
+help text and the TLS order; U4's §12 example, the floor in three places
+and the unchanged `docs/architecture.md`; U5's pre-tag change, the guard
+run after the owner's push rather than before it, and §5's stale range.
+No decision changed, so the MADR has no amendment from this plan beyond
+the owner's choices recorded at approval.
+
+The plan is `complete`. The MADR stays `accepted`.
