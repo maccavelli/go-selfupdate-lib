@@ -8,6 +8,39 @@ listed in the
 [migration guide](docs/guides/migrating-from-mcplib-selfupdate.md), one
 section per release, and each entry links its section and its records.
 
+## v1.17.1 - 2026-10-20
+
+See [the guide](docs/guides/migrating-from-mcplib-selfupdate.md#from-v1170-to-v1171),
+[0027-MADR](docs/decisions/0027-MADR-documentation-pass-after-v1-17-0.md) and
+[0027-PLAN](docs/decisions/0027-PLAN-documentation-pass-after-v1-17-0.md).
+
+### Fixed
+
+- `install.ps1`'s uninstall reported a program it could not remove, such
+  as a running one, as removed, and exited 0. Both installers now report
+  it, remove the others, and exit 3, which also means "removed only in
+  part". The installers ship with the workflows.
+- `(*Updater).Checker` on a nil `*Updater` panicked. It returns a
+  `Checker` whose methods return `ErrNotConstructed`, as that error's
+  doc says.
+- A managed install's session did not serialize its methods, as
+  `InstallSession`'s doc says: `Close` could run while `Install` was
+  between its calls. It now waits.
+
+### Changed
+
+- CI runs `govulncheck` on the Go 1.26.9 floor too, as `SECURITY.md`
+  says, and keeps `signednote`'s fuzz corpus when a fuzz run fails.
+- The tests' leak check, `internal/testproc.CheckNoLeak`, compares
+  goroutine IDs, not a count, so a goroutine that ends during a test can
+  no longer hide a leak ([0025-MADR](docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md), Amendment A6). Test support
+  only.
+- A documentation pass fixed the audit's findings in the guides, the
+  architecture page, `go doc` and the script and workflow headers. Two
+  Examples that failed when run are fixed, and `NewSlogReporter`,
+  `NewVersionProberWith`, `StandaloneInstaller.CleanupPending` and
+  `selfupdatetest.VerifyReleaseSource` gained one.
+
 ## v1.17.0 - 2026-10-19
 
 See [the guide](docs/guides/migrating-from-mcplib-selfupdate.md#17-from-v116-to-v117),

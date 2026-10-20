@@ -725,3 +725,30 @@ had finished. Below, a row is "as its fix" unless what was found differs.
    compatible with `v1.17.0`, links 671 in 77 files with 0 broken.
    Every agent wrote only to its scratch directory and the npm and Go
    caches.
+
+### X7 (2026-10-20), before the tag
+
+1. **The pre-tag change:**
+   * `CHANGELOG.md` gains `## v1.17.1 - 2026-10-20`, linking the guide's
+     part and this pair:
+     * Fixed: C1, the partial uninstall; C2, the nil `Checker`; C3, the
+       managed session's lock.
+     * Changed: G1 and G2; 0025-MADR Amendment A6's leak check, as test
+       support only; and the pass itself, with the fixed and new
+       Examples.
+     * This closes A1-12.
+   * The migration guide gains `### From v1.17.0 to v1.17.1` inside §17,
+     before its Check, as `v1.15.2`'s part sits inside §15. The version
+     index links it, and its Adopting names the new exit 3.
+   * `docs/README.md`'s "§6 to §17" row stands: the part is inside §17.
+     The `go get`, pin and "current release" lines move at the pin
+     commit.
+2. **Checks:**
+   * `scripts/check-release-tag.sh v1.17.1` exits 0.
+   * On the two files: links 118, 0 broken; markdownlint 0 issues.
+   * `make gate` with `SELFUPDATE_REQUIRE_PYTHON=1`: `overall=0`;
+     `apicheck` compatible with `v1.17.0`; links 677 in 77 files, 0
+     broken.
+   * The disclosure guard exits 0 over the seven unpushed commits,
+     `df67aa1` to `9fe4eeb`, against `origin/main` at `c491312`. It is
+     run again over the pre-tag commit before the push.

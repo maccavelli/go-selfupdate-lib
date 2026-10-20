@@ -57,7 +57,8 @@ changes no API either; its fixes are in
 `v1.16.0` adds to the API, lowers the Go floor to 1.26.9, and makes
 release signing opt-in: see [16. From v1.15 to v1.16](#16-from-v115-to-v116).
 `v1.17.0` adds a `before_uninstall` installer hook: see
-[17. From v1.16 to v1.17](#17-from-v116-to-v117).
+[17. From v1.16 to v1.17](#17-from-v116-to-v117). `v1.17.1` changes no
+API; its fixes are in [From v1.17.0 to v1.17.1](#from-v1170-to-v1171).
 
 Replace every `github.com/maccavelli/mcplib/selfupdate` import with
 `github.com/maccavelli/go-selfupdate-lib/selfupdate`. No identifier or signature
@@ -1297,6 +1298,36 @@ what each change does is in the [changelog](../../CHANGELOG.md).
 - **A script that uninstalls your program** can now get exit 1, when a hook
   fails. `--force` removes the program anyway; `--no-hooks` skips the
   hooks.
+
+### From v1.17.0 to v1.17.1
+
+`v1.17.1` changes no exported API: `make apicheck` reports it compatible
+with `v1.17.0`. §17's `go get` above takes the current release. What
+changed, and why, is in
+[0027-MADR](../decisions/0027-MADR-documentation-pass-after-v1-17-0.md).
+
+- **An uninstall that cannot remove a program says so.** On Windows a
+  running program cannot be deleted; `install.ps1` reported it removed
+  and exited 0. Both installers now print `install: could not remove
+  …`, remove the others, leave the folder on PATH while a program
+  remains, and exit 3. The installers ship with the workflows: move your
+  workflow pins to `v1.17.1` to take it.
+- **`Checker` on a nil `*Updater`** returns a `Checker` whose methods
+  return `ErrNotConstructed`, instead of panicking.
+- **A managed session serializes its methods.** A `Close` called while
+  `Install` runs waits for it.
+- **Documentation:** a third pass checked the guides, `go doc` and the
+  records against the code and fixed 123 findings, most of them
+  `v1.16.0` API the guides did not yet describe. `NewSlogReporter`,
+  `NewVersionProberWith`, `CleanupPending` and `VerifyReleaseSource`
+  gained an `Example`.
+
+Adopting it:
+
+- **A script that uninstalls your program** can now get exit 3 when a
+  program could not be removed. Stop the program first, for example
+  with a `before_uninstall` hook, and run the uninstall again.
+- Nothing else is required.
 
 ### Check
 
