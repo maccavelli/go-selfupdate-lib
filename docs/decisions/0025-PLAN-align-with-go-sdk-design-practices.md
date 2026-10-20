@@ -1122,6 +1122,48 @@ step 3's precedent:
   `status: complete`, with its index row updated. The MADR stays
   `accepted`.
 
+### Phase S16: the leak check compares goroutines (Amendment A6, deviation D7)
+
+Added after closing, when `TestCheckNoLeakSeesLeak` failed on `main`. It
+changes test support only; no release follows it.
+
+1. **`internal/testproc/testproc.go`:**
+   * `CheckNoLeak` records the goroutine IDs from `runtime.Stack(buf,
+     true)`, growing `buf` until the dump fits.
+   * Its check polls for up to 2 s, as now, for IDs that were not in that
+     set. It fails with `goroutines: N started during the test still
+     run:` and the first stack line of each.
+   * Its doc says what is compared, and why a count is not enough.
+2. **`internal/testproc/testproc_test.go`:** `TestCheckNoLeakSeesLeak`
+   gains a masking case:
+   * a goroutine blocked before `CheckNoLeak` is called is released after
+     the leak starts;
+   * the test waits, within its budget, until `runtime.NumGoroutine()`
+     shows it gone;
+   * the check must still report the leak.
+
+   The existing leak and no-leak cases stay.
+3. **Seen failing,** each on a `scripts/plant-copy.sh` copy of
+   `testproc.go`:
+   * the count comparison put back fails the masking case;
+   * a check that never compares fails the existing leak case, as in S1.
+4. **The flake is gone:**
+   * `go test -race -count=200 -run TestCheckNoLeakSeesLeak
+     ./internal/testproc/` has 0 failures, where it had 4;
+   * every package that calls the check passes `go test -race -count=1`
+     here (`./selfupdate/...`, `./internal/...`), and `go test ./...` on
+     the Windows test host covers the `scm` and `taskscheduler` callers.
+
+   A real leak that the old check missed shows up here as a new failure.
+   It is reported as a deviation, not hidden.
+5. **Checks:** `make pre-add-check` on the two files, and `make gate`
+   ending `overall=0`.
+6. **The commit:** on the owner's word, then the push on the owner's
+   word, and CI green on `main`. `CHANGELOG.md` gains nothing, since no
+   release or exported behaviour changes.
+7. **Closing:** this plan goes back to `complete`, and the MADR's A6 to
+   accepted, recorded under "S16, as closed".
+
 ## Changelog source
 
 From the migration guide's sections and the records index. Used by S12
@@ -2318,3 +2360,23 @@ later"). S13 step 8 is recorded as left to the owner.
   variants) Partial by decision D13.
 
 The plan is `complete`. The MADR stays `accepted`.
+
+### Deviation D7 (2026-10-19): the leak check can be masked
+
+**Found** after closing, on `main` at `b6e325d`, in run `39352949466`
+(`validate (ubuntu-24.04)`, `go test -race`):
+
+```text
+--- FAIL: TestCheckNoLeakSeesLeak (0.01s)
+    testproc_test.go:162: a blocked goroutine reported [], want one goroutines: error
+```
+
+`b6e325d` changes two documents. This test and `CheckNoLeak` were moved
+into `internal/testproc` at S1, and the count comparison dates from
+0004-MADR H6. The same code passed in three earlier runs that day.
+
+The failure reproduced here: 4 of 200 `-race` runs of the test alone, and
+0 of 100 after `TestStart*` and `TestBudget`. The cause, and why it
+reaches the 140 other calls of the check, is in the MADR's Amendment A6.
+
+**Proposed:** Phase S16. It waits for the owner's approval.

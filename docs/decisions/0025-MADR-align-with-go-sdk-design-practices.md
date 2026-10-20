@@ -801,6 +801,57 @@ D9-A's claim, that the tag ruleset closes the repository-compromise
 threat, therefore does not hold until the owner applies it; the trust
 model's advice to restrict `v*` tags stands.
 
+### Amendment A6 (2026-10-19, proposed): the leak check compares goroutines, not a count
+
+D4-A's leak check, `internal/testproc.CheckNoLeak`, notes
+`runtime.NumGoroutine()` when a test calls it. It fails the test only
+while more goroutines run than that. A goroutine that already ran when
+the count was taken, and ends during the test, therefore hides one that
+the test leaked. The count is back where it started, and the check
+passes at once.
+
+The evidence:
+
+* **CI on `main`** at `b6e325d`, a commit of two documents (run
+  `39352949466`, `validate (ubuntu-24.04)`, `go test -race`):
+  `TestCheckNoLeakSeesLeak (0.01s)`, `testproc_test.go:162: a blocked
+  goroutine reported [], want one goroutines: error`. The same code
+  passed in three runs earlier the same day.
+* **This Mac,** `go test -race -count=200 -run TestCheckNoLeakSeesLeak
+  ./internal/testproc/`: 4 of 200 runs failed, each the CI failure. 100
+  runs after `TestStart*` and `TestBudget` failed none. The ending
+  goroutine does not need those tests: it can be the previous run's
+  released goroutine, or the `testing` package's goroutine for the test
+  before.
+* **0.01 s** is the masked path: a leak that is seen waits out the
+  check's 2 s poll before it is reported.
+
+This also holds for the 140 calls in the `selfupdate`, `selfupdate/cli`
+and `selfupdate/service` tests: such a test can pass with a leak. The
+check's doc already says that "a goroutine that is ending is still
+counted for a moment" (0004-MADR H6). That is the same effect, read only
+in the direction that delays a report.
+
+Proposed: `CheckNoLeak` records the IDs of the goroutines that run when
+it is called, from `runtime.Stack(buf, true)`. It reports any goroutine
+that started after that and still runs, with the first line of its
+stack. It keeps the 2 s poll, since a new goroutine that is ending is
+still listed for a moment, and it keeps the `goroutines:` prefix. An
+older goroutine that ends can then hide nothing. It uses only the
+standard library, which the `internal-testproc` depguard rule already
+allows. No exported API changes, and `internal/testproc` is imported only
+by `_test.go` files, so no release is needed.
+
+Rejected:
+
+* re-running the failed job, which turns `main` green and leaves the
+  flake and the masked leaks;
+* waiting in the test for the goroutine count to settle before the check,
+  which fixes this one test, not the check its 140 callers rely on;
+* goleak, a module this repository does not require. The rule is that no
+  module is required without a record that names it, and the standard
+  library does the same here.
+
 ### Consequences
 
 * Good, because a program that logs its updater, its options or a
