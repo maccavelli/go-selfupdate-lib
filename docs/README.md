@@ -71,6 +71,8 @@ name, and the files they cite moved with the rename
 | 0025 | PLAN | [Implement the Go SDK practices alignment as `v1.16.0`: redaction, typed errors, contexts, contracts, a quickstart, seams, a source conformance check, opt-in release signing, the Go 1.26.9 floor, `retract`, a changelog and a trust model](decisions/0025-PLAN-align-with-go-sdk-design-practices.md) | complete |
 | 0026 | MADR | [Add a `before_uninstall` installer hook that runs the installed copy before `--uninstall` removes it, with the install hooks' rules, a `--force` to remove past a failed hook, and a library floor so an older program cannot embed it](decisions/0026-MADR-before-uninstall-installer-hook.md) | accepted |
 | 0026 | PLAN | [Implement the `before_uninstall` installer hook as `v1.17.0`](decisions/0026-PLAN-before-uninstall-installer-hook.md) | complete |
+| 0027 | MADR | [Correct the documentation against v1.17.0, fill the gaps v1.16.0 and v1.17.0 left, fix the three defects and two CI gaps the audit found, and release v1.17.1](decisions/0027-MADR-documentation-pass-after-v1-17-0.md) | accepted |
+| 0027 | PLAN | [Implement the documentation pass after v1.17.0, the Examples, the three defect fixes and the two CI gaps, as v1.17.1](decisions/0027-PLAN-documentation-pass-after-v1-17-0.md) | in-progress |
 
 ## I want to…
 

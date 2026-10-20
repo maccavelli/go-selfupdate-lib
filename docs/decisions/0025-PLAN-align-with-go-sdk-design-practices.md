@@ -2454,3 +2454,23 @@ This plan is `in-progress` again until S16 closes.
    are recorded.
 
 The plan is `complete` again. The MADR stays `accepted`.
+
+### After closing (2026-10-20)
+
+* **S16 ships with the next release.** The owner asked whether
+  `c4af46a` needs `v1.17.1` and chose not to tag one. Since `v1.17.0`,
+  `main` has changed only docs, records and `internal/testproc`. Only this
+  repository's `_test.go` files import that package, and Go's `internal/`
+  rule keeps every other module out, so a program builds the same code at
+  `v1.17.0` as at `main`. `apicheck` is compatible with `v1.17.0`.
+  * The next release's `CHANGELOG.md` entry names the fix in one line, as
+    test support: the leak check compares goroutine IDs, not a count
+    (Amendment A6).
+  * Its migration-guide section needs nothing for S16, since no caller
+    can see it.
+* **The throwaway repository is deleted.** The owner deleted it ("i
+  deleted the throwaway repo"), closing S13 step 8, which S15 left to the
+  owner.
+* **The repository settings stay deferred** (deviation D6, Amendment A5).
+  On 2026-10-20, private vulnerability reporting reads `false`, the
+  repository has no rulesets, and Dependabot alerts give 404.
