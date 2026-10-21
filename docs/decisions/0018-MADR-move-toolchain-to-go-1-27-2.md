@@ -188,6 +188,18 @@ sets `go 1.26.9` in place of this record's kept `go 1.27.1`, and keeps
 A CI job builds and tests with 1.26.9. The rest of this record is kept as
 written.
 
+### A2 (2026-10-21): the toolchain line is go1.27.3
+
+*Status: accepted (2026-10-21), as
+[0029-MADR](0029-MADR-move-toolchain-to-go-1-27-3-and-floor-to-1-26-10.md).*
+
+GO-2026-6809, in `crypto/x509`, was published on 2026-10-21, and
+`govulncheck` reports it in Go 1.27.2. It is fixed in 1.27.3. 0029-MADR
+sets `toolchain go1.27.3` in place of this record's `toolchain
+go1.27.2`, for the reason this record gave: nothing this module builds
+ships on a toolchain with a published advisory. It also moves the floor
+to `go 1.26.10`. The rest of this record is kept as written.
+
 ## More Information
 
 * `govulncheck ./...` output of 2026-10-08, in 0017 Q2's gate output: the

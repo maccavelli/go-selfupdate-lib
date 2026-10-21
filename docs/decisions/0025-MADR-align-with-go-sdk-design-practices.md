@@ -855,6 +855,28 @@ Rejected:
   module is required without a record that names it, and the standard
   library does the same here.
 
+### Amendment A7 (2026-10-21): the floor is `go 1.26.10`
+
+Accepted by the owner ("option a, approved to proceed"), as
+[0029-MADR](0029-MADR-move-toolchain-to-go-1-27-3-and-floor-to-1-26-10.md).
+
+GO-2026-6809, in `crypto/x509`, was published on 2026-10-21.
+`govulncheck` reports it in Go 1.26.9 and in 1.27.2, and in neither
+1.26.10 nor 1.27.3. Amendment A1's reason for 1.26.9, that it was
+advisory-free, therefore no longer holds.
+
+Decided:
+
+* `go.mod`'s line becomes `go 1.26.10`, and the toolchain line
+  `toolchain go1.27.3`;
+* the `go126` job builds, vets, tests and runs `govulncheck` with
+  1.26.10;
+* the test fixtures' `go` lines follow, as the PLAN's S11 moved them.
+
+D8's reason for a 1.26 floor stands: the library needs nothing from
+1.27, and Go 1.26 is still supported. The rest of this record is kept
+as written.
+
 ### Consequences
 
 * Good, because a program that logs its updater, its options or a
