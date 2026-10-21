@@ -344,3 +344,57 @@ proceed". The MADR became `accepted`, and this plan `in-progress`.
      found.".
 
    This commit changes Markdown only, so its push runs only "Docs".
+
+### W3 (2026-10-21)
+
+1. **W2's push.** The owner committed W2 as `036289e` and pushed it
+   ("committed and pushed"). GitHub's run list for that commit, before
+   the tag, held one run: "Docs" `39626966895`, `success`, in 19 s. No
+   "CI" run started.
+2. **Before the tag:** `scripts/check-release-tag.sh v1.17.2` exited 0,
+   and so did the disclosure guard for `refs/tags/v1.17.2` at `036289e`.
+3. **The tag.** The owner pushed `v1.17.2` ("i pushed the tag").
+   `git ls-remote` gives the annotated tag object `3f52f96` and
+   `refs/tags/v1.17.2^{}` at `036289ecc701d84c7749f4950a57a154c1af2cf4`.
+4. **The tag's CI,** "CI" `39627172456` on `v1.17.2`: `success`,
+   attempt 1.
+   * 17 of its 18 jobs report `completed`, `success`.
+   * The jobs API still reported `go126` as `in_progress`, with no
+     conclusion, at two reads after the run had concluded (its
+     `updated_at` was 15:47:48 UTC). The job's log is complete: `go
+     version go1.26.10 linux/amd64`, the `GOVERSION` check, `go build`,
+     `go vet` on three targets, 18 packages `ok`, govulncheck "No
+     vulnerabilities found.", then "Complete job" at 15:36:56 UTC.
+   * The log prints `v1.17.2 (release) 036289ecc701` ten times, once
+     for each identity leg.
+   * **0028-PLAN's V4:** the tag ran CI in full, and GitHub's run list
+     for `036289e` holds no Docs run for the tag. The only Docs run is
+     W2's `main` push.
+5. **The pin commit.** `git grep -n 'v1\.17\.1'` outside the records
+   and the changelog listed the pointers. These moved to `v1.17.2`, and
+   the workflow pins to `036289ecc701d84c7749f4950a57a154c1af2cf4`:
+   * `README.md`: the current release, the `go get` line and the
+     publish workflow pin;
+   * `docs/architecture.md`: the current release and its commit;
+   * `docs/guides/building-releases.md`: "the examples below pin", three
+     workflow pins and the `ls-remote` line;
+   * the migration guide: 13 `go get` lines, 11 "gives `v1.17.2`" checks,
+     the workflow pin, the `ls-remote` line, "the current release", the
+     release-workflow sentence ("`v1.17.2` nothing; the example pins
+     `v1.17.2`") and the `go.mod` adoption line, now "`v1.17.2`, with
+     `go 1.26.10`".
+
+   **Kept, as history:** README's floor by release; the architecture
+   page's `:629`; `building-releases.md:521` and `:560`;
+   `extending-selfupdate.md:51`; the guide's §1 floor list, its release
+   list, its "From v1.17.0 to v1.17.1" section, and the new section's
+   comparison with `v1.17.1`.
+6. **The proxy:** `go list -m -json github.com/maccavelli/go-selfupdate-lib@v1.17.2`
+   gives `v1.17.2`, `Time` 2026-10-21T15:34:46Z, `Origin.Hash`
+   `036289ecc701d84c7749f4950a57a154c1af2cf4`; `@latest` gives
+   `v1.17.2`. The proxy's `v1.17.2.mod` says `go 1.26.10` and
+   `toolchain go1.27.3`.
+7. **Checks** on the four pin files: markdownlint "0 issues in 0 files";
+   links "709 links in 81 files, 0 broken"; ids "4 files, 16 deny-list
+   rules, 0 findings". This commit changes Markdown only, so its push
+   runs only "Docs", which W4 records.
