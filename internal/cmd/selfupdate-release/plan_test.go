@@ -211,7 +211,7 @@ func TestRunExitCodes(t *testing.T) {
 func libModule(t *testing.T, path string, lines ...string) string {
 	t.Helper()
 	dir := t.TempDir()
-	body := "module " + path + "\n\ngo 1.26.9\n\n" + strings.Join(lines, "\n") + "\n"
+	body := "module " + path + "\n\ngo 1.26.10\n\n" + strings.Join(lines, "\n") + "\n"
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}

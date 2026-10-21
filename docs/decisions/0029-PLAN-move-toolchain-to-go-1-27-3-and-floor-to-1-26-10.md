@@ -250,3 +250,38 @@ proceed". The MADR became `accepted`, and this plan `in-progress`.
 4. **Checks,** on the five changed files: markdownlint "0 issues in 0
    files"; links "139 links in 5 files, 0 broken"; ids "5 files, 16
    deny-list rules, 0 findings". Each exit 0.
+
+### W1 (2026-10-21)
+
+1. **`go.mod`:** `go 1.26.10` and `toolchain go1.27.3`. `go mod tidy
+   -diff` is clean.
+2. **`ci.yml`, the `go126` job:** `go-version: '1.26.10'`, the check
+   `test "$(go env GOVERSION)" = go1.26.10`, and the comment, which now
+   names 1.26.10 and 1.27.3 and cites 0025-MADR's Amendments A1 and A7
+   and 0029-MADR.
+3. **The ten fixtures:** each one's `go 1.26.9` occurred once, and is now
+   `go 1.26.10`. `git grep -n '1\.26\.9\b' -- ':!*.md'` lists nothing
+   (exit 1). Outside Markdown, `1.27.2` remains only in
+   `githubupdater.go:102`, which outcome 5 keeps.
+4. **Red:** the MADR's govulncheck table (exit 3 on 1.27.2 and 1.26.9).
+   The `go126` check ran verbatim:
+
+   | `GOTOOLCHAIN` | `go env GOVERSION` | exit |
+   | :--- | :--- | :--- |
+   | `go1.26.9` | `go1.26.9` | **1** |
+   | `go1.26.10` | `go1.26.10` | 0 |
+
+5. **Checks,** on this Mac, with `go version go1.27.3 darwin/arm64`:
+   * the `go126` job's steps under `GOTOOLCHAIN=go1.26.10`: the version
+     check, `go build ./...`, `go vet ./...` and its windows and darwin
+     runs, `go test -count=1 ./...` (18 packages `ok`), and
+     `govulncheck ./...` ("No vulnerabilities found."). Each exit 0;
+   * `make pre-add-check` on the eight `.go` files: "8 file(s) clean
+     (gofmt, golangci-lint, go vet, go test, govulncheck)";
+   * actionlint on `ci.yml` and `docs.yml`; `check-workflows.sh` with no
+     arguments and `--rule pins` on `ci.yml`; `check-workflows_test.sh`
+     and `workflow-shape_test.sh`. Each exit 0;
+   * `make gate` with `SELFUPDATE_REQUIRE_PYTHON=1`: every step `rc=0`,
+     with `apicheck` "compatible with v1.17.1", `vuln` "No
+     vulnerabilities found.", links "699 links in 81 files, 0 broken",
+     and `overall=0`.

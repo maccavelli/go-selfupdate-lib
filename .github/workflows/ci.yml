@@ -302,10 +302,11 @@ jobs:
           ./scripts/check-workflows_test.sh
           ./scripts/workflow-shape_test.sh
 
-  # The module's floor, go 1.26.9; GOTOOLCHAIN=local stops the toolchain
-  # line switching to 1.27.2, and go-version, not go-version-file, keeps
+  # The module's floor, go 1.26.10; GOTOOLCHAIN=local stops the toolchain
+  # line switching to 1.27.3, and go-version, not go-version-file, keeps
   # setup-go from reading it (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md
-  # D8, Amendment A1).
+  # D8, Amendments A1 and A7;
+  # docs/decisions/0029-MADR-move-toolchain-to-go-1-27-3-and-floor-to-1-26-10.md).
   go126:
     runs-on: ubuntu-24.04
     env:
@@ -316,9 +317,9 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.26.9'
+          go-version: '1.26.10'
       - name: the floor toolchain
-        run: test "$(go env GOVERSION)" = go1.26.9
+        run: test "$(go env GOVERSION)" = go1.26.10
       - run: go build ./...
       - name: go vet, three targets
         run: |

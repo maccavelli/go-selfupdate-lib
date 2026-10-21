@@ -571,7 +571,7 @@ func standInExe(t *testing.T, role, version string) []byte {
 		}
 		keepUntilExit(dir)
 		standInsDir = dir
-		for name, data := range map[string]string{"go.mod": "module standin\n\ngo 1.26.9\n", "main.go": standInSource} {
+		for name, data := range map[string]string{"go.mod": "module standin\n\ngo 1.26.10\n", "main.go": standInSource} {
 			if err := os.WriteFile(filepath.Join(dir, name), []byte(data), 0o644); err != nil {
 				standInsErr = err
 				return

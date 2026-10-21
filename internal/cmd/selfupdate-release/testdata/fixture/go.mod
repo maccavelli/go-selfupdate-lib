@@ -1,6 +1,6 @@
 module example.com/relay
 
-go 1.26.9
+go 1.26.10
 
 require github.com/maccavelli/go-selfupdate-lib v0.0.0
 
