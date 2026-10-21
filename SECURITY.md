@@ -38,7 +38,8 @@ whole of it:
 ## How this repository checks itself
 
 `govulncheck` runs twice in CI, both on Linux: in the `validate` job on
-the Go 1.27.2 toolchain the module builds with, and in the `go126` job
-on its 1.26.9 floor. `make gate` runs it once, on the local toolchain,
+the Go 1.27.3 toolchain the module builds with, and in the `go126` job
+on its 1.26.10 floor
+([0029-MADR](docs/decisions/0029-MADR-move-toolchain-to-go-1-27-3-and-floor-to-1-26-10.md)). `make gate` runs it once, on the local toolchain,
 and also runs the linters, the race and shuffle tests and the fuzz
 targets; see [AGENTS.md](AGENTS.md#pre-add-checks).

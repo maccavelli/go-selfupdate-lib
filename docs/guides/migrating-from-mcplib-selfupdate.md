@@ -11,14 +11,17 @@ the fixes, and the behaviour they change, are in
 Do the migration under your own repository's records. This guide is the
 checklist, not the authorization.
 
-## 1. Go 1.26.9 or later
+## 1. Go 1.26.10 or later
 
-go-selfupdate-lib requires `go 1.26.9` from `v1.16.0` (`go 1.27.1` from
-`v1.5.0` to `v1.15.2`), so `go get` raises your `go` directive to at least
-that. Move it deliberately first, and run your full test suite
-before changing anything else. Build and test with Go 1.27.2, a
-`toolchain go1.27.2` line, as this module is: it fixes ten standard-library
-advisories ([From v1.11.0 to v1.11.1](#from-v1110-to-v1111)). A program
+go-selfupdate-lib requires `go 1.26.10` from `v1.17.2` (`go 1.26.9` from
+`v1.16.0` to `v1.17.1`, and `go 1.27.1` from `v1.5.0` to `v1.15.2`), so
+`go get` raises your `go` directive to at least that. Move it
+deliberately first, and run your full test suite before changing
+anything else. Build and test with Go 1.27.3, a `toolchain go1.27.3`
+line, as this module is: it fixes GO-2026-6809, which 1.27.2 and 1.26.9
+carry ([From v1.17.1 to v1.17.2](#from-v1171-to-v1172)), as 1.27.2
+fixed ten earlier standard-library advisories
+([From v1.11.0 to v1.11.1](#from-v1110-to-v1111)). A program
 that was on `go-core-lib` (`v1.4.1` and earlier) changes that import path
 to this one too: the module was renamed, and the README says how.
 
@@ -59,6 +62,8 @@ release signing opt-in: see [16. From v1.15 to v1.16](#16-from-v115-to-v116).
 `v1.17.0` adds a `before_uninstall` installer hook: see
 [17. From v1.16 to v1.17](#17-from-v116-to-v117). `v1.17.1` changes no
 API; its fixes are in [From v1.17.0 to v1.17.1](#from-v1170-to-v1171).
+`v1.17.2` changes no API either, and raises the Go floor to 1.26.10: see
+[From v1.17.1 to v1.17.2](#from-v1171-to-v1172).
 
 Replace every `github.com/maccavelli/mcplib/selfupdate` import with
 `github.com/maccavelli/go-selfupdate-lib/selfupdate`. No identifier or signature
@@ -130,7 +135,7 @@ In the job that publishes your release, change the `uses:` line and delete
   `v1.10.1` runs one publish at a time per repository and names the
   immutable releases setting on a timeout. `v1.11.0` to `v1.15.2` change
   nothing in it, though from `v1.11.1` its release tools build with Go
-  1.27.2, `go.mod`'s `toolchain` line. `v1.16.0` adds the optional `sign`
+  1.27.2, `go.mod`'s `toolchain` line, and from `v1.17.2` with 1.27.3. `v1.16.0` adds the optional `sign`
   and `note-verifier-key` inputs and the `SELFUPDATE_NOTE_KEY` secret
   ([16](#16-from-v115-to-v116)), and changes nothing a current call
   passes. `v1.17.0` changes nothing in it, and `v1.17.1` only its
@@ -1328,6 +1333,31 @@ Adopting it:
 - **A script that uninstalls your program** can now get exit 3 when a
   program could not be removed. Stop the program first, for example
   with a `before_uninstall` hook, and run the uninstall again.
+- Nothing else is required.
+
+### From v1.17.1 to v1.17.2
+
+`v1.17.2` changes no exported API: `make apicheck` reports it compatible
+with `v1.17.1`. What changed, and why, is in
+[0029-MADR](../decisions/0029-MADR-move-toolchain-to-go-1-27-3-and-floor-to-1-26-10.md).
+
+- **The floor is Go 1.26.10.** Go 1.26.9 and 1.27.2 carry GO-2026-6809,
+  in `crypto/x509`, which `govulncheck` reaches through the manifest
+  check. `go get` of `v1.17.2` raises a `go 1.26.9` line to
+  `go 1.26.10`.
+- **The toolchain is Go 1.27.3,** the `toolchain` line. CI builds with
+  it, and so do the publish workflow's release tools for a caller that
+  pins `v1.17.2`.
+- **CI skips a change to Markdown alone,** and a docs workflow checks it
+  ([0028-MADR](../decisions/0028-MADR-skip-full-ci-for-docs-only-pushes.md)). Nothing a program calls changes.
+
+Adopting it:
+
+- **Build your program with Go 1.27.3 or 1.26.10.** The fix reaches your
+  binary only through your own toolchain: a `toolchain go1.27.3` line,
+  or your build host's Go.
+- **Move your workflow pins to `v1.17.2`,** so that the publish workflow
+  builds its release tools with 1.27.3.
 - Nothing else is required.
 
 ### Check

@@ -14,16 +14,18 @@ package, and no released binary. `internal/cmd/selfupdate-release` and
 It also hosts the two reusable GitHub Actions workflows that programs using
 `selfupdate` build and publish their releases through.
 
-The module requires Go 1.26.9 and three modules: `golang.org/x/mod v0.40.0`,
+The module requires Go 1.26.10 and three modules: `golang.org/x/mod v0.40.0`,
 `golang.org/x/sys v0.47.0` and `golang.org/x/term v0.43.0`. `go.mod`'s
-`toolchain go1.27.2` line makes CI and the publish workflow's release tools
-build with Go 1.27.2, which fixes ten advisories in 1.27.1's standard
-library ([0018-MADR](decisions/0018-MADR-move-toolchain-to-go-1-27-2.md)).
-The `go` line is 1.26.9, the advisory-free patch of the older supported
+`toolchain go1.27.3` line makes CI and the publish workflow's release tools
+build with Go 1.27.3. Go 1.27.2 moved them off ten advisories in 1.27.1's
+standard library ([0018-MADR](decisions/0018-MADR-move-toolchain-to-go-1-27-2.md)),
+and 1.27.3 off GO-2026-6809, in `crypto/x509`
+([0029-MADR](decisions/0029-MADR-move-toolchain-to-go-1-27-3-and-floor-to-1-26-10.md)).
+The `go` line is 1.26.10, the advisory-free patch of the older supported
 line, because the library needs nothing from 1.27; CI's `go126` job builds,
 vets and tests with it
 ([0025-MADR](decisions/0025-MADR-align-with-go-sdk-design-practices.md) D8,
-Amendment A1). `go.mod` also retracts `[v1.0.0, v1.4.1]`, the tags that
+Amendments A1 and A7). `go.mod` also retracts `[v1.0.0, v1.4.1]`, the tags that
 declared `github.com/maccavelli/go-core-lib`, so the module's version
 list starts at `v1.5.0`
 ([0025-MADR](decisions/0025-MADR-align-with-go-sdk-design-practices.md) D7).
@@ -828,9 +830,9 @@ D9; the threat analysis is
     (BusyBox ash and wget, musl) and `buildpack-deps:trixie-curl` (dash
     and bash, both required, and curl), each pinned by digest, as the
     runner's user.
-  - **`go126`,** on Linux, the floor toolchain: Go 1.26.9 from
+  - **`go126`,** on Linux, the floor toolchain: Go 1.26.10 from
     `go-version`, with `GOTOOLCHAIN=local` and a step that requires
-    `go env GOVERSION` to be `go1.26.9`; `go build`; `go vet` for
+    `go env GOVERSION` to be `go1.26.10`; `go build`; `go vet` for
     linux, windows and darwin; `go test`; and `govulncheck` v1.8.0
     under the same toolchain, so the floor's standard library is
     scanned too.

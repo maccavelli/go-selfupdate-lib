@@ -38,11 +38,12 @@ process still runs (`Alive`;
 `docs/decisions/0022-MADR-documentation-pass-after-v1-14-0.md` Amendment
 A2); `internal/testproc` is test support that only `_test.go` files
 import (`docs/decisions/0023-MADR-robust-test-fixtures-and-process-waits.md`).
-Requires Go 1.26.9; built
-and tested with Go 1.27.2, the `toolchain` line in `go.mod`
+Requires Go 1.26.10; built
+and tested with Go 1.27.3, the `toolchain` line in `go.mod`
 (`docs/decisions/0018-MADR-move-toolchain-to-go-1-27-2.md`;
-`docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md` D8). CI's
-`go126` job builds and tests with 1.26.9.
+`docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md` D8;
+`docs/decisions/0029-MADR-move-toolchain-to-go-1-27-3-and-floor-to-1-26-10.md`). CI's
+`go126` job builds and tests with 1.26.10.
 
 ## Dependencies
 

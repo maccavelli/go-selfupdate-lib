@@ -23,10 +23,11 @@ Module: `github.com/maccavelli/go-selfupdate-lib`
 
 ## Status
 
-From `v1.16.0` the module requires Go 1.26.9; `v1.15.2` and earlier
-require 1.27.1. It is built and tested with Go 1.27.2 (its `toolchain`
-line), and CI also tests it with 1.26.9; neither standard library had a
-published advisory on 2026-10-19. Build your program with one of them. The current release is `v1.17.1`. `v1.5.0` was
+From `v1.17.2` the module requires Go 1.26.10; `v1.16.0` to `v1.17.1`
+require 1.26.9, and `v1.15.2` and earlier 1.27.1. It is built and tested
+with Go 1.27.3 (its `toolchain` line), and CI also tests it with 1.26.10;
+neither standard library had a published advisory on 2026-10-21
+([0029-MADR](docs/decisions/0029-MADR-move-toolchain-to-go-1-27-3-and-floor-to-1-26-10.md)). Build your program with one of them. The current release is `v1.17.1`. `v1.5.0` was
 the first under this path:
 
 ```bash

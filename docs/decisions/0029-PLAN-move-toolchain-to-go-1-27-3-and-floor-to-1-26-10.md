@@ -285,3 +285,62 @@ proceed". The MADR became `accepted`, and this plan `in-progress`.
      with `apicheck` "compatible with v1.17.1", `vuln` "No
      vulnerabilities found.", links "699 links in 81 files, 0 broken",
      and `overall=0`.
+
+### W2 (2026-10-21)
+
+1. **W1's push.** The owner committed W1 as `ba7ed99` and pushed it with
+   W0's `6c596cd` ("committed and pushed all").
+   * "CI" `39619798379`: `success`, 18 of 18 jobs. Each job's `go version`
+     line:
+
+     | Job | Go |
+     | :--- | :--- |
+     | `validate` (ubuntu-24.04, macos-15, windows-2025) | `go1.27.3` |
+     | `installer-containers`, `release-rehearsal-check` | `go1.27.3` |
+     | `go126` | `go1.26.10` |
+     | the two `release-rehearsal` build jobs | `go1.26.10` |
+
+     The two build jobs build the stand-in caller from its own `go.mod`,
+     whose fixture line is now `go 1.26.10`, as a caller's build does.
+     `govulncheck` printed "No vulnerabilities found." in
+     `validate (ubuntu-24.04)` and in `go126`.
+   * "Docs" on `ba7ed99`: `success`.
+2. **The current statements:**
+   * `AGENTS.md`: "Requires Go 1.26.10; built and tested with Go 1.27.3",
+     citing 0029-MADR, and the `go126` job on 1.26.10;
+   * `README.md`, "Status": the floor by release (1.26.10 from `v1.17.2`,
+     1.26.9 from `v1.16.0` to `v1.17.1`, 1.27.1 before), Go 1.27.3, and
+     no advisory on 2026-10-21, linking 0029-MADR;
+   * `docs/architecture.md`: the module paragraph (1.26.10,
+     `toolchain go1.27.3`, what 1.27.2 and 1.27.3 each fixed, Amendments
+     A1 and A7), and the `go126` bullet (1.26.10 twice);
+   * `SECURITY.md`: the two `govulncheck` runs, on 1.27.3 and 1.26.10;
+   * the guide: §1 becomes "Go 1.26.10 or later", with the floor by
+     release and GO-2026-6809; its release list gains `v1.17.2`; the
+     release-workflow paragraph adds "from `v1.17.2` with 1.27.3".
+
+   No link targeted `#1-go-1269-or-later` (`git grep`: only this plan's
+   own step names it).
+3. **Kept as history:** the guide's §11 (`:861-864`), §16 (`:1222-1224`)
+   and its release list's `v1.16.0` sentence (`:60`), the changelog's
+   earlier releases, and the records. The guide's `go.mod` adoption line
+   (`:196`, "`v1.17.1`, with `go 1.26.9`") names the current release, so
+   W3's pin commit moves it.
+4. **The pre-tag change:**
+   * `CHANGELOG.md`: `## Unreleased` becomes `## v1.17.2 - 2026-10-21`. It
+     links the guide section and both pairs, gains "Security" (the floor,
+     the toolchain, GO-2026-6809, a program on 1.26.9, and the release
+     tools), and keeps 0028's "Changed" entry;
+   * the guide: `### From v1.17.1 to v1.17.2`, under §17 before its
+     `### Check`, with "Adopting it".
+5. **Checks:**
+   * markdownlint on the six files: "0 issues in 0 files";
+   * links over every tracked Markdown file: "709 links in 81 files, 0
+     broken";
+   * ids "6 files, 16 deny-list rules, 0 findings"; arch "18 rows …, 0
+     differ";
+   * `make gate` with `SELFUPDATE_REQUIRE_PYTHON=1`: `overall=0`, with
+     `apicheck` "compatible with v1.17.1" and `vuln` "No vulnerabilities
+     found.".
+
+   This commit changes Markdown only, so its push runs only "Docs".

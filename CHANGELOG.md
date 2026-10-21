@@ -8,10 +8,23 @@ listed in the
 [migration guide](docs/guides/migrating-from-mcplib-selfupdate.md), one
 section per release, and each entry links its section and its records.
 
-## Unreleased
+## v1.17.2 - 2026-10-21
 
-See [0028-MADR](docs/decisions/0028-MADR-skip-full-ci-for-docs-only-pushes.md) and
+See [the guide](docs/guides/migrating-from-mcplib-selfupdate.md#from-v1171-to-v1172),
+[0029-MADR](docs/decisions/0029-MADR-move-toolchain-to-go-1-27-3-and-floor-to-1-26-10.md),
+[0029-PLAN](docs/decisions/0029-PLAN-move-toolchain-to-go-1-27-3-and-floor-to-1-26-10.md),
+[0028-MADR](docs/decisions/0028-MADR-skip-full-ci-for-docs-only-pushes.md) and
 [0028-PLAN](docs/decisions/0028-PLAN-skip-full-ci-for-docs-only-pushes.md).
+
+### Security
+
+- The module requires Go 1.26.10, not 1.26.9, and is built and tested
+  with Go 1.27.3, not 1.27.2. Both older versions carry GO-2026-6809, in
+  `crypto/x509`, which `govulncheck` reaches through the manifest check.
+  CI's `go126` job tests 1.26.10. A program on Go 1.26.9 moves to
+  1.26.10 or later to take this release.
+- For a caller that pins `v1.17.2`, the publish workflow builds its
+  release tools with Go 1.27.3.
 
 ### Changed
 
