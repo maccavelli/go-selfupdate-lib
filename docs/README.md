@@ -77,6 +77,8 @@ name, and the files they cite moved with the rename
 | 0028 | PLAN | [Implement skipping the full CI for docs-only pushes, with a docs workflow](decisions/0028-PLAN-skip-full-ci-for-docs-only-pushes.md) | complete |
 | 0029 | MADR | [Build and test with Go 1.27.3, raise the floor to `go 1.26.10`, and release `v1.17.2`](decisions/0029-MADR-move-toolchain-to-go-1-27-3-and-floor-to-1-26-10.md) | accepted |
 | 0029 | PLAN | [Implement Go 1.27.3 and the `go 1.26.10` floor, and release `v1.17.2`](decisions/0029-PLAN-move-toolchain-to-go-1-27-3-and-floor-to-1-26-10.md) | complete |
+| 0030 | MADR | [Publish this module's GitHub release from the tag's own CI run, after every job passes, with notes from the changelog](decisions/0030-MADR-publish-github-release-on-tag.md) | rejected |
+| 0030 | PLAN | [Implement publishing this module's GitHub release from the tag's CI run](decisions/0030-PLAN-publish-github-release-on-tag.md) | rejected |
 
 ## I want to…
 
