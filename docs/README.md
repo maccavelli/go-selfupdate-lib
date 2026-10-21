@@ -76,7 +76,7 @@ name, and the files they cite moved with the rename
 | 0028 | MADR | [Skip the full CI for a push or pull request that changes only Markdown, and check it with a one-job docs workflow instead](decisions/0028-MADR-skip-full-ci-for-docs-only-pushes.md) | accepted |
 | 0028 | PLAN | [Implement skipping the full CI for docs-only pushes, with a docs workflow](decisions/0028-PLAN-skip-full-ci-for-docs-only-pushes.md) | complete |
 | 0029 | MADR | [Build and test with Go 1.27.3, raise the floor to `go 1.26.10`, and release `v1.17.2`](decisions/0029-MADR-move-toolchain-to-go-1-27-3-and-floor-to-1-26-10.md) | accepted |
-| 0029 | PLAN | [Implement Go 1.27.3 and the `go 1.26.10` floor, and release `v1.17.2`](decisions/0029-PLAN-move-toolchain-to-go-1-27-3-and-floor-to-1-26-10.md) | in-progress |
+| 0029 | PLAN | [Implement Go 1.27.3 and the `go 1.26.10` floor, and release `v1.17.2`](decisions/0029-PLAN-move-toolchain-to-go-1-27-3-and-floor-to-1-26-10.md) | complete |
 
 ## I want to…
 

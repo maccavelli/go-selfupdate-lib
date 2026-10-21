@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 date: 2026-10-21
 associated-madr: "0029-MADR-move-toolchain-to-go-1-27-3-and-floor-to-1-26-10.md"
 ---
@@ -398,3 +398,58 @@ proceed". The MADR became `accepted`, and this plan `in-progress`.
    links "709 links in 81 files, 0 broken"; ids "4 files, 16 deny-list
    rules, 0 findings". This commit changes Markdown only, so its push
    runs only "Docs", which W4 records.
+
+### W4 (2026-10-21)
+
+1. **The pin commit's push.** The owner committed W3 as `b0be3e1` and
+   pushed it ("committed and pushed"). GitHub's run list for that commit
+   holds one run: "Docs" `39629992260`, `success`, in 16 s. No "CI" run
+   started.
+2. **The tag run's `go126` job,** read again: `completed`, `success`,
+   `completed_at` 15:36:59 UTC. The `in_progress` that W3 recorded was a
+   stale API read.
+3. **V6's grep.** `git grep -n '1\.26\.9\b\|1\.27\.2'` outside the
+   records and the changelog lists 23 lines. V6 expected only
+   `githubupdater.go:102`, but the docs keep more, as W2 step 2 and W3
+   step 5 say. Each line is one of these:
+   * the floor by release: README `:27`, guide `:16`;
+   * what an older version carries or fixed: architecture `:20`, guide
+     `:21-22`, `:1344`, `:1346`;
+   * a section about an earlier release: guide `:60`, `:138`, `:861-864`,
+     `:1222-1224`;
+   * a record's title in `docs/README.md`: 0018, 0019 and 0025;
+   * `githubupdater.go:102`, which outcome 5 keeps.
+
+   None of them states the current floor or toolchain. That is V6's
+   intent, so no line changed. V6's wording, "finds only", was narrower
+   than the plan's own steps.
+
+### Verification, at closing (2026-10-21)
+
+* **V1 (red):** govulncheck exited 3 on 1.27.2 and on 1.26.9 (the MADR's
+  table). The `go126` `GOVERSION` check exited 1 under 1.26.9 and 0
+  under 1.26.10 (W1).
+* **V2 (local):** `make gate` ended `overall=0`, with `vuln rc=0`, at W1
+  and at W2. The `go126` steps passed under 1.26.10 (W1).
+* **V3 (CI):**
+  * W1's push: "CI" `39619798379` passed 18 of 18 jobs, its toolchain
+    jobs on `go1.27.3` and `go126` on `go1.26.10`;
+  * W2's push (`036289e`) and the pin push (`b0be3e1`) each ran only
+    "Docs", which passed.
+* **V4 (the tag):** "CI" `39627172456` on `v1.17.2` passed 18 of 18
+  jobs, with ten identity legs `v1.17.2 (release) 036289ecc701`. No Docs
+  run started for the tag. This is also 0028-PLAN's V4.
+* **V5 (the proxy):** `v1.17.2` at `036289ecc701d84c7749f4950a57a154c1af2cf4`,
+  `@latest` `v1.17.2`, and its `go.mod` says `go 1.26.10` and
+  `toolchain go1.27.3` (W3).
+* **V6 (the docs):** no current statement names 1.26.9 or 1.27.2 (W4
+  step 3). Links, ids and markdownlint were clean at W2 and W3.
+
+**Open, outside this plan:**
+* the WSL distribution is on `go1.27.2`, and this Mac's `golangci-lint`
+  and `govulncheck` were built with `go1.27.2`. Both wait on
+  magic-cli-remote's 0169 PLAN, P14;
+* callers move their workflow pins to `v1.17.2` in their own
+  repositories.
+
+The plan is `complete`. The MADR stays `accepted`.
