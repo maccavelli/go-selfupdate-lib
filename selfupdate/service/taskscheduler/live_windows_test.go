@@ -10,6 +10,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -390,7 +392,12 @@ func newLiveTaskIn(t *testing.T, sub string) liveConfig {
 	if err := s.Start(context.Background(), "demo"); err != nil {
 		t.Fatal(err)
 	}
-	waitReady(t, cfg, 0)
+	pid := waitReady(t, cfg, 0)
+	// Status agrees with the running task (0032-MADR D4-A).
+	if st, err := s.Status(context.Background(), "demo"); err != nil || !st.Installed || !st.Running ||
+		st.State != "running" || !slices.Contains(st.PIDs, uint32(pid)) || st.LastRunTime.IsZero() { //nolint:gosec // a PID fits in a DWORD
+		t.Fatalf("Status of the running task = %+v, %v; want running as %d", st, err, pid)
+	}
 	return cfg
 }
 
@@ -812,6 +819,10 @@ func TestLiveTaskRegister(t *testing.T) {
 	if ok, err := task.Installed(ctx, "demo"); err != nil || !ok {
 		t.Fatalf("Installed = %t, %v", ok, err)
 	}
+	want := Status{Installed: true, Enabled: true, State: "ready", LastResult: hasNotRun}
+	if st, err := task.Status(ctx, "demo"); err != nil || !reflect.DeepEqual(st, want) {
+		t.Fatalf("Status of a never-run task = %+v, %v; want %+v", st, err, want)
+	}
 	if err := task.Register(ctx, "demo", utf8("/t 31 /nobreak")); err != nil {
 		t.Fatalf("register again: %v", err)
 	}
@@ -828,6 +839,9 @@ func TestLiveTaskRegister(t *testing.T) {
 	}
 	if ok, err := task.Installed(ctx, "demo"); err != nil || ok {
 		t.Fatalf("Installed after delete = %t, %v", ok, err)
+	}
+	if st, err := task.Status(ctx, "demo"); err != nil || !reflect.DeepEqual(st, Status{}) {
+		t.Fatalf("Status after delete = %+v, %v; want a zero Status", st, err)
 	}
 }
 

@@ -74,15 +74,20 @@ func (t *Task) Enabled(_ context.Context, product string) (bool, error) {
 	if err = errors.Join(err, r.close()); err != nil {
 		return false, mapError("query the triggers of", path, err)
 	}
+	return enabledBy(on, triggers), nil
+}
+
+// enabledBy is Enabled's rule over the task's switch and triggers.
+func enabledBy(on bool, triggers []trigger) bool {
 	if !on {
-		return false, nil
+		return false
 	}
 	for _, tr := range triggers {
 		if tr.Enabled && (tr.Type == triggerLogon || tr.Type == triggerBoot || (tr.Type == triggerTime && tr.Repeats)) {
-			return true, nil
+			return true
 		}
 	}
-	return false, nil
+	return false
 }
 
 func switches(r registered) (bool, []trigger, error) {

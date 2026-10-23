@@ -810,3 +810,44 @@ None changes a decision.
   or an action holds is compared. Not chosen: the list as written.
 * **MADR:** Amendment A2, and D3-A annotated in place.
 * **Files:** none beyond J4's.
+
+### J5: `Status` (2026-10-23)
+
+* J4 was committed as `6ff070d`.
+* **`status.go`** (new): `Status` with `Installed`, `Enabled`, `State`,
+  `Running`, `PIDs`, `LastRunTime` (`omitzero`) and `LastResult`, and
+  `(*Task).Status`, which opens the task once and reads its state,
+  instances, switch, triggers and last run. `LastRunTime` is zero for a
+  never-run task (`LastResult` `0x41303`), whose `DATE` reads as
+  1999-11-30 (0021-MADR, Not verified). `Enabled` and `Running` apply the
+  same rules as the methods of those names: `Enabled`'s rule moved into
+  `enabledBy` in `lifecycle.go`, which both call.
+* **`fake_test.go`:** a task's reads can fail, by method (`readErr`).
+* **`status_test.go`** (new): running, ready after a run, never run,
+  disabled, no trigger that starts it, and an instance listed while
+  ready; a missing task (zero `Status`, no error); each of the five reads
+  failing (`ErrPermission`, zero `Status`); a denied open; a cancelled
+  context; the JSON keys, the zero value's form, and a round trip.
+* **`live_windows_test.go`:** `TestLiveTaskRegister` checks `Status` of
+  the never-run task and after its deletion; `newLiveTaskIn`, which every
+  other live test starts from, checks `Status` of the running task:
+  installed, running, state `running`, the ready process among `PIDs`,
+  and a last run time. That replaces J5 step 3's check in the rollback
+  test, and runs in each live test.
+* **On the Windows test host,** with `SELFUPDATE_REQUIRE_TASKSCHED=1`:
+  the whole package passes, 63 tests (`ok ... 90.694s`); no
+  `selfupdate-*` task or folder is left.
+* **Seen failing** (`scripts/plant-copy.sh`):
+
+  | Plant | Failure |
+  | :--- | :--- |
+  | (a) the state's number in place of its name (`stateName(st + 100)`) | `status_test.go:45: running: Status = {... State:state 104 ...}; want {... State:running ...}` |
+  | (b) a missing task returned as an error | `status_test.go:54: missing: {...}, selfupdate: service: not installed: ... open \demo: HRESULT 0x80070002; want a zero Status` |
+  | (c) a never-run task's date kept | `status_test.go:45: never run: Status = {... LastRunTime:1999-11-30 ...}; want {... LastRunTime:0001-01-01 ...}` |
+
+  The first form of plant (a), `strconv.Itoa`, did not compile in
+  `status.go`, which does not import `strconv`, and was replaced.
+* `docs/architecture.md`: the `taskscheduler` row is 14 source and 15
+  test files. `make pre-add-check` on the five Go files: "5 file(s) clean
+  (gofmt, golangci-lint, go vet, go test, govulncheck)". `make apicheck`:
+  "compatible with v1.18.0"; `go doc` shows `Task.Status`.

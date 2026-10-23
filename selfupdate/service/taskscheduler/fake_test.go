@@ -55,6 +55,9 @@ type fakeTask struct {
 	runErr    error
 	// runExits makes a run end at once with this result.
 	runExits *int32
+	// readErr makes a read fail, by method: state, enabled,
+	// instances, triggers or lastRun.
+	readErr map[string]error
 }
 
 const (
@@ -258,9 +261,9 @@ type fakeReg struct {
 
 func (r *fakeReg) lock() func() { r.f.mu.Lock(); return r.f.mu.Unlock }
 
-func (r *fakeReg) state() (int32, error) { defer r.lock()(); return r.t.st, nil }
+func (r *fakeReg) state() (int32, error) { defer r.lock()(); return r.t.st, r.t.readErr["state"] }
 
-func (r *fakeReg) enabled() (bool, error) { defer r.lock()(); return r.t.on, nil }
+func (r *fakeReg) enabled() (bool, error) { defer r.lock()(); return r.t.on, r.t.readErr["enabled"] }
 
 func (r *fakeReg) setEnabled(on bool) error {
 	defer r.lock()()
@@ -317,12 +320,12 @@ func (r *fakeReg) stop() error {
 
 func (r *fakeReg) instances() ([]uint32, error) {
 	defer r.lock()()
-	return append([]uint32(nil), r.t.pids...), nil
+	return append([]uint32(nil), r.t.pids...), r.t.readErr["instances"]
 }
 
 func (r *fakeReg) triggers() ([]trigger, error) {
 	defer r.lock()()
-	return append([]trigger(nil), r.t.trig...), nil
+	return append([]trigger(nil), r.t.trig...), r.t.readErr["triggers"]
 }
 
 func (r *fakeReg) actions() ([]action, error) {
@@ -337,7 +340,10 @@ func (r *fakeReg) principal() (principal, error) {
 	return principal{UserID: r.t.user, LogonType: r.t.logon, RunLevel: r.t.runLevel}, nil
 }
 
-func (r *fakeReg) lastRun() (lastRun, error) { defer r.lock()(); return r.t.last, nil }
+func (r *fakeReg) lastRun() (lastRun, error) {
+	defer r.lock()()
+	return r.t.last, r.t.readErr["lastRun"]
+}
 
 func (r *fakeReg) xml() (string, error) { defer r.lock()(); return r.t.def, nil }
 
