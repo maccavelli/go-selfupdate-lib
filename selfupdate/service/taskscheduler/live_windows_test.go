@@ -378,16 +378,15 @@ func newLiveTaskIn(t *testing.T, sub string) liveConfig {
 		build(t, command, "\nold build\n")
 	}
 	xml := liveXML(command, `tasksched-live serve "`+cfg.Path+`"`)
-	if err := systemScheduler().register(`\`, name, xml, taskCreateOrUpdate, logonInteractiveToken); err != nil {
+	s := liveSvc(t, cfg)
+	if err := s.Register(context.Background(), "demo", xml); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
 		_, _ = exec.Command("schtasks", "/end", "/tn", name).CombinedOutput()
 		time.Sleep(500 * time.Millisecond)
-		_, _ = exec.Command("schtasks", "/delete", "/tn", name, "/f").CombinedOutput()
-		_ = systemScheduler().deleteTask(`\`, name)
+		_ = s.Delete(context.Background(), "demo")
 	})
-	s := liveSvc(t, cfg)
 	if err := s.Start(context.Background(), "demo"); err != nil {
 		t.Fatal(err)
 	}
@@ -772,6 +771,54 @@ func TestLiveTaskStopRefusesDisabled(t *testing.T) {
 	time.Sleep(2 * time.Second)
 	if got := starts(t, cfg); len(got) != 1 {
 		t.Fatalf("starts: %v, want only the first", got)
+	}
+}
+
+// TestLiveTaskRegister registers, reads, replaces and deletes a task in a
+// folder that does not exist yet, from a definition that declares UTF-8,
+// which Task Scheduler refuses unless Register removes the declaration
+// (0032-MADR D2-A; Amendment A1, P1-3, P1-4 and P1-6).
+func TestLiveTaskRegister(t *testing.T) {
+	requireLive(t)
+	ctx := context.Background()
+	folder := `\selfupdate-live-` + randomHex()
+	task, err := New(Options{Name: "selfupdate-live-" + randomHex(), Folder: folder})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = task.Delete(ctx, "demo")
+		_ = comDeleteFolder(folder)
+	})
+	exe := filepath.Join(os.Getenv("WINDIR"), "System32", "timeout.exe")
+	utf8 := func(args string) string {
+		return strings.Replace(taskXML(exe, args), `encoding="UTF-16"`, `encoding="UTF-8"`, 1)
+	}
+	if err := task.Register(ctx, "demo", utf8("/t 30 /nobreak")); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if def, err := task.Definition(ctx, "demo"); err != nil || !strings.Contains(def, "/t 30 /nobreak") {
+		t.Fatalf("Definition = %q, %v", def, err)
+	}
+	if ok, err := task.Installed(ctx, "demo"); err != nil || !ok {
+		t.Fatalf("Installed = %t, %v", ok, err)
+	}
+	if err := task.Register(ctx, "demo", utf8("/t 31 /nobreak")); err != nil {
+		t.Fatalf("register again: %v", err)
+	}
+	if def, err := task.Definition(ctx, "demo"); err != nil || !strings.Contains(def, "/t 31 /nobreak") {
+		t.Fatalf("Definition after the update = %q, %v", def, err)
+	}
+	for i := range 2 {
+		if err := task.Delete(ctx, "demo"); err != nil {
+			t.Fatalf("delete %d: %v", i+1, err)
+		}
+	}
+	if _, err := task.Definition(ctx, "demo"); !errors.Is(err, service.ErrNotInstalled) {
+		t.Fatalf("Definition after delete: %v, want ErrNotInstalled", err)
+	}
+	if ok, err := task.Installed(ctx, "demo"); err != nil || ok {
+		t.Fatalf("Installed after delete = %t, %v", ok, err)
 	}
 }
 

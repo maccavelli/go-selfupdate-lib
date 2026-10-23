@@ -6,9 +6,11 @@
 // that starts a program at logon and needs no administrator.
 //
 // It calls Task Scheduler through its COM API, so states are numeric and
-// definitions are UTF-16, and it never parses a tool's output. It manages a
-// task the program's setup registered: it never creates, renders or deletes
-// one. A task has no polite stop of its own, so Stop disables the task
+// definitions are UTF-16, and it never parses a tool's output. It never
+// renders the program's definition: the program's setup does, and
+// registers, reads and deletes it with Register, Definition and Delete
+// (docs/decisions/0032-MADR-task-scheduler-registration-and-one-shot-handoff.md
+// D1-A). A task has no polite stop of its own, so Stop disables the task
 // first, so that a repeating trigger cannot start it mid-update, and then
 // asks Options.RequestStop, when set, before ending the task's process. It
 // compiles on every OS; New returns service.ErrUnsupported off Windows.

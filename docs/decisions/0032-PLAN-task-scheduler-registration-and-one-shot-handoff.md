@@ -380,6 +380,7 @@ Associated MADR: [0032-MADR-task-scheduler-registration-and-one-shot-handoff.md]
 1. **`task.go`:** `Options.HopDetach bool` and `Options.HandOffDir
    string`, documented as D5-A and D8-A say; the package doc's scope
    sentence becomes "never renders the program's definition" (D1-A).
+   *(Deviation D4: the sentence changed in J3.)*
 2. **`handoff.go`** (new):
    * `oneShotXML(principal, executable, args, workDir, description)`,
      rendering D8-A's definition with `encoding/xml` escaping;
@@ -691,3 +692,58 @@ None changes a decision.
 * **The flags in `api.go`.** `taskCreate` and `taskCreateOrUpdate` moved
   from `com_windows.go` to `api.go`, because the fake and J3's logic,
   which build on every OS, use them.
+
+### J3: `Register`, `Definition`, `Delete` (2026-10-23)
+
+* J2 was committed as `24eb61e`.
+* **`register.go`** (new): `Register(ctx, product, definition)`,
+  `Definition(ctx, product)` and `Delete(ctx, product)`, with
+  `stripDeclaration` and `registrationLogon`. `Register` retries once
+  after `createFolder` when a folder other than `\` is missing, and
+  accepts `hrAlreadyExists` from it. Its parameter is `definition`, not
+  `xml`: the name shadowed `encoding/xml`, which `gocritic` refused.
+* **`register_test.go`** (new): create and update, the declaration
+  removed, a missing folder created, a denied registration and a denied
+  folder (`ErrPermission`), a cancelled context with no call made, seven
+  refused principals with no call made, an InteractiveToken principal
+  with no logon type accepted, `Definition` of a missing task
+  (`ErrNotInstalled`), `Delete` twice, a denied delete, an invalid name,
+  and `stripDeclaration`'s cases.
+* **`live_windows_test.go`:** `TestLiveTaskRegister` registers into a
+  folder that does not exist, from a definition declaring `UTF-8`, reads
+  it, replaces it, deletes it twice, and sees `ErrNotInstalled` and
+  `Installed` false after. `newLiveTaskIn` registers and deletes through
+  `Register` and `Delete`.
+* **On the Windows test host,** with `SELFUPDATE_REQUIRE_TASKSCHED=1`:
+  the whole package passes (`ok ... 90.742s`), every live test included;
+  after the parameter's rename, `TestLiveTaskRegister`,
+  `TestCOMRegistration`, `TestLiveTaskRollback` and the `register_test.go`
+  tests pass again. No `selfupdate-*` task or folder is left.
+* **Seen failing** (`scripts/plant-copy.sh`; the plants ran before the
+  parameter's rename, which changes no behaviour):
+
+  | Plant | Failure |
+  | :--- | :--- |
+  | (a) `TASK_UPDATE` alone in place of `TASK_CREATE_OR_UPDATE` | `register_test.go:32: selfupdate: service: not installed: ... register \demo: HRESULT 0x80070002` |
+  | (b) no folder creation | `register_test.go:60: ... register \Vendor\Product\demo: HRESULT 0x80070002`; `register_test.go:84: folder denied: ..., want ErrPermission` |
+  | (c) `Delete` of a missing task returned as an error | `register_test.go:138: delete 2: selfupdate: service: not installed: ... delete \demo: HRESULT 0x80070002` |
+  | (d) S4U accepted (the S4U branch returning `logonS4U`) | `register_test.go:112: S4U: registered`; `register_test.go:115: S4U: Task Scheduler was called: ["register \\demo flags=6 logon=2"]` |
+  | (e) the declaration kept | here, `register_test.go:39: the declaration was not removed`; on the host, `live_windows_test.go:798: register: ... HRESULT 0x8004131A` |
+
+  The first form of plant (d), adding `"S4U"` to the accepted case, did
+  not compile (a duplicate case), so it was replaced by the form above.
+* `docs/architecture.md`: the `taskscheduler` row is 10 source and 12
+  test files. `make pre-add-check` on the four Go files: "4 file(s)
+  clean (gofmt, golangci-lint, go vet, go test, govulncheck)". `make
+  apicheck`: "compatible with v1.18.0"; `go doc` lists `Register`,
+  `Definition` and `Delete` on `Task`.
+
+### Deviation D4 (2026-10-23): the package doc's scope sentence moves to J3
+
+* **Found.** J7 step 1 rewrites the package doc's "it never creates,
+  renders or deletes one". From J3 the package creates and deletes a
+  task, so the sentence would be false in J3's to J6's commits.
+* **Done.** J3 rewrites it as D1-A says: the package never renders the
+  program's definition, and registers, reads and deletes it with
+  `Register`, `Definition` and `Delete`. J7 step 1 keeps the options it
+  adds, and no longer touches the sentence. No decision changes.
