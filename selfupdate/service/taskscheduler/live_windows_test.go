@@ -797,8 +797,17 @@ func TestLiveTaskRegister(t *testing.T) {
 	if err := task.Register(ctx, "demo", utf8("/t 30 /nobreak")); err != nil {
 		t.Fatalf("register: %v", err)
 	}
-	if def, err := task.Definition(ctx, "demo"); err != nil || !strings.Contains(def, "/t 30 /nobreak") {
+	def, err := task.Definition(ctx, "demo")
+	if err != nil || !strings.Contains(def, "/t 30 /nobreak") {
 		t.Fatalf("Definition = %q, %v", def, err)
+	}
+	// What Task Scheduler stored equals what was registered, and differs
+	// from another definition, on this host's build (0032-MADR D3-A).
+	if d, err := DiffDefinitions(def, utf8("/t 30 /nobreak")); err != nil || len(d) != 0 {
+		t.Fatalf("stored against registered: %+v, %v", d, err)
+	}
+	if d, err := DiffDefinitions(def, utf8("/t 31 /nobreak")); err != nil || len(d) != 1 || d[0].Path != "Actions/Exec[1]/Arguments" {
+		t.Fatalf("stored against another: %+v, %v", d, err)
 	}
 	if ok, err := task.Installed(ctx, "demo"); err != nil || !ok {
 		t.Fatalf("Installed = %t, %v", ok, err)

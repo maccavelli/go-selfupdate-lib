@@ -354,6 +354,7 @@ since, except where noted) [read]
     * every trigger, in order, by type, with `Enabled`, `StartBoundary`,
       `EndBoundary`, `Delay`, `ExecutionTimeLimit`, `UserId`, and
       `Repetition`'s `Interval`, `Duration` and `StopAtDurationEnd`;
+      *(Amended by Amendment A2: every element a trigger holds, by type.)*
     * the principal's `UserId`, `GroupId`, `LogonType` and `RunLevel`;
     * every `Settings` element the schema defines, except
       `IdleSettings` and `UseUnifiedSchedulingEngine`, which F13 says
@@ -367,7 +368,8 @@ since, except where noted) [read]
     probe sees.
   * **Not compared:** `RegistrationInfo`, `URI`, `Data`, and anything
     the list does not name. A difference there is not reported; the doc
-    says so.
+    says so. *(Amendment A2: an action is compared with every element it
+    holds, too.)*
   * **Accounts:** a `UserId` is compared case-insensitively. A SID and an
     account name compare equal when one resolves to the other, through
     `LookupAccountSid` on Windows; off Windows they compare as text.
@@ -797,6 +799,27 @@ on 2026-10-23.
 * **Effect on D8-A.** "Its directory's access is what protects it on
   Windows" holds once `WriteHandOffEnv` sets that access itself. The
   PLAN's J6 gains the DACL and its tests.
+
+## Amendment A2 (2026-10-23): the comparison covers every element a trigger or action holds
+
+* **Found.** In 0032-PLAN J4, D3-A's list of trigger elements left out
+  those a trigger of one type holds: a calendar trigger's schedule
+  (`DaysInterval`, `WeeksInterval`, `DaysOfWeek`, and the monthly forms),
+  a session-state trigger's `StateChange`, an event trigger's
+  `Subscription` and `ValueQueries`, and a time or calendar trigger's
+  `RandomDelay`. Each is in the captured definitions (Amendment A1,
+  P1-7). With the list as written, a weekly task moved from Monday to
+  Tuesday compares equal.
+* **Decided (the owner, 2026-10-23).** `DiffDefinitions` compares every
+  element a trigger holds, by type and position, and every element an
+  action holds, by type and position. The principal's four elements,
+  the `Settings` rule, the defaults and the "not compared" set are
+  unchanged.
+* **Not chosen.** Keeping the list as written, which leaves those
+  changes unreported.
+* **Consequence.** A trigger or action element a later Windows release
+  writes with a value would be reported as a difference until the
+  defaults table names it.
 
 ## More Information
 

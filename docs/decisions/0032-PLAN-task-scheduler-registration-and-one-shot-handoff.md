@@ -747,3 +747,66 @@ None changes a decision.
   program's definition, and registers, reads and deletes it with
   `Register`, `Definition` and `Delete`. J7 step 1 keeps the options it
   adds, and no longer touches the sentence. No decision changes.
+
+### J4: `DiffDefinitions`, `SameDefinition` (2026-10-23)
+
+* J3 was committed as `0952952`.
+* **`definition.go`** (new): `DefinitionDiff` (`path`, `stored`,
+  `wanted`), `DiffDefinitions` and `SameDefinition`. `flatten` reads each
+  definition's leaf elements by path, numbering triggers and actions by
+  position (`Triggers/TimeTrigger[2]/Repetition/Interval`); `compared`
+  keeps MADR D3-A's set as Amendment A2 widened it; `defaultOf` gives
+  the absent value from `settingsDefaults`, `triggerDefaults` and
+  `principalDefaults`; `sameValue` compares durations, booleans and
+  accounts as values. A principal's absent `UserId` is not compared.
+* **`definition_windows.go`** and **`definition_other.go`** (new):
+  `sameAccount`, resolving a SID with `windows.StringToSid` and
+  `LookupAccount` on Windows.
+* **The defaults** follow J1: the `defaults` and `minimal` captures store
+  the same settings, and `StopIfGoingOnBatteries` is `true`.
+* **`definition_test.go`** (new): every fixture pair compares equal
+  (`TestDiffFixturesSame`); 41 single-element changes each give exactly
+  one difference at their path (`TestDiffOneChange`); absent against
+  default and against another value (`TestDiffDefaults`); description,
+  version, principal id, `IdleSettings`, `UseUnifiedSchedulingEngine`
+  and `URI` ignored, and a principal with no `UserId` (`TestDiffIgnores`);
+  durations, booleans and accounts as values (`TestDiffValues`);
+  malformed XML on either side (`TestDiffErrors`); the JSON keys.
+  **`definition_windows_test.go`** (new): the current user's SID equals
+  its name and `DOMAIN\name`, and not another account.
+  **`live_windows_test.go`:** `TestLiveTaskRegister` compares what Task
+  Scheduler stored with what was registered (equal), and with a
+  definition whose arguments differ (one difference, at
+  `Actions/Exec[1]/Arguments`), on the host's build, and in CI on the
+  runner's.
+* **On the Windows test host:** every comparison test, the SID test and
+  `TestLiveTaskRegister` pass, after the lint fixes below as before them.
+  No `selfupdate-*` task or folder is left.
+* **Seen failing** (`scripts/plant-copy.sh`; the plants ran before the
+  lint fixes below, which change no behaviour):
+
+  | Plant | Failure |
+  | :--- | :--- |
+  | (a) `StopIfGoingOnBatteries` defaulting to `false` | `definition_test.go:41: comhandler: [{Path:Settings/StopIfGoingOnBatteries Stored:true Wanted:false}]`, and the same for `minimal` |
+  | (b) actions left out of the compared set | `definition_test.go:101: Actions/Exec[1]/Command: diffs []`, and for `Arguments`, `WorkingDirectory` and `ComHandler[1]/ClassId` |
+  | (c) durations compared as text | `definition_test.go:170: "<ExecutionTimeLimit>PT120M": [{Path:Settings/ExecutionTimeLimit Stored:PT120M Wanted:PT2H}]`; `definition_test.go:181: PT1M vs PT60S: false, want true` |
+  | (d) a SID never resolved, on the host | `definition_windows_test.go:25: the SID and "<user>" differ`; `definition_windows_test.go:34: a stored SID against its account: [{Path:Principals/Principal/UserId Stored:<sid> Wanted:<host>\<user>}]` |
+
+* **Lint**, fixed before the commit: `errcheck` on `parseDuration`'s
+  ignored parse errors (now each is checked), `goconst` on the `"true"`
+  and `"false"` literals (now `xmlTrue` and `xmlFalse`), and `misspell`
+  reading a test's `EXAMPLE\other` as "ther" (now `EXAMPLE\someone`).
+  `make pre-add-check` on the six Go files: "6 file(s) clean (gofmt,
+  golangci-lint, go vet, go test, govulncheck)". `make apicheck`:
+  "compatible with v1.18.0". `docs/architecture.md`: the `taskscheduler`
+  row is 13 source and 14 test files.
+
+### Deviation D5 (2026-10-23): the comparison's set of trigger and action elements
+
+* **Found.** J4 step 1 and MADR D3-A named the trigger elements to
+  compare; the list left out each trigger type's own elements, so a
+  schedule, session-state, event or random-delay change went unreported.
+* **Decision (the owner, 2026-10-23): option 1.** Every element a trigger
+  or an action holds is compared. Not chosen: the list as written.
+* **MADR:** Amendment A2, and D3-A annotated in place.
+* **Files:** none beyond J4's.
