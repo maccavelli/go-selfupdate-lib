@@ -8,7 +8,7 @@ listed in the
 [migration guide](docs/guides/migrating-from-mcplib-selfupdate.md), one
 section per release, and each entry links its section and its records.
 
-## Unreleased
+## v1.19.0 - 2026-10-23
 
 See [the guide](docs/guides/migrating-from-mcplib-selfupdate.md#19-from-v118-to-v119),
 [0032-MADR](docs/decisions/0032-MADR-task-scheduler-registration-and-one-shot-handoff.md) and

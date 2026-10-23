@@ -1012,3 +1012,16 @@ None changes a decision.
   `GOOS=windows`, and `go build` on this Mac.
 * markdownlint (13 files), the link check (232 links, 0 broken), the
   identifier check and the architecture table check pass.
+
+### J9: `v1.19.0` (2026-10-23, in progress)
+
+* J8 was committed as `d5f3458`.
+* **Step 1:** `CHANGELOG.md`'s `## Unreleased` becomes `## v1.19.0 -
+  2026-10-23`; the guide's §19 came in J8.
+* **Step 2:** `make gate` with this change in the tree: every step
+  `rc=0` (gofmt, lint "0 issues.", vet, race, shuffle, tidy, apicheck
+  "compatible with v1.18.0", fuzz, vuln "No vulnerabilities found.",
+  scripts, shellcheck, crossvet, links "746 links in 88 files, 0 broken",
+  arch, ids), `overall=0`.
+* The steps that follow wait on the owner's word for the push and the
+  tag.
