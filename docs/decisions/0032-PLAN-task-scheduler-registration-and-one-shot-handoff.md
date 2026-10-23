@@ -1023,5 +1023,52 @@ None changes a decision.
   "compatible with v1.18.0", fuzz, vuln "No vulnerabilities found.",
   scripts, shellcheck, crossvet, links "746 links in 88 files, 0 broken",
   arch, ids), `overall=0`.
-* The steps that follow wait on the owner's word for the push and the
-  tag.
+* The pre-tag change was committed as `a015847`; the disclosure guard
+  over the outgoing commits exited 0.
+* **Step 3:** the owner pushed `main`. The Docs run passed. CI run
+  40021600536 failed one job, `validate (windows-2025)`, on
+  `TestWriteHandOffEnvProtectsDir`; every other job passed. The plan
+  stopped (Deviation D7).
+
+### Deviation D7 (2026-10-23): the DACL test read SIDs as SDDL text
+
+* **Found.** CI run 40021600536, `validate (windows-2025)`:
+
+  ```text
+  --- FAIL: TestWriteHandOffEnvProtectsDir (0.01s)
+      handoffenv_windows_test.go:58: the directory's DACL: D:PAI(A;OICI;FA;;;LA)(A;OICI;FA;;;SY)(A;OICI;FA;;;BA); want protected, the user, SYSTEM and Administrators only
+  ```
+
+  The DACL was the one `protectDir` sets: protected, and exactly the
+  user, SYSTEM and Administrators. The test looked for the user's SID as
+  text, and SDDL writes the built-in Administrator account (RID 500),
+  which the runner's account is, as the alias `LA`. On the Windows test
+  host the account is an ordinary one, so the SID was written out and
+  the test passed there (J6). The defect is J6's test, not the code.
+* **Decision (the owner, 2026-10-23): resolution 1.** The test reads the
+  DACL's entries and compares them as SIDs, with `windows.EqualSid`:
+  protected, exactly three allow entries with full control
+  (`FILE_ALL_ACCESS`, defined in the test, since `x/sys/windows` has
+  none), for the current user, SYSTEM and Administrators in that order,
+  not inherited on the directory and inherited on the file; and the
+  parent has an Everyone entry to escape. Not offered: skipping the test
+  in CI, or accepting any user entry, which would loosen it.
+* **Done.** `selfupdate/service/handoffenv_windows_test.go` only; the
+  production code is unchanged. A first version required the parent to
+  have exactly four entries; the parent's DACL is not protected, so it
+  also inherits the host's entries (11 there), and the precondition is
+  now only that an Everyone entry is among them.
+* **On the Windows test host:** the test passes, and the `service` and
+  `internal/winproc` packages pass. **Seen failing** there:
+
+  | Plant | Failure |
+  | :--- | :--- |
+  | (a) the DACL not set | `handoffenv_windows_test.go:121: the directory: protected false, entries <sid> S-1-5-18 S-1-5-32-544 S-1-1-0 S-1-1-0 <sid> <sid> <sid>; want protected true and 3 entries` |
+  | (b) an Everyone entry beside the three | `handoffenv_windows_test.go:121: the directory: protected true, entries <sid> S-1-5-18 S-1-5-32-544 S-1-1-0 S-1-1-0; want protected true and 3 entries` |
+  | (c) the Users group in the user's place | `handoffenv_windows_test.go:121: the directory: entry 0 is type 0, mask 0x1f01ff, flags 0x3, SID S-1-5-32-545; want full control for <sid>, inherited false` |
+
+  Plant (c)'s first form, `BU` in the SDDL, left the user unused and did
+  not compile; it was replaced by the Users SID itself.
+* `make pre-add-check` on the test: "1 file(s) clean". Whether the test
+  passes for a RID 500 account is shown by CI's next run, on the runner
+  that found it.
