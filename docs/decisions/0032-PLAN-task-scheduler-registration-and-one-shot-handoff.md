@@ -393,7 +393,8 @@ Associated MADR: [0032-MADR-task-scheduler-registration-and-one-shot-handoff.md]
      `service.WriteHandOffEnv(dir, spec.ID, append(os.Environ(),
      append(spec.Env, service.EnvHandOffHop+"=1")...))`; arguments
      `ArgHandOffEnv+file` then `spec.Args`, composed by
-     `windows.ComposeCommandLine` through a small OS-split helper;
+     `windows.ComposeCommandLine` through a small OS-split helper
+     *(Deviation D6: `composeArgs`, on every OS, by `EscapeArg`'s rules)*;
      `register(folder, handOffName, xml, taskCreate, logonInteractiveToken)`;
      `run()`; wait for an instance or `LastRunTime` at or after the call,
      *(Deviation D2: for a listed instance, or a `LastTaskResult` other
@@ -902,3 +903,82 @@ None changes a decision.
   "compatible with v1.18.0"; `go doc` shows `service.ArgHandOffEnv`.
   `CheckProgram` is in an internal package. The records that name
   `checkProgram` describe the code as it was, and are left as written.
+
+### J7: the one-shot handoff (2026-10-23)
+
+* J6 was committed as `d2cec14`.
+* **`task.go`:** `Options.HopDetach` and `Options.HandOffDir` (refused when
+  not absolute). The scope sentence changed in J3 (Deviation D4).
+* **`handoff.go`** (new): `handOffName`, `fullPath`, `handOffDir`
+  (`os.UserCacheDir()\selfupdate\handoff` by default); `detachTask`,
+  which cleans up first, refuses a batch file (`winproc.CheckProgram`), a
+  quoted path, and a service task whose logon type is not
+  `InteractiveToken` (naming `HopDetach`), writes the file with
+  `EnvHandOffHop=1`, registers `<name>.selfupdate.<id>` with
+  `TASK_CREATE`, runs it, and waits for a listed instance or a result
+  other than "has not run" (Deviation D2), deleting the task and the
+  file on any failure after registration; `principalOf`; `startOneShot`;
+  `CleanupHandOffs`; `oneShotXML`; and `composeArgs` with `escapeArg`
+  (Deviation D6).
+* **`detach.go`:** `Detach` calls `detachTask` unless `HopDetach`; its
+  doc describes both.
+* **`fake_test.go`:** `onRegister` shapes each task the fake registers.
+* **`testdata/oneshot.stored.xml`** (new): the one-shot definition Task
+  Scheduler stored in J1 run 1, redacted as the definitions' README says.
+* **`handoff_test.go`** (new): `TestOneShotGolden` (the rendered
+  definition equals the stored one, and `composeArgs` reproduces the
+  stored `Arguments` exactly); `TestEscapeArg`; `TestDetachOneShot` (the
+  task's name, flags and logon type, the copied principal, the settings,
+  no trigger, the arguments, no environment value in the definition,
+  the file's variables, `Where` and `ResultPath`);
+  `TestDetachOneShotFailures` (a denied registration, a denied run and a
+  run that never starts leave no task and no file);
+  `TestDetachOneShotRefuses`; `TestDetachHop`; `TestCleanupHandOffs`.
+  **`handoff_windows_test.go`** (new): `TestComposeArgsMatchesEscapeArg`
+  over 17 strings, and `TestDetachOneShotRefusesBatchFile`.
+* **`live_windows_test.go`:** `liveConfig` gains `HopDetach` and
+  `KillJob`; `newLiveTaskWith`; with `KillJob` the task's program starts
+  the agent suspended in a job with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`
+  alone (`startInKillJob`) and closes the job once the agent reports the
+  handoff. `TestLiveTaskUpdate` sets `HopDetach`, so the hop stays
+  covered. `TestLiveTaskHandOffOneShot` (new) hands off from that job,
+  and checks the handoff named the one-shot task, the job was closed (or
+  the program, its holder, exited), a new instance runs the new build,
+  the real run had no console window, and `CleanupHandOffs` leaves no
+  one-shot task. CI's `-run '^TestLiveTask'` step runs it.
+* **On the Windows test host,** with `SELFUPDATE_REQUIRE_TASKSCHED=1`:
+  the whole package passes (`ok ... 96.057s`).
+  `TestLiveTaskHandOffOneShot` logged "job closed by the program: true":
+  the agent's kill-on-close job closed while the update ran, and the
+  update completed. `TestLiveTaskUpdate` passed through the hop, at
+  integrity `0x2000`. Afterwards no `selfupdate-*` task, task folder,
+  handoff file or `%LOCALAPPDATA%\selfupdate` directory is left; the
+  live tests' empty `selfupdate\handoff` directory was removed.
+* **Seen failing** (`scripts/plant-copy.sh`):
+
+  | Plant | Failure |
+  | :--- | :--- |
+  | (a) `DisallowStartIfOnBatteries` left at its default | `handoff_test.go:45: stored against rendered: [{Path:Settings/DisallowStartIfOnBatteries Stored:false Wanted:true}]`; `handoff_test.go:115` |
+  | (b) the handoff argument omitted | here, `handoff_test.go:124: Arguments update --yes "a b", want --selfupdate-handoff-env=<temp>/handoff-abc123.env update --yes "a b"`; on the host, `live_windows_test.go:671: no handoff result within 120 s` |
+  | (c) the cleanup deleting a running task | `handoff_test.go:240: \demo.selfupdate.run kept false, want true` |
+  | (d) `TASK_CREATE_OR_UPDATE` in place of `TASK_CREATE` | `handoff_test.go:95: verbs ["register \\demo.selfupdate.abc123 flags=6 logon=3" "run"]` |
+  | (e) `HopDetach` ignored | `handoff_test.go:209: Detach = <nil>, want the hop's start error` |
+
+* `docs/architecture.md`: the `taskscheduler` row is 15 source and 17
+  test files, and names the one-shot capture. `make pre-add-check` on the
+  seven Go files: "7 file(s) clean (gofmt, golangci-lint, go vet, go
+  test, govulncheck)". `make apicheck`: "compatible with v1.18.0".
+
+### Deviation D6 (2026-10-23): the one-shot task's arguments are quoted by `EscapeArg`'s rules
+
+* **Found.** J7 step 2 and MADR D8-A composed the arguments with
+  `windows.ComposeCommandLine`. That function treats its first element
+  as a program name: it quotes it without escaping, so a trailing
+  backslash before its closing quote would escape the quote. An `Exec`
+  action's `Arguments` holds no program name, and its first element here
+  is the handoff argument, a path.
+* **Done.** `composeArgs` quotes every element by `EscapeArg`'s rules, in
+  a helper that builds on every OS; `TestComposeArgsMatchesEscapeArg`
+  pins it to `windows.EscapeArg` on Windows, and `TestOneShotGolden`
+  shows it reproduces the `Arguments` J1 measured arriving intact. No
+  decision changes; MADR D8-A is annotated in place.

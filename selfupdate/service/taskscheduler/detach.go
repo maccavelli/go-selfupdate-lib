@@ -58,15 +58,35 @@ func (t *Task) insideTask(name, path string) (bool, error) {
 	return false, nil
 }
 
-// Detach implements service.Detacher: it starts spec as a hop, which
-// starts the real run detached and exits (service.HandOffHop), so the run
-// does not descend from this process or the task. Stop ends only the
-// task's own process, so the run survives it, even inside the task's job,
-// which refuses breakaway (0021-MADR D6; Amendment A1, probe 2). The
-// program must call service.ReportFunc, service.LoadHandOffEnv or
-// service.LoadHandOffEnvContext at start-up, as a detached run does
-// anyway.
+// Detach implements service.Detacher. By default it registers and runs a
+// one-shot task, <Options.Name>.selfupdate.<id>, in the service task's
+// folder, with the service task's user, logon type and run level. Task
+// Scheduler starts that task's process, so the run is in none of this
+// process's jobs, and survives both Stop and a job of this program's that
+// kills its processes when it closes
+// (docs/decisions/0032-MADR-task-scheduler-registration-and-one-shot-handoff.md
+// D5-A; Amendment A1, P2-1 to P2-3). The run's environment travels in a
+// private file in Options.HandOffDir, named by the run's first argument,
+// service.ArgHandOffEnv; the run starts through a hop, so its console has
+// no window, and only the hop's shows, for about 50 ms (P2-4). Detach
+// returns once Task Scheduler reports the run started, bounded by ctx and
+// Options.Poll's timeout, and first calls CleanupHandOffs. Only a service
+// task that logs on with an interactive token is supported.
+//
+// With Options.HopDetach, it starts spec as a hop instead, which starts
+// the real run detached and exits (service.HandOffHop), so the run does
+// not descend from this process or the task. Stop ends only the task's
+// own process, so the run survives it, even inside the task's job, which
+// refuses breakaway (0021-MADR D6; Amendment A1, probe 2); a job of this
+// program's that refuses breakaway and kills on close ends it.
+//
+// Either way, the program must call service.ReportFunc,
+// service.LoadHandOffEnv or service.LoadHandOffEnvContext at start-up,
+// before it reads its arguments, as a detached run does anyway.
 func (t *Task) Detach(ctx context.Context, spec service.HandOff) (service.Detached, error) {
+	if !t.o.HopDetach {
+		return t.detachTask(ctx, spec)
+	}
 	spec.Env = append(append([]string(nil), spec.Env...), service.EnvHandOffHop+"=1")
 	det, err := service.DetachProcess(ctx, spec)
 	if err != nil {

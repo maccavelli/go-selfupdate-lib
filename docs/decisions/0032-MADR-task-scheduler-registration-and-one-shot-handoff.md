@@ -470,7 +470,9 @@ Rejected without a full weighing:
     measures; any other is refused with an error naming it and
     `Options.HopDetach`, as Q6 refused the rewrite.
   * **Definition:** no trigger; one `Exec` action with the executable,
-    D6-A's arguments composed with `windows.ComposeCommandLine`, and the
+    D6-A's arguments composed with `windows.ComposeCommandLine`
+    *(0032-PLAN Deviation D6: each quoted by `windows.EscapeArg`'s rules,
+    since none is a program name)*, and the
     caller's temporary directory as `WorkingDirectory`, as
     `DetachProcess` uses; settings `AllowStartOnDemand` true,
     `MultipleInstancesPolicy` `IgnoreNew`, `DisallowStartIfOnBatteries`

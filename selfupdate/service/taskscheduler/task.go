@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -76,6 +77,18 @@ type Options struct {
 	// it could end the task. Zero means DefaultStopGrace, or half of Poll's
 	// timeout when that is shorter (0024-MADR Amendment A1).
 	StopGrace time.Duration
+	// HopDetach makes Detach start the handoff as a hop, a detached process
+	// that starts the real run and exits, as Detach did before v1.19.0, in
+	// place of a one-shot task. The hop's run stays in this process's jobs
+	// when they refuse breakaway, so a job that kills its processes when it
+	// closes ends the update with it
+	// (docs/decisions/0032-MADR-task-scheduler-registration-and-one-shot-handoff.md
+	// D5-A).
+	HopDetach bool
+	// HandOffDir is where Detach writes a one-shot run's private
+	// environment file, made private to this user (service.WriteHandOffEnv).
+	// It must be absolute. Empty means %LOCALAPPDATA%\selfupdate\handoff.
+	HandOffDir string
 }
 
 // instance is one running instance of a task: its process and that
@@ -143,6 +156,9 @@ func newTask(o Options, goos string, s scheduler) (*Task, error) {
 	}
 	if o.StopGrace < 0 {
 		return nil, fmt.Errorf("selfupdate: taskscheduler: Options.StopGrace %s is negative", o.StopGrace)
+	}
+	if o.HandOffDir != "" && !filepath.IsAbs(o.HandOffDir) {
+		return nil, fmt.Errorf("selfupdate: taskscheduler: Options.HandOffDir %q is not absolute", o.HandOffDir)
 	}
 	if err := o.Poll.Validate(); err != nil {
 		return nil, fmt.Errorf("selfupdate: taskscheduler: %w", err)

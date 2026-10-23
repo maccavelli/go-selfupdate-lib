@@ -41,6 +41,12 @@ type liveConfig struct {
 	Target string
 	New    string
 	Path   string
+	// HopDetach is the backend's Options.HopDetach.
+	HopDetach bool
+	// KillJob starts the agent in a job that kills its processes when it
+	// closes and refuses breakaway, as magic-cli-remote's are, and closes
+	// it once the agent has handed off (0032-MADR F22).
+	KillJob bool
 }
 
 func liveMode(mode string, args []string) int {
@@ -96,14 +102,69 @@ func liveServe(cfg liveConfig) int {
 			_ = os.Remove(filepath.Join(cfg.Dir, "trigger"))
 			startAgent(cfg)
 		}
+		if agentJob != 0 {
+			if _, err := os.Stat(filepath.Join(cfg.Dir, "handed")); err == nil {
+				err := windows.CloseHandle(agentJob)
+				agentJob = 0
+				report(cfg, "job-closed", fmt.Sprint(err))
+			}
+		}
 	}
 	return 0
+}
+
+// agentJob is the agent's kill-on-close job, which the task's program
+// holds until the agent has handed off.
+var agentJob windows.Handle
+
+// startInKillJob starts argv suspended, assigns it to a new job with
+// JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE alone, and resumes it, so it is in
+// the job from its first instruction (0032-MADR Amendment A1, P2).
+func startInKillJob(argv []string) (uint32, windows.Handle, error) {
+	job, err := windows.CreateJobObject(nil, nil)
+	if err != nil {
+		return 0, 0, err
+	}
+	var li windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION
+	li.BasicLimitInformation.LimitFlags = windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+	if _, err := windows.SetInformationJobObject(job, windows.JobObjectExtendedLimitInformation,
+		uintptr(unsafe.Pointer(&li)), uint32(unsafe.Sizeof(li))); err != nil { //nolint:gosec // a fixed struct's size
+		return 0, 0, errors.Join(err, windows.CloseHandle(job))
+	}
+	line, err := windows.UTF16PtrFromString(windows.ComposeCommandLine(argv))
+	if err != nil {
+		return 0, 0, errors.Join(err, windows.CloseHandle(job))
+	}
+	si := windows.StartupInfo{Cb: uint32(unsafe.Sizeof(windows.StartupInfo{}))} //nolint:gosec // a fixed struct's size
+	var pi windows.ProcessInformation
+	if err := windows.CreateProcess(nil, line, nil, nil, false, windows.CREATE_SUSPENDED, nil, nil, &si, &pi); err != nil {
+		return 0, 0, errors.Join(err, windows.CloseHandle(job))
+	}
+	aerr := windows.AssignProcessToJobObject(job, pi.Process)
+	if _, err := windows.ResumeThread(pi.Thread); err != nil {
+		aerr = errors.Join(aerr, err)
+	}
+	aerr = errors.Join(aerr, windows.CloseHandle(pi.Thread), windows.CloseHandle(pi.Process))
+	if aerr != nil {
+		return 0, 0, errors.Join(aerr, windows.CloseHandle(job))
+	}
+	return pi.ProcessId, job, nil
 }
 
 func startAgent(cfg liveConfig) {
 	exe, err := os.Executable()
 	if err != nil {
 		report(cfg, "serve-error", err.Error())
+		return
+	}
+	if cfg.KillJob {
+		pid, job, err := startInKillJob([]string{exe, liveArg, "agent", cfg.Path})
+		if err != nil {
+			report(cfg, "serve-error", "agent in a job: "+err.Error())
+			return
+		}
+		agentJob = job
+		report(cfg, "agent", strconv.FormatUint(uint64(pid), 10))
 		return
 	}
 	cmd := exec.Command(exe, liveArg, "agent", cfg.Path) //nolint:gosec // the test binary
@@ -289,6 +350,7 @@ func runLiveUpdate() (selfupdate.Result, error) {
 func liveBackend(cfg liveConfig) (*Task, error) {
 	task, err := New(Options{
 		Name:        cfg.Name,
+		HopDetach:   cfg.HopDetach,
 		RewritePath: true,
 		Poll:        service.PollOptions{Interval: 200 * time.Millisecond, Timeout: 90 * time.Second, Settle: 3 * time.Second},
 		StopGrace:   15 * time.Second,
@@ -350,7 +412,7 @@ func requireLive(t *testing.T) {
 
 func newLiveTask(t *testing.T) liveConfig {
 	t.Helper()
-	return newLiveTaskIn(t, "")
+	return newLiveTaskWith(t, "", liveConfig{})
 }
 
 // newLiveTaskIn registers and starts the live task. With sub set, the
@@ -358,10 +420,17 @@ func newLiveTask(t *testing.T) liveConfig {
 // target, so an install rewrites the task's path.
 func newLiveTaskIn(t *testing.T, sub string) liveConfig {
 	t.Helper()
+	return newLiveTaskWith(t, sub, liveConfig{})
+}
+
+// newLiveTaskWith is newLiveTaskIn with with's HopDetach and KillJob.
+func newLiveTaskWith(t *testing.T, sub string, with liveConfig) liveConfig {
+	t.Helper()
 	requireLive(t)
 	name := "selfupdate-live-" + randomHex()
 	dir := t.TempDir()
-	cfg := liveConfig{Name: name, Dir: dir, Target: filepath.Join(dir, "demo.exe"), New: filepath.Join(dir, "new.exe")}
+	cfg := liveConfig{Name: name, Dir: dir, Target: filepath.Join(dir, "demo.exe"), New: filepath.Join(dir, "new.exe"),
+		HopDetach: with.HopDetach, KillJob: with.KillJob}
 	cfg.Path = filepath.Join(dir, "live.json")
 	body, err := json.Marshal(cfg)
 	if err != nil {
@@ -528,8 +597,11 @@ func assertNoWindow(t *testing.T, path string) {
 // end, and requires it to run at medium integrity. CI does not run it: a
 // GitHub runner runs a least-privilege task at high integrity
 // (0021-MADR Amendment A5).
+// TestLiveTaskUpdate hands an update off through the hop
+// (Options.HopDetach); TestLiveTaskHandOffOneShot covers the one-shot
+// task, the default.
 func TestLiveTaskUpdate(t *testing.T) {
-	cfg := newLiveTask(t)
+	cfg := newLiveTaskWith(t, "", liveConfig{HopDetach: true})
 	ctx := context.Background()
 	s := liveSvc(t, cfg)
 	for name, probe := range map[string]func() (bool, error){
@@ -577,6 +649,58 @@ func TestLiveTaskUpdate(t *testing.T) {
 		t.Fatalf("the update's open of the task's program with winproc.AliveAccess: %s; want open=ok wait=timeout (0022-MADR A3)", open)
 	}
 	t.Logf("the update's integrity RID %s; %s", rid, open)
+}
+
+// TestLiveTaskHandOffOneShot hands an update off from an agent the task's
+// program started in a job that kills its processes when it closes and
+// refuses breakaway; the program closes the job once the agent has handed
+// off. The one-shot task's run is in none of the program's jobs, so the
+// update completes (0032-MADR D5-A; Amendment A1, P2).
+func TestLiveTaskHandOffOneShot(t *testing.T) {
+	cfg := newLiveTaskWith(t, "", liveConfig{KillJob: true})
+	ctx := context.Background()
+	s := liveSvc(t, cfg)
+	t.Cleanup(func() { _ = s.CleanupHandOffs(ctx) })
+	before := waitReady(t, cfg, 0)
+	_ = os.Remove(filepath.Join(cfg.Dir, "ready"))
+	build(t, cfg.New, "\nnew build\n")
+	if err := os.WriteFile(filepath.Join(cfg.Dir, "trigger"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	result := service.DefaultResultPath(cfg.Target)
+	waitHandOff(t, cfg, result)
+	handed, err := os.ReadFile(filepath.Join(cfg.Dir, "handed")) //nolint:gosec // the live test's own file
+	if err != nil || !strings.HasPrefix(string(handed), `task \`+cfg.Name+".selfupdate.") {
+		t.Fatalf("handed off to %q, %v; want the one-shot task", handed, err)
+	}
+	// The program closes the job when it sees the handoff, or the update's
+	// Stop ends the program first, which closes its handle to the job.
+	closed, cerr := os.ReadFile(filepath.Join(cfg.Dir, "job-closed")) //nolint:gosec // the live test's own file
+	_, gerr := os.Stat(filepath.Join(cfg.Dir, "graceful"))
+	if (cerr != nil || string(closed) != "<nil>") && gerr != nil {
+		t.Fatalf("the agent's job: closed %q (%v), program exited %v; want one of them", closed, cerr, gerr)
+	}
+	t.Logf("job closed by the program: %t", cerr == nil)
+	after := waitReady(t, cfg, before)
+	if after == before {
+		t.Fatalf("instance PID did not change: %d", after)
+	}
+	if got, err := os.ReadFile(cfg.Target); err != nil || !strings.HasSuffix(string(got), "\nnew build\n") { //nolint:gosec // the live test's own file
+		t.Fatal("the task's binary is not the new build")
+	}
+	assertNoWindow(t, result+".console")
+	if err := s.CleanupHandOffs(ctx); err != nil {
+		t.Fatalf("CleanupHandOffs: %v", err)
+	}
+	tasks, err := systemScheduler().list(`\`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, task := range tasks {
+		if strings.HasPrefix(task.Name, cfg.Name+".selfupdate.") {
+			t.Fatalf("a one-shot task is left: %+v", task)
+		}
+	}
 }
 
 func waitHandOff(t *testing.T, cfg liveConfig, result string) {

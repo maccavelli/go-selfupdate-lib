@@ -28,6 +28,8 @@ type fakeSched struct {
 	// fail makes a call that changes something return its error, by verb:
 	// register, delete, mkfolder or list.
 	fail map[string]error
+	// onRegister shapes each task register creates, before it is stored.
+	onRegister func(ft *fakeTask)
 }
 
 // fakeTask is one registered task.
@@ -104,6 +106,9 @@ func (f *fakeSched) register(folder, name, xml string, flags, logon int32) error
 		return hrFileNotFound
 	case !exists:
 		ft = &fakeTask{st: stateReady, on: true, user: "user", last: lastRun{Result: 0x41303}} // SCHED_S_TASK_HAS_NOT_RUN
+		if f.onRegister != nil {
+			f.onRegister(ft)
+		}
 		f.tasks[path] = ft
 	}
 	ft.logon, ft.def = logon, xml
