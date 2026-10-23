@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-23
 decision-makers: go-selfupdate-lib maintainers
 consulted: "GitHub issues #3, \"service/taskscheduler: register, read and delete a task definition\" (2026-10-22), and #6, \"service/taskscheduler: detach a handoff as a one-shot task, without job breakaway\" (2026-10-23), from the owner for magic-cli-remote; a read of `selfupdate/service/taskscheduler`, `selfupdate/service` and `internal/winproc` at a365dd1 (v1.18.0 plus its closing record); 0021-MADR and its PLANs; magic-cli-remote at 1bfab31b; Microsoft's Task Scheduler 2.0 reference, its schema, the [MS-TSCH] protocol specification and the job-object pages, read 2026-10-23; MinGW-w64's taskschd.h, read 2026-10-23"
@@ -408,15 +408,29 @@ since, except where noted) [read]
   holds `os.Environ()`, `EnvHandOff`, `EnvHandOffResult`, the caller's
   `spec.Env` and, under D7-A, `EnvHandOffHop=1`. The definition holds
   the path, never a value.
-* **D6-B.** The working directory. The action's `WorkingDirectory` is a
-  private per-handoff directory, and `LoadHandOffEnv` loads a file of a
-  fixed name from the current directory, when that directory is under
-  the library's handoff root.
-* **D6-C.** `cmd.exe /c set NAME=value && program`. 0021-MADR D8 forbids
-  starting `cmd.exe`, and the values would be stored in the definition.
-* **D6-D.** The user's registry environment (`HKCU\Environment`), set
-  before `Run` and cleared after. Any process Task Scheduler starts in
-  between, the service's own task included, would read it.
+* **D6-B.** A leading handoff ID. The action's `Arguments` start with
+  `--selfupdate-handoff=<id>`, and the file is always
+  `handoff-<id>.env` in one fixed per-user directory,
+  `%LOCALAPPDATA%\selfupdate\handoff`. `LoadHandOffEnvContext` finds the
+  file from the ID. The definition holds only a random ID. A custom
+  `Options.HandOffDir` is not possible, because the run cannot learn it.
+* **D6-C.** The working directory. The action's `WorkingDirectory` is a
+  private per-handoff directory under the handoff root, and
+  `LoadHandOffEnvContext` loads a file of a fixed name from the current
+  directory when that directory is under the root. `os.Args` is not
+  touched.
+
+Rejected without a full weighing:
+
+* `cmd.exe /c set NAME=value && program`. 0021-MADR D8 forbids starting
+  `cmd.exe`, and the values would be stored in the definition.
+* The user's registry environment (`HKCU\Environment`), set before `Run`
+  and cleared after. Any process Task Scheduler starts in between, the
+  service's own task included, would read it.
+* No transfer: the run gets the fresh environment Task Scheduler builds
+  for the user, with the handoff variables as arguments. It loses
+  `spec.Env` and whatever the caller's environment set (a proxy, a
+  config path), so the run would not be the caller's update.
 
 ### D7: the window (F12, not in the issue)
 
@@ -476,9 +490,17 @@ since, except where noted) [read]
 
 ## Decision Outcome
 
-Proposed, for the owner to decide: "D1-A", "D2-A", "D3-A", "D4-A",
-"D5-A", "D6-A", "D7-A" and "D8-A", released as `v1.19.0`, a minor release
-because each adds API. **D5 to D8 depend on probe P2** (Confirmation);
+Chosen options (the owner, 2026-10-23): "D1-A", "D2-A", "D3-A", "D4-A",
+"D5-A", "D6-A", "D7-A" and "D8-A", released as `v1.19.0`, a minor
+release because each adds API.
+
+The owner decided D5-A (the one-shot task as the default) and D4-A
+(`Status` included) first, asked for D6 to be explained with three
+options and a recommendation, then chose D6-A, a leading path argument,
+and "follow recommendations for the other decisions": D1-A, D2-A, D3-A,
+D7-A and D8-A.
+
+**D5 to D8 depend on probe P2** (Confirmation);
 if it contradicts F10's derivation, the PLAN stops and this record is
 amended before any handoff code is written.
 
@@ -515,9 +537,12 @@ amended before any handoff code is written.
   needs only what the guide already requires: `ReportFunc` or
   `LoadHandOffEnv` first in `main` (F6). Anyone who can start the
   program with an argument can already set its environment, so the
-  argument opens nothing new. D6-B makes the current directory a
-  channel, which a program run from an untrusted directory must not
-  have. D6-C and D6-D fail on their own terms.
+  argument opens nothing new, and `Options.HandOffDir` works because the
+  path travels with the run. D6-B stores less, a random ID, but fixes
+  the directory for every program and user, so `HandOffDir` cannot
+  exist, and a run started without the ID has nothing to find. D6-C
+  makes the current directory an input to every start of the program,
+  which a program run from an untrusted directory must not have.
 * **D7-A** reuses two measured mechanisms, the hop (0011-MADR A4) and the
   windowless start (0021-MADR D7), and limits the window to the hop's
   life. D7-B shows a console for the whole update. D7-C cuts the update
@@ -667,23 +692,28 @@ amended before any handoff code is written.
 
 * Bad, because the caller loosens containment for every process.
 
-### D6-A. A leading argument
+### D6-A. A leading path argument
 
-* Good, because the definition holds only a path.
+* Good, because the definition holds only a path, and the directory can
+  be configured.
+* Good, because it has `EnvHandOffEnv`'s trust model: the path names a
+  file the loader checks as it checks that one.
 * Neutral, because a program that parses `os.Args` before `ReportFunc`
   would see the argument; the guide already says to call it first.
 
-### D6-B. The working directory
+### D6-B. A leading ID argument and a fixed directory
 
-* Bad, because the current directory becomes an input.
+* Good, because the definition holds only a random ID.
+* Bad, because the directory is fixed for every program, so
+  `Options.HandOffDir` cannot exist.
+* Neutral, because it also edits `os.Args`, as D6-A does.
 
-### D6-C. `cmd.exe`
+### D6-C. The working directory
 
-* Bad, because 0021-MADR D8 forbids it, and the values are stored.
-
-### D6-D. The registry environment
-
-* Bad, because another task can read it while it is set.
+* Good, because `os.Args` is untouched.
+* Bad, because every start of the program reads its current directory
+  for a file, which a program run from an untrusted directory must not
+  do.
 
 ### D7-A. A hop inside the task
 

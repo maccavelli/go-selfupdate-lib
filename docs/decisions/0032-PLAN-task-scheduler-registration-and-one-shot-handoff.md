@@ -6,8 +6,7 @@ associated-madr: "0032-MADR-task-scheduler-registration-and-one-shot-handoff.md"
 # Implement Task Scheduler registration, comparison, state and the one-shot handoff, and release `v1.19.0`
 
 Associated MADR: [0032-MADR-task-scheduler-registration-and-one-shot-handoff.md](0032-MADR-task-scheduler-registration-and-one-shot-handoff.md)
-(D1-A to D8-A, as proposed; the owner's decision may change them, and
-this plan is amended to match before any phase after J0 runs).
+(D1-A to D8-A, as the owner chose on 2026-10-23).
 
 ## Goal
 
