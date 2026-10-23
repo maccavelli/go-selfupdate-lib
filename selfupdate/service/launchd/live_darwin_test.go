@@ -477,6 +477,34 @@ func TestLiveStopWaitsForSlowExit(t *testing.T) {
 	}
 }
 
+// TestLiveStatus: Status and Loaded agree with launchd for a running job,
+// and after Stop, when the job is no longer loaded (0031-MADR D4).
+func TestLiveStatus(t *testing.T) {
+	requireLive(t)
+	e := newLiveJob(t)
+	pid := waitRunning(t, e)
+	j, err := liveJobFor(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	check := func(when string, want Status) {
+		t.Helper()
+		got, err := j.Status(ctx, "demo")
+		if err != nil || got != want {
+			t.Fatalf("%s: Status = %+v, %v; want %+v", when, got, err, want)
+		}
+		if loaded, err := j.Loaded(ctx, "demo"); err != nil || loaded != want.Loaded {
+			t.Fatalf("%s: Loaded = %t, %v; want %t", when, loaded, err, want.Loaded)
+		}
+	}
+	check("running", Status{Installed: true, Loaded: true, Enabled: true, Running: true, PID: pid})
+	if err := j.Stop(ctx, "demo"); err != nil {
+		t.Fatal(err)
+	}
+	check("after Stop", Status{Installed: true, Enabled: true})
+}
+
 func TestLiveHealthFailureRollsBack(t *testing.T) {
 	requireLive(t)
 	e := newLiveJob(t)

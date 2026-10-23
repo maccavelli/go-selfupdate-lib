@@ -35,6 +35,56 @@ func (j *Job) Running(ctx context.Context, _ string) (bool, error) {
 	return s.running, err
 }
 
+// Loaded reports whether launchd knows the job in its domain, read by
+// `launchctl list` when that sees the domain, otherwise by `launchctl
+// print` (0011-MADR §7). A job can be loaded and not running, and its plist
+// can exist while it is not loaded. Exit 113 is false and no error; any
+// other failure is an error, matched as Running's are (0031-MADR D4).
+func (j *Job) Loaded(ctx context.Context, _ string) (bool, error) {
+	s, err := j.probe(ctx)
+	return s.loaded, err
+}
+
+// Status is a launchd job's state at one moment (0031-MADR D4).
+type Status struct {
+	// Installed is Installed's answer: the plist exists.
+	Installed bool `json:"installed"`
+	// Loaded is Loaded's answer: launchd knows the job in its domain.
+	Loaded bool `json:"loaded"`
+	// Enabled is Enabled's answer; false when the plist does not exist.
+	Enabled bool `json:"enabled"`
+	// Running is Running's answer: the job has a running process.
+	Running bool `json:"running"`
+	// PID is that process's ID, or 0 when the job is not running.
+	PID int `json:"pid"`
+}
+
+// Status reads every state of the job with one launchd probe: Installed,
+// then Loaded, Running and the PID, which it reads whether or not the
+// plist exists, since a loaded job can outlive its plist, then Enabled,
+// only when the plist exists. Any error returns a zero Status with it, as
+// the per-state methods return their errors.
+func (j *Job) Status(ctx context.Context, product string) (Status, error) {
+	installed, err := j.Installed(ctx, product)
+	if err != nil {
+		return Status{}, err
+	}
+	s, err := j.probe(ctx)
+	if err != nil {
+		return Status{}, err
+	}
+	st := Status{Installed: installed, Loaded: s.loaded, Running: s.running}
+	if s.running {
+		st.PID = s.pid
+	}
+	if installed {
+		if st.Enabled, err = j.Enabled(ctx, product); err != nil {
+			return Status{}, err
+		}
+	}
+	return st, nil
+}
+
 // Enabled implements selfupdate.EnabledLifecycle: the plist sets RunAtLoad
 // to true, or KeepAlive to true or a dictionary, and the label is not
 // disabled in launchd's override database (0011-MADR §7). launchd runs a

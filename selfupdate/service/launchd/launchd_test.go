@@ -111,6 +111,103 @@ func TestInstalledAndRunning(t *testing.T) {
 	}
 }
 
+// probes counts the job probes f answered: `launchctl list` and `print`.
+func probes(f *fakeLaunchd) int {
+	n := 0
+	for _, v := range f.verbs() {
+		if v == "list" || v == "print" {
+			n++
+		}
+	}
+	return n
+}
+
+// TestLoaded covers each probe branch through Loaded (0031-MADR D4).
+func TestLoaded(t *testing.T) {
+	testproc.CheckNoLeak(t)
+	ctx := context.Background()
+	for _, c := range []struct {
+		name   string
+		domain Domain
+		verb   string
+	}{
+		{"list sees the domain", GUI(503), "list"},
+		{"print for another user", GUI(501), "print"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newFake()
+			j := testJob(t, f, Options{Domain: c.domain})
+			if ok, err := j.Loaded(ctx, "demo"); err != nil || !ok {
+				t.Fatalf("running: loaded %t, %v", ok, err)
+			}
+			f.pid, f.state = 0, "not running"
+			if ok, err := j.Loaded(ctx, "demo"); err != nil || !ok {
+				t.Fatalf("no process: loaded %t, %v; want loaded", ok, err)
+			}
+			f.loaded = false
+			if ok, err := j.Loaded(ctx, "demo"); err != nil || ok {
+				t.Fatalf("exit 113: loaded %t, %v; want false, nil", ok, err)
+			}
+			if v := f.verbs(); !slices.Contains(v, c.verb) {
+				t.Fatalf("verbs %q, want %s", v, c.verb)
+			}
+		})
+	}
+	f := newFake()
+	f.fail["list"] = service.Output{ExitCode: 1, Stderr: []byte("boom")}
+	j := testJob(t, f, Options{})
+	ok, err := j.Loaded(ctx, "demo")
+	var ce *service.CommandError
+	if ok || !errors.As(err, &ce) || ce.Step != "list" {
+		t.Fatalf("list exit 1: loaded %t, %v; want a *service.CommandError for list", ok, err)
+	}
+}
+
+// TestStatus: one probe gives every state, Enabled is read only when the
+// plist exists, and an error gives a zero Status (0031-MADR D4).
+func TestStatus(t *testing.T) {
+	testproc.CheckNoLeak(t)
+	ctx := context.Background()
+	for _, c := range []struct {
+		name string
+		edit func(f *fakeLaunchd, j *Job)
+		want Status
+	}{
+		{"running", func(*fakeLaunchd, *Job) {}, Status{Installed: true, Loaded: true, Enabled: true, Running: true, PID: 100}},
+		{"loaded, no process", func(f *fakeLaunchd, _ *Job) { f.pid = 0 }, Status{Installed: true, Loaded: true, Enabled: true}},
+		{"not loaded", func(f *fakeLaunchd, _ *Job) { f.loaded = false }, Status{Installed: true, Enabled: true}},
+		{"disabled", func(f *fakeLaunchd, _ *Job) { f.disabled = "disabled" }, Status{Installed: true, Loaded: true, Running: true, PID: 100}},
+		{"no plist, still loaded", func(_ *fakeLaunchd, j *Job) { j.o.Plist = filepath.Join(t.TempDir(), "missing.plist") },
+			Status{Loaded: true, Running: true, PID: 100}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newFake()
+			j := testJob(t, f, Options{})
+			c.edit(f, j)
+			got, err := j.Status(ctx, "demo")
+			if err != nil || got != c.want {
+				t.Fatalf("Status = %+v, %v; want %+v", got, err, c.want)
+			}
+			if n := probes(f); n != 1 {
+				t.Fatalf("%d probes (verbs %q), want 1", n, f.verbs())
+			}
+			if !got.Installed {
+				for _, call := range f.calls {
+					if strings.HasSuffix(call[0], "plutil") {
+						t.Fatalf("no plist, but plutil ran: %q", call)
+					}
+				}
+			}
+		})
+	}
+	f := newFake()
+	f.fail["list"] = service.Output{ExitCode: 1, Stderr: []byte("boom")}
+	j := testJob(t, f, Options{})
+	if got, err := j.Status(ctx, "demo"); err == nil || got != (Status{}) {
+		t.Fatalf("probe error: Status = %+v, %v; want zero and an error", got, err)
+	}
+}
+
 func TestEnabled(t *testing.T) {
 	testproc.CheckNoLeak(t)
 	for _, c := range []struct {

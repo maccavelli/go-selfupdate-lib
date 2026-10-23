@@ -252,3 +252,37 @@ the index row. The MADR stays `accepted`.
   plan's expected output, not a change to what was built.
 * `make pre-add-check` on the six Go files: "6 file(s) clean (gofmt,
   golangci-lint, go vet, go test, govulncheck)".
+
+
+### H2: `launchd` (2026-10-23)
+
+* `lifecycle.go` gains `Job.Loaded`, `type Status` with MADR D4-C's
+  fields and JSON tags, and `Job.Status`: `Installed`, one `probe`, and
+  `Enabled` only when the plist exists. `PID` is set only when the job
+  runs.
+* Tests: `TestLoaded` (`list` and `print` each loaded, loaded with no
+  process, and exit 113; a `list` exit 1 found as a
+  `*service.CommandError`); `TestStatus` (running, loaded with no
+  process, not loaded, disabled, a missing plist while still loaded, and
+  a probe error giving a zero `Status`; one probe each, and no `plutil`
+  without a plist); `TestStatusJSON`.
+* `TestLiveStatus` uses `newLiveJob`, which is `newSlowLiveJob(t, 0)`,
+  rather than the slow job step 3 named: the test needs a job that stops
+  promptly, and the constructor is the same. It passed on this Mac with
+  `SELFUPDATE_REQUIRE_LAUNCHD=1`: `--- PASS: TestLiveStatus (0.99s)`.
+  CI's macOS job runs it through `-run '^TestLive'`.
+* **Seen failing** (`scripts/plant-copy.sh`, each copy removed after):
+
+  | Plant | Failure |
+  | :--- | :--- |
+  | `Loaded` returns `s.running` | `launchd_test.go:145: no process: loaded false, <nil>; want loaded`, for `list` and `print` |
+  | `Status` runs `Enabled` without the `installed` check | `launchd_test.go:189: Status = {… Loaded:false …}, selfupdate: service: not installed: <temp>/missing.plist; want {… Loaded:true … Running:true PID:100}` |
+  | the `loaded` tag renamed `isLoaded` | `json_test.go:30: {"installed":true,"isLoaded":true,…}` |
+  | `Status` reads `Running` again | `launchd_test.go:192: 2 probes (verbs ["managername" "list" "list" "print-disabled"]), want 1` |
+  | `PID` always 0 (live, on this Mac) | `live_darwin_test.go:501: running: Status = {… Running:true PID:0}, <nil>; want {… PID:<pid>}` |
+
+* `make apicheck`: "compatible with v1.17.2" (additions are not listed;
+  H1's note). `go doc ./selfupdate/service/launchd Status` shows the
+  type.
+* `make pre-add-check` on the four Go files: "4 file(s) clean (gofmt,
+  golangci-lint, go vet, go test, govulncheck)".

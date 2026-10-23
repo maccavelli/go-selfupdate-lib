@@ -20,3 +20,17 @@ func TestPlistBackupJSON(t *testing.T) {
 		t.Fatalf("round trip %+v, %v", back, err)
 	}
 }
+
+// TestStatusJSON pins Status's keys and round-trips it (0031-MADR D4).
+func TestStatusJSON(t *testing.T) {
+	v := Status{Installed: true, Loaded: true, Enabled: true, Running: true, PID: 100}
+	const want = `{"installed":true,"loaded":true,"enabled":true,"running":true,"pid":100}`
+	b, err := json.Marshal(v)
+	if err != nil || string(b) != want {
+		t.Fatalf("%s, %v; want %s", b, err, want)
+	}
+	var back Status
+	if err := json.Unmarshal(b, &back); err != nil || back != v {
+		t.Fatalf("round trip %+v, %v", back, err)
+	}
+}
