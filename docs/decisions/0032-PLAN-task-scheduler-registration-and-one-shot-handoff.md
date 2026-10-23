@@ -1013,7 +1013,7 @@ None changes a decision.
 * markdownlint (13 files), the link check (232 links, 0 broken), the
   identifier check and the architecture table check pass.
 
-### J9: `v1.19.0` (2026-10-23, in progress)
+### J9: `v1.19.0` (2026-10-23)
 
 * J8 was committed as `d5f3458`.
 * **Step 1:** `CHANGELOG.md`'s `## Unreleased` becomes `## v1.19.0 -
@@ -1029,6 +1029,34 @@ None changes a decision.
   40021600536 failed one job, `validate (windows-2025)`, on
   `TestWriteHandOffEnvProtectsDir`; every other job passed. The plan
   stopped (Deviation D7).
+* **Step 3, after D7:** the owner committed and pushed the fix as
+  `a6af9dc`. CI run 40028601552 completed `success`, all 18 jobs:
+  `selfupdate/service` passed on `windows-2025`, the RID 500 account
+  included; `TestLiveTaskHandOffOneShot` logged "job closed by the
+  program: true"; `TestLiveTaskRegister` and the other live tests passed
+  on the runner's build. The Docs run passed.
+* **Step 4:** `scripts/check-release-tag.sh v1.19.0` exited 0, and no
+  `v1.19.0` existed. The owner made the annotated tag and pushed it: tag
+  object `b004d80…`, on `a6af9dc`.
+* **Step 5:** the tag's CI run 40033920130 completed `success`, all 18
+  jobs; its identity legs print `v1.19.0 (release) a6af9dc760a5`, 10
+  times; `TestLiveTaskHandOffOneShot` passed again ("job closed by the
+  program: true").
+* **Step 6, this commit:** `git diff --stat v1.18.0 v1.19.0 -- .github
+  internal/cmd scripts go.mod go.sum` is empty, so the workflow pins move
+  with no other change. Moved to `v1.19.0` and `a6af9dc…`: `README.md`'s
+  current release, `go get` line and publish pin; `docs/architecture.md`'s
+  current release and commit; `building-releases.md`'s "examples below
+  pin", three workflow pins and `git ls-remote` example; and the
+  migration guide's 14 `go get` and 12 `go list -m` lines, "is the
+  current release", §3's workflow pin, "the example pins" and
+  `git ls-remote`, §5's "Require go-selfupdate-lib", and §2's release
+  list, which gains `v1.19.0` and links §19. Lines that name `v1.18.0` as
+  history stay.
+* **Step 7:** `go list -m -json github.com/maccavelli/go-selfupdate-lib@v1.19.0`
+  gives `Hash a6af9dc760a5392134dc62b00e6491b112d0ada5`, `Ref
+  refs/tags/v1.19.0`, and `@latest` resolves to `v1.19.0`.
+* **Step 8** waits on the owner's ask to close issues #3 and #6.
 
 ### Deviation D7 (2026-10-23): the DACL test read SIDs as SDDL text
 
