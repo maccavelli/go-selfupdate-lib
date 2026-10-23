@@ -198,7 +198,7 @@ The steps below are prepare-commit-msg's, proven on a scratch copy of it at
 
 **`go.mod`.** Require go-selfupdate-lib `v1.18.0`, with `go 1.26.10`. The steps
 were proven at `v1.5.0`; every later release only adds to the API, so
-they still build. §6 to §18 list the behaviour later releases changed;
+they still build. §6 to §19 list the behaviour later releases changed;
 among them, the `--json` result is now `schema_version` 4 (§13). `mcplib` stays
 only if something else still imports it; in prepare-commit-msg,
 `llmprovider` and `wizard` do.
@@ -417,7 +417,7 @@ go get github.com/maccavelli/go-selfupdate-lib@v1.18.0
 ```
 
 This takes the current release; what each later release adds is in §7
-to §18, from [7. From v1.6 to v1.7](#7-from-v16-to-v17) on. Every
+to §19, from [7. From v1.6 to v1.7](#7-from-v16-to-v17) on. Every
 exported change is an addition, so a program that built on `v1.5.x` builds unchanged. These are
 the behaviours that change, and what to do about each. Why, and how, is in
 [0010-MADR](../decisions/0010-MADR-remediate-second-debugging-pass-findings.md)
@@ -1422,3 +1422,71 @@ what each change does is in the [changelog](../../CHANGELOG.md).
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
 - `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.18.0`.
+
+## 19. From v1.18 to v1.19
+
+```bash
+go get github.com/maccavelli/go-selfupdate-lib@v1.19.0
+```
+
+`v1.19.0` adds what
+[issue #3](https://github.com/maccavelli/go-selfupdate-lib/issues/3) and
+[issue #6](https://github.com/maccavelli/go-selfupdate-lib/issues/6) asked
+for. `make apicheck` reports it compatible with `v1.18.0`: every exported
+change is an addition. Why, and how, is in
+[0032-MADR](../decisions/0032-MADR-task-scheduler-registration-and-one-shot-handoff.md);
+what each change does is in the [changelog](../../CHANGELOG.md).
+
+### What is new
+
+- **Registering a task.** `taskscheduler.Task.Register`, `Definition` and
+  `Delete` register, read and delete the definition your setup renders,
+  through the COM API: no `schtasks.exe`, no UTF-16 file.
+  `DiffDefinitions` and `SameDefinition` compare a stored definition with
+  yours, as values. See
+  [Task Scheduler](extending-selfupdate.md#task-scheduler).
+- **`taskscheduler.Task.Status`** reads a task's state in one call, in
+  place of a PowerShell `Get-ScheduledTask`.
+- **The handoff is a one-shot task.** `taskscheduler.Task.Detach`
+  registers and runs `<Name>.selfupdate.<id>`, which Task Scheduler
+  starts outside your program's jobs. `Task.CleanupHandOffs` removes
+  finished ones. `Options.HopDetach` keeps the old hop, and
+  `Options.HandOffDir` moves the environment file.
+- **`service.ArgHandOffEnv`** is the first argument of such a run, naming
+  its environment file; `service.LoadHandOffEnv` applies and removes it.
+
+### Behaviour you may notice
+
+- **The default handoff changed.** An update handed off from inside a
+  Task Scheduler task now runs as a one-shot task, not a detached
+  process. It survives a job of your program's that kills its processes
+  when it closes; the hop did not. A one-shot task shows in Task
+  Scheduler while it runs and until the next cleanup, and a console
+  window shows for about 50 ms while its hop starts the update.
+- **Only an interactive-token task hands off by default.** For a task
+  that logs on another way, `Detach` returns an error naming
+  `Options.HopDetach`.
+- **`service.LoadHandOffEnv` reads `os.Args[1]`.** When it is
+  `--selfupdate-handoff-env=<path>`, it applies that file and removes the
+  argument, before the hop check.
+- **`service.WriteHandOffEnv` makes its directory private on Windows,**
+  with an access list of your account, SYSTEM and Administrators only:
+  the directory under `%LOCALAPPDATA%` it inherited from can grant others
+  access.
+
+### Adopting it
+
+- **Call `service.ReportFunc` or `service.LoadHandOffEnv` first in
+  `main`,** before you parse flags, as the guide already asks: a
+  one-shot run's first argument is the handoff's.
+- **Call `Task.CleanupHandOffs` at start-up,** if you want finished
+  one-shot tasks gone before the next handoff.
+- **If your setup runs `schtasks.exe`,** use `Register`, `Definition`,
+  `DiffDefinitions` and `Delete`; if it reads a task's state through
+  PowerShell, use `Status`.
+- **If you need the old handoff,** set `Options.HopDetach`.
+
+### Check
+
+- `go build ./...`, `go vet ./...` and `go test ./...` pass.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.19.0`.

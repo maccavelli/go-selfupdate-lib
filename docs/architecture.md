@@ -267,7 +267,8 @@ docs/
     version 1 receipt (`execreconciler.go`), and the handoff: `Detacher`,
     `HandOffIfInside`, `HandOffFunc`, `ReportFunc` and the result file
     (`handoff.go`), `DetachProcess` (`detach*.go`), the private
-    environment file (`handoffenv.go`), the Windows hop
+    environment file (`handoffenv*.go`), named by `ArgHandOffEnv` for a
+    Task Scheduler run and private to the user on Windows, the Windows hop
     (`handoffhop.go`) and the real run's wait for the hop to exit
     (`hopwait_*.go`); and `SameExecutable` (`sameexec.go`);
   - **`systemd`:** probes over one `systemctl show` per call, read by key;
@@ -306,7 +307,12 @@ docs/
     code on a failure; a rewrite and restore of the `Exec` path, for a task
     whose principal logs on with an interactive token, by
     `RegisterTaskDefinition` and `RegisterTask` with the saved XML;
-    `Inside` and the handoff as `scm`'s.
+    `Register`, `Definition` and `Delete` of the program's definition
+    (`register.go`), `DiffDefinitions` over its leaf elements with schema
+    defaults (`definition*.go`), and `Status` (`status.go`); `Inside` as
+    `scm`'s, and the handoff by a one-shot task, `CleanupHandOffs` and the
+    hop under `HopDetach` (`handoff.go`, `detach.go`)
+    ([0032-MADR](decisions/0032-MADR-task-scheduler-registration-and-one-shot-handoff.md)).
 
   Each backend compiles on every OS and returns `ErrUnsupported` on the
   wrong one. Each has live tests against its real service manager, which

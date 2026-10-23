@@ -1252,6 +1252,17 @@ The plan for this amendment,
 carries the probe's HRESULTs verbatim, the CI run's step output, and, for
 E1-A's change, a test that fails on a plant of the old mapping.
 
+### Amendment A6 (2026-10-23): registration, comparison and the one-shot handoff
+
+[0032-MADR-task-scheduler-registration-and-one-shot-handoff.md](0032-MADR-task-scheduler-registration-and-one-shot-handoff.md),
+accepted on 2026-10-23, amends D1's "never creates, renders or deletes a
+task" and D9's "Rendering and creating a task ... and semantic comparison
+for setup's idempotency": the backend registers, reads, compares and
+deletes the definition a program renders, and never renders it. It also
+changes D6's `Detach`, which now registers a one-shot task, the hop
+staying under `Options.HopDetach`. Why, and the measurements, are in that
+record.
+
 ### Not chosen, recorded so it is not re-proposed blind
 
 * **Adding the installer folder to the User `Path`** (0159 D16). It belongs

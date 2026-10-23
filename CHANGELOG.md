@@ -8,6 +8,38 @@ listed in the
 [migration guide](docs/guides/migrating-from-mcplib-selfupdate.md), one
 section per release, and each entry links its section and its records.
 
+## Unreleased
+
+See [the guide](docs/guides/migrating-from-mcplib-selfupdate.md#19-from-v118-to-v119),
+[0032-MADR](docs/decisions/0032-MADR-task-scheduler-registration-and-one-shot-handoff.md) and
+[0032-PLAN](docs/decisions/0032-PLAN-task-scheduler-registration-and-one-shot-handoff.md),
+from [issue #3](https://github.com/maccavelli/go-selfupdate-lib/issues/3) and
+[issue #6](https://github.com/maccavelli/go-selfupdate-lib/issues/6).
+
+### Added
+
+- `taskscheduler.Task.Register`, `Definition` and `Delete`: register,
+  read and delete the definition a program renders, through the COM API.
+- `taskscheduler.DiffDefinitions`, `SameDefinition` and `DefinitionDiff`:
+  compare a stored definition with a wanted one, as values.
+- `taskscheduler.Task.Status` and `taskscheduler.Status`: a task's state
+  in one call.
+- `taskscheduler.Task.CleanupHandOffs`, `Options.HopDetach` and
+  `Options.HandOffDir`, for the one-shot handoff below.
+- `service.ArgHandOffEnv`: the first argument that names a Task
+  Scheduler run's environment file.
+
+### Changed
+
+- `taskscheduler.Task.Detach` hands an update off as a one-shot task,
+  `<Name>.selfupdate.<id>`, which Task Scheduler starts outside the
+  program's jobs, so a job that kills its processes on close no longer
+  ends the update. `Options.HopDetach` keeps the hop.
+- `service.LoadHandOffEnv` applies the file `os.Args[1]` names with
+  `ArgHandOffEnv`, and removes the argument, before the hop check.
+- `service.WriteHandOffEnv` gives its directory, on Windows, a protected
+  access list of the current user, SYSTEM and Administrators.
+
 ## v1.18.0 - 2026-10-23
 
 See [the guide](docs/guides/migrating-from-mcplib-selfupdate.md#18-from-v117-to-v118),

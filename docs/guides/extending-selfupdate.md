@@ -721,8 +721,11 @@ for Task Scheduler,
 Since `v1.14.0`, `selfupdate/service/taskscheduler` manages one task your
 program's setup registered: typically a per-user task that starts the
 program at logon and needs no administrator. It drives Task Scheduler
-through its COM API, never `schtasks.exe`, and it never creates, changes
-the triggers of, or deletes a task.
+through its COM API, never `schtasks.exe` or PowerShell. Since `v1.19.0`
+it also registers, reads, compares and deletes the definition your setup
+renders, and reads a task's state in one call
+([0032-MADR](../decisions/0032-MADR-task-scheduler-registration-and-one-shot-handoff.md)); it never
+renders the definition itself.
 
 ```go
 task, err := taskscheduler.New(taskscheduler.Options{
@@ -798,10 +801,64 @@ Off Windows, `New` returns `service.ErrUnsupported`.
 - **A rollback after a rewrite** calls `Restore`, which registers the
   definition `Reconcile` saved, its `DefinitionBackup`, again, byte for
   byte, from the process that ran the update.
+- **Registering the task** (since `v1.19.0`). `Register` registers or
+  replaces the XML your setup renders, in `<Folder>\<Name>`, creating the
+  folder when it is missing, for your account with no password.
+  `Definition` reads it back as Task Scheduler stored it, and `Delete`
+  removes it; a task, or a folder, that is already gone is not an error.
+  Task Scheduler stores a definition in another form than it was given,
+  so compare with `DiffDefinitions`, never as text:
+
+  ```go
+  stored, err := task.Definition(ctx, "relay")
+  switch {
+  case errors.Is(err, service.ErrNotInstalled):
+      err = task.Register(ctx, "relay", wanted)
+  case err == nil:
+      var diffs []taskscheduler.DefinitionDiff
+      if diffs, err = taskscheduler.DiffDefinitions(stored, wanted); err == nil && len(diffs) > 0 {
+          if !force {
+              return fmt.Errorf("the task differs from this version's: %v", diffs)
+          }
+          err = task.Register(ctx, "relay", wanted)
+      }
+  }
+  if err != nil {
+      return err
+  }
+  ```
+
+  - `Register` refuses, before Task Scheduler sees it, a principal you
+    cannot register for yourself without a password: `S4U`,
+    `Password`, `InteractiveTokenOrPassword`, a `GroupId`, or a service
+    account. It removes the XML declaration, since Task Scheduler refuses
+    one that says `UTF-8`; you need no UTF-16 file.
+  - `Delete` does not stop a running program, which outlives the task:
+    call `Stop` first.
+  - `DiffDefinitions` compares every trigger and action, with every
+    element they hold, the principal's user, group, logon type and run
+    level, and every setting but `IdleSettings` and
+    `UseUnifiedSchedulingEngine`, which Task Scheduler adds. An element
+    left out compares as its default; a SID equals the account it names;
+    durations and booleans compare as values. `RegistrationInfo` is not
+    compared. Each difference is a `DefinitionDiff`: a path such as
+    `Settings/DisallowStartIfOnBatteries`, and the two values.
+- **`Status`** (since `v1.19.0`) reads the task's whole state in one call:
+  whether it is installed, `Enabled`'s and `Running`'s answers, its state
+  by name (`ready`, `running`, `disabled`, ...), its running processes,
+  and its last run's time and result. A task that is not installed is a
+  zero `Status`.
 - **Updating from inside the task** works as for the other backends:
-  `service.HandOffFunc(task, service.HandOff{Args: os.Args[1:]})`. The
-  detached run stays in the task's job, which does not allow it to leave,
-  and survives the task's end.
+  `service.HandOffFunc(task, service.HandOff{Args: os.Args[1:]})`. Since
+  `v1.19.0`, `Detach` registers and runs a one-shot task,
+  `<Name>.selfupdate.<id>`, in the task's folder, with the task's own
+  user, logon type and run level. Task Scheduler starts its process, so
+  the update is in none of your program's jobs: it survives the task's
+  end, and a job of yours that kills its processes when it closes, which
+  the old hop did not. The service task must log on with an interactive
+  token. `CleanupHandOffs` removes finished one-shot tasks; `Detach` calls
+  it first, and you may at start-up. `Options.HopDetach` restores the hop,
+  a detached process in your program's jobs.
 - **The console window.** A console program run by a task has a visible
   console window in your session. Building with `-H windowsgui` removes
   it, but breaks a CLI's output in PowerShell: redirected output is empty,
@@ -930,9 +987,14 @@ func main() {
   `--dry-run` run in place, and since `v1.11.0` neither does a run with
   nothing to install.
 - **Call `service.ReportFunc` first in `main`,** or `LoadHandOffEnv` if the
-  program reads its environment before that. In a detached run it applies
-  the private environment file the launchd handoff writes, and on Windows
-  it completes the start, which goes through a short-lived hop. Neither
+  program reads its arguments or environment before that. In a detached
+  run it applies the private environment file the launchd and Task
+  Scheduler handoffs write, and on Windows it completes the start, which
+  goes through a short-lived hop. A Task Scheduler run names its file in
+  its first argument, `--selfupdate-handoff-env=<path>`
+  (`service.ArgHandOffEnv`), because a task cannot carry an environment
+  variable; `LoadHandOffEnv` removes that argument from `os.Args`, so
+  your flag parsing never sees it. Neither
   takes a context; a program that needs its context to bound the wait for
   the hop calls `service.LoadHandOffEnvContext(ctx)`, or
   `service.HandOffHopContext(ctx)`, first (since `v1.16.0`).
@@ -951,9 +1013,14 @@ func main() {
     the job allows it. Since `v1.14.0` it has a console with no window,
     in place of no console at all, so console programs it starts do not
     open a window either.
-  - **Task Scheduler:** the `taskscheduler` backend, the same detached
-    process. Task Scheduler's job does not allow it to leave; it survives
-    the task's end all the same.
+  - **Task Scheduler:** since `v1.19.0`, a one-shot task,
+    `<Name>.selfupdate.<id>`, in the task's folder, whose environment is in
+    a file in `Options.HandOffDir` (`%LOCALAPPDATA%\selfupdate\handoff`),
+    private to your account. Its own console window shows for the tens of
+    milliseconds its hop runs; the update has none. Call
+    `Task.CleanupHandOffs` at start-up to remove finished ones; the next
+    handoff does it too. With `Options.HopDetach`, the detached process of
+    the SCM line, which a kill-on-close job of your program's would end.
   - **A service manager with no backend here:**
     `service.ProcessDetacher(inside)`, with your own check of whether this
     process is inside. On Unix it is no defence against a cgroup kill or a

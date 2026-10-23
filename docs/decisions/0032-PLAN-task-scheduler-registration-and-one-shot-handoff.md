@@ -982,3 +982,33 @@ None changes a decision.
   pins it to `windows.EscapeArg` on Windows, and `TestOneShotGolden`
   shows it reproduces the `Arguments` J1 measured arriving intact. No
   decision changes; MADR D8-A is annotated in place.
+
+### J8: the documents (2026-10-23)
+
+* J7 was committed as `6d47a69`.
+* **`docs/guides/extending-selfupdate.md`:** the Task Scheduler
+  section's opening says the backend registers, reads, compares and
+  deletes the definition, and never renders it; new items for
+  `Register`, `Definition`, `Delete` and `DiffDefinitions`, with a setup
+  example (missing: register; differing: refuse without `--force`, else
+  register), and for `Status`; "Updating from inside the task" describes
+  the one-shot task, `CleanupHandOffs` and `HopDetach`. "Call
+  `service.ReportFunc` first in `main`" names `ArgHandOffEnv`. The
+  handoff's Task Scheduler line describes the one-shot task, its file
+  and its brief window.
+* **The migration guide:** `## 19. From v1.18 to v1.19`; "§6 to §18" and
+  "§7 to §18" read §19. Its current-release pointers move in J9's pin
+  commit.
+* **`CHANGELOG.md`:** `## Unreleased`, with Added and Changed.
+* **`docs/architecture.md`:** the `taskscheduler` paragraph names the
+  new files and the one-shot handoff; `service`'s names `ArgHandOffEnv`
+  and the private directory on Windows.
+* **0021-MADR:** `### Amendment A6`, a dated pointer to this record for
+  D1, D9 and D6, before its "Not chosen" section (J0 step 3's pointer,
+  made now that the record is accepted and built).
+* **The example:** the guide's `Register` example, extracted into a
+  scratch module outside the repository that replaces this module with
+  the working tree, passes `go mod tidy`, `go vet` and `go build` with
+  `GOOS=windows`, and `go build` on this Mac.
+* markdownlint (13 files), the link check (232 links, 0 broken), the
+  identifier check and the architecture table check pass.
