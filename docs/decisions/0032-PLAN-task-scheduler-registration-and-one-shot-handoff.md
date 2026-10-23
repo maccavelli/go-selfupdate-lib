@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: in-progress
 date: 2026-10-23
 associated-madr: "0032-MADR-task-scheduler-registration-and-one-shot-handoff.md"
 ---
@@ -33,7 +33,7 @@ Associated MADR: [0032-MADR-task-scheduler-registration-and-one-shot-handoff.md]
 | J3 | `Register`, `Definition`, `Delete` | code and tests |
 | J4 | `DiffDefinitions`, `SameDefinition` | code, tests, fixtures |
 | J5 | `Status` | code and tests |
-| J6 | `service`: the handoff argument; `winproc.CheckProgram` | code and tests |
+| J6 | `service`: the handoff argument, the handoff directory's DACL (Deviation D1); `winproc.CheckProgram` | code and tests |
 | J7 | the one-shot `Detach`, `CleanupHandOffs`, `Options.HopDetach` and `HandOffDir` | code and tests |
 | J8 | the documents | docs |
 | J9 | `v1.19.0` | per the architecture page's "Releasing this module" |
@@ -252,6 +252,10 @@ Associated MADR: [0032-MADR-task-scheduler-registration-and-one-shot-handoff.md]
      calling `createFolder` when it is missing (`0x80070002` or
      `0x80070003`); `register(folder, name, xml, taskCreateOrUpdate,
      logon)`; errors through `mapError("register", path, err)`.
+     *(Deviation D2, 2026-10-23: J1 refused S4U, so `Register` refuses
+     it; J1 measured `0x80070002` for a missing folder; and `Register`
+     removes a leading XML declaration before registering, since a
+     `UTF-8` one is refused with `0x8004131A`.)*
    * `(*Task).Definition(ctx, product) (string, error)`: `open`, then
      `xml()`; `mapError` gives `ErrNotInstalled`.
    * `(*Task).Delete(ctx, product) error`: `deleteTask`; the missing-task
@@ -273,7 +277,8 @@ Associated MADR: [0032-MADR-task-scheduler-registration-and-one-shot-handoff.md]
 4. **Seen failing:** plants of (a) `taskUpdate` for `taskCreateOrUpdate`
    (the create case fails on the host), (b) no folder creation, (c) a
    missing task returned as an error by `Delete`, (d) S4U accepted when
-   J1 refused it, or refused when J1 accepted it.
+   J1 refused it, or refused when J1 accepted it, (e) the declaration
+   kept (a `UTF-8` declaration then fails the live test on the host).
 5. `docs/architecture.md`'s `taskscheduler` row: the new files. Checks;
    `make apicheck` lists no incompatibility; commit.
 
@@ -345,13 +350,28 @@ Associated MADR: [0032-MADR-task-scheduler-registration-and-one-shot-handoff.md]
      `EnvHandOffEnv` file is applied; then `HandOffHopContext`; then the
      `EnvHandOffEnv` file as today. Its doc states the order, and that
      the argument is read only at `os.Args[1]`.
+   * *(Deviation D1, 2026-10-23.)* `WriteHandOffEnv`, on Windows, gives
+     the directory a protected DACL: full control to the current user
+     (`windows.GetCurrentProcessToken().GetTokenUser()`), SYSTEM and
+     Administrators, no inherited entries, set with
+     `windows.SetNamedSecurityInfo` and
+     `PROTECTED_DACL_SECURITY_INFORMATION`, from the SDDL
+     `D:P(A;OICI;FA;;;<user SID>)(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)` as J1
+     P1-9 measured. It is set whether the directory is new or not, as
+     the Unix chmod is, in `handoffenv_windows.go` with a no-op
+     `handoffenv_other.go`.
 3. **`handoffenv_test.go`:** the argument applied and removed, with the
    remaining arguments intact; the argument at `os.Args[2]` left alone;
    a relative path refused as `EnvHandOffEnv`'s is; `EnvHandOffHop` from
    the file seen by the hop check that follows; no argument, no change.
-   The tests run on every OS.
+   The tests run on every OS. *(Deviation D1.)*
+   `handoffenv_windows_test.go`: after `WriteHandOffEnv` into a directory
+   whose parent grants another SID access, the directory's DACL is
+   protected, has exactly the three entries, and the file inherits
+   them; read with `windows.GetNamedSecurityInfo`.
 4. **Seen failing:** plants of (a) the hop check before the file, (b) the
-   argument left in `os.Args`, (c) the argument read at any position.
+   argument left in `os.Args`, (c) the argument read at any position,
+   (d) *(Deviation D1)* the DACL not protected, on the host.
 5. `make apicheck` lists `ArgHandOffEnv` and `CheckProgram` is internal.
    Checks; commit.
 
@@ -375,6 +395,9 @@ Associated MADR: [0032-MADR-task-scheduler-registration-and-one-shot-handoff.md]
      `windows.ComposeCommandLine` through a small OS-split helper;
      `register(folder, handOffName, xml, taskCreate, logonInteractiveToken)`;
      `run()`; wait for an instance or `LastRunTime` at or after the call,
+     *(Deviation D2: for a listed instance, or a `LastTaskResult` other
+     than `0x00041303`; J1 P2-7 measured `LastRunTime` rounding below the
+     second it names)*,
      at `Options.Poll`'s interval, bounded by `ctx` and its timeout; on
      any failure after registration, `deleteTask` and remove the file;
      return `Detached{ID, Where: "task " + path, ResultPath}`.
@@ -484,3 +507,127 @@ MADR stays `accepted`.
 * **Rollback:** before the tag, `git revert` of a phase; after it, fix
   forward. A program that finds the one-shot handoff wrong for it sets
   `HopDetach` without waiting for a release.
+
+## Execution record
+
+### Approval
+
+* 2026-10-23: the owner accepted the MADR (D1-A to D8-A), committed J0
+  (`378a58d`, then `9ca1859` with the acceptance), confirmed the console
+  sign-in on the Windows test host, and said "proceed". This plan
+  becomes `in-progress`, in J1's commit.
+
+### J1: probes (2026-10-23)
+
+**Preconditions.** The ssh shell on the Windows test host is elevated
+(`Mandatory Label\High Mandatory Level`), as 0021-PLAN Deviation D1
+found; the console user is signed in, in session 1. The host has Go
+1.27.3. No `selfupdate-*` task existed before the runs.
+
+**Built, outside the tree.** `tsprobe.exe`, a Go module in the
+scratchpad that `replace`s this module with the working tree, so its
+handoff steps run the library's own `service.DetachProcess`,
+`service.HandOffHopContext`, `service.WriteHandOffEnv` and
+`service.LoadHandOffEnvContext`. It is built with `CGO_ENABLED=0
+GOOS=windows GOARCH=amd64` and is `go vet` clean. Its COM client copies
+`com_windows.go`'s pattern with the slots of MADR F16. Its `launch` mode,
+run from the ssh shell, registers `selfupdate-probe-driver-<random>`
+(`InteractiveToken`, `LeastPrivilege`, no trigger), runs it, waits and
+deletes it; the driver runs every P1 and P2 step. In place of the
+plan's `driver.ps1`, the driver is the same program, so no PowerShell
+runs. P2's probe service starts its child suspended, assigns it to a job
+with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` alone, and resumes it, so the
+child is in the job from its first instruction. The one-shot run applies
+the argument's file and then the hop check, the order J6 builds, by
+calling `LoadHandOffEnvContext` and then `HandOffHopContext`.
+
+**Runs.** Run 1, then run 2 with two measurements added (`get_UserId`'s
+form, and P1-9, a protected DACL). Run 2 agreed with run 1 on every value
+both measured; the comparison ignored only PIDs, times, window handles
+and random names. The captured XML was identical in both. After the runs
+no `selfupdate-*` task, task folder, `%LOCALAPPDATA%\selfupdate*`
+directory or probe process was left on the host.
+
+**Results** (run 2; every identifier redacted). The driver:
+integrity `0x2000`, session 1, parent `svchost.exe`, in a job with flags
+`0x00000000`.
+
+```text
+p1.1.register = 0x00000000            p1.1.stored_userid_is_caller = true
+p1.1.get_userid_form = account        p1.2.register_s4u = 0x80070005
+p1.3.create_folder = 0x00000000       p1.3.create_folder_again = 0x800700B7
+p1.3.register_in_folder = 0x00000000  p1.3.delete_folder = 0x00000000
+p1.4.create_existing = 0x800700B7     p1.4.update_flags_only_on_missing = 0x80070002
+p1.4.delete_missing = 0x80070002      p1.4.delete_in_missing_folder = 0x80070002
+p1.4.get_missing_folder = 0x80070002  p1.4.get_missing_task = 0x80070002
+p1.5.instance_is_action = true        p1.5.delete_running = 0x00000000
+p1.5.after_delete = {action_alive: true, child_alive: true}
+p1.6.declaration_utf16 = 0x00000000   p1.6.declaration_none = 0x00000000
+p1.6.declaration_utf8 = 0x8004131A    p1.6.stored_declaration_* = UTF-16
+p1.7.register_* and read_* (6 cases) = 0x00000000
+p1.8.write = 0x00000000               p1.8.preexisting = {root: false, handoff: false}
+p1.9.set_protected_dacl = 0x00000000  p1.9.owner_reads_file = 0x00000000
+p2.1.result = {child_in_job: true, real_in_job: true, real_alive_before_close: true,
+               real_alive_after_close: false, child_alive_after_close: false}
+p2.3.service = {child_in_job: true, real_in_job: false, real_alive_before_close: true,
+                real_alive_after_close: true, child_alive_after_close: false}
+p2.3.real_alive_after_service_stop = true
+p2.3.delete_oneshot = 0x00000000
+p2.3.real_after_delete = {alive: true, heartbeat_fresh: true}
+p2.7.oneshot_after_end = {state: 3, last_result: 0x00000000}
+p2.list = {oneshot_listed: true}
+oneshot child: register 0x00000000, register_again 0x800700B7, run 0x00000000 (2 ms),
+  instance_listed_ms 26, oneshot_principal {logon 3, run_level 0, user_id_same_as_service true}
+oneshot hop: parent svchost.exe, job_flags 0x00000000, console visible, lived ~50 ms;
+  after the file: PROBE_ENV=from-file, hop variable 1, file deleted
+oneshot real: job_flags 0x00000000, console_hwnd 0x0, args equal to those registered
+hop scenario: hop and real run job_flags 0x00002000
+```
+
+`icacls` of `%LOCALAPPDATA%\selfupdate\handoff` and its file, both
+inherited: Full control for the user, SYSTEM and Administrators, and
+Modify for a local group and a second SID. After P1-9's DACL, the
+directory lists only the user, SYSTEM and Administrators, and the file
+inherits them.
+
+**Decision points.** One tripped: P1 step 8's ACL grants access to more
+than the user, SYSTEM and Administrators. The plan stopped; the owner
+chose a resolution (Deviation D1). None of the others tripped: P2-1's run
+died, P2-2's process is outside the job, P2-3's run survived every step,
+P2-4's real run has no window, P2-5's arguments arrived unchanged, and
+P1-1 and P2-6's principal is the caller's own.
+
+**Recorded.** The MADR's Amendment A1 holds the results table and the
+decision; each [unverified] the probes settled is annotated in place.
+
+**Fixtures.** The six P1-7 pairs are in
+`selfupdate/service/taskscheduler/testdata/definitions/`, with a
+`README.md` saying how they were captured and edited: the SID is a fixed
+placeholder, the account `EXAMPLE\user`, the random task suffix
+`00000000`, and line endings LF. A search for the host and account names
+finds nothing, and `scripts/check-docs.sh --ids` reports no finding.
+
+### Deviation D1 (2026-10-23): the handoff directory is not private on Windows
+
+* **Found.** J1 P1-8: `%LOCALAPPDATA%\selfupdate\handoff` inherits an ACL
+  that grants Modify to a local group and a second SID besides the user,
+  SYSTEM and Administrators. The MADR's D8-A relied on the directory's
+  access, and `WriteHandOffEnv` sets none on Windows.
+* **Decision (the owner, 2026-10-23): resolution 1.** `WriteHandOffEnv`
+  gives the directory a protected DACL of the user, SYSTEM and
+  Administrators on Windows. Not chosen: DPAPI encryption of the file.
+* **Files added to J6:** `selfupdate/service/handoffenv_windows.go`,
+  `handoffenv_other.go` and `handoffenv_windows_test.go`; J6's steps 2 to
+  4 and its scope row are amended in place.
+* **MADR:** Amendment A1 records the decision and its effect on D8-A.
+
+### Deviation D2 (2026-10-23): implementation details J1 measured
+
+None changes a decision; each changes a step, annotated in place.
+
+* **J3 step 1:** `Register` refuses S4U (P1-2: `0x80070005`); a missing
+  folder is `0x80070002` (P1-4); `Register` removes a leading XML
+  declaration (P1-6: a `UTF-8` one is `0x8004131A`). J3 step 4 gains the
+  plant of a kept declaration.
+* **J7 step 2:** `Detach` waits for a listed instance, or a
+  `LastTaskResult` other than `0x00041303`, not for `LastRunTime` (P2-7).

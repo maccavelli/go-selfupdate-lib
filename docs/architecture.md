@@ -148,7 +148,7 @@ docs/
 | `selfupdate/service/systemd/` | `systemd` | 9 | 18, plus 3 `testdata/` captures of `systemctl show` | none (`selfupdate`, `service`) |
 | `selfupdate/service/launchd/` | `launchd` | 7 | 14, plus 7 `testdata/` captures of `launchctl print` and `list` | none (`selfupdate`, `service`) |
 | `selfupdate/service/scm/` | `scm` | 7 | 13 | `x/sys/windows`, `x/sys/windows/svc`, `x/sys/windows/svc/mgr` (and `selfupdate`, `service`, `internal/winproc`) |
-| `selfupdate/service/taskscheduler/` | `taskscheduler` | 9 | 11 | `x/sys/windows` (and `selfupdate`, `service`, `internal/winproc`) |
+| `selfupdate/service/taskscheduler/` | `taskscheduler` | 9 | 11, plus 12 `testdata/definitions/` captures of task XML as registered and as stored | `x/sys/windows` (and `selfupdate`, `service`, `internal/winproc`) |
 | `internal/winproc/` | `winproc` | 5 | 4 | `x/sys/windows` |
 | `internal/testproc/` | `testproc` | 1 | 1 | none |
 | `internal/cmd/selfupdate-note/` | `main` | 1 | 1 | `x/mod/sumdb/note` (and `signednote`) |

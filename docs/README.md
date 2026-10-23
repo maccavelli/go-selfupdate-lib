@@ -82,7 +82,7 @@ name, and the files they cite moved with the rename
 | 0031 | MADR | [Export `DefaultHTTPClient`, keep `GitHubOptions.Client` required, and give `launchd.Job` `Loaded` and a `Status` snapshot, as `v1.18.0`](decisions/0031-MADR-export-default-http-client-and-launchd-status.md) | accepted |
 | 0031 | PLAN | [Implement `DefaultHTTPClient` and `launchd.Job`'s `Loaded` and `Status`, and release `v1.18.0`](decisions/0031-PLAN-export-default-http-client-and-launchd-status.md) | complete |
 | 0032 | MADR | [Let `taskscheduler` register, read, compare and delete a definition, report its state, and hand an update off as a one-shot task](decisions/0032-MADR-task-scheduler-registration-and-one-shot-handoff.md) | accepted |
-| 0032 | PLAN | [Implement Task Scheduler registration, comparison, state and the one-shot handoff, and release `v1.19.0`](decisions/0032-PLAN-task-scheduler-registration-and-one-shot-handoff.md) | proposed |
+| 0032 | PLAN | [Implement Task Scheduler registration, comparison, state and the one-shot handoff, and release `v1.19.0`](decisions/0032-PLAN-task-scheduler-registration-and-one-shot-handoff.md) | in-progress |
 
 ## I want to…
 

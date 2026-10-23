@@ -81,7 +81,8 @@ probe settles it.
   (0021-MADR Amendment A5). 0021-PLAN T1 registered its probe tasks at
   medium integrity, but with `schtasks /create /xml` from a driver task,
   not through COM (0021-PLAN Deviation D1) [read]. COM registration at
-  medium integrity is [unverified].
+  medium integrity is [unverified]. *(Measured, Amendment A1, P1-1: it
+  succeeds, and the stored `UserId` is the caller's SID.)*
 * **F4. The handoff today is a hop.** `Task.Detach`
   (`taskscheduler/detach.go:61-77`) adds `EnvHandOffHop=1` and calls
   `service.DetachProcess`, whose Windows start (`detach_windows.go:19-25`)
@@ -138,7 +139,8 @@ probe settles it.
   breakaway, is started inside the job, and starts the real run inside
   it. Closing the job's last handle ends both. Issue #6 reports the
   consequence; no test here has reproduced it [unverified as a
-  measurement].
+  measurement]. *(Measured, Amendment A1, P2-1: the hop's real run was in
+  the kill-on-close job and died when its handle was closed.)*
 * **F10. A process Task Scheduler starts is not the caller's child.**
   "When a non-COM task action starts up, the scheduling engine logs on
   the task principal account, gets the process token ... The executable
@@ -147,7 +149,9 @@ probe settles it.
   parent is `svchost.exe` (0021-MADR Amendment A1, probe 1) [measured].
   By F8, it is therefore in none of the caller's jobs [derived]; that it
   is outside a caller's kill-on-close job is [unverified as a
-  measurement].
+  measurement]. *(Measured, Amendment A1, P2-2 and P2-3: it is outside
+  the caller's job, in Task Scheduler's own, and survives the caller's
+  job closing.)*
 * **F11. A task cannot carry environment variables.** An `Exec` action
   has only `Command`, `Arguments` and `WorkingDirectory`, and the task XML
   refuses an `<Environment>` element (magic-cli-remote 0159 F9, probe 9,
@@ -194,12 +198,14 @@ probe settles it.
   * `CreateFolder` creates every missing level, and returns `0x800700B7`
     when the folder exists ([CreateFolder]). Whether a user who is not an
     administrator may create a folder under `\` is not documented
-    [unverified].
+    [unverified]. *(Measured, Amendment A1, P1-3: at medium integrity it
+    may, on the test host.)*
   * `GetTasks(TASK_ENUM_HIDDEN)` lists hidden tasks too
     ([GetTasks]); the service skips tasks the caller cannot read
     [MS-TSCH].
   * Whether `DeleteTask` ends a running instance, or processes in its
-    job, is not documented [unverified].
+    job, is not documented [unverified]. *(Measured, Amendment A1, P1-5:
+    it ends neither the action's process nor its child.)*
 * **F15. Running a task with no trigger [docs].**
   * `Run` "will return without error, but the task will not run if the
     AllowDemandStart property of ITaskSettings is set to false"
@@ -228,7 +234,10 @@ probe settles it.
   `com_windows.go:55-111` already uses, which `TestCOMLayout` measured,
   so the method is sound; the two `IPrincipal` slots were read from a
   summary of the header, not its text [derived]. `TestCOMLayout` pins
-  each new slot before it is used.
+  each new slot before it is used. *(Amendment A1: the probes called
+  `CreateFolder`, `DeleteFolder`, `GetTasks`, `get_Name`, `get_UserId`
+  and `get_RunLevel` at these slots, and each returned what its method
+  returns; `TestCOMLayout` still pins them in J2.)*
 * **F17. 0011-MADR rejected a one-shot task for `scm`.** Amendment A4:
   "A one-shot scheduled task depends on `schtasks.exe`, needs cleanup,
   and cannot be created by a non-administrator for a LocalSystem
@@ -476,7 +485,9 @@ Rejected without a full weighing:
   * **The private file:** in `Options.HandOffDir`, by default
     `%LOCALAPPDATA%\selfupdate\handoff` (`os.UserCacheDir`), written by
     `service.WriteHandOffEnv`. Its directory's access is what protects
-    it on Windows (F6); probe P1 reads its ACL.
+    it on Windows (F6); probe P1 reads its ACL. *(Amended by Amendment
+    A1: the inherited ACL is not private on the test host, so
+    `WriteHandOffEnv` gives the directory a protected DACL on Windows.)*
   * **Cleanup:** `(*Task).CleanupHandOffs(ctx) error` lists the folder
     with `GetTasks(TASK_ENUM_HIDDEN)` and deletes each
     `<task>.selfupdate.*` task that is not running and has run
@@ -735,6 +746,57 @@ amended before any handoff code is written.
 ### D8-B. A hidden subfolder
 
 * Bad, because folder creation may need an administrator.
+
+## Amendment A1 (2026-10-23): probe results
+
+Measured by
+[0032-PLAN-task-scheduler-registration-and-one-shot-handoff.md](0032-PLAN-task-scheduler-registration-and-one-shot-handoff.md)
+J1 on the Windows test host (Windows 11, build 26200), from a driver task
+at medium integrity (`0x2000`) in the console session (session 1), with
+the probe program the PLAN describes. Two complete runs agreed on every
+value both measured; run 2 added the last three rows' measurements. The
+owner chose the resolution of the one decision point the probes tripped
+on 2026-10-23.
+
+| Probe | Question | Result | Effect |
+| :--- | :--- | :--- | :--- |
+| P1-1 | COM registration at medium integrity | `RegisterTask(TASK_CREATE_OR_UPDATE, no user, InteractiveToken)` in `\`: `0x00000000`; the stored `Principal/UserId` is the caller's SID | D2-A holds |
+| P1-2 | S4U | `0x80070005` | D2-A: `Register` refuses S4U with the logon types that need credentials |
+| P1-3 | A folder under `\` | `CreateFolder`: `0x00000000`; again: `0x800700B7`; a task registered in it, then both deleted: `0x00000000` | D2-A's folder creation works for the user; D8-B's premise does not hold on this host, and D8-A stands for its other reasons |
+| P1-4 | HRESULTs | `TASK_CREATE` on an existing task: `0x800700B7`; `TASK_UPDATE` alone on a missing task: `0x80070002`; `DeleteTask` of a missing task: `0x80070002`, and in a missing folder: `0x80070002`, not [MS-TSCH]'s `0x80070003`; `GetFolder` of a missing folder: `0x80070002` | D2-A: `Delete` treats `0x80070002` as done; `Register` creates the folder on `0x80070002` |
+| P1-5 | `DeleteTask` with a running instance | `0x00000000`; the action's process and its child were both alive 5 s later | D8-A's cleanup cannot end a run; `Delete` does not stop the task |
+| P1-6 | The XML declaration | `UTF-16`: accepted; none: accepted; `UTF-8`: `0x8004131A`. Task Scheduler stores `UTF-16` in both accepted cases | D2-A: `Register` removes a leading declaration, since the BSTR is already UTF-16 |
+| P1-7 | Stored definitions | Captured for six cases; two runs identical. Absent and default-valued settings store alike; `DisallowStartIfOnBatteries`, `StopIfGoingOnBatteries` (both `true` by default), `MultipleInstancesPolicy`, `IdleSettings` and `UseUnifiedSchedulingEngine` are always written; a definition with no principal gets the caller's SID and `InteractiveToken`; `UseUnifiedSchedulingEngine` stored `true` where the definition set `false`; an absent `Triggers` is stored as `<Triggers />` | D3-A: the defaults table follows the stored values, settling F15's `StopIfGoingOnBatteries` conflict as `true`; `UseUnifiedSchedulingEngine` stays uncompared |
+| P1-8 | The handoff directory's ACL | Inherited from `%LOCALAPPDATA%`: Full control for the user, SYSTEM and Administrators, and Modify for a local group and a second SID that are not the user | **Decision point; see below** |
+| P1-9 | A protected DACL set by the user | `SetNamedSecurityInfo` with a protected DACL of the user, SYSTEM and Administrators: `0x00000000`; `icacls` then lists exactly those three, the file inherits them, and the user reads it | The resolution below is possible at medium integrity |
+| P2-1 | Today's hop from a kill-on-close job | The hop and its real run had job flags `0x00002000` (kill on close); the real run was in the job (`IsProcessInJob`: true), alive before the close, dead 3 s after | F9 reproduced: #6's failure is real |
+| P2-2 | The one-shot task's process | Parent `svchost.exe`; its job's flags `0x00000000`; the real run is not in the caller's job (`IsProcessInJob`: false) | D5-A holds |
+| P2-3 | Survival | The real run was alive after the hop exited, after the one-shot instance ended, 3 s after the caller's job closed, after `Stop` of the service task, and after `DeleteTask` of the one-shot task, its heartbeat still fresh | D5-A and D8-A's cleanup hold |
+| P2-4 | The window | The hop had a visible console window and lived about 50 ms; the real run had no console window (`GetConsoleWindow`: 0) | D7-A holds |
+| P2-5 | Arguments | `--selfupdate-handoff-env=<path>`, then `a b`, `"q"`, `back\slash\` and `ü 任务`, composed by `windows.ComposeCommandLine`: the real run's `os.Args` matched; the file was applied, `PROBE_ENV` set from it, and the file deleted | D6-A holds |
+| P2-6 | Principal and settings | The one-shot task read back with the service task's user, `InteractiveToken` and `LeastPrivilege`. `get_UserId` returns the account name without its domain; the stored XML holds the SID either way. Defaults written explicitly were dropped on store, as P1-7 | D8-A holds; copying `get_UserId` into `UserId` registers the same principal |
+| P2-7 | The start signal | `Run` returned in 2 ms; an instance was listed 26 ms after it in both runs. `LastRunTime` has one-second resolution and read `…:46.9999998` for a run at `…:47`, so a comparison with the `Run` call can miss | D8-A: `Detach` waits for a listed instance, or a `LastTaskResult` other than `0x00041303`, not `LastRunTime` |
+
+### The decision point: the environment file's directory
+
+* **Found (P1-8).** D8-A said the handoff directory's access protects the
+  file on Windows. On the test host, `%LOCALAPPDATA%`'s inherited ACL
+  grants Modify to a local group and to a second SID besides the user,
+  SYSTEM and Administrators, and the directory and file inherit it.
+  `WriteHandOffEnv` sets mode 0700 on Unix and nothing on Windows
+  (`handoffenv.go:63`). The file carries the caller's whole environment.
+* **Decided (the owner, 2026-10-23).** `service.WriteHandOffEnv` gives the
+  directory it makes or uses, on Windows, a protected DACL granting full
+  control to the current user, SYSTEM and Administrators only, with no
+  inherited entries; the file inherits it. This is the Windows
+  counterpart of the Unix 0700, and P1-9 measured that a medium-integrity
+  process can set it.
+* **Not chosen.** Encrypting the file with DPAPI for the current user:
+  more code, a profile dependency and a format of its own, and other ACL
+  holders could still delete or replace the file.
+* **Effect on D8-A.** "Its directory's access is what protects it on
+  Windows" holds once `WriteHandOffEnv` sets that access itself. The
+  PLAN's J6 gains the DACL and its tests.
 
 ## More Information
 
