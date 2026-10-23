@@ -8,7 +8,7 @@ listed in the
 [migration guide](docs/guides/migrating-from-mcplib-selfupdate.md), one
 section per release, and each entry links its section and its records.
 
-## Unreleased
+## v1.18.0 - 2026-10-23
 
 See [the guide](docs/guides/migrating-from-mcplib-selfupdate.md#18-from-v117-to-v118),
 [0031-MADR](docs/decisions/0031-MADR-export-default-http-client-and-launchd-status.md) and

@@ -307,3 +307,15 @@ the index row. The MADR stays `accepted`.
   `v1.17.2`", which has no `DefaultHTTPClient`, until H4's pin commit
   moves it to `v1.18.0`, as step 2 planned. A reader who follows §5 from
   `main` before the tag cannot build it against `v1.17.2`.
+
+### H4: `v1.18.0` (2026-10-23, in progress)
+
+* H3 was committed as `8041514`.
+* **Step 1:** `CHANGELOG.md`'s `## Unreleased` becomes `## v1.18.0 -
+  2026-10-23`; the guide's §18 came in H3.
+* **Step 2:** `make gate` with this change in the tree: every step
+  `rc=0` (gofmt, lint, vet, race, shuffle, tidy, apicheck "compatible
+  with v1.17.2", fuzz, vuln "No vulnerabilities found.", scripts,
+  shellcheck, crossvet, links "728 links in 85 files, 0 broken", arch,
+  ids), `overall=0`.
+* Steps 3 to 8 wait on the owner's word for the push and the tag.
