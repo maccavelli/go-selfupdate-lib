@@ -180,6 +180,10 @@ func TestBatchFileRefused(t *testing.T) {
 		if got := errors.Is(err, ErrBatchFile); got != c.refused {
 			t.Errorf("Detached(%s): refused %t (%v), want %t", c.name, got, err, c.refused)
 		}
+		err = CheckProgram(path)
+		if got := errors.Is(err, ErrBatchFile); got != c.refused {
+			t.Errorf("CheckProgram(%s): refused %t (%v), want %t", c.name, got, err, c.refused)
+		}
 	}
 }
 

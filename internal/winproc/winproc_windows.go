@@ -29,7 +29,7 @@ var hasConsole = sync.OnceValue(func() bool {
 	return n != 0
 })
 
-// checkProgram refuses a .bat or .cmd program. os/exec resolves an
+// refuseBatchFile refuses a .bat or .cmd program. os/exec resolves an
 // absolute path's PATHEXT extension privately and leaves cmd.Path as given
 // (go.dev/issue/62596), so the path is resolved here with exec.LookPath,
 // the same search Start makes, and C:\dir\shim with only shim.cmd beside
@@ -40,8 +40,7 @@ var hasConsole = sync.OnceValue(func() bool {
 // written: run.bat. and run.cmd. put an argument under cmd.exe's parser,
 // and run.bat with a trailing space runs the script (measured, 0022-PLAN-documentation-pass-after-v1-14-0.md
 // P1). runName normalizes those spellings first.
-func checkProgram(cmd *exec.Cmd) error {
-	path := cmd.Path
+func refuseBatchFile(path string) error {
 	if filepath.IsAbs(path) {
 		if lp, err := exec.LookPath(path); err == nil {
 			path = lp

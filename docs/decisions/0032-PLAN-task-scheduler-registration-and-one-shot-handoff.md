@@ -851,3 +851,54 @@ None changes a decision.
   test files. `make pre-add-check` on the five Go files: "5 file(s) clean
   (gofmt, golangci-lint, go vet, go test, govulncheck)". `make apicheck`:
   "compatible with v1.18.0"; `go doc` shows `Task.Status`.
+
+### J6: `service` and `winproc` (2026-10-23)
+
+* J5 was committed as `a6c89c5`.
+* **`internal/winproc/winproc.go`:** `CheckProgram(path)`, the batch-file
+  refusal `Command` and `Detached` make, which both now call. The
+  unexported check takes a path and is `refuseBatchFile`: `revive`'s
+  `confusing-naming` refused `checkProgram` beside `CheckProgram`. Its
+  Unix and other-OS forms lose their unused `os/exec` import.
+* **`selfupdate/service/handoffenv.go`:** `ArgHandOffEnv`;
+  `LoadHandOffEnvContext` reads `os.Args[1]` first, removes the argument
+  and applies its file, then calls the hop check, then applies the
+  `EnvHandOffEnv` file; the shared work is `applyHandOffEnv`. Its doc
+  states the order. `WriteHandOffEnv` calls `protectDir` after its chmod.
+* **`handoffenv_windows.go`** (new, Deviation D1): `protectDir` sets a
+  protected DACL, from the SDDL J1 P1-9 measured, with
+  `SetNamedSecurityInfo`. **`handoffenv_other.go`** (new): a no-op.
+* **Tests.** `internal/winproc`: `TestBatchFileRefused` checks
+  `CheckProgram` beside `Command` and `Detached` for each of its 18
+  spellings; `TestCheckProgramOffWindows` (new) checks that nothing is
+  refused off Windows. `selfupdate/service`: `TestLoadHandOffEnvArg`
+  (new), with five subtests: applied and removed, left alone at
+  `os.Args[2]`, applied before the hop check (a hop-parent variable the
+  file sets is cleared by the check that follows), a relative path
+  refused, and no argument. `handoffenv_windows_test.go` (new):
+  `TestWriteHandOffEnvProtectsDir`, whose parent grants Everyone read
+  access, finds the directory's DACL protected with exactly the user,
+  SYSTEM and Administrators, and the file inheriting it.
+* **On the Windows test host:** `selfupdate/service`, `internal/winproc`
+  and `selfupdate/service/taskscheduler` pass, after the rename as
+  before it (57 tests in the first two).
+* **Seen failing** (`scripts/plant-copy.sh`; (e) ran before the rename,
+  which changes no behaviour):
+
+  | Plant | Failure |
+  | :--- | :--- |
+  | (a) the hop check before the file | `handoffenv_test.go:135: SELFUPDATE_HANDOFF_HOP_PARENT = "1073741823" after the load: the hop check ran before the file` |
+  | (b) the argument left in `os.Args` | `handoffenv_test.go:92: os.Args = ["prog" "--selfupdate-handoff-env=<temp>/handoff-arg.env" "update" "a b"], want ["prog" "update" "a b"]` |
+  | (c) the argument read at `os.Args[2]` | `handoffenv_test.go:92` as (b), and `anywhere else, left alone` failing |
+  | (d) the DACL not set, on the host | `handoffenv_windows_test.go:58: the directory's DACL: D:AI(A;OICIID;FA;;;<sid>)(A;OICIID;FA;;;SY)(A;OICIID;FA;;;BA)(A;ID;FR;;;WD)(A;OICIIOID;GR;;;WD)(A;OICIID;0x1301bf;;;<sid>)...; want protected, the user, SYSTEM and Administrators only` |
+  | (e) `CheckProgram` refusing nothing, on the host | `winproc_windows_test.go:177: Command(x.CMD): refused false (<nil>), want true`, and the same for `Detached` and `CheckProgram` |
+
+  Plant (d)'s DACL is the inherited one: Everyone's read access from the
+  test's parent, and the host's `%LOCALAPPDATA%` entries for others,
+  which J1 P1-8 found.
+* `docs/architecture.md`: the `service` row is 18 source and 17 test
+  files. `make pre-add-check` on the 11 Go files: "11 file(s) clean
+  (gofmt, golangci-lint, go vet, go test, govulncheck)". `make apicheck`:
+  "compatible with v1.18.0"; `go doc` shows `service.ArgHandOffEnv`.
+  `CheckProgram` is in an internal package. The records that name
+  `checkProgram` describe the code as it was, and are left as written.

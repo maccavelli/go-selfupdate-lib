@@ -35,7 +35,7 @@ var ErrBatchFile = errors.New("selfupdate: refusing to start a .bat or .cmd file
 // exec.CommandContext.
 func Command(ctx context.Context, path string, args ...string) (*exec.Cmd, error) {
 	cmd := exec.CommandContext(ctx, path, args...) //nolint:gosec // the caller's program: a fixed tool, the release under test, or a reconcile command (0021-MADR D7)
-	if err := checkProgram(cmd); err != nil {
+	if err := CheckProgram(cmd.Path); err != nil {
 		return nil, err
 	}
 	cmd.SysProcAttr = attachedAttr()
@@ -49,9 +49,20 @@ func Command(ctx context.Context, path string, args ...string) (*exec.Cmd, error
 // a batch file.
 func Detached(path string, args []string, breakaway bool) (*exec.Cmd, error) {
 	cmd := exec.Command(path, args...) //nolint:gosec // HandOffIfInside resolved path to this program
-	if err := checkProgram(cmd); err != nil {
+	if err := CheckProgram(cmd.Path); err != nil {
 		return nil, err
 	}
 	cmd.SysProcAttr = detachedAttr(breakaway)
 	return cmd, nil
+}
+
+// CheckProgram refuses, on Windows, a program Windows would run through
+// cmd.exe: a .bat or .cmd file, in any spelling the Win32 layer resolves
+// to one, with an error wrapping ErrBatchFile (0021-MADR D8). Command and
+// Detached make this check; a package that starts a program another way,
+// such as through a Task Scheduler action, calls it itself
+// (docs/decisions/0032-MADR-task-scheduler-registration-and-one-shot-handoff.md
+// D8-A). Elsewhere it refuses nothing.
+func CheckProgram(path string) error {
+	return refuseBatchFile(path)
 }

@@ -2,14 +2,11 @@
 
 package winproc
 
-import (
-	"os/exec"
-	"syscall"
-)
+import "syscall"
 
-// checkProgram refuses nothing: a Unix kernel runs a script through its
+// refuseBatchFile refuses nothing: a Unix kernel runs a script through its
 // own interpreter line, not a shell that reparses the arguments.
-func checkProgram(*exec.Cmd) error { return nil }
+func refuseBatchFile(string) error { return nil }
 
 // attachedAttr leaves the child as os/exec starts it.
 func attachedAttr() *syscall.SysProcAttr { return nil }

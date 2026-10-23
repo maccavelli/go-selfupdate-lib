@@ -2,13 +2,10 @@
 
 package winproc
 
-import (
-	"os/exec"
-	"syscall"
-)
+import "syscall"
 
-// checkProgram refuses nothing where there is no cmd.exe.
-func checkProgram(*exec.Cmd) error { return nil }
+// refuseBatchFile refuses nothing where there is no cmd.exe.
+func refuseBatchFile(string) error { return nil }
 
 // attachedAttr leaves the child as os/exec starts it.
 func attachedAttr() *syscall.SysProcAttr { return nil }
