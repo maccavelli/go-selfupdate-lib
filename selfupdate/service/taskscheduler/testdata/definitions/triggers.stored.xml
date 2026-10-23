@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <URI>\selfupdate-probe-00000000-p1-7-triggers</URI>
+  </RegistrationInfo>
+  <Principals>
+    <Principal id="Author">
+      <UserId>S-1-5-21-1111111111-2222222222-3333333333-1001</UserId>
+      <LogonType>InteractiveToken</LogonType>
+    </Principal>
+  </Principals>
+  <Settings>
+    <DisallowStartIfOnBatteries>true</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>true</StopIfGoingOnBatteries>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <IdleSettings>
+      <StopOnIdleEnd>true</StopOnIdleEnd>
+      <RestartOnIdle>false</RestartOnIdle>
+    </IdleSettings>
+    <UseUnifiedSchedulingEngine>true</UseUnifiedSchedulingEngine>
+  </Settings>
+  <Triggers>
+    <LogonTrigger>
+      <StartBoundary>2030-01-01T09:00:00</StartBoundary>
+      <EndBoundary>2031-01-01T00:00:00</EndBoundary>
+      <ExecutionTimeLimit>PT1H</ExecutionTimeLimit>
+      <Delay>PT30S</Delay>
+      <Repetition>
+        <Interval>PT5M</Interval>
+        <Duration>PT1H</Duration>
+        <StopAtDurationEnd>true</StopAtDurationEnd>
+      </Repetition>
+      <UserId>EXAMPLE\user</UserId>
+    </LogonTrigger>
+    <TimeTrigger>
+      <StartBoundary>2030-01-01T09:00:00</StartBoundary>
+      <EndBoundary>2031-01-01T00:00:00</EndBoundary>
+      <Enabled>false</Enabled>
+      <RandomDelay>PT1M</RandomDelay>
+    </TimeTrigger>
+    <CalendarTrigger>
+      <StartBoundary>2030-01-01T09:00:00</StartBoundary>
+      <ScheduleByDay>
+        <DaysInterval>2</DaysInterval>
+      </ScheduleByDay>
+    </CalendarTrigger>
+    <CalendarTrigger>
+      <StartBoundary>2030-01-01T09:00:00</StartBoundary>
+      <ScheduleByWeek>
+        <WeeksInterval>1</WeeksInterval>
+        <DaysOfWeek>
+          <Monday />
+        </DaysOfWeek>
+      </ScheduleByWeek>
+    </CalendarTrigger>
+    <RegistrationTrigger>
+      <Delay>PT1M</Delay>
+    </RegistrationTrigger>
+    <IdleTrigger>
+      <Enabled>false</Enabled>
+    </IdleTrigger>
+    <SessionStateChangeTrigger>
+      <StateChange>SessionUnlock</StateChange>
+      <UserId>EXAMPLE\user</UserId>
+    </SessionStateChangeTrigger>
+    <EventTrigger>
+      <Subscription>&lt;QueryList&gt;&lt;Query Id="0" Path="Application"&gt;&lt;Select Path="Application"&gt;*[System[EventID=4242]]&lt;/Select&gt;&lt;/Query&gt;&lt;/QueryList&gt;</Subscription>
+    </EventTrigger>
+  </Triggers>
+  <Actions Context="Author">
+    <Exec>
+      <Command>C:\Windows\System32\timeout.exe</Command>
+      <Arguments>/t 5 /nobreak</Arguments>
+      <WorkingDirectory>C:\Windows\Temp</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>

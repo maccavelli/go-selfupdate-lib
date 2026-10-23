@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+<Triggers>
+  <LogonTrigger><StartBoundary>2030-01-01T09:00:00</StartBoundary><EndBoundary>2031-01-01T00:00:00</EndBoundary><Enabled>true</Enabled><ExecutionTimeLimit>PT1H</ExecutionTimeLimit><Repetition><Interval>PT5M</Interval><Duration>PT1H</Duration><StopAtDurationEnd>true</StopAtDurationEnd></Repetition><UserId>EXAMPLE\user</UserId><Delay>PT30S</Delay></LogonTrigger>
+  <TimeTrigger><StartBoundary>2030-01-01T09:00:00</StartBoundary><EndBoundary>2031-01-01T00:00:00</EndBoundary><Enabled>false</Enabled><RandomDelay>PT1M</RandomDelay></TimeTrigger>
+  <CalendarTrigger><StartBoundary>2030-01-01T09:00:00</StartBoundary><Enabled>true</Enabled><ScheduleByDay><DaysInterval>2</DaysInterval></ScheduleByDay></CalendarTrigger>
+  <CalendarTrigger><StartBoundary>2030-01-01T09:00:00</StartBoundary><Enabled>true</Enabled><ScheduleByWeek><DaysOfWeek><Monday /></DaysOfWeek><WeeksInterval>1</WeeksInterval></ScheduleByWeek></CalendarTrigger>
+  <RegistrationTrigger><Enabled>true</Enabled><Delay>PT1M</Delay></RegistrationTrigger>
+  <IdleTrigger><Enabled>false</Enabled></IdleTrigger>
+  <SessionStateChangeTrigger><Enabled>true</Enabled><StateChange>SessionUnlock</StateChange><UserId>EXAMPLE\user</UserId></SessionStateChangeTrigger>
+  <EventTrigger><Enabled>true</Enabled><Subscription>&lt;QueryList&gt;&lt;Query Id="0" Path="Application"&gt;&lt;Select Path="Application"&gt;*[System[EventID=4242]]&lt;/Select&gt;&lt;/Query&gt;&lt;/QueryList&gt;</Subscription></EventTrigger>
+</Triggers>
+<Principals><Principal id="Author"><UserId>S-1-5-21-1111111111-2222222222-3333333333-1001</UserId><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>
+<Actions Context="Author"><Exec><Command>C:\Windows\System32\timeout.exe</Command><Arguments>/t 5 /nobreak</Arguments><WorkingDirectory>C:\Windows\Temp</WorkingDirectory></Exec></Actions>
+</Task>
