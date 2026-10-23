@@ -29,9 +29,9 @@ type GitHubUpdaterOptions struct {
 	Platforms []Platform
 	// APIBaseURL is the GitHub API origin. Nil means https://api.github.com.
 	APIBaseURL *url.URL
-	// Client is the HTTP client. Nil means a client with transport timeouts
-	// (30 s to dial, 10 s for TLS, 30 s for response headers) and no
-	// Client.Timeout, so a slow large download is bounded by the context
+	// Client is the HTTP client. Nil means DefaultHTTPClient(): transport
+	// timeouts (30 s to dial, 10 s for TLS, 30 s for response headers) and
+	// no Client.Timeout, so a slow large download is bounded by the context
 	// rather than cut off.
 	Client *http.Client
 	// Stdin is the terminal the confirmer reads. Nil means os.Stdin.
@@ -56,7 +56,7 @@ func NewGitHubUpdater(o GitHubUpdaterOptions) (*Updater, error) {
 	}
 	client := o.Client
 	if client == nil {
-		client = defaultHTTPClient()
+		client = DefaultHTTPClient()
 	}
 	stdin, stderr := o.Stdin, o.Stderr
 	if stdin == nil {
@@ -98,10 +98,14 @@ func NewGitHubUpdater(o GitHubUpdaterOptions) (*Updater, error) {
 	})
 }
 
-// defaultHTTPClient is NewGitHubUpdater's client: http.DefaultTransport's
-// settings, or Go 1.27.2's when a program replaced it with another
-// RoundTripper, plus a response-header timeout, and no Client.Timeout.
-func defaultHTTPClient() *http.Client {
+// DefaultHTTPClient returns the client this package recommends for
+// GitHubOptions.Client, and NewGitHubUpdater's default: http.DefaultTransport's
+// settings, or Go 1.27.3's when a program replaced it with another
+// RoundTripper, plus a 30 s response-header timeout, and no Client.Timeout,
+// so the caller's context bounds a large download rather than a timeout
+// cutting it off (0025-MADR D14). Each call returns a new client and a new
+// *http.Transport, which the caller owns and may adjust (0031-MADR D1).
+func DefaultHTTPClient() *http.Client {
 	t, ok := http.DefaultTransport.(*http.Transport)
 	if ok {
 		t = t.Clone()

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -26,9 +25,9 @@ import (
 func ExampleNew_standalone() {
 	src, err := selfupdate.NewGitHubSource(selfupdate.GitHubOptions{
 		Repository: selfupdate.Repository{Owner: "maccavelli", Name: "prepare-commit-msg"},
-		// A Transport bound, not Client.Timeout, so a slow large download
+		// Transport bounds and no Client.Timeout, so a slow large download
 		// is not cut off; a context deadline bounds the whole run.
-		Client:    &http.Client{Transport: &http.Transport{Proxy: http.ProxyFromEnvironment, ResponseHeaderTimeout: 30 * time.Second}},
+		Client:    selfupdate.DefaultHTTPClient(),
 		UserAgent: selfupdate.UserAgent("prepare-commit-msg", buildinfo.Identity().Current()),
 		Limits:    selfupdate.DefaultLimits(),
 	})

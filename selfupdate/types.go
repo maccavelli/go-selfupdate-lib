@@ -213,7 +213,7 @@ type GitHubOptions struct {
 	// Client.Timeout bounds each request including the whole asset
 	// download; prefer a context deadline, or a Transport with
 	// ResponseHeaderTimeout, so a slow large download is not cut off
-	// (0025-MADR D14). NewGitHubUpdater's default client does that.
+	// (0025-MADR D14). DefaultHTTPClient returns the recommended client.
 	Client *http.Client
 	// APIBaseURL is the GitHub API origin. Nil means https://api.github.com.
 	APIBaseURL *url.URL

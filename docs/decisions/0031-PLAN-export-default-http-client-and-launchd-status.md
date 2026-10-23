@@ -1,13 +1,12 @@
 ---
-status: proposed
+status: in-progress
 date: 2026-10-23
 associated-madr: "0031-MADR-export-default-http-client-and-launchd-status.md"
 ---
 # Implement `DefaultHTTPClient` and `launchd.Job`'s `Loaded` and `Status`, and release `v1.18.0`
 
 Associated MADR: [0031-MADR-export-default-http-client-and-launchd-status.md](0031-MADR-export-default-http-client-and-launchd-status.md)
-(D1-A, D2-A, D3-A and D4-C, as proposed; the owner's decision may change
-them, and this plan is amended to match before any phase runs).
+(D1-A, D2-A, D3-A and D4-C, as the owner chose).
 
 ## Goal
 
@@ -217,3 +216,39 @@ the index row. The MADR stays `accepted`.
   the nil-client error's text.
 * **Rollback:** before the tag, `git revert` of a phase; after it, fix
   forward, since exported API cannot be removed within v1.
+
+## Execution record
+
+### Approval
+
+* 2026-10-23: the owner committed H0 (`bf400dd`) and said "committed,
+  proceed", approving the MADR's proposed options and this plan as
+  written. The MADR becomes `accepted` and this plan `in-progress`, in
+  H1's commit.
+
+### H1: `selfupdate` (2026-10-23)
+
+* `defaultHTTPClient` is now exported `DefaultHTTPClient`, with the same
+  body and the doc of step 1; `NewGitHubUpdater` calls it, and
+  `GitHubUpdaterOptions.Client` and `GitHubOptions.Client` name it. The
+  nil-client error reads "selfupdate: github client is required; use
+  selfupdate.DefaultHTTPClient()". `ExampleNew_standalone` passes
+  `selfupdate.DefaultHTTPClient()`, and its `net/http` import goes.
+* `TestDefaultClientTimeouts` checks the proxy function and that two
+  calls share neither client nor transport; `TestNewGitHubSource` checks
+  the nil-client error names `DefaultHTTPClient()`.
+* **Seen failing** (`scripts/plant-copy.sh`, each copy removed after):
+
+  | Plant | Failure |
+  | :--- | :--- |
+  | `DefaultHTTPClient` returns one package-level client | `githubupdater_internal_test.go:33: two calls share a client or a transport` |
+  | the client sets `Timeout: time.Minute` | `githubupdater_internal_test.go:16: Client.Timeout = 1m0s, want none` |
+  | the old error text | `github_test.go:103: nil client: selfupdate: github client is required; want a refusal naming DefaultHTTPClient()` |
+
+* `make apicheck`: "check-api-compat: compatible with v1.17.2". It runs
+  apidiff for incompatible changes only, so it does not list additions,
+  as step 7 and V1 assumed; `go doc ./selfupdate DefaultHTTPClient`
+  shows the new function instead. This is a wording correction to the
+  plan's expected output, not a change to what was built.
+* `make pre-add-check` on the six Go files: "6 file(s) clean (gofmt,
+  golangci-lint, go vet, go test, govulncheck)".

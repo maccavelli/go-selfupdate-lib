@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-23
 decision-makers: go-selfupdate-lib maintainers
 consulted: "GitHub issues #5, \"selfupdate: export the default HTTP client\", and #4, \"service/launchd: report whether a job is loaded\" (both 2026-10-22), from the owner for magic-cli-remote; a read of `selfupdate` and `selfupdate/service/launchd` at f07d3fd (v1.17.2 plus three records commits)"
@@ -164,8 +164,9 @@ questions, and releases both as `v1.18.0`.
 
 ## Decision Outcome
 
-Proposed, for the owner to decide: "D1-A", "D2-A", "D3-A" and "D4-C",
-released together as `v1.18.0`, a minor release because both add API.
+Chosen options (the owner, 2026-10-23, approving the proposal as
+written): "D1-A", "D2-A", "D3-A" and "D4-C", released together as
+`v1.18.0`, a minor release because both add API.
 
 * **D1-A** is the issue's proposal, named after `DefaultLimits`, and it
   removes the copy-or-misuse choice. A fresh transport per call is

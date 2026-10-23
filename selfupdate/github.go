@@ -116,7 +116,7 @@ func inStream(ctx context.Context) bool {
 // CheckRedirect is the source's own; the caller's is never called.
 func NewGitHubSource(opts GitHubOptions) (*GitHubSource, error) {
 	if opts.Client == nil {
-		return nil, fmt.Errorf("selfupdate: github client is required")
+		return nil, errors.New("selfupdate: github client is required; use selfupdate.DefaultHTTPClient()")
 	}
 	if err := opts.Limits.valid(); err != nil {
 		return nil, err

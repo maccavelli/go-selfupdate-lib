@@ -97,8 +97,10 @@ func TestNewGitHubSource(t *testing.T) {
 	if src.client.Timeout == client.Timeout {
 		t.Fatal("cloned client mutated with caller")
 	}
-	if _, err := NewGitHubSource(GitHubOptions{Repository: opts.Repository, UserAgent: opts.UserAgent, Limits: opts.Limits}); err == nil {
-		t.Fatal("accepted nil client")
+	// A nil client is refused, and the error names the fix (0031-MADR D2).
+	if _, err := NewGitHubSource(GitHubOptions{Repository: opts.Repository, UserAgent: opts.UserAgent, Limits: opts.Limits}); err == nil ||
+		!strings.Contains(err.Error(), "DefaultHTTPClient()") {
+		t.Fatalf("nil client: %v; want a refusal naming DefaultHTTPClient()", err)
 	}
 	bad := opts
 	bad.UserAgent = "demo\r\nX-Injected: 1"
