@@ -308,7 +308,7 @@ the index row. The MADR stays `accepted`.
   moves it to `v1.18.0`, as step 2 planned. A reader who follows §5 from
   `main` before the tag cannot build it against `v1.17.2`.
 
-### H4: `v1.18.0` (2026-10-23, in progress)
+### H4: `v1.18.0` (2026-10-23)
 
 * H3 was committed as `8041514`.
 * **Step 1:** `CHANGELOG.md`'s `## Unreleased` becomes `## v1.18.0 -
@@ -318,4 +318,38 @@ the index row. The MADR stays `accepted`.
   with v1.17.2", fuzz, vuln "No vulnerabilities found.", scripts,
   shellcheck, crossvet, links "728 links in 85 files, 0 broken", arch,
   ids), `overall=0`.
-* Steps 3 to 8 wait on the owner's word for the push and the tag.
+* The pre-tag change was committed as `ce406dc`, and the disclosure
+  guard over the five outgoing commits exited 0.
+* **Step 3:** the owner pushed `main`. CI run 39967561135 on `ce406dc`
+  completed `success`, every one of its 18 jobs; the macOS job printed
+  `--- PASS: TestLiveStatus (0.36s)`. The Docs run passed. A first
+  `gh run watch` exited 1 on a GitHub 504 fetching annotations, not on a
+  job; a second watch saw the run complete.
+* **Step 4:** `scripts/check-release-tag.sh v1.18.0` exited 0, and no
+  `v1.18.0` existed locally or on `origin`. The owner made the annotated
+  tag and pushed it: tag object `3a2962930…`, on `ce406dc`.
+* **Step 5:** the tag's CI run 39969753986 completed `success`, all 18
+  jobs. Its identity legs print `v1.18.0 (release) ce406dc138a8`, 10
+  times, and the macOS job `--- PASS: TestLiveStatus (0.33s)`.
+* **Step 6, this commit:** `git diff --stat v1.17.2 v1.18.0 -- .github
+  internal/cmd scripts go.mod go.sum` is empty, so the workflow pins
+  move with no other change. Moved to `v1.18.0` and `ce406dc…`:
+  * `README.md`: the current release, the `go get` line and the publish
+    workflow pin;
+  * `docs/architecture.md`: the current release and its commit;
+  * `docs/guides/building-releases.md`: "the examples below pin", the
+    three workflow pins and the `git ls-remote` example;
+  * the migration guide: the 13 `go get` lines and 11 `go list -m`
+    lines that name the current release, "is the current release",
+    §3's workflow pin and `git ls-remote` example, "the example pins"
+    (`v1.18.0` changes nothing in the workflows), §5's "Require
+    go-selfupdate-lib", which closes H3's window, and §2's release list,
+    which gains `v1.18.0` and links §18.
+
+  Lines that name `v1.17.2` as history stay: the Go floor's notes and
+  §17's "From v1.17.1 to v1.17.2".
+* **Step 7:** the proxy: `go list -m -json
+  github.com/maccavelli/go-selfupdate-lib@v1.18.0` gives `Hash
+  ce406dc138a8a431bb2d04e6a845197f4e55b81b`, `Ref refs/tags/v1.18.0`, and
+  `@latest` resolves to `v1.18.0`.
+* **Step 8** waits on the owner's ask to close issues #5 and #4.
