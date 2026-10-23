@@ -631,3 +631,63 @@ None changes a decision; each changes a step, annotated in place.
   plant of a kept declaration.
 * **J7 step 2:** `Detach` waits for a listed instance, or a
   `LastTaskResult` other than `0x00041303`, not for `LastRunTime` (P2-7).
+
+### J2: the COM transport (2026-10-23)
+
+* J1 was committed as `c431122` and `a9ef4d4`.
+* **`com_windows.go`:** `folderCreateFolder` (11), `folderGetTasks` (14),
+  `taskEnumHidden`, `taskGetName` (7), `prinGetUserID` (11) and
+  `prinGetRunLevel` (17). **`api.go`:** `taskCreate` and
+  `taskCreateOrUpdate`, moved from `com_windows.go`, and
+  `hrAlreadyExists` (`0x800700B7`).
+* **`scheduler.go`:** `scheduler` gains `register`, `deleteTask`,
+  `createFolder` and `list`, with the `listed` type; `registered` gains
+  `principal()`, with the `principal` type. **`scheduler_windows.go`**
+  implements them; `list` reads each task with `listEntry`.
+* **`fake_test.go`:** the fake keeps folders, implements the four calls
+  with J1's HRESULTs, can fail any of them by verb, and its `add` marks
+  its task's folder.
+* **`com_windows_test.go`:** `TestCOMRegistration` and the
+  `comDeleteFolder` cleanup helper; `newLayoutTask` and `newLiveTaskIn`
+  register and delete through the transport, and `comRegister` and
+  `comDelete` are gone.
+* **On the Windows test host,** from the ssh shell (high integrity):
+  `TestVARIANTSize`, `TestWithCOMConcurrent`, `TestCOMLayout` and
+  `TestCOMRegistration` pass; with `SELFUPDATE_REQUIRE_TASKSCHED=1` the
+  whole package passes, 44 tests, the six live tests included
+  (`ok ... 90.177s`).
+* **Seen failing** (`scripts/plant-copy.sh`, run on the host, each copy
+  removed after):
+
+  | Plant | Failure |
+  | :--- | :--- |
+  | `CreateFolder` 11 → 9 (`GetFolder`) | `com_windows_test.go:317: createFolder: HRESULT 0x80070002` |
+  | `GetTasks` 14 → 10 (`GetFolders`) | the test binary died inside the COM call: `=== RUN TestCOMRegistration`, then `FAIL ... 0.166s`, exit 1, with no test output |
+  | `get_Name` 7 → 8 (`get_Path`) | `com_windows_test.go:289: selfupdate-probe-<hex> not listed among 23 tasks` |
+  | `get_UserId` 11 → 9 (`get_DisplayName`) | `com_windows_test.go:309: principal {UserID: LogonType:3 RunLevel:0}; want this account's name, ...` |
+  | `get_RunLevel` 17 → 13 (`get_LogonType`) | `com_windows_test.go:309: principal {UserID:<user> LogonType:3 RunLevel:3}; want ...` |
+
+  The `GetTasks` plant's crash skipped the test's cleanup, twice, and left
+  two `selfupdate-probe-*` tasks; they were deleted, and no
+  `selfupdate-*` task or folder remains on the host.
+* `make pre-add-check` on the seven Go files: "7 file(s) clean (gofmt,
+  golangci-lint, go vet, go test, govulncheck)". `make apicheck`:
+  "compatible with v1.18.0". No `.go` file was added.
+
+### Deviation D3 (2026-10-23): how J2 pinned and planted its slots
+
+None changes a decision.
+
+* **A test of its own.** J2 step 5 put the new calls in `TestCOMLayout`;
+  they are in `TestCOMRegistration`, which needs no running task, so a
+  failure names the call it is about.
+* **Compatible slots, not one lower.** J2 step 6 planted each slot one
+  lower. The slot below most of them takes other arguments, and a call
+  with the wrong arguments can crash the process instead of failing the
+  test; each plant uses the nearest slot with the same signature, so the
+  wrong method returns, and the test fails on its answer. `GetTasks` has
+  no such neighbour with a compatible collection: its plant crashed, as
+  recorded above.
+* **The flags in `api.go`.** `taskCreate` and `taskCreateOrUpdate` moved
+  from `com_windows.go` to `api.go`, because the fake and J3's logic,
+  which build on every OS, use them.
