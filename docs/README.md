@@ -80,7 +80,7 @@ name, and the files they cite moved with the rename
 | 0030 | MADR | [Publish this module's GitHub release from the tag's own CI run, after every job passes, with notes from the changelog](decisions/0030-MADR-publish-github-release-on-tag.md) | rejected |
 | 0030 | PLAN | [Implement publishing this module's GitHub release from the tag's CI run](decisions/0030-PLAN-publish-github-release-on-tag.md) | rejected |
 | 0031 | MADR | [Export `DefaultHTTPClient`, keep `GitHubOptions.Client` required, and give `launchd.Job` `Loaded` and a `Status` snapshot, as `v1.18.0`](decisions/0031-MADR-export-default-http-client-and-launchd-status.md) | accepted |
-| 0031 | PLAN | [Implement `DefaultHTTPClient` and `launchd.Job`'s `Loaded` and `Status`, and release `v1.18.0`](decisions/0031-PLAN-export-default-http-client-and-launchd-status.md) | in-progress |
+| 0031 | PLAN | [Implement `DefaultHTTPClient` and `launchd.Job`'s `Loaded` and `Status`, and release `v1.18.0`](decisions/0031-PLAN-export-default-http-client-and-launchd-status.md) | complete |
 
 ## I want to…
 

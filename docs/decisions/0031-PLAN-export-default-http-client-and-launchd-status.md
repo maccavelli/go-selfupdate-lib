@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 date: 2026-10-23
 associated-madr: "0031-MADR-export-default-http-client-and-launchd-status.md"
 ---
@@ -352,4 +352,41 @@ the index row. The MADR stays `accepted`.
   github.com/maccavelli/go-selfupdate-lib@v1.18.0` gives `Hash
   ce406dc138a8a431bb2d04e6a845197f4e55b81b`, `Ref refs/tags/v1.18.0`, and
   `@latest` resolves to `v1.18.0`.
-* **Step 8** waits on the owner's ask to close issues #5 and #4.
+* The pin commit was committed and pushed by the owner as `c6ceac4`;
+  its Docs run passed, and CI did not run, since it changed Markdown
+  alone (0028-MADR).
+* **Step 8:** on the owner's ask, issues #5 and #4 were closed as
+  completed, each with a comment naming `v1.18.0`, what it added, the
+  answers to the issue's open questions, how magic-cli-remote adopts it,
+  and how it was verified. The comments passed the identifier check
+  before they were posted.
+
+### H5: closing (2026-10-23)
+
+* This plan becomes `complete`, and its index row follows. The MADR
+  stays `accepted`.
+
+### Verification, at closing (2026-10-23)
+
+* **V1 (API):** `make apicheck` was "compatible with v1.17.2" at H1, H2
+  and in H4's gate. It does not list additions, so `go doc` showed
+  `DefaultHTTPClient`, `launchd.Status`, `Job.Loaded` and `Job.Status`
+  (H1's note).
+* **V2 (client):** `TestDefaultClientTimeouts` and `TestNewGitHubSource`
+  pass, and each failed on its plant (H1).
+* **V3 (launchd):** `TestLoaded`, `TestStatus` and `TestStatusJSON` pass,
+  and each failed on its plant; `TestLiveStatus` passed on this Mac, on
+  `main`'s CI and on the tag's, and failed on its plant (H2, H4).
+* **V4 (docs):** §5's `update.go` builds and vets in a scratch module
+  (H3); markdownlint, the link check and the identifier check passed at
+  every commit.
+* **V5 (release):** `v1.18.0` is the annotated tag on `ce406dc`; its CI
+  passed every job with identity legs `v1.18.0 (release) ce406dc138a8`,
+  and the proxy serves it as `@latest` (H4).
+* **V6 (issues):** #5 and #4 are closed with the release named (H4
+  step 8).
+
+Not done here, as the plan's scope says: an options-taking client
+constructor (MADR D1-B), a nil `GitHubOptions.Client` meaning a default
+(D2-B), and a status snapshot for `systemd`, `scm` or `taskscheduler`.
+magic-cli-remote adopts `v1.18.0` in its own repository.
