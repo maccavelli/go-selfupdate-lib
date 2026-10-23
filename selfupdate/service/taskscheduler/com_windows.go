@@ -60,14 +60,19 @@ const (
 	svcGetFolder = 7  // GetFolder
 	svcConnect   = 10 // Connect
 
-	// ITaskFolder, after IDispatch.
+	// ITaskFolder, after IDispatch. CreateFolder and GetTasks are taken
+	// from MinGW-w64's taskschd.h and pinned by TestCOMRegistration
+	// (0032-MADR F16).
+	folderCreateFolder           = 11 // CreateFolder
 	folderGetTask                = 13 // GetTask
+	folderGetTasks               = 14 // GetTasks
 	folderDeleteTask             = 15 // DeleteTask
 	folderRegisterTask           = 16 // RegisterTask
 	folderRegisterTaskDefinition = 17 // RegisterTaskDefinition
-	taskCreateOrUpdate           = 6  // TASK_CREATE | TASK_UPDATE
+	taskEnumHidden               = 1  // TASK_ENUM_HIDDEN
 
 	// IRegisteredTask, after IDispatch.
+	taskGetName        = 7  // get_Name
 	taskGetState       = 9  // get_State
 	taskGetEnabled     = 10 // get_Enabled
 	taskPutEnabled     = 11 // put_Enabled
@@ -107,8 +112,11 @@ const (
 	// IRepetitionPattern, after IDispatch.
 	repGetInterval = 7 // get_Interval
 
-	// IPrincipal, after IDispatch.
+	// IPrincipal, after IDispatch. get_UserId returns the account's name
+	// without its domain (0032-MADR Amendment A1, P2-6).
+	prinGetUserID    = 11 // get_UserId
 	prinGetLogonType = 13 // get_LogonType
+	prinGetRunLevel  = 17 // get_RunLevel
 )
 
 // variant is VARIANT on amd64/arm64 (24 bytes). TestVARIANTSize pins it.

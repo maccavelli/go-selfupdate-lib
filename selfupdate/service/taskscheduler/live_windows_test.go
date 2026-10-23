@@ -378,14 +378,14 @@ func newLiveTaskIn(t *testing.T, sub string) liveConfig {
 		build(t, command, "\nold build\n")
 	}
 	xml := liveXML(command, `tasksched-live serve "`+cfg.Path+`"`)
-	if err := comRegister(name, xml); err != nil {
+	if err := systemScheduler().register(`\`, name, xml, taskCreateOrUpdate, logonInteractiveToken); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
 		_, _ = exec.Command("schtasks", "/end", "/tn", name).CombinedOutput()
 		time.Sleep(500 * time.Millisecond)
 		_, _ = exec.Command("schtasks", "/delete", "/tn", name, "/f").CombinedOutput()
-		_ = comDelete(name)
+		_ = systemScheduler().deleteTask(`\`, name)
 	})
 	s := liveSvc(t, cfg)
 	if err := s.Start(context.Background(), "demo"); err != nil {

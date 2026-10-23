@@ -5,6 +5,7 @@ package taskscheduler
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -52,6 +53,118 @@ func (sysSched) created(pid uint32) uint64 {
 		return 0
 	}
 	return uint64(created.HighDateTime)<<32 | uint64(created.LowDateTime)
+}
+
+func (sysSched) register(folder, name, xml string, flags, logon int32) error {
+	return withFolder(folder, func(f *comObj) error {
+		nb, err := sysString(name)
+		if err != nil {
+			return err
+		}
+		defer freeBSTR(nb)
+		xb, err := sysString(xml)
+		if err != nil {
+			return err
+		}
+		defer freeBSTR(xb)
+		var empty [3]variant
+		var out *comObj
+		hr := f.call(folderRegisterTask,
+			nb,
+			xb,
+			uintptr(uint32(flags)), //nolint:gosec // TASK_CREATION is a small flag set
+			ptr(&empty[0]),
+			ptr(&empty[1]),
+			uintptr(uint32(logon)), //nolint:gosec // TASK_LOGON_TYPE is a small enum
+			ptr(&empty[2]),
+			ptr(&out),
+		)
+		out.release()
+		return checkHR(hr)
+	})
+}
+
+func (sysSched) deleteTask(folder, name string) error {
+	return withFolder(folder, func(f *comObj) error {
+		nb, err := sysString(name)
+		if err != nil {
+			return err
+		}
+		defer freeBSTR(nb)
+		return checkHR(f.call(folderDeleteTask, nb, 0))
+	})
+}
+
+func (sysSched) createFolder(path string) error {
+	return withFolder(`\`, func(root *comObj) error {
+		b, err := sysString(strings.TrimPrefix(path, `\`))
+		if err != nil {
+			return err
+		}
+		defer freeBSTR(b)
+		var sddl variant
+		var out *comObj
+		hr := root.call(folderCreateFolder, b, ptr(&sddl), ptr(&out))
+		out.release()
+		return checkHR(hr)
+	})
+}
+
+func (sysSched) list(folder string) ([]listed, error) {
+	var out []listed
+	err := withFolder(folder, func(f *comObj) error {
+		var col *comObj
+		if hr := f.call(folderGetTasks, taskEnumHidden, ptr(&col)); hr.failed() {
+			return hr
+		}
+		if col == nil {
+			return nil
+		}
+		defer col.release()
+		n, err := getLong(col, colGetCount)
+		if err != nil {
+			return err
+		}
+		for i := int32(1); i <= n; i++ {
+			idx := variantI4(i)
+			var t *comObj
+			if hr := col.call(colGetItem, ptr(&idx), ptr(&t)); hr.failed() {
+				return hr
+			}
+			if t == nil {
+				continue
+			}
+			l, err := listEntry(t)
+			t.release()
+			if err != nil {
+				return err
+			}
+			out = append(out, l)
+		}
+		return nil
+	})
+	return out, err
+}
+
+// listEntry reads one registered task of a listing.
+func listEntry(t *comObj) (listed, error) {
+	var l listed
+	var err error
+	if l.Name, err = getBSTR(t, taskGetName); err != nil {
+		return l, err
+	}
+	if l.State, err = getLong(t, taskGetState); err != nil {
+		return l, err
+	}
+	if l.LastResult, err = getLong(t, taskGetLastResult); err != nil {
+		return l, err
+	}
+	var d float64
+	if hr := t.call(taskGetLastRunTime, ptr(&d)); hr.failed() {
+		return l, hr
+	}
+	l.LastRun = oleDate(d)
+	return l, nil
 }
 
 // running is winproc.Alive: a process that has exited reads as gone even
@@ -231,6 +344,31 @@ func (r *sysReg) logonType() (int32, error) {
 		return err
 	})
 	return n, err
+}
+
+func (r *sysReg) principal() (principal, error) {
+	var p principal
+	err := withTask(r.folder, r.name, func(t, _ *comObj) error {
+		def, err := definition(t)
+		if err != nil {
+			return err
+		}
+		defer def.release()
+		prin, err := getObj(def, defGetPrincipal)
+		if err != nil {
+			return err
+		}
+		defer prin.release()
+		if p.UserID, err = getBSTR(prin, prinGetUserID); err != nil {
+			return err
+		}
+		if p.LogonType, err = getLong(prin, prinGetLogonType); err != nil {
+			return err
+		}
+		p.RunLevel, err = getLong(prin, prinGetRunLevel)
+		return err
+	})
+	return p, err
 }
 
 func (r *sysReg) actions() ([]action, error) {

@@ -23,6 +23,11 @@ type fakeSched struct {
 	openErr error
 	nextPID uint32
 	now     func() time.Time
+	// folders are the task folders that exist; `\` always does.
+	folders map[string]bool
+	// fail makes a call that changes something return its error, by verb:
+	// register, delete, mkfolder or list.
+	fail map[string]error
 }
 
 // fakeTask is one registered task.
@@ -33,8 +38,11 @@ type fakeTask struct {
 	trig  []trigger
 	acts  []action
 	logon int32
-	last  lastRun
-	def   string
+	// user and runLevel are the principal's, beside logon.
+	user     string
+	runLevel int32
+	last     lastRun
+	def      string
 	// exitIn, when positive, ends the running instance after that many
 	// virtual sleeps, as a program that was asked to exit does.
 	exitIn int
@@ -57,8 +65,96 @@ const (
 func newFake() *fakeSched {
 	return &fakeSched{
 		tasks: map[string]*fakeTask{}, born: map[uint32]uint64{}, alive: map[uint32]bool{}, nextPID: 9000,
-		now: func() time.Time { return time.Unix(1_700_000_000, 0) },
+		now:     func() time.Time { return time.Unix(1_700_000_000, 0) },
+		folders: map[string]bool{`\`: true}, fail: map[string]error{},
 	}
+}
+
+// taskPath is a task's full path from its folder and name.
+func taskPath(folder, name string) string {
+	if folder == `\` {
+		return `\` + name
+	}
+	return folder + `\` + name
+}
+
+// register creates or updates a task as RegisterTask does, by flags
+// (0032-MADR Amendment A1, P1-4): TASK_CREATE alone on an existing task
+// is hrAlreadyExists, TASK_UPDATE alone on a missing one hrFileNotFound,
+// and a missing folder hrFileNotFound.
+func (f *fakeSched) register(folder, name, xml string, flags, logon int32) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.record("register %s flags=%d logon=%d", taskPath(folder, name), flags, logon)
+	if err := f.fail["register"]; err != nil {
+		return err
+	}
+	if !f.folders[folder] {
+		return hrFileNotFound
+	}
+	path := taskPath(folder, name)
+	ft, exists := f.tasks[path]
+	switch {
+	case exists && flags&taskCreateOrUpdate == taskCreate:
+		return hrAlreadyExists
+	case !exists && flags&taskCreate == 0:
+		return hrFileNotFound
+	case !exists:
+		ft = &fakeTask{st: stateReady, on: true, user: "user", last: lastRun{Result: 0x41303}} // SCHED_S_TASK_HAS_NOT_RUN
+		f.tasks[path] = ft
+	}
+	ft.logon, ft.def = logon, xml
+	return nil
+}
+
+func (f *fakeSched) deleteTask(folder, name string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	path := taskPath(folder, name)
+	f.record("delete %s", path)
+	if err := f.fail["delete"]; err != nil {
+		return err
+	}
+	if _, ok := f.tasks[path]; !ok {
+		return hrFileNotFound
+	}
+	delete(f.tasks, path)
+	return nil
+}
+
+func (f *fakeSched) createFolder(path string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.record("mkfolder %s", path)
+	if err := f.fail["mkfolder"]; err != nil {
+		return err
+	}
+	if f.folders[path] {
+		return hrAlreadyExists
+	}
+	for p := path; p != `\` && p != ""; p = p[:max(strings.LastIndex(p, `\`), 1)] {
+		f.folders[p] = true
+	}
+	return nil
+}
+
+func (f *fakeSched) list(folder string) ([]listed, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.fail["list"]; err != nil {
+		return nil, err
+	}
+	if !f.folders[folder] {
+		return nil, hrFileNotFound
+	}
+	var out []listed
+	for path, ft := range f.tasks {
+		dir, name := path[:max(strings.LastIndex(path, `\`), 1)], path[strings.LastIndex(path, `\`)+1:]
+		if dir == folder {
+			out = append(out, listed{Name: name, State: ft.st, LastResult: ft.last.Result, LastRun: ft.last.Time})
+		}
+	}
+	return out, nil
 }
 
 // add registers an enabled task with a logon trigger and one Exec action,
@@ -77,6 +173,7 @@ func (f *fakeSched) add(path string, pid uint32) *fakeTask {
 		f.alive[pid], f.born[pid] = true, uint64(pid)*10
 	}
 	f.tasks[path] = ft
+	f.folders[path[:max(strings.LastIndex(path, `\`), 1)]] = true
 	return ft
 }
 
@@ -234,6 +331,11 @@ func (r *fakeReg) actions() ([]action, error) {
 }
 
 func (r *fakeReg) logonType() (int32, error) { defer r.lock()(); return r.t.logon, nil }
+
+func (r *fakeReg) principal() (principal, error) {
+	defer r.lock()()
+	return principal{UserID: r.t.user, LogonType: r.t.logon, RunLevel: r.t.runLevel}, nil
+}
 
 func (r *fakeReg) lastRun() (lastRun, error) { defer r.lock()(); return r.t.last, nil }
 

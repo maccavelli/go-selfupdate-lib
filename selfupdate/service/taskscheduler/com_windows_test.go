@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
 func TestVARIANTSize(t *testing.T) {
@@ -106,17 +108,17 @@ func newLayoutTask(t *testing.T) (exe, name, dir string, r registered) {
 	name = "selfupdate-probe-" + randomHex()
 	dir = t.TempDir()
 	xml := taskXML(exe, "/t 30 /nobreak")
-	if err := comRegister(name, xml); err != nil {
+	s := systemScheduler()
+	if s == nil {
+		t.Fatal("no transport")
+	}
+	if err := s.register(`\`, name, xml, taskCreateOrUpdate, logonInteractiveToken); err != nil {
 		if errors.Is(err, hrAccessDenied) && os.Getenv("CI") != "" {
 			t.Skipf("register %s: %v", name, err)
 		}
 		t.Fatalf("create %s: %v", name, err)
 	}
-	t.Cleanup(func() { _ = comDelete(name) })
-	s := systemScheduler()
-	if s == nil {
-		t.Fatal("no transport")
-	}
+	t.Cleanup(func() { _ = s.deleteTask(`\`, name) })
 	var err error
 	r, err = s.open(`\`, name)
 	if err != nil {
@@ -241,36 +243,113 @@ func rewriteAndRestore(t *testing.T, r registered, dir, exe, saved string) {
 	}
 }
 
-func comRegister(name, xml string) error {
-	return withFolder(`\`, func(f *comObj) error {
-		nb, err := sysString(name)
-		if err != nil {
-			return err
+// folderDeleteFolder is ITaskFolder::DeleteFolder, which only this test's
+// cleanup calls.
+const folderDeleteFolder = 12
+
+// TestCOMRegistration pins the calls 0032-MADR adds, and the HRESULTs
+// Amendment A1 measured: register, list, the principal, a folder, and
+// delete (0032-PLAN J2).
+func TestCOMRegistration(t *testing.T) {
+	s := systemScheduler()
+	exe := filepath.Join(os.Getenv("WINDIR"), "System32", "timeout.exe")
+	name := "selfupdate-probe-" + randomHex()
+	xml := taskXML(exe, "/t 30 /nobreak")
+	if err := s.register(`\`, name, xml, taskCreate, logonInteractiveToken); err != nil {
+		if errors.Is(err, hrAccessDenied) && os.Getenv("CI") != "" {
+			t.Skipf("register %s: %v", name, err)
 		}
-		defer freeBSTR(nb)
-		xb, err := sysString(xml)
-		if err != nil {
-			return err
+		t.Fatalf("register: %v", err)
+	}
+	t.Cleanup(func() { _ = s.deleteTask(`\`, name) })
+	if err := s.register(`\`, name, xml, taskCreate, logonInteractiveToken); !errors.Is(err, hrAlreadyExists) {
+		t.Fatalf("TASK_CREATE again: %v, want 0x800700B7", err)
+	}
+	if err := s.register(`\`, name, xml, taskCreateOrUpdate, logonInteractiveToken); err != nil {
+		t.Fatalf("TASK_CREATE_OR_UPDATE: %v", err)
+	}
+	if err := s.register(`\`, name+"-missing", xml, taskUpdate, logonInteractiveToken); !errors.Is(err, hrFileNotFound) {
+		t.Fatalf("TASK_UPDATE of a missing task: %v, want 0x80070002", err)
+	}
+
+	entries, err := s.list(`\`)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	found := false
+	for _, e := range entries {
+		if e.Name == name {
+			found = true
+			if e.State != stateReady || uint32(e.LastResult) != 0x00041303 { //nolint:gosec // an HRESULT-shaped result
+				t.Fatalf("listed %+v, want ready and never run (SCHED_S_TASK_HAS_NOT_RUN)", e)
+			}
 		}
-		defer freeBSTR(xb)
-		var empty [3]variant
-		var out *comObj
-		hr := f.call(folderRegisterTask, nb, xb, uintptr(taskCreateOrUpdate),
-			ptr(&empty[0]), ptr(&empty[1]), uintptr(logonInteractiveToken),
-			ptr(&empty[2]), ptr(&out))
-		out.release()
-		return checkHR(hr)
-	})
+	}
+	if !found {
+		t.Fatalf("%s not listed among %d tasks", name, len(entries))
+	}
+
+	r, err := s.open(`\`, name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := r.principal()
+	if err != nil {
+		t.Fatalf("principal: %v", err)
+	}
+	user, err := windows.GetCurrentProcessToken().GetTokenUser()
+	if err != nil {
+		t.Fatal(err)
+	}
+	account, _, _, err := user.User.Sid.LookupAccount("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.EqualFold(p.UserID, account) || p.LogonType != logonInteractiveToken || p.RunLevel != 0 {
+		t.Fatalf("principal %+v; want this account's name, InteractiveToken, least privilege", p)
+	}
+
+	folder := `\selfupdate-probe-` + randomHex()
+	switch err := s.createFolder(folder); {
+	case errors.Is(err, hrAccessDenied):
+		t.Logf("createFolder %s: %v; the folder steps are skipped", folder, err)
+	case err != nil:
+		t.Fatalf("createFolder: %v", err)
+	default:
+		t.Cleanup(func() { _ = comDeleteFolder(folder) })
+		if err := s.createFolder(folder); !errors.Is(err, hrAlreadyExists) {
+			t.Fatalf("createFolder again: %v, want 0x800700B7", err)
+		}
+		if err := s.register(folder, "t", xml, taskCreate, logonInteractiveToken); err != nil {
+			t.Fatalf("register in %s: %v", folder, err)
+		}
+		if in, err := s.list(folder); err != nil || len(in) != 1 || in[0].Name != "t" {
+			t.Fatalf("list %s: %+v, %v", folder, in, err)
+		}
+		if err := s.deleteTask(folder, "t"); err != nil {
+			t.Fatalf("delete in %s: %v", folder, err)
+		}
+	}
+
+	if err := s.deleteTask(`\`, name); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if err := s.deleteTask(`\`, name); !errors.Is(err, hrFileNotFound) {
+		t.Fatalf("delete again: %v, want 0x80070002", err)
+	}
+	if err := s.deleteTask(`\selfupdate-missing-`+randomHex(), "t"); !errors.Is(err, hrFileNotFound) {
+		t.Fatalf("delete in a missing folder: %v, want 0x80070002", err)
+	}
 }
 
-func comDelete(name string) error {
+func comDeleteFolder(path string) error {
 	return withFolder(`\`, func(f *comObj) error {
-		nb, err := sysString(name)
+		b, err := sysString(strings.TrimPrefix(path, `\`))
 		if err != nil {
 			return err
 		}
-		defer freeBSTR(nb)
-		return checkHR(f.call(folderDeleteTask, nb, 0))
+		defer freeBSTR(b)
+		return checkHR(f.call(folderDeleteFolder, b, 0))
 	})
 }
 

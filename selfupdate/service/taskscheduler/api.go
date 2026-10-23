@@ -27,6 +27,12 @@ const (
 // actionExec is TASK_ACTION_EXEC.
 const actionExec = 0
 
+// Registration flags (TASK_CREATION) the package passes.
+const (
+	taskCreate         = 0x2 // TASK_CREATE: a name in use is hrAlreadyExists
+	taskCreateOrUpdate = 0x6 // TASK_CREATE | TASK_UPDATE
+)
+
 // Logon types (TASK_LOGON_TYPE), named in errors.
 const (
 	logonNone             = 0 // TASK_LOGON_NONE
@@ -49,6 +55,10 @@ const (
 	hrAccessDenied   = hresult(0x80070005) // HRESULT_FROM_WIN32(ERROR_ACCESS_DENIED)
 	hrTaskNotRunning = hresult(0x8004130B) // SCHED_E_TASK_NOT_RUNNING: GetInstances when idle
 	hrTaskDisabled   = hresult(0x80041326) // SCHED_E_TASK_DISABLED: Run, or RunEx, on a disabled task
+	// hrAlreadyExists is HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS):
+	// TASK_CREATE on an existing task, or CreateFolder of an existing
+	// folder (0032-MADR Amendment A1, P1-3 and P1-4).
+	hrAlreadyExists = hresult(0x800700B7)
 )
 
 func logonName(t int32) string {

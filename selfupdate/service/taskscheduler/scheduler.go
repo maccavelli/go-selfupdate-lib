@@ -21,6 +21,42 @@ type scheduler interface {
 	// running reports whether pid still runs as the process created at
 	// born. A born of 0 is matched by the process ID alone.
 	running(pid uint32, born uint64) bool
+	// register registers a definition as name in folder
+	// (ITaskFolder::RegisterTask, no user), with TASK_CREATION flags and a
+	// TASK_LOGON_TYPE. TASK_CREATE on an existing task is hrAlreadyExists,
+	// and a missing folder is hrFileNotFound (0032-MADR Amendment A1,
+	// P1-4).
+	register(folder, name, xml string, flags, logon int32) error
+	// deleteTask deletes a task (ITaskFolder::DeleteTask). A missing task,
+	// or one in a missing folder, is hrFileNotFound. A running instance is
+	// not ended (0032-MADR Amendment A1, P1-4 and P1-5).
+	deleteTask(folder, name string) error
+	// createFolder creates a folder, such as `\Vendor\Product`, with every
+	// missing level (ITaskFolder::CreateFolder on the root). An existing
+	// folder is hrAlreadyExists.
+	createFolder(path string) error
+	// list lists a folder's tasks, hidden ones included
+	// (ITaskFolder::GetTasks with TASK_ENUM_HIDDEN).
+	list(folder string) ([]listed, error)
+}
+
+// listed is one task of a folder's listing.
+type listed struct {
+	Name       string
+	State      int32
+	LastResult int32
+	LastRun    time.Time
+}
+
+// principal is a task's principal.
+type principal struct {
+	// UserID is IPrincipal::get_UserId: the account's name without its
+	// domain, though the stored definition holds its SID (0032-MADR
+	// Amendment A1, P2-6).
+	UserID    string
+	LogonType int32
+	// RunLevel is TASK_RUNLEVEL_TYPE: 0 least privilege, 1 highest.
+	RunLevel int32
 }
 
 // registered is one open registered task.
@@ -45,6 +81,8 @@ type registered interface {
 	actions() ([]action, error)
 	// logonType is the principal's TASK_LOGON_TYPE.
 	logonType() (int32, error)
+	// principal is the task's principal.
+	principal() (principal, error)
 	// lastRun is the last run's result and start time.
 	lastRun() (lastRun, error)
 	// xml is the registered definition (IRegisteredTask::get_Xml).
