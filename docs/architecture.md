@@ -188,7 +188,7 @@ docs/
     (`journal.go`) and `KeptBackups` (`standalone.go`, `managed.go`).
 - The API of [0025-MADR](decisions/0025-MADR-align-with-go-sdk-design-practices.md), by file:
   - **the common path:** `githubupdater.go` (`NewGitHubUpdater`,
-    `GitHubUpdaterOptions`, and its default client);
+    `GitHubUpdaterOptions`, and `DefaultHTTPClient`);
   - **seams:** `Clock`, `ClockFunc`, `Config.Clock` and
     `CheckerConfig.Clock` (`types.go`, `adapters.go`, `checker.go`),
     `NewVersionProberWith` and `VersionProbeOptions`
@@ -281,7 +281,8 @@ docs/
     `TemplateInstance` and `ValidUnitName` (`name.go`);
   - **`launchd`:** `launchctl` exit codes, `list`, and `print`'s top-level
     `pid` and `state` lines only; `Stop` waits until the job has left the
-    domain and its process has exited; `plutil` for the plist, its values
+    domain and its process has exited; `Loaded`, and `Status`, every
+    state from one probe; `plutil` for the plist, its values
     read with their types; a rewritten plist reloaded when the job is
     loaded but not running; `Inside` by process group or ancestry; the
     handoff by a one-shot job, and `CleanupHandOffs`, which removes the

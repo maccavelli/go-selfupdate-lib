@@ -8,6 +8,32 @@ listed in the
 [migration guide](docs/guides/migrating-from-mcplib-selfupdate.md), one
 section per release, and each entry links its section and its records.
 
+## Unreleased
+
+See [the guide](docs/guides/migrating-from-mcplib-selfupdate.md#18-from-v117-to-v118),
+[0031-MADR](docs/decisions/0031-MADR-export-default-http-client-and-launchd-status.md) and
+[0031-PLAN](docs/decisions/0031-PLAN-export-default-http-client-and-launchd-status.md),
+from [issue #5](https://github.com/maccavelli/go-selfupdate-lib/issues/5) and
+[issue #4](https://github.com/maccavelli/go-selfupdate-lib/issues/4).
+
+### Added
+
+- `selfupdate.DefaultHTTPClient`, the client the library recommends for
+  `GitHubOptions.Client` and `NewGitHubUpdater`'s default: transport
+  timeouts and no `Client.Timeout`, new on each call.
+- `launchd.Job.Loaded`, whether launchd knows the job in its domain.
+- `launchd.Job.Status` and `launchd.Status`: a job's installed, loaded,
+  enabled and running states and its PID, from one launchd probe, with
+  JSON tags.
+
+### Changed
+
+- `NewGitHubSource`'s error for a nil `GitHubOptions.Client` names
+  `selfupdate.DefaultHTTPClient()`.
+- The migration guide's `update.go` and `ExampleNew_standalone` pass
+  `DefaultHTTPClient()`; the guide passed `&http.Client{Timeout: …}`,
+  which the field's documentation advises against.
+
 ## v1.17.2 - 2026-10-21
 
 See [the guide](docs/guides/migrating-from-mcplib-selfupdate.md#from-v1171-to-v1172),

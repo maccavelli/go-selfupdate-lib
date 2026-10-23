@@ -195,7 +195,7 @@ The steps below are prepare-commit-msg's, proven on a scratch copy of it at
 
 **`go.mod`.** Require go-selfupdate-lib `v1.17.2`, with `go 1.26.10`. The steps
 were proven at `v1.5.0`; every later release only adds to the API, so
-they still build. §6 to §17 list the behaviour later releases changed;
+they still build. §6 to §18 list the behaviour later releases changed;
 among them, the `--json` result is now `schema_version` 4 (§13). `mcplib` stays
 only if something else still imports it; in prepare-commit-msg,
 `llmprovider` and `wizard` do.
@@ -207,9 +207,6 @@ checks and `runUpdate` all go. What is left builds the updater:
 package main
 
 import (
-    "net/http"
-    "time"
-
     "github.com/maccavelli/go-selfupdate-lib/buildinfo"
     "github.com/maccavelli/go-selfupdate-lib/selfupdate"
     "github.com/maccavelli/go-selfupdate-lib/selfupdate/cli"
@@ -220,9 +217,6 @@ const (
     archARM64 = "arm64"
 )
 
-// updateTimeout bounds each GitHub request. cli.Run bounds the whole run.
-const updateTimeout = 15 * time.Minute
-
 // newUpdateUpdater builds the updater; tests replace it.
 var newUpdateUpdater = defaultNewUpdateUpdater
 
@@ -232,7 +226,9 @@ var updateOptions = cli.StdioOptions
 func defaultNewUpdateUpdater() (*selfupdate.Updater, error) {
     src, err := selfupdate.NewGitHubSource(selfupdate.GitHubOptions{
         Repository: selfupdate.Repository{Owner: "maccavelli", Name: "prepare-commit-msg"},
-        Client:     &http.Client{Timeout: updateTimeout},
+        // Transport timeouts and no Client.Timeout: cli.Run's context
+        // bounds the whole run, a large download included.
+        Client:     selfupdate.DefaultHTTPClient(),
         UserAgent:  selfupdate.UserAgent(AppTitle, buildinfo.Identity().Current()),
         Limits:     selfupdate.DefaultLimits(),
     })
@@ -418,7 +414,7 @@ go get github.com/maccavelli/go-selfupdate-lib@v1.17.2
 ```
 
 This takes the current release; what each later release adds is in §7
-to §17, from [7. From v1.6 to v1.7](#7-from-v16-to-v17) on. Every
+to §18, from [7. From v1.6 to v1.7](#7-from-v16-to-v17) on. Every
 exported change is an addition, so a program that built on `v1.5.x` builds unchanged. These are
 the behaviours that change, and what to do about each. Why, and how, is in
 [0010-MADR](../decisions/0010-MADR-remediate-second-debugging-pass-findings.md)
@@ -1367,3 +1363,59 @@ Adopting it:
 - With the hook, a rehearsal's staged `install.sh` holds a
   `before_uninstall` line in its `HOOKS` block, and `install.ps1` one in
   its `$Hooks` list.
+
+## 18. From v1.17 to v1.18
+
+```bash
+go get github.com/maccavelli/go-selfupdate-lib@v1.18.0
+```
+
+`v1.18.0` adds what
+[issue #5](https://github.com/maccavelli/go-selfupdate-lib/issues/5) and
+[issue #4](https://github.com/maccavelli/go-selfupdate-lib/issues/4) asked
+for. `make apicheck` reports it compatible with `v1.17.2`: every exported
+change is an addition. Why, and how, is in
+[0031-MADR](../decisions/0031-MADR-export-default-http-client-and-launchd-status.md);
+what each change does is in the [changelog](../../CHANGELOG.md).
+
+### What is new
+
+- **`selfupdate.DefaultHTTPClient()`** returns the client the library
+  recommends for `GitHubOptions.Client`, and the one `NewGitHubUpdater`
+  uses when its `Client` is nil: transport timeouts (30 s to dial, 10 s
+  for TLS, 30 s for response headers) and no `Client.Timeout`, so a
+  context bounds a large download. Each call returns a new client and a
+  new `*http.Transport`, which are yours to adjust.
+- **`launchd.Job.Loaded`** reports whether launchd knows the job in its
+  domain, with the probe `Running` uses: exit 113 is "not loaded", and
+  any other failure is an error.
+- **`launchd.Job.Status`** returns a `launchd.Status` with the job's
+  `Installed`, `Loaded`, `Enabled`, `Running` and `PID`, from one launchd
+  probe. Its JSON keys are `installed`, `loaded`, `enabled`, `running`
+  and `pid`. A job whose plist is gone can still be loaded; `Status`
+  reports it, with `Enabled` false.
+
+### Behaviour you may notice
+
+- **A nil `GitHubOptions.Client` is still refused,** and the error now
+  names the fix: `selfupdate: github client is required; use
+  selfupdate.DefaultHTTPClient()`. A test that compared the old text
+  exactly no longer matches.
+- **This guide's §5 `update.go`** passes `DefaultHTTPClient()`. It passed
+  `&http.Client{Timeout: 15 * time.Minute}`, under which a request that
+  stalls before its headers waits the whole 15 minutes.
+
+### Adopting it
+
+- **Nothing is required.**
+- **If you pass `&http.Client{Timeout: …}`** as `GitHubOptions.Client`,
+  pass `selfupdate.DefaultHTTPClient()` and bound the run with a context
+  instead; `cli.Run` already does. `Client.Timeout` bounds the whole
+  download too, so a slow large one is cut off.
+- **A launchd status command** that runs `launchctl print` itself can
+  call `Job.Status`, or `Job.Loaded` for that state alone.
+
+### Check
+
+- `go build ./...`, `go vet ./...` and `go test ./...` pass.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.18.0`.

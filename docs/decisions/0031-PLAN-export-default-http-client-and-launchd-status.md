@@ -286,3 +286,24 @@ the index row. The MADR stays `accepted`.
   type.
 * `make pre-add-check` on the four Go files: "4 file(s) clean (gofmt,
   golangci-lint, go vet, go test, govulncheck)".
+
+### H3: the documents (2026-10-23)
+
+* H1 was committed as `8ed3fb0` and H2 as `37de6a1`, on the owner's
+  "commit to main".
+* **The migration guide:** §5's `update.go` loses `net/http`, `time` and
+  `updateTimeout`, and passes `selfupdate.DefaultHTTPClient()` with a
+  comment that `cli.Run`'s context bounds the run. "§6 to §17" and "§7
+  to §17" read §18. `## 18. From v1.17 to v1.18` is added after §17.
+* **`CHANGELOG.md`:** `## Unreleased`, with Added and Changed, linking
+  §18, this pair and both issues.
+* **`docs/architecture.md`:** the common path names `DefaultHTTPClient`,
+  and the `launchd` paragraph names `Loaded` and `Status`.
+* **The snippet:** §5's `update.go`, extracted with a stub for `AppTitle`
+  and `main`, in a scratch module outside the repository that replaces
+  this module with the working tree: `go mod tidy`, `go vet ./...` and
+  `go build` each exit 0.
+* **A window until H4:** §5 still says "Require go-selfupdate-lib
+  `v1.17.2`", which has no `DefaultHTTPClient`, until H4's pin commit
+  moves it to `v1.18.0`, as step 2 planned. A reader who follows §5 from
+  `main` before the tag cannot build it against `v1.17.2`.
