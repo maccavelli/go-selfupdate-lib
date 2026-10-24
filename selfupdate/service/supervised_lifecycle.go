@@ -179,8 +179,12 @@ func (s *Supervised) Start(ctx context.Context, _ string) error {
 //   - State reports the service Failed;
 //   - the instance changes after one has counted: it restarted during the
 //     wait;
-//   - State reports it Restarting after it was up, or twice in a row:
-//     it keeps exiting while its supervisor starts it again.
+//   - State reports it Restarting after a new instance was up: it
+//     exited; or Restarting has lasted, without a break, longer than the
+//     settle window (DefaultPollSettle when there is none) with no new
+//     instance ever up: it keeps exiting too fast to be seen up. One
+//     restart before the first up is tolerated, though a supervisor such
+//     as s6 shows it for a second (0035-PLAN Deviation D3).
 //
 // Then Options.Probe, the program's application check, runs, as for the
 // other backends. Errors, matched with errors.Is: ErrUnhealthy and
@@ -194,7 +198,12 @@ func (s *Supervised) WaitHealthy(ctx context.Context, _ string) error {
 		poll.Previous = rec.String()
 	}
 	var counted string
-	wasUp, restarts := false, 0
+	var restartingSince time.Time
+	wasUp := false
+	loop := poll.withDefaults().Settle
+	if loop <= 0 {
+		loop = DefaultPollSettle
+	}
 	probe := func(ctx context.Context) (Health, error) {
 		st, err := s.state(ctx)
 		if err != nil {
@@ -206,14 +215,21 @@ func (s *Supervised) WaitHealthy(ctx context.Context, _ string) error {
 			return h, nil
 		}
 		if st.Restarting {
-			restarts++
-			if wasUp || restarts >= 2 {
+			now := s.now()
+			if restartingSince.IsZero() {
+				restartingSince = now
+			}
+			switch {
+			case wasUp:
 				h.Failed = true
-				h.Detail = fmt.Sprintf("%s keeps exiting while its supervisor starts it again (%s)", s.name, h.Detail)
+				h.Detail = fmt.Sprintf("%s exited after it was up, and its supervisor is starting it again (%s)", s.name, h.Detail)
+			case now.Sub(restartingSince) > loop:
+				h.Failed = true
+				h.Detail = fmt.Sprintf("%s keeps exiting while its supervisor starts it again, for over %s (%s)", s.name, loop, h.Detail)
 			}
 			return h, nil
 		}
-		restarts = 0
+		restartingSince = time.Time{}
 		if !st.Up || st.Instance == "" || st.Instance == poll.Previous {
 			return h, nil
 		}
@@ -286,17 +302,30 @@ func (*Supervised) Restore(context.Context, string, selfupdate.ReconcileResult) 
 }
 
 // Detach implements Detacher: Options.DetachCheck, when set, runs first,
-// and its error refuses the handoff, wrapped with ErrUnsupported; then
-// DetachProcess starts the run in a new session, with the service
-// manager's per-unit variables left out of its environment (D8-A;
-// docs/decisions/0033-MADR-scrub-service-manager-environment-from-handoffs.md).
+// and its error refuses the handoff, wrapped with ErrUnsupported. Then the
+// run starts through the hop (EnvHandOffHop): DetachProcess starts a hop in
+// a new session, with the service manager's per-unit variables left out of
+// its environment, and the hop starts the real run and exits. The real run
+// waits for the hop to exit, so its parent chain no longer reaches the
+// service, and its Stop is not refused as inside
+// (0035-PLAN-serve-supervisors-through-a-supervised-adapter.md Deviation
+// D2, as scm's since docs/decisions/0011-MADR-reference-service-lifecycles.md
+// amendment A4; docs/decisions/0033-MADR-scrub-service-manager-environment-from-handoffs.md).
+// The program completes the hop by calling ReportFunc or LoadHandOffEnv
+// first in main, as a detached run does anyway.
 func (s *Supervised) Detach(ctx context.Context, spec HandOff) (Detached, error) {
 	if s.o.DetachCheck != nil {
 		if err := s.o.DetachCheck(ctx); err != nil {
 			return Detached{}, fmt.Errorf("%w: %w", ErrUnsupported, s.fail("hand an update off from", err))
 		}
 	}
-	return DetachProcess(ctx, spec)
+	spec.Env = append(append([]string(nil), spec.Env...), EnvHandOffHop+"=1")
+	det, err := s.detach(ctx, spec)
+	if err != nil {
+		return Detached{}, err
+	}
+	det.Where = "a detached run, started through the hop " + det.Where
+	return det, nil
 }
 
 // sleepCtx sleeps for d, or until ctx ends.

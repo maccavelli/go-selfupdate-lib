@@ -146,7 +146,7 @@ docs/
 | `selfupdate/verify/ghattest/` | `ghattest` | 2 | 3, plus a `testdata/` capture of `gh attestation verify --format json` | none (`selfupdate`, `service`) |
 | `selfupdate/verify/signednote/` | `signednote` | 3 | 4, including a fuzz target | `x/mod/semver`, `x/mod/sumdb/note` (and `selfupdate`) |
 | `selfupdate/releasespec/` | `releasespec` | 4 | 5, including a fuzz target, plus 4 `testdata/` specs and 3 `testdata/fuzz/` seeds | none (`selfupdate`, `archive`) |
-| `selfupdate/service/` | `service` | 21 | 22 | `x/sys/windows` (and `selfupdate`, `internal/winproc`, `internal/procfs`) |
+| `selfupdate/service/` | `service` | 21 | 24 | `x/sys/windows` (and `selfupdate`, `internal/winproc`, `internal/procfs`) |
 | `selfupdate/service/systemd/` | `systemd` | 9 | 18, plus 3 `testdata/` captures of `systemctl show` | none (`selfupdate`, `service`) |
 | `selfupdate/service/launchd/` | `launchd` | 7 | 14, plus 7 `testdata/` captures of `launchctl print` and `list` | none (`selfupdate`, `service`) |
 | `selfupdate/service/scm/` | `scm` | 7 | 13 | `x/sys/windows`, `x/sys/windows/svc`, `x/sys/windows/svc/mgr` (and `selfupdate`, `service`, `internal/winproc`) |
@@ -804,7 +804,12 @@ D9; the threat analysis is
     - Linux: "ownership as root", the staging-owner test under `sudo`
       (`SELFUPDATE_REQUIRE_ROOT`); the systemd live tests, in system scope
       under `sudo` and in the runner's user scope
-      (`SELFUPDATE_REQUIRE_SYSTEMD`);
+      (`SELFUPDATE_REQUIRE_SYSTEMD`); and the supervised adapter's live
+      test over an s6 tree the test starts as the runner user, with `s6`
+      installed from the distribution
+      (`SELFUPDATE_REQUIRE_SUPERVISED`;
+      [0035-PLAN](decisions/0035-PLAN-serve-supervisors-through-a-supervised-adapter.md)
+      M6);
     - macOS: the launchd live tests (`SELFUPDATE_REQUIRE_LAUNCHD`) and the
       ad-hoc codesign live tests (`SELFUPDATE_REQUIRE_CODESIGN`);
     - Windows: the SCM live tests (`SELFUPDATE_REQUIRE_SCM`), and the

@@ -23,7 +23,7 @@ func SameExecutable(a, b string) bool {
 	if err != nil {
 		return false
 	}
-	ib, err := os.Stat(cb)
+	ib, err := os.Stat(cb) //nolint:gosec // metadata of a path the caller names; nothing is opened, read or written
 	if err != nil {
 		return false
 	}

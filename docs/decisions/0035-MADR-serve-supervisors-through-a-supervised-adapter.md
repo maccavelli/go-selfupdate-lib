@@ -357,7 +357,10 @@ recommended one first.
   * it reports `Failed` when the instance changes after one has counted,
     which is a restart during the wait;
   * it reports `Failed` when `State.Restarting`, a "down, want up", is
-    seen after the service was up, or twice in a row.
+    seen after the service was up, or twice in a row. *(0035-PLAN
+    Deviation D3: "twice in a row" counted observations, so one exit
+    under s6's 1 s restart delay failed the wait. It is now `Restarting`
+    lasting longer than the settle window with no new instance ever up.)*
 
   Then `Options.Probe` runs, the program's application check, as for
   the other backends. This keeps every failure of F30, and the settle
@@ -389,7 +392,10 @@ recommended one first.
   refuses the handoff, wrapped with `ErrUnsupported`. For an OpenRC
   service under `rc_cgroup_cleanup=YES`, the program refuses there
   (F24). Then `DetachProcess` runs, with its new session and scrubbed
-  environment (F7).
+  environment (F7). *(0035-PLAN Deviation D2: through the hop,
+  `SELFUPDATE_HANDOFF_HOP=1`, as `scm`'s handoff since 0011-MADR
+  Amendment A4. Without it, the run descends from the service's process,
+  and the adapter's own `Stop` refuses it as inside.)*
 * **D8-B.** A built-in cgroup rule: refuse when this process shares the
   supervised process's cgroup.
 * **D8-C.** `DetachProcess` with no check.

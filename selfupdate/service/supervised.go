@@ -134,6 +134,7 @@ type Supervised struct {
 	self     func() int
 	now      func() time.Time
 	sleep    func(context.Context, time.Duration) error
+	detach   func(context.Context, HandOff) (Detached, error)
 
 	mu sync.Mutex
 	// recorded is the instance Stop saw, and binary the binary it ran.
@@ -181,7 +182,7 @@ func supervisedOn(o SupervisedOptions, goos string) (*Supervised, error) {
 	}
 	return &Supervised{
 		o: o, name: name, readStat: procfs.ReadStat, exe: procfs.Exe, self: os.Getpid,
-		now: time.Now, sleep: sleepCtx,
+		now: time.Now, sleep: sleepCtx, detach: DetachProcess,
 	}, nil
 }
 

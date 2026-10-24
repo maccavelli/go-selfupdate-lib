@@ -72,7 +72,7 @@ func TestSupervisedHandOffReal(t *testing.T) {
 		Env:        []string{fakeEnv + "=envfile", "FAKE_OUT=" + out},
 		ResultPath: filepath.Join(t.TempDir(), "result"),
 	})
-	if err != nil || !handed || !strings.HasPrefix(det.Where, "process ") {
+	if err != nil || !handed || !strings.Contains(det.Where, "through the hop process ") {
 		t.Fatalf("HandOffIfInside: %+v, %t, %v", det, handed, err)
 	}
 	var body []byte

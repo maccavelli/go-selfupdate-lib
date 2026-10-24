@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -68,15 +69,16 @@ func TestSupervisedWaitHealthy(t *testing.T) {
 		seq  []SupervisedState
 		want error
 	}{
-		"a new instance settles":                {[]SupervisedState{upAs(101)}, nil},
-		"ready where the supervisor reports it": {[]SupervisedState{readyTrue}, nil},
-		"one restart before it comes up":        {[]SupervisedState{restarting, upAs(101)}, nil},
-		"failed":                                {[]SupervisedState{upAs(101), failed}, ErrUnhealthy},
-		"restarted during the wait":             {[]SupervisedState{upAs(101), upAs(101), upAs(102)}, ErrUnhealthy},
-		"restarting after it was up":            {[]SupervisedState{upAs(101), restarting}, ErrUnhealthy},
-		"restarting twice in a row":             {[]SupervisedState{restarting, restarting, upAs(101)}, ErrUnhealthy},
-		"not ready, where the supervisor says":  {[]SupervisedState{readyFalse}, ErrTimeout},
-		"only the instance the stop recorded":   {[]SupervisedState{upAs(100)}, ErrTimeout},
+		"a new instance settles":                   {[]SupervisedState{upAs(101)}, nil},
+		"ready where the supervisor reports it":    {[]SupervisedState{readyTrue}, nil},
+		"one restart before it comes up":           {[]SupervisedState{restarting, upAs(101)}, nil},
+		"failed":                                   {[]SupervisedState{upAs(101), failed}, ErrUnhealthy},
+		"restarted during the wait":                {[]SupervisedState{upAs(101), upAs(101), upAs(102)}, ErrUnhealthy},
+		"restarting after it was up":               {[]SupervisedState{upAs(101), restarting}, ErrUnhealthy},
+		"several readings of one restart":          {[]SupervisedState{restarting, restarting, restarting, restarting, upAs(101)}, nil},
+		"restarting longer than the settle window": {[]SupervisedState{restarting}, ErrUnhealthy},
+		"not ready, where the supervisor says":     {[]SupervisedState{readyFalse}, ErrTimeout},
+		"only the instance the stop recorded":      {[]SupervisedState{upAs(100)}, ErrTimeout},
 	} {
 		s := healthOver(t, nil, c.seq...)
 		if errors.Is(c.want, ErrTimeout) {
@@ -150,5 +152,29 @@ func TestSupervisedDetachCheck(t *testing.T) {
 	s = fakeSupervised(t, SupervisedOptions{State: states(up100, nil)}, table(), 400)
 	if _, err := s.Detach(ctx, HandOff{Executable: "demo"}); err == nil || errors.Is(err, ErrUnsupported) {
 		t.Fatalf("Detach with no check: %v, want DetachProcess's own error", err)
+	}
+}
+
+// TestSupervisedDetachHop: the run starts through the hop, so it does not
+// descend from the service once the hop has exited (0035-PLAN Deviation
+// D2), and the caller's environment is not changed.
+func TestSupervisedDetachHop(t *testing.T) {
+	testproc.CheckNoLeak(t)
+	s := fakeSupervised(t, SupervisedOptions{State: states(up100, nil)}, table(), 400)
+	var got HandOff
+	s.detach = func(_ context.Context, spec HandOff) (Detached, error) {
+		got = spec
+		return Detached{ID: spec.ID, Where: "process 4242"}, nil
+	}
+	env := []string{"A=1"}
+	det, err := s.Detach(context.Background(), HandOff{ID: "x", Executable: "/opt/demo/demo", Env: env})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(got.Env, EnvHandOffHop+"=1") || !strings.Contains(det.Where, "through the hop") {
+		t.Fatalf("spec env %q, where %q; want the hop", got.Env, det.Where)
+	}
+	if len(env) != 1 {
+		t.Fatalf("the caller's environment slice was changed: %q", env)
 	}
 }

@@ -711,3 +711,145 @@ this plan.
     `NewSupervised` and the twelve methods of `*Supervised`.
   * `docs/architecture.md`'s `service` row is 21 source and 22 test
     files.
+
+### Deviation D2 (2026-10-24): `Detach` goes through the hop
+
+* **Found before M6's live test.**
+  * M5's `Supervised.Detach` called `DetachProcess` directly. On Unix,
+    that starts the run in a new session, as a child of the calling
+    process (`detach_unix.go`). In a handoff that is the service's
+    process.
+  * So the detached run descends from the service until the service
+    exits, and the adapter's own `Stop`, called in that run, refuses it
+    with `ErrInsideService` (D7-A). The handoff could never apply an
+    update.
+  * 0011-MADR Amendment A4 found the same flaw for the SCM handoff, and
+    solved it with the two-hop detach.
+  * M5's `TestSupervisedHandOffReal` did not catch it, because it checks
+    only that the detached run starts.
+* **Decision (the owner, 2026-10-24, "Two-hop detach").**
+  * `Detach` adds `SELFUPDATE_HANDOFF_HOP=1` to the spec's environment
+    and calls `DetachProcess`, as `scm.Service.Detach` does.
+  * The hop starts the real run and exits, and the real run waits for
+    the hop to exit (`HandOffHop`, `hopwait_unix.go`), after which its
+    parent chain stops outside the service.
+  * A program already calls `ReportFunc` or `LoadHandOffEnv` first in
+    `main`, which completes the hop.
+* **Files added to M6's scope:**
+  * `supervised_lifecycle.go` (`Detach`, and its documentation);
+  * `supervised_health_test.go` (a fake test that the hop is
+    requested);
+  * the MADR, whose D8-A is annotated in place.
+
+  M6's live test proves a real handoff completes. Its plant, (s), drops
+  the hop.
+
+### Deviation D3 (2026-10-24): a crash loop is an exit after up, or a restart that lasts too long
+
+* **Found in M6's first live run on the WSL.**
+  * The update cycle passed, and the crash loop failed with
+    `ErrUnhealthy`.
+  * Then `WaitHealthy`, called just after the crash flag was removed,
+    failed at once: "s6 live keeps exiting while its supervisor starts
+    it again".
+  * D6-A's "`Restarting` … twice in a row" counts observations, not
+    exits. s6 waits a second before it starts a service that died again
+    (F19), so one exit reads as about ten "down, want up" observations
+    at a 100 ms poll.
+  * One exit before the first up therefore failed the wait. That is
+    stricter than the consumer's `settle`, which samples once a second
+    and tolerates one exit (F30).
+* **Decision (the owner, 2026-10-24, "Exit after up, or too long").**
+  `WaitHealthy` fails with `ErrUnhealthy` on `Restarting` when:
+  * it is seen after a new instance was seen up: an exit after up, as
+    before;
+  * or it has lasted, without a break, longer than the settle window
+    (`DefaultPollSettle` when there is none), with no new instance ever
+    up: a loop too fast to be seen up.
+
+  One restart before the first up is tolerated.
+* **Files in M6's scope:**
+  * `supervised_lifecycle.go` (`WaitHealthy`, and its documentation);
+  * `supervised_health_test.go`: the case "restarting twice in a row"
+    becomes "restarting longer than the settle window", with a new case
+    for several readings of one restart before up;
+  * the MADR, whose D6-A is annotated in place.
+
+  Plant (o) still applies.
+
+### M6: the live s6 test (2026-10-24)
+
+* M5 was committed by the owner as `99ceb2f`. Deviations D2 and D3,
+  above, were decided at stops in this phase and recorded before their
+  code.
+* **`supervised_live_linux_test.go`** (new), behind
+  `SELFUPDATE_REQUIRE_SUPERVISED=1`:
+  * `s6Tool` finds the s6 tools in fixed directories, never on `PATH`.
+  * `s6Supervised` is the adapter over a service directory, with a
+    reference `State` over `s6-svstat -o up,wantedup,pid` (exit 1 is
+    `ErrNoSupervisor`), and `Up`, `Down` and `Kill` over `s6-svc -u`,
+    `-d` and `-k`, through `ExecRunner`.
+  * The modes are `s6service` (the service, which exits 3 while a
+    `crash` file exists, and hands off on a `trigger` file) and
+    `s6update` (the detached run).
+  * The test starts `s6-svscan` as the user over its own scan
+    directory. It then runs:
+    1. the update cycle: stop, replace, reconcile, start, health wait,
+       with the new instance running the new build, read through
+       `/proc/<pid>/exe`;
+    2. a crash loop, which fails with `ErrUnhealthy`, then recovers;
+    3. a handoff from inside the service. Its detached run is not
+       inside, and it stops, replaces, reconciles, starts and checks the
+       service, leaving the handed-off build running.
+
+    The cleanup sends `-k` before `-dx` (Amendment A1, P2).
+* **`supervised_live_other_test.go`** (new): the mode stub off Linux.
+  **`main_test.go`:** `fakeTool` falls through to `supervisedLiveMode`.
+* **`.github/workflows/ci.yml`:** the Linux job's "supervised adapter
+  live test (s6)" step runs `apt-get update` and `install s6`, then the
+  test with the switch. `actionlint`: clean.
+  **`docs/architecture.md`:** the CI section names the switch, and the
+  `service` row is 21 source and 24 test files.
+* **Tooling correction.** I first wrote a cross-compiling driver,
+  having checked the WSL for Go with a non-login `sh`, which does not
+  see it. The owner corrected this: "the wsl absolutely has a go
+  toolchain". Its Go 1.27.3 is on the login shell's `PATH`. The runs
+  below are native `go test` in the WSL, through `remoterun.py wsl`
+  (`bash -lc`).
+* **Runs:**
+  * The WSL's first live run passed the cycle and the crash loop, then
+    failed "WaitHealthy once the crash ended: … keeps exiting …", which
+    is Deviation D3.
+  * After D3: `--- PASS: TestLiveSupervisedS6 (8.62s)`, and again with
+    the whole package, `(8.68s)`.
+  * The five `selfupdate/service/...` packages pass on the Linux test
+    host, where the live test skips for want of s6, and `service` on the
+    Windows test host.
+  * After the runs the WSL had no `s6-svscan`, no `s6-supervise` and no
+    test directory left.
+* **Seen failing, live** (`scripts/plant-copy.sh`, the copy run in the
+  WSL):
+
+  | Plant | Failure |
+  | :--- | :--- |
+  | (s) `Detach` without the hop (D2) | `supervised_live_linux_test.go:356: handoff: result "error: the detached run is inside: true, <nil>", service "handed: true a detached run, started through the hop process 817"` |
+  | (t) `Restarting` timed from its first observation (D3) | `supervised_live_linux_test.go:339: WaitHealthy once the crash ended: … keeps exiting …, for over 2s`; and in the fakes, `supervised_health_test.go:89: one restart before it comes up: …` and `several readings of one restart: …` |
+  | (o) `Restarting` ignored | the live test passed, in 30.77 s: the crash loop's short-lived instances were caught by the restart rule instead, two different instances seen up. (o) is held by the fakes, where it failed in M5 and again after D3 |
+
+  Plan step 4 named (j) and (n) for the live test. (j), the wait bound
+  by the caller's context, cannot show there: the live test's context
+  never ends. (n), restart detection, is not what catches the live crash
+  loop, whose instances are rarely seen up. Both are held by the fakes.
+  The live plants are the three that the live test can show: the hop,
+  and the two crash-loop rules.
+* **M5's plants after D3:** (n), (o), (p), (q) and (r) each still fail
+  their fake tests.
+* **Checks:**
+  * `make pre-add-check` on eight files reports "8 file(s) clean
+    (gofmt, golangci-lint, go vet, go test, govulncheck)".
+  * The first run found gosec G703 at `sameexec.go:26`, a file outside
+    this phase. The taint ran from the live test's `FAKE_DIR`, through
+    `Reconcile`, into `SameExecutable`'s `os.Stat`. That `os.Stat` now
+    carries a justified `//nolint:gosec`: it reads metadata only, and
+    nothing is opened, read or written.
+  * `make apicheck` reports "compatible with v1.21.0".

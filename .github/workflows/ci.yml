@@ -61,6 +61,17 @@ jobs:
           go test -c -o "$RUNNER_TEMP/selfupdate.test" ./selfupdate
           sudo env SELFUPDATE_REQUIRE_ROOT=1 "$RUNNER_TEMP/selfupdate.test" \
             -test.run '^TestStagingTakesOwnerAsRoot$' -test.count=1 -test.v
+      # The supervised adapter over a real s6 tree, which the test starts
+      # as the runner user over its own scan directory
+      # (docs/decisions/0035-PLAN-serve-supervisors-through-a-supervised-adapter.md M6).
+      - name: supervised adapter live test (s6)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q s6
+          SELFUPDATE_REQUIRE_SUPERVISED=1 go test -count=1 -v \
+            -run '^TestLiveSupervisedS6$' ./selfupdate/service/
       # The systemd backend against the runner's real systemd: a throwaway
       # unit in system scope under sudo, then in the runner user's own
       # manager. The binary is built as the runner, as above

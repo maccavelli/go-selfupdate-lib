@@ -111,6 +111,9 @@ func fakeTool(mode string) int {
 	case "child":
 		return fakeChild()
 	}
+	if code, ok := supervisedLiveMode(mode); ok {
+		return code
+	}
 	return 2
 }
 
