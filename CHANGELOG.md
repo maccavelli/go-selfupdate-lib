@@ -8,6 +8,28 @@ listed in the
 [migration guide](docs/guides/migrating-from-mcplib-selfupdate.md), one
 section per release, and each entry links its section and its records.
 
+## Unreleased
+
+See [the guide](docs/guides/migrating-from-mcplib-selfupdate.md#20-from-v119-to-v120),
+[0033-MADR](docs/decisions/0033-MADR-scrub-service-manager-environment-from-handoffs.md) and
+[0033-PLAN](docs/decisions/0033-PLAN-scrub-service-manager-environment-from-handoffs.md),
+from [issue #7](https://github.com/maccavelli/go-selfupdate-lib/issues/7).
+
+### Added
+
+- `service.ManagerEnvNames`: the variables a service manager sets for
+  one unit or job.
+- `service.ScrubManagerEnv`: an environment without them.
+
+### Fixed
+
+- The systemd, launchd, SCM and Task Scheduler handoffs,
+  `service.DetachProcess` and `service.ExecReconciler` no longer pass
+  on the caller's unit's or job's own variables. A systemd run had the
+  caller's `INVOCATION_ID` in place of its own unit's, and its
+  `NOTIFY_SOCKET`; a launchd run had the caller's `XPC_SERVICE_NAME`. A
+  variable named in `HandOff.Env` or `ExecOptions.Env` still passes on.
+
 ## v1.19.0 - 2026-10-23
 
 See [the guide](docs/guides/migrating-from-mcplib-selfupdate.md#19-from-v118-to-v119),

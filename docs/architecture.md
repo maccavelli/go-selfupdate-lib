@@ -270,7 +270,11 @@ docs/
     environment file (`handoffenv*.go`), named by `ArgHandOffEnv` for a
     Task Scheduler run and private to the user on Windows, the Windows hop
     (`handoffhop.go`) and the real run's wait for the hop to exit
-    (`hopwait_*.go`); and `SameExecutable` (`sameexec.go`);
+    (`hopwait_*.go`); the service manager's per-unit variables, which
+    `ManagerEnvNames` lists and `ScrubManagerEnv` leaves out of every
+    environment `service` and its backends pass on (`managerenv.go`;
+    [0033-MADR](decisions/0033-MADR-scrub-service-manager-environment-from-handoffs.md));
+    and `SameExecutable` (`sameexec.go`);
   - **`systemd`:** probes over one `systemctl show` per call, read by key;
     `Stop`, `Start` and `WaitHealthy` on the unit's state and
     `InvocationID`, with the restart count read after the start; a

@@ -421,3 +421,29 @@ in place.
 * **Checks.** `make pre-add-check` on the two files: "2 file(s) clean
   (gofmt, golangci-lint, go vet, go test, govulncheck)". No `.go` file
   was added.
+
+### K5: the documents (2026-10-24)
+
+* K4 was committed by the owner as `1c3e0f2`.
+* **`docs/guides/extending-selfupdate.md`:**
+  * "Updating from inside the service" gains a bullet, "The run is not
+    your service". It names the groups `ManagerEnvNames` lists, what a
+    systemd and a launchd run had before (K1-2, K1-4), what still passes
+    on (MADR D2-C), that `HandOff.Env` passes any name, and
+    `ScrubManagerEnv` for a program's own children.
+  * The `ExecReconciler` text in "Run as a service" says the same for the
+    reconcile command and `ExecOptions.Env`, linking that section.
+* **The migration guide:** `## 20. From v1.19 to v1.20`, in §19's shape.
+  It does not say the journal attributes the run differently: journald
+  takes `_SYSTEMD_INVOCATION_ID` from the process's unit, not from its
+  environment. It names `INVOCATION_ID` and `JOURNAL_STREAM` as the
+  values a program reads.
+* **`CHANGELOG.md`:** `## Unreleased`, with `### Added` (the two
+  functions) and `### Fixed` (the handoffs, `DetachProcess` and
+  `ExecReconciler`), linking §20, this pair and issue #7.
+* **`docs/architecture.md`:** `service`'s paragraph names `managerenv.go`,
+  `ManagerEnvNames` and `ScrubManagerEnv`, citing the MADR.
+* **Checks** on the four files: `npx --yes markdownlint-cli2@0.23.2`:
+  "0 issues in 0 files"; `scripts/check-docs.sh --links`: "226 links in 4
+  files, 0 broken"; `--ids`: "0 findings"; `--arch docs/architecture.md`:
+  "18 rows, 0 differ".

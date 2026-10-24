@@ -1493,3 +1493,54 @@ what each change does is in the [changelog](../../CHANGELOG.md).
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
 - `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.19.0`.
+
+## 20. From v1.19 to v1.20
+
+```bash
+go get github.com/maccavelli/go-selfupdate-lib@v1.20.0
+```
+
+`v1.20.0` fixes what [issue #7](https://github.com/maccavelli/go-selfupdate-lib/issues/7) reported: a
+handed-off update inherited the service's own variables from the service
+manager. `make apicheck` reports it compatible with `v1.19.0`: every
+exported change is an addition. Why, and how, is in
+[0033-MADR](../decisions/0033-MADR-scrub-service-manager-environment-from-handoffs.md);
+what each change does is in the [changelog](../../CHANGELOG.md).
+
+### What is new
+
+- **`service.ManagerEnvNames`** lists the variables a service manager
+  sets for one unit or job: systemd's that describe the unit's run, its
+  channels to the manager, the manager and why it ran, its runtime and
+  credentials directories, and launchd's `XPC_SERVICE_NAME` and
+  `XPC_FLAGS`.
+- **`service.ScrubManagerEnv`** returns an environment without them, for
+  the processes your program starts itself.
+
+### Behaviour you may notice
+
+- **A handed-off update no longer inherits them.** The systemd, launchd,
+  SCM and Task Scheduler handoffs, and `service.DetachProcess`, leave
+  them out of the run's environment. On systemd the run now has its own
+  transient unit's `INVOCATION_ID` and `JOURNAL_STREAM`, so what reads
+  them reads the update's and not your service's, and it has no
+  `NOTIFY_SOCKET`, so a `systemd.Ready` or `sd_notify` in it sends
+  nothing. On launchd its `XPC_SERVICE_NAME` is its own job's label.
+- **`service.ExecReconciler`'s command no longer inherits them** either.
+- **Windows sets none of them,** so the SCM and Task Scheduler runs see no
+  change unless your service set one itself.
+- **Your own process is unchanged:** the library does not unset them in
+  it.
+
+### Adopting it
+
+- **If the run needs one of them,** name it in `HandOff.Env`, or in
+  `ExecOptions.Env` for the reconcile command: a variable you name there
+  passes on whatever its name.
+- **If your program starts processes of its own** that should not act for
+  your unit, pass them `service.ScrubManagerEnv(os.Environ())`.
+
+### Check
+
+- `go build ./...`, `go vet ./...` and `go test ./...` pass.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.20.0`.

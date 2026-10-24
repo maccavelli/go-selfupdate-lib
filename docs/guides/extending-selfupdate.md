@@ -672,7 +672,12 @@ for Task Scheduler,
     whose `verdict` is `none`, `unchanged`, `refreshed` or `kept`; and
     `ExecOptions.Restore`, or `RestoreFunc` in the updater itself, restores
     a receipt that `changed`. One of the two is required. The state kept
-    for the restore is an `ExecState`. Since `v1.10.1`, a rewrite:
+    for the restore is an `ExecState`. Since `v1.20.0`, the command's
+    environment leaves out your unit's or job's own variables, as a
+    handoff's does
+    ([Updating from inside the service](#updating-from-inside-the-service)),
+    and `ExecOptions.Env` passes on whatever it names. Since `v1.10.1`, a
+    rewrite:
     - on systemd, checks the unit's effective `ExecStart` after the
       reload; a drop-in that loads later and sets it again, such as an
       `override.conf`, is an error, and recovery removes this package's
@@ -998,6 +1003,22 @@ func main() {
   takes a context; a program that needs its context to bound the wait for
   the hop calls `service.LoadHandOffEnvContext(ctx)`, or
   `service.HandOffHopContext(ctx)`, first (since `v1.16.0`).
+- **The run is not your service** (since `v1.20.0`). Its environment is
+  yours without the variables the service manager sets for your unit or
+  job, which `service.ManagerEnvNames` lists: systemd's that describe
+  the unit's run, its channels to the manager, the manager and why the
+  unit ran (`INVOCATION_ID`, `NOTIFY_SOCKET`, `LISTEN_FDS`,
+  `WATCHDOG_USEC`, `JOURNAL_STREAM`, `MAINPID`, `TRIGGER_UNIT` and the
+  rest), `RUNTIME_DIRECTORY` and `CREDENTIALS_DIRECTORY`, which go with
+  your unit, and launchd's `XPC_SERVICE_NAME` and `XPC_FLAGS`. Before,
+  a systemd run had your unit's `INVOCATION_ID` and `JOURNAL_STREAM` in
+  place of its own unit's, and your unit's `NOTIFY_SOCKET`; a launchd
+  run had your job's `XPC_SERVICE_NAME`. Your user's and session's
+  variables, and `STATE_DIRECTORY`, `CACHE_DIRECTORY`, `LOGS_DIRECTORY`,
+  `CONFIGURATION_DIRECTORY` and `TMPDIR`, still pass on. A variable you name in `HandOff.Env` passes on
+  whatever its name. For a process your program starts itself,
+  `service.ScrubManagerEnv(os.Environ())` leaves out the same names
+  ([0033-MADR](../decisions/0033-MADR-scrub-service-manager-environment-from-handoffs.md)).
 - **The detached run cannot prompt,** so the update must have `--yes`, as
   an agent's does. Since `v1.11.0`, an update from inside the service
   without it is refused with `ErrConfirmationRequired` (exit 1), even when
