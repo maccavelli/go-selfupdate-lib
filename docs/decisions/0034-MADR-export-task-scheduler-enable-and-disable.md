@@ -81,8 +81,9 @@ tests; **[measured upstream]** in the consumer's records; **[derived]**;
   `TASK_STATE` by name (`stateName`, `task.go:259-273`). The test fake
   keeps a running task's state `running` when it is disabled
   (`fake_test.go:277-279`); whether Task Scheduler does the same is
-  [unverified until probe P5]. No exported field or method gives the
-  switch itself [read].
+  [unverified until probe P5]. *(Measured, Amendment A1, P5: it does.
+  A task disabled while its program runs reads `TASK_STATE_RUNNING`.)*
+  No exported field or method gives the switch itself [read].
 * **F7.** `Register`, `Definition`, `Delete` and `Status` check `ctx`
   before they start and ignore it after, because no Task Scheduler call
   takes one (`register.go:27-33`, `:56`, `:83-90`; `status.go:44-51`).
@@ -117,10 +118,16 @@ tests; **[measured upstream]** in the consumer's records; **[derived]**;
   no elevation for a user's own task [measured upstream, 0021-MADR D4].
   A task an administrator registered for the user may deny the change
   [unverified]. That surfaces as `ErrPermission` (F8) [derived].
+  *(Amendment A1, P4: a task the same account registered elevated, at
+  `LeastPrivilege` or `HighestAvailable`, was disabled from medium
+  integrity without a denial. A task another account registered was not
+  measured; the mapping stands for whatever denial Task Scheduler
+  returns.)*
 * **F13.** `put_Enabled(1)` enables the task as `VARIANT_TRUE` does
   [measured, 0021-MADR Amendment A4]. Whether `put_Enabled` with the
   value the task already has succeeds without a change is
-  [unverified until probe P3].
+  [unverified until probe P3]. *(Measured, Amendment A1, P3: it
+  succeeds, and changes neither the definition nor `LastRunTime`.)*
 
 **The switch and the definition**
 
@@ -137,15 +144,18 @@ tests; **[measured upstream]** in the consumer's records; **[derived]**;
   `Settings/Enabled`, as `Definition` (`get_Xml`) returns it, is
   [unverified until probe P1]. Both `IRegisteredTask` and the
   definition's `ITaskSettings` have an `Enabled` property [docs]; whether
-  they are one stored value is what P1 measures. If it does, then after
-  any `Stop`,
+  they are one stored value is what P1 measures. *(Measured, Amendment
+  A1, P1: they are. `put_Enabled(false)` stores `<Enabled>false` in
+  `Settings`, and `put_Enabled(true)` removes the element.)* If it does,
+  then after any `Stop`,
   and after a `Disable`, `DiffDefinitions` between the stored definition
   and the program's rendered one reports `Settings/Enabled`:
   `false` against `true` [derived].
 * **F17.** `Register` uses `TASK_CREATE_OR_UPDATE` with the program's
   rendered definition (`register.go:43`). Whether re-registering a
   disabled task with a definition that leaves `Settings/Enabled` out
-  enables it is [unverified until probe P2]. If it does, then a setup
+  enables it is [unverified until probe P2]. *(Measured, Amendment A1,
+  P2: it does.)* If it does, then a setup
   that runs "compare, and register when different" against a task
   `Stop` or `Disable` left disabled re-enables it, and a repeating
   trigger restarts the program the user stopped (F9) [derived from F15,
@@ -509,11 +519,31 @@ Together:
 
 * Good, because it adds nothing, if `Status.State` reads `disabled` for
   any disabled task.
-* Bad, because the fake keeps a disabled running task `running`, and if
-  P5 shows Task Scheduler does too, the answer is wrong exactly when it
-  matters (F6).
+* Bad, because a disabled task whose program runs reads `running`, in
+  the fake and in Task Scheduler (F6; Amendment A1, P5), so the answer is
+  wrong exactly when it matters.
 * Bad, because a state name is a weaker contract than a field named
   for the switch.
+
+## Amendment A1 (2026-10-24): probe results
+
+0034-PLAN L1 ran P1 to P5 on the Windows test host (its ssh shell
+elevated) through the COM API from PowerShell
+(`Schedule.Service`), on throwaway tasks in a folder of the probe's own,
+deleted after. P4's switch was set from a driver task at least privilege
+in the console session, whose token read `Medium`. Each value below is
+as the probe printed it; `State` is `TASK_STATE` (1 disabled, 3 ready,
+4 running).
+
+| Probe | Question | Result | Effect |
+| :--- | :--- | :--- | :--- |
+| P1 | Does `put_Enabled` change the stored `Settings/Enabled` (F16)? | Registered without the element: absent, `Enabled` true. After `Enabled = false`: `false`, `State` 1. After `Enabled = true`: absent again, `State` 3 | F16 holds: the switch is the stored element. D5-B stands, and L3 runs |
+| P2 | Does re-registering a disabled task, with a definition that leaves the element out, enable it (F17)? | Yes: `Enabled` true, the element absent. With `<Enabled>true</Enabled>`, the same | F17 holds. `Register`'s documentation says it sets the switch from the definition |
+| P3 | Does a write of the value the task has succeed, and change anything (F13)? | `Enabled = true` on an enabled task, and `false` on a disabled one: both succeed; the definition and `LastRunTime` are unchanged | F13 settled. Writing only on a change stays as a precaution, not a requirement |
+| P4 | Is a user denied the switch of a task registered elevated (F12)? | From medium integrity, `Enabled = false` succeeded on a `LeastPrivilege` and on a `HighestAvailable` task that the same account registered elevated | F12 holds for the user's own tasks. Another account's task was not measured; `ErrPermission` maps whatever denial occurs (F8) |
+| P5 | What `State` does a task disabled while its program runs read (F6)? | Running before, `State` 4 with one instance; after `Enabled = false`, `State` 4, one instance, `Enabled` false; after `Stop`, `State` 1, no instance | F6 holds: `Status.State` cannot tell a disabled running task. D6-A stands; D6-C's weakness is measured |
+
+No result trips a decision point of the PLAN. Every decision stands.
 
 ## More Information
 

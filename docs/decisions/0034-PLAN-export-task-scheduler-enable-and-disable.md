@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: in-progress
 date: 2026-10-24
 associated-madr: "0034-MADR-export-task-scheduler-enable-and-disable.md"
 ---
@@ -323,4 +323,45 @@ MADR stays `accepted`.
 
 ### Approval
 
-Pending: the owner approves this plan to execute it.
+The owner committed L0 as `3d7a149` and said "proceed" on 2026-10-24,
+which approves this plan.
+
+### L1: probes (2026-10-24)
+
+* The console user was signed in on the Windows test host
+  (`Win32_ComputerSystem.UserName` set), so P4's driver task could run
+  in the console session.
+* One PowerShell script, run from the ssh shell, and P4's driver script
+  were copied to the host's temporary directory, run, and removed. The
+  scripts print values only, never a definition, so no SID or account
+  name left the host.
+* Output, verbatim:
+
+  ```text
+  P1 registered without Settings/Enabled: Settings/Enabled=absent Enabled=True
+  P1 after Enabled=false: Settings/Enabled=false Enabled=False State=1
+  P1 after Enabled=true: Settings/Enabled=absent Enabled=True State=3
+  P2 re-registered (TASK_CREATE_OR_UPDATE) while disabled: Enabled=True Settings/Enabled=absent
+  P2 re-registered with <Enabled>true</Enabled> while disabled: Enabled=True
+  P3 Enabled=true on an enabled task: ok; Xml unchanged=True; LastRunTime unchanged=True
+  P3 Enabled=false on a disabled task: ok; Xml unchanged=True; LastRunTime unchanged=True
+  P5 running before: State=4 instances=1
+  P5 disabled while running: State=4 Enabled=False instances=1
+  P5 after Stop: State=1 instances=0
+  P4 driver integrity: Medium
+  P4 p4least Enabled=false from medium: ok
+  P4 p4highest Enabled=false from medium: ok
+  P4 p4least after the driver: Enabled=False
+  P4 p4highest after the driver: Enabled=False
+  cleanup: probe folders left=0
+  ```
+
+* After the run: no `selfupdate-probe-*` task folder, no probe
+  directory under the host's temporary directory, and no `PING` process
+  left.
+* **Decision points:** none tripped. P1 confirms F16, so L3 runs. P3's
+  same-value writes succeed, so writing only on a change stays a
+  precaution. P5 reads `running` for a disabled running task, which
+  D6-A expected.
+* The MADR gains Amendment A1, and its five [unverified] items are
+  annotated in place.
