@@ -16,7 +16,7 @@ import (
 // no context: it reads file metadata only (0025-MADR D3).
 func SameExecutable(a, b string) bool {
 	ca, cb := filepath.Clean(a), filepath.Clean(b)
-	if ca == cb || (runtime.GOOS == "windows" && strings.EqualFold(ca, cb)) {
+	if ca == cb || (runtime.GOOS == goosWindows && strings.EqualFold(ca, cb)) {
 		return true
 	}
 	ia, err := os.Stat(ca)

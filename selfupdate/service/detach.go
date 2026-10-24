@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 )
 
@@ -27,7 +26,7 @@ func DetachProcess(ctx context.Context, spec HandOff) (Detached, error) {
 	if !filepath.IsAbs(spec.Executable) {
 		return Detached{}, fmt.Errorf("selfupdate: service: %q is not an absolute path", spec.Executable)
 	}
-	pid, err := startDetached(spec.Executable, spec.Args, append(os.Environ(), spec.Env...))
+	pid, err := startDetached(spec.Executable, spec.Args, passOn(spec.Env))
 	if err != nil {
 		return Detached{}, fmt.Errorf("selfupdate: service: start the detached run: %w", err)
 	}

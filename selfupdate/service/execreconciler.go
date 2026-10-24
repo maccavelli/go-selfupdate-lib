@@ -173,7 +173,7 @@ func (r *ExecReconciler) Restore(ctx context.Context, product string, receipt se
 }
 
 func (r *ExecReconciler) env() []string {
-	return append(os.Environ(), r.o.Env...)
+	return passOn(r.o.Env)
 }
 
 // decodeReceipt reads the one JSON object a reconcile command prints.

@@ -132,7 +132,8 @@ anything enters the tree.
 2. **Callers:** `DetachProcess` (`detach.go:30`) and `ExecReconciler`'s
    environment (`execreconciler.go:176`) use `passOn`; the hop
    (`handoffhop.go:55`) scrubs the environment it passes, keeping the hop
-   variables' handling as it is.
+   variables' handling as it is. *(Deviation D1: the hop passes its
+   environment on unchanged; it is already scrubbed.)*
 3. **`managerenv_test.go`** (new):
    * `ManagerEnvNames` holds each name the MADR lists, and returns a
      copy;
@@ -146,7 +147,8 @@ anything enters the tree.
    * `ExecReconciler`'s child, a fixture that prints its environment,
      has no `INVOCATION_ID` set in the test's, and has one given in
      `ExecOptions.Env`;
-   * the hop's real run likewise.
+   * the hop's real run likewise. *(Deviation D1: the hop keeps an
+     explicit variable.)*
 4. **Seen failing:** plants of (a) one name dropped from the list, (b)
    `passOn` not scrubbing, (c) the explicit list scrubbed too (D5-B), (d)
    the hop not scrubbing.
@@ -286,3 +288,56 @@ removed.
 
 **Recorded.** The MADR's Amendment A1, and F9, F11, F13 and F14 annotated
 in place.
+
+### K2: `service` (2026-10-23)
+
+* K1 was committed by the owner as `04419f3`.
+* **`selfupdate/service/managerenv.go`** (new): `managerEnvNames`, 39
+  names in MADR D1-C's and D2-C's groups, each group citing its source;
+  `ManagerEnvNames`, a copy; `ScrubManagerEnv`, case-insensitive on
+  Windows, keeping malformed entries; `passOn`, the scrubbed environment
+  then the explicit variables; and `goosWindows`, which `handoffenv.go`
+  and `sameexec.go` now use too, since a third `"windows"` literal
+  tripped `goconst`.
+* **`detach.go`** (`DetachProcess`) and **`execreconciler.go`**
+  (`ExecReconciler`'s environment) call `passOn`; `detach.go` loses its
+  `os` import.
+* **`main_test.go`:** an `envfile` fake mode, which writes a detached
+  child's environment to `FAKE_OUT`.
+* **`managerenv_test.go`** (new): `TestManagerEnvNames`,
+  `TestScrubManagerEnv`, `TestPassOnExplicitWins`,
+  `TestDetachProcessScrubs` (a real detached child),
+  `TestExecReconcilerScrubs` (a recording runner) and
+  `TestHopKeepsEnvironment`.
+* **Here and on the Windows test host:** the six tests and the
+  `selfupdate/service/...` packages pass, the last after the
+  `goosWindows` change as before it.
+* **Seen failing** (`scripts/plant-copy.sh`):
+
+  | Plant | Failure |
+  | :--- | :--- |
+  | (a) `NOTIFY_SOCKET` dropped from the list | `managerenv_test.go:40: ManagerEnvNames() = [... no NOTIFY_SOCKET ...]`; `managerenv_test.go:55: ScrubManagerEnv = ["NOTIFY_SOCKET=caller" ...]` |
+  | (b) `passOn` not scrubbing | `managerenv_test.go:90: NOTIFY_SOCKET = "/run/caller/notify", want the explicit value`; `managerenv_test.go:126: the detached run has NOTIFY_SOCKET="/run/caller/notify"`, and `INVOCATION_ID` |
+  | (c) the explicit variables scrubbed too (MADR D5-B) | `managerenv_test.go:90: NOTIFY_SOCKET = "", want the explicit value`; `managerenv_test.go:130: the explicit LISTEN_FDS = "", want 3`; `TestExecReconcilerScrubs` failing |
+  | (d) the hop scrubbing | `managerenv_test.go:187: the hop dropped an explicit NOTIFY_SOCKET: ["PATH=/usr/bin" "SELFUPDATE_HANDOFF_HOP_PARENT=42"]` |
+
+  Plant (d)'s first anchor occurs twice in `handoffhop.go` and was
+  refused by `plant-copy.sh`; the plant used the loop's preceding line
+  as well.
+* `docs/architecture.md`: the `service` row is 19 source and 18 test
+  files. `make pre-add-check` on the seven Go files: "7 file(s) clean
+  (gofmt, golangci-lint, go vet, go test, govulncheck)". `make apicheck`:
+  "compatible with v1.19.0".
+
+### Deviation D1 (2026-10-23): the hop does not scrub
+
+* **Found.** K2 step 2 had the hop scrub the environment it passes. The
+  hop's environment is already the product of a scrubbed pass: it comes
+  from `DetachProcess` (`passOn`), or from a handoff file, which K3
+  scrubs before the caller's explicit variables. Scrubbing again in the
+  hop would drop a variable the caller put in `HandOff.Env`, which MADR
+  D5-A passes on.
+* **Done.** The hop passes its environment on as it is;
+  `TestHopKeepsEnvironment` pins that, and failed on a plant of the
+  scrub. No decision changes: MADR D3-A's "the hop" is covered by what
+  starts it, and the MADR is annotated in place.

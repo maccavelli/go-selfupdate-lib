@@ -183,7 +183,10 @@ systemd 259, "Environment Variables in Spawned Processes")
 
 * **D3-A.** Every one where the library passes an environment on:
   `DetachProcess` and the hop (F1, F2), `ExecReconciler` (F3), and the
-  systemd, launchd and Task Scheduler handoffs (F4–F6).
+  systemd, launchd and Task Scheduler handoffs (F4–F6). *(0033-PLAN
+  Deviation D1: the hop's environment is scrubbed by what starts it, and
+  the hop passes it on unchanged, so a caller's explicit variable
+  survives.)*
 * **D3-B.** The handoffs only, not `ExecReconciler`.
 
 ### D4: on which systems (the issue's second question)

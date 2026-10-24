@@ -56,6 +56,10 @@ func fakeTool(mode string) int {
 	case "env":
 		fmt.Print(strings.Join(os.Environ(), "\n"))
 		return 0
+	case "envfile":
+		// A detached child has no stdout: write the environment to FAKE_OUT.
+		_ = os.WriteFile(os.Getenv("FAKE_OUT"), []byte(strings.Join(os.Environ(), "\n")), 0o600)
+		return 0
 	case "hopparent":
 		// A stand-in hop that lives on: start a "hopchild" with FAKE_OUT,
 		// and exit 300 ms after the child says it is waiting, so a child

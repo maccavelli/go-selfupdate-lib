@@ -124,7 +124,7 @@ func applyHandOffEnv(path string) error {
 	if err != nil {
 		return err
 	}
-	if !info.Mode().IsRegular() || (runtime.GOOS != "windows" && info.Mode().Perm() != 0o600) {
+	if !info.Mode().IsRegular() || (runtime.GOOS != goosWindows && info.Mode().Perm() != 0o600) {
 		return fmt.Errorf("selfupdate: service: environment file %s is not a private regular file", path)
 	}
 	f, err := os.Open(path) //nolint:gosec // checked above: absolute, clean, private, regular
