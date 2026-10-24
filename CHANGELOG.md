@@ -8,7 +8,7 @@ listed in the
 [migration guide](docs/guides/migrating-from-mcplib-selfupdate.md), one
 section per release, and each entry links its section and its records.
 
-## Unreleased
+## v1.20.0 - 2026-10-24
 
 See [the guide](docs/guides/migrating-from-mcplib-selfupdate.md#20-from-v119-to-v120),
 [0033-MADR](docs/decisions/0033-MADR-scrub-service-manager-environment-from-handoffs.md) and

@@ -447,3 +447,16 @@ in place.
   "0 issues in 0 files"; `scripts/check-docs.sh --links`: "226 links in 4
   files, 0 broken"; `--ids`: "0 findings"; `--arch docs/architecture.md`:
   "18 rows, 0 differ".
+
+### K6: `v1.20.0` (2026-10-24, in progress)
+
+* K5 was committed by the owner as `374d919`.
+* **Step 1:** `CHANGELOG.md`'s `## Unreleased` becomes `## v1.20.0 -
+  2026-10-24`; the guide's §20 came in K5.
+* **Step 2:** `make gate` with this change in the tree: every step
+  `rc=0` (gofmt, lint "0 issues.", vet, race, shuffle, tidy, apicheck
+  "compatible with v1.19.0", fuzz, vuln "No vulnerabilities found.",
+  scripts, shellcheck, crossvet, links "761 links in 90 files, 0 broken",
+  arch, ids), `overall=0`.
+* The steps that follow wait on the owner's word for the push and the
+  tag.
