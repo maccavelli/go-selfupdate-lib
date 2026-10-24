@@ -520,3 +520,71 @@ this plan.
 * **Tooling.** The remote test runner and the plant driver are now
   Python scripts (`remoterun.py`, `plants_m2.py`) in place of the earlier
   bash runners, per the owner's direction in M1.
+
+### M3: the type, its checks and its reads (2026-10-24)
+
+* M2 was committed by the owner as `dbd4492`.
+* **`errors.go`:** `ErrNoSupervisor`, "nothing supervises the service".
+* **`supervised.go`:**
+  * `SupervisedState`, JSON-tagged, documented field by field. `Ready`
+    is a `*bool`, and its comment records P2: s6 reads `false` without a
+    `notification-fd`.
+  * `SupervisedOptions`, whose `State` contract is: with no supervisor,
+    return an error wrapping `ErrNoSupervisor` and a state that still
+    reports `Installed` and `NormallyUp`.
+  * `Supervised`, and `NewSupervised` through `supervisedOn(o, goos)`.
+    It refuses off Linux with `ErrUnsupported`, and refuses:
+    * a missing `State`, `Up` or `Down`;
+    * a `Poll` that `Validate` refuses;
+    * a negative `KillAfter`, a `KillAfter` without `Kill`, and one not
+      shorter than the timeout.
+
+    With `Kill` set and no `KillAfter`, it uses half of the timeout.
+  * `Status`, `Installed`, `Enabled`, `Running` and `Inside`.
+    * `Instance` is `"<pid>@<start time>"`, through `procfs.ReadStat`. A
+      process that is gone, or a zombie, gets none.
+    * `Running` under `ErrNoSupervisor` is whether the instance a `Stop`
+      recorded still runs, by PID and start time.
+    * `Inside` walks the parent links, bounded at 4096. It counts the
+      service's process only with the start time first read, and returns
+      an error, never "outside", for an unreadable step or a loop.
+  * The binary fields are left to M4, where `Stop` first uses them.
+* **Tests:**
+  * `supervised_test.go`, on every OS through `supervisedOn` and a fake
+    process table: `TestNewSupervisedRefuses` (eight refusals, the
+    default `KillAfter`, and `ErrUnsupported` off Linux),
+    `TestSupervisedStatus`, `TestSupervisedReads` and
+    `TestSupervisedInside`. The last covers six cases, a PID reused
+    between the observation and the walk, an unreadable parent, a
+    parent loop, and `State`'s error.
+  * `supervised_linux_test.go`: `TestSupervisedInsideReal` (this
+    process and its parent are inside, a child of its own is not) and
+    `TestSupervisedStatusReal`.
+
+    Step 6 named a child and a grandchild. The test uses this process,
+    its parent, and a child, which is the same descent with one helper
+    fewer.
+* **Runs:** the `service` package passes here, on the Linux test host
+  and on the Windows test host.
+* **Seen failing** (`scripts/plant-copy.sh`, run here over the fakes):
+
+  | Plant | Failure |
+  | :--- | :--- |
+  | (e) `Inside` compares the PID, not the start time | `supervised_test.go:218: a reused PID: true, <nil>; want false` |
+  | (f) an unreadable step read as outside | `supervised_test.go:226: an unreadable parent: false, <nil>; want an error` |
+  | (g) `Running` ignores `ErrNoSupervisor` | `supervised_test.go:159: Running with no supervisor: false, … nothing supervises the service`, and lines 164 and 168 |
+  | (h) no `KillAfter`-under-timeout check | `supervised_test.go:88: KillAfter not under timeout: accepted` |
+
+  The first try at (e), `return true, nil`, left a variable unused and
+  did not build. It was replanted to compare PIDs.
+
+  The plants ran before the rename below, which changes only the
+  unexported constructor's name.
+* **Checks:**
+  * `make pre-add-check` on the four files reports "4 file(s) clean
+    (gofmt, golangci-lint, go vet, go test, govulncheck)". The first run
+    found revive's `confusing-naming`, `newSupervised` beside
+    `NewSupervised`, so the unexported constructor is `supervisedOn`.
+  * `make apicheck` reports "compatible with v1.21.0".
+  * `docs/architecture.md`'s `service` row is 20 source and 20 test
+    files, and names `internal/procfs`. `--arch`: "19 rows, 0 differ".
