@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 date: 2026-10-23
 associated-madr: "0032-MADR-task-scheduler-registration-and-one-shot-handoff.md"
 ---
@@ -1056,7 +1056,13 @@ None changes a decision.
 * **Step 7:** `go list -m -json github.com/maccavelli/go-selfupdate-lib@v1.19.0`
   gives `Hash a6af9dc760a5392134dc62b00e6491b112d0ada5`, `Ref
   refs/tags/v1.19.0`, and `@latest` resolves to `v1.19.0`.
-* **Step 8** waits on the owner's ask to close issues #3 and #6.
+* The pin commit was committed and pushed by the owner as `152e793`; its
+  Docs run passed.
+* **Step 8:** on the owner's word, issues #3 and #6 were closed as
+  completed, each with a comment naming `v1.19.0`, what it added, the
+  answers to the issue's open questions, the measurements behind them,
+  how magic-cli-remote adopts it, and how it was verified. Both comments
+  passed the identifier check before they were posted.
 
 ### Deviation D7 (2026-10-23): the DACL test read SIDs as SDDL text
 
@@ -1100,3 +1106,44 @@ None changes a decision.
 * `make pre-add-check` on the test: "1 file(s) clean". Whether the test
   passes for a RID 500 account is shown by CI's next run, on the runner
   that found it.
+
+### J10: closing (2026-10-23)
+
+* This plan becomes `complete`, and its index row follows. The MADR
+  stays `accepted`.
+
+### Verification, at closing (2026-10-23)
+
+* **V1 (probes):** P1 and P2 ran twice on the Windows test host at medium
+  integrity, agreeing on every value both measured; the MADR's Amendment
+  A1 records them (J1). One decision point tripped, the handoff
+  directory's inherited ACL, resolved as Deviation D1.
+* **V2 (transport):** `TestCOMRegistration` pins the new slots on the
+  host and on CI's runner; each slot plant failed, the `GetTasks` one by
+  crashing the test binary (J2, Deviation D3).
+* **V3 (registration):** `register_test.go` and `TestLiveTaskRegister`
+  pass on the host and on CI's runner (J3).
+* **V4 (comparison):** every fixture pair compares equal, 41
+  single-element changes each give one difference, the live stored
+  definition compares equal on two Windows builds, and each plant failed
+  (J4, Amendment A2).
+* **V5 (state):** `status_test.go` passes; `Status` agrees with the live
+  task, running, never run and deleted (J5).
+* **V6 (environment):** the handoff argument tests pass on every OS; the
+  handoff directory's DACL test passes on the host and on CI's runner,
+  whose account is the built-in Administrator (J6, Deviation D7).
+* **V7 (handoff):** `TestLiveTaskHandOffOneShot` completes an update from
+  inside a kill-on-close job, on the host, on CI's runner on `main` and
+  on the `v1.19.0` tag; `TestLiveTaskUpdate` passes through the hop
+  (J7).
+* **V8 (API):** `make apicheck` against `v1.18.0` reported no
+  incompatibility at every phase; `go doc` shows the additions.
+* **V9 (release):** `v1.19.0` is the annotated tag on `a6af9dc`; its CI
+  passed every job with identity legs `v1.19.0 (release) a6af9dc760a5`;
+  the proxy serves it as `@latest`; #3 and #6 are closed (J9).
+
+Not done here, as the plan's scope says: `scm`'s `Detach`, which still
+starts a hop that a kill-on-close job of a program run by the Service
+Control Manager would end (MADR, Out of scope); and rendering the
+program's definition. magic-cli-remote adopts `v1.19.0` in its own
+repository: its 0210-MADR D3 turns its Windows handoff on.
