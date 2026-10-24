@@ -730,7 +730,9 @@ through its COM API, never `schtasks.exe` or PowerShell. Since `v1.19.0`
 it also registers, reads, compares and deletes the definition your setup
 renders, and reads a task's state in one call
 ([0032-MADR](../decisions/0032-MADR-task-scheduler-registration-and-one-shot-handoff.md)); it never
-renders the definition itself.
+renders the definition itself. Since `v1.21.0` it switches the task on
+and off ([0034-MADR](../decisions/0034-MADR-export-task-scheduler-enable-and-disable.md)), so
+your setup needs no `schtasks.exe` at all.
 
 ```go
 task, err := taskscheduler.New(taskscheduler.Options{
@@ -781,13 +783,17 @@ Off Windows, `New` returns `service.ErrUnsupported`.
 - **`Start`** enables the task again when `Stop` disabled it, and runs it.
   Task Scheduler can still list a process that has exited; `Start` does
   not count the instance `Stop` recorded once that process has gone.
+  `Start` knows only its own `Task`'s `Stop`: after a `Stop` in another
+  process, such as your setup's `stop` command, the task stays disabled
+  and `Start` returns `ErrTaskDisabled`. Call `Enable` first (since
+  `v1.21.0`).
 - **A task you disabled yourself** cannot be run: Task Scheduler refuses
   to run a disabled task, even with `TASK_RUN_IGNORE_CONSTRAINTS`
   (`SCHED_E_TASK_DISABLED`, measured). So since `v1.15.0`, `Stop` refuses
   a disabled task whose program runs, before it changes anything, with an
   error wrapping `taskscheduler.ErrTaskDisabled`: the program keeps
-  running, and nothing is replaced. Enable the task, or stop the program,
-  then update. A disabled task whose program does not run is left alone,
+  running, and nothing is replaced. Enable the task (`Enable`, since
+  `v1.21.0`), or stop the program, then update. A disabled task whose program does not run is left alone,
   and not started after the update. `Start` on a disabled task returns
   `ErrTaskDisabled` too. Before `v1.15.0`, such an update ended the
   program and left it stopped
@@ -795,8 +801,8 @@ Off Windows, `New` returns `service.ErrUnsupported`.
   Amendment A1).
 - **If the update crashes between `Stop` and `Start`,** the task stays
   disabled and the watchdog does not run it. Your setup's repair registers
-  it again, or `schtasks /change /tn <folder>\<name> /enable` re-enables
-  it. A `Stop` that fails while the program still runs, such as a wait
+  it again, or `Enable` re-enables it (since `v1.21.0`; before, `schtasks
+  /change /tn <folder>\<name> /enable`). A `Stop` that fails while the program still runs, such as a wait
   that timed out, enables the task again before it returns (since
   `v1.15.2`), so the task is left as it was; before, it stayed disabled
   too.
@@ -840,10 +846,17 @@ Off Windows, `New` returns `service.ErrUnsupported`.
     one that says `UTF-8`; you need no UTF-16 file.
   - `Delete` does not stop a running program, which outlives the task:
     call `Stop` first.
+  - `Register` sets the task's switch from the definition: one that
+    leaves `Settings/Enabled` out, or sets it `true`, enables a task that
+    `Stop` or `Disable` disabled. To keep the task disabled, call
+    `Disable` after `Register`.
   - `DiffDefinitions` compares every trigger and action, with every
     element they hold, the principal's user, group, logon type and run
     level, and every setting but `IdleSettings` and
-    `UseUnifiedSchedulingEngine`, which Task Scheduler adds. An element
+    `UseUnifiedSchedulingEngine`, which Task Scheduler adds, and, since
+    `v1.21.0`, `Enabled`. That is the task's switch, which Task Scheduler
+    writes into the stored definition when `Stop`, `Enable` or `Disable`
+    sets it, so a stopped task is not reported as changed. An element
     left out compares as its default; a SID equals the account it names;
     durations and booleans compare as values. `RegistrationInfo` is not
     compared. Each difference is a `DefinitionDiff`: a path such as
@@ -852,7 +865,34 @@ Off Windows, `New` returns `service.ErrUnsupported`.
   whether it is installed, `Enabled`'s and `Running`'s answers, its state
   by name (`ready`, `running`, `disabled`, ...), its running processes,
   and its last run's time and result. A task that is not installed is a
-  zero `Status`.
+  zero `Status`. Since `v1.21.0`, `Disabled` is the task's switch, off. A
+  task disabled while its program runs has the state `running`, so only
+  `Disabled` tells it.
+- **Switching the task on and off** (since `v1.21.0`). `Enable` and
+  `Disable` set the task's switch, and do nothing to a task already so.
+  A setup's start and stop commands, each in a process of its own:
+
+  ```go
+  // start: undo a stop made by an earlier process, then run.
+  if err := task.Enable(ctx, "relay"); err != nil {
+      return err
+  }
+  return task.Start(ctx, "relay")
+  ```
+
+  ```go
+  // stop: the task stays disabled, so the watchdog does not restart it.
+  return task.Stop(ctx, "relay")
+  ```
+
+  - `Disable` does not end a running program; `Stop` does. Until the
+    program exits, an update's `Stop` refuses the task with
+    `ErrTaskDisabled`.
+  - Both forget that this `Task`'s `Stop` disabled the task, so `Start`
+    leaves the switch as you set it.
+  - Errors wrap `service.ErrNotInstalled` for a task that does not exist,
+    and `service.ErrPermission` when Task Scheduler denies the change.
+    Each checks `ctx` before it starts.
 - **Updating from inside the task** works as for the other backends:
   `service.HandOffFunc(task, service.HandOff{Args: os.Args[1:]})`. Since
   `v1.19.0`, `Detach` registers and runs a one-shot task,

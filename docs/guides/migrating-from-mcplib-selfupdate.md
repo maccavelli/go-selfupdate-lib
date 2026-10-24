@@ -1546,3 +1546,57 @@ what each change does is in the [changelog](../../CHANGELOG.md).
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
 - `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.20.0`.
+
+## 21. From v1.20 to v1.21
+
+```bash
+go get github.com/maccavelli/go-selfupdate-lib@v1.21.0
+```
+
+`v1.21.0` adds what [issue #8](https://github.com/maccavelli/go-selfupdate-lib/issues/8) asked for:
+`taskscheduler.Task.Enable` and `Disable`. `make apicheck` reports it
+compatible with `v1.20.0`: every exported change is an addition. One
+function returns less than before, below. Why, and how, is in
+[0034-MADR](../decisions/0034-MADR-export-task-scheduler-enable-and-disable.md);
+what each change does is in the [changelog](../../CHANGELOG.md).
+
+### What is new
+
+- **`taskscheduler.Task.Enable` and `Disable`** set a task's switch,
+  through the COM API. With them, a setup that uses this package needs
+  no `schtasks.exe`. See
+  [Task Scheduler](extending-selfupdate.md#task-scheduler).
+- **`taskscheduler.Status.Disabled`** (JSON `disabled`) is the task's
+  switch, off. `Status.State` cannot tell you, because a task disabled
+  while its program runs has the state `running`.
+
+### Behaviour you may notice
+
+- **`DiffDefinitions` no longer reports `Settings/Enabled`.** Task
+  Scheduler writes the switch into the stored definition, so after any
+  `Stop` or `Disable` it reported `<Enabled>false` against your
+  definition's `true`. A setup that re-registers when the definitions
+  differ re-enabled the task, and its watchdog restarted a program that
+  was stopped on purpose. A difference in the switch is now not
+  reported, and `SameDefinition` follows. Read the switch with
+  `Status.Disabled`.
+- **`Start` is unchanged.** It still enables only a task its own
+  `Task`'s `Stop` disabled. After a `Stop` in another process, it still
+  returns `ErrTaskDisabled`. Call `Enable` first.
+
+### Adopting it
+
+- **Replace `schtasks /change /enable`** with `task.Enable(ctx, product)`,
+  and `/disable` with `task.Disable(ctx, product)`.
+- **A setup's start command** calls `Enable`, then `Start`. **Its stop
+  command** calls `Stop`, which leaves the task disabled. Call `Disable`
+  only to switch the task off without stopping its program.
+- **If your setup renders `<Enabled>false</Enabled>`** to ship a task
+  disabled, `DiffDefinitions` no longer tells you when someone enabled it.
+  Check `Status.Disabled`, and call `Disable` after `Register`, which sets
+  the switch from the definition.
+
+### Check
+
+- `go build ./...`, `go vet ./...` and `go test ./...` pass.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.21.0`.

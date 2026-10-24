@@ -8,6 +8,27 @@ listed in the
 [migration guide](docs/guides/migrating-from-mcplib-selfupdate.md), one
 section per release, and each entry links its section and its records.
 
+## Unreleased
+
+See [the guide](docs/guides/migrating-from-mcplib-selfupdate.md#21-from-v120-to-v121),
+[0034-MADR](docs/decisions/0034-MADR-export-task-scheduler-enable-and-disable.md) and
+[0034-PLAN](docs/decisions/0034-PLAN-export-task-scheduler-enable-and-disable.md),
+from [issue #8](https://github.com/maccavelli/go-selfupdate-lib/issues/8).
+
+### Added
+
+- `taskscheduler.Task.Enable` and `Disable`: set a task's switch. Each
+  writes only on a change, and forgets that the `Task`'s `Stop` disabled
+  the task.
+- `taskscheduler.Status.Disabled`: the task's switch, off, which
+  `Status.State` does not show while the program runs.
+
+### Changed
+
+- `taskscheduler.DiffDefinitions`, and so `SameDefinition`, no longer
+  compare `Settings/Enabled`, the task's switch, which Task Scheduler
+  writes into the stored definition when the task is disabled.
+
 ## v1.20.0 - 2026-10-24
 
 See [the guide](docs/guides/migrating-from-mcplib-selfupdate.md#20-from-v119-to-v120),

@@ -508,3 +508,33 @@ which approves this plan.
 * **Checks:** `make pre-add-check` on the file reports "1 file(s) clean
   (gofmt, golangci-lint, go vet, go test, govulncheck)". CI's
   `windows-2025` job runs the live tests on the push.
+
+### L5: the documents (2026-10-24)
+
+* L4 was committed by the owner as `9e80ebc`.
+* **`docs/guides/extending-selfupdate.md`, "Task Scheduler":**
+  * the opening names `v1.21.0`'s switch and the MADR;
+  * `Start` says it knows only its own `Task`'s `Stop`, and names
+    `Enable`;
+  * the disabled-task and crash bullets name `Enable` in place of
+    `schtasks /change /enable`, which stays as the pre-`v1.21.0` way;
+  * a `Register` bullet says it sets the switch, and to call `Disable`
+    after it;
+  * the `DiffDefinitions` bullet names `Enabled` as skipped, and why;
+  * `Status` names `Disabled` and P5's `running` state;
+  * a new bullet, "Switching the task on and off", shows a setup's
+    start (`Enable`, `Start`) and stop (`Stop`), and gives `Disable`'s
+    effect, the record, and the errors.
+* **The migration guide:** `## 21. From v1.20 to v1.21`, in §20's shape.
+  "Behaviour you may notice" names the `DiffDefinitions` change (MADR
+  D5-B) and `Start` unchanged (D2-A). "Adopting it" covers replacing
+  `schtasks /change`, the start and stop commands, and a definition that
+  ships disabled.
+* **`CHANGELOG.md`:** `## Unreleased`, with `### Added` (`Enable`,
+  `Disable`, `Status.Disabled`) and `### Changed` (`DiffDefinitions`).
+  It links §21, this pair and issue #8.
+* **`docs/architecture.md`:** L2 already named the methods and the
+  field, so it is unchanged here.
+* **Checks** on the three files: `npx --yes markdownlint-cli2@0.23.2`:
+  "0 issues in 0 files"; `scripts/check-docs.sh --links`: "182 links in
+  3 files, 0 broken"; `--ids`: "0 findings".
