@@ -647,3 +647,67 @@ this plan.
   * `make apicheck` reports "compatible with v1.21.0".
   * `docs/architecture.md`'s `service` row is 21 source and 21 test
     files.
+
+### M5: `WaitHealthy`, `Reconcile`, `Restore` and `Detach` (2026-10-24)
+
+* M4 was committed by the owner as `46b680a`.
+* **`supervised_lifecycle.go`:**
+  * `WaitHealthy` runs `PollHealthy` with `Previous` set to the recorded
+    instance. Its probe counts an observation when the service is up as
+    a new instance and, where `Ready` is set, ready. It reports `Failed`
+    on four cases:
+    * `State.Failed`;
+    * an instance change after one counted;
+    * `Restarting` after the service was up;
+    * `Restarting` twice in a row.
+
+    The application `Probe` then runs with `Settle` -1.
+  * `describeState` builds the detail.
+  * `Reconcile` compares the recorded binary, with any ` (deleted)` cut
+    (Amendment A1, P1), by `SameExecutable`. With nothing recorded, it
+    returns no change and a warning. A mismatch is an error naming
+    `NewExecReconciler`.
+  * `Restore` returns nil.
+  * `Detach` runs `DetachCheck` first, wrapping its error with
+    `ErrUnsupported`, then `DetachProcess`.
+* **`supervised.go`:** compile-time assertions that `*Supervised` is a
+  `selfupdate.Lifecycle`, `EnabledLifecycle`, `Reconciler` and
+  `Detacher`.
+* **Tests:**
+  * `supervised_health_test.go` (new):
+    * `TestSupervisedWaitHealthy`, over nine scripted cases;
+    * `TestSupervisedWaitHealthyProbe`: the application probe passing,
+      failing, and not run after a failed wait;
+    * `TestSupervisedReconcile`: no record, `(deleted)`, a cleaned path,
+      a mismatch, and `Restore`;
+    * `TestSupervisedDetachCheck`: a refusing check comes before
+      `DetachProcess`'s own refusal of a relative path, and with no
+      check `DetachProcess`'s error comes through.
+
+    The helper is named `observations`, since `poll_test.go` already
+    has a `script`.
+  * `supervised_linux_test.go`: `TestSupervisedHandOffReal`, in which
+    `HandOffIfInside`, with this test process as the service's process,
+    detaches a real run. That run writes its environment, with
+    `SELFUPDATE_HANDOFF`, through the existing `envfile` mode.
+* **Runs:** the `service` package passes here, on the Linux test host
+  (with `TestSupervisedHandOffReal`) and on the Windows test host.
+* **Seen failing** (`scripts/plant-copy.sh`, run here):
+
+  | Plant | Failure |
+  | :--- | :--- |
+  | (n) no restart detection | `supervised_health_test.go:87: restarted during the wait: <nil>, want selfupdate: service: not healthy` |
+  | (o) `Restarting` ignored | `:87: restarting after it was up: … timed out …`; `restarting twice in a row: <nil>`; `:109` the application probe case |
+  | (p) `Ready` ignored | `:87: not ready, where the supervisor says: <nil>, want selfupdate: service: timed out` |
+  | (q) no `DetachCheck` call | `:148: Detach with a refusing check: selfupdate: service: "demo" is not an absolute path, want ErrUnsupported and the check's error` |
+  | (r) reconcile ignores a mismatch | `:129: another binary: <nil>, want an error naming NewExecReconciler` |
+
+* **Checks:**
+  * `make pre-add-check` on the four files reports "4 file(s) clean
+    (gofmt, golangci-lint, go vet, go test, govulncheck)". The first run
+    found errorlint's `==` on a sentinel in a test, which is now
+    `errors.Is`.
+  * `make apicheck` reports "compatible with v1.21.0". `go doc` shows
+    `NewSupervised` and the twelve methods of `*Supervised`.
+  * `docs/architecture.md`'s `service` row is 21 source and 22 test
+    files.
