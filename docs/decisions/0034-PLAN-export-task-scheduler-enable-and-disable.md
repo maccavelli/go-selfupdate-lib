@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 date: 2026-10-24
 associated-madr: "0034-MADR-export-task-scheduler-enable-and-disable.md"
 ---
@@ -580,4 +580,54 @@ which approves this plan.
 * **Step 7:** `go list -m -json github.com/maccavelli/go-selfupdate-lib@v1.21.0`
   gives `Hash 29337d004689272c3f347db4c444ed81e0bec21c`, `Ref
   refs/tags/v1.21.0`, and `@latest` resolves to `v1.21.0`.
-* **Step 8** waits on the owner's ask to close issue #8.
+* The pin commit was committed and pushed by the owner as `4237721`.
+* **Step 8:** on the owner's word, issue #8 was closed as completed. Its
+  comment names `v1.21.0`, and covers:
+  * the two methods, their behaviour and errors;
+  * `Status.Disabled` and why;
+  * the answers to the issue's two open questions;
+  * the `DiffDefinitions` change and `Register`'s effect on the switch;
+  * how it was verified, and how to adopt it.
+
+  The comment passed the identifier check before it was posted.
+
+### L7: closing (2026-10-24)
+
+* This plan becomes `complete`, and its index row follows. The MADR
+  stays `accepted`.
+
+### Verification, at closing (2026-10-24)
+
+* **V1 (probes):** P1 to P5 ran on the Windows test host, P4 from a
+  driver task at medium integrity. The MADR's Amendment A1 records them.
+  None tripped a decision point, and every decision stood.
+* **V2 (methods):** `enable_test.go` passes here, on the Windows test
+  host and on CI's three runners. Plants (a), (b), (d) and (e) failed it,
+  and (a) and (d) also failed the live test.
+* **V3 (status):** `Status.Disabled` follows the switch in the fake
+  tests, including a disabled running task, and in the live test, where
+  the real task reads `running` and `Disabled`. Plant (c) failed.
+* **V4 (comparison):** a disabled task's stored definition compares
+  equal, in the fake fixtures and live against the real stored form.
+  Every other `Settings` element is still compared. Plant (f) failed
+  both.
+* **V5 (live):** `TestLiveTaskEnableDisable` and
+  `TestLiveTaskStopRefusesDisabled`, now using `Disable`, pass on the
+  Windows test host and on CI's `windows-2025`, on `main` and on the tag.
+* **V6 (API):** `make apicheck` against `v1.20.0` reported no
+  incompatibility at every phase and in `make gate`. `go doc` shows
+  `Enable`, `Disable` and `Status.Disabled`.
+* **V7 (release):** `v1.21.0` is the annotated tag on `29337d0`. Its CI
+  passed every job, with identity legs `v1.21.0 (release)
+  29337d004689`. The proxy serves it as `@latest`, and #8 is closed.
+
+Not done here, as the plan's scope says:
+
+* `Start` and `Stop` are unchanged (MADR D2-A), and `Stop`'s record
+  still lives in the `Task` value (D2-C not chosen).
+* No other backend gains an enable or a disable (D1-D).
+* `Register` does not keep the switch across a re-registration. Its
+  documentation says to call `Disable` after it.
+* L4 compared the live stored definition with the one read before the
+  `Disable`, not with the registered text, as its record explains.
+* magic-cli-remote adopts `v1.21.0` in its own repository.

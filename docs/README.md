@@ -86,7 +86,7 @@ name, and the files they cite moved with the rename
 | 0033 | MADR | [Leave the service manager's per-unit variables out of every environment the library passes on](decisions/0033-MADR-scrub-service-manager-environment-from-handoffs.md) | accepted |
 | 0033 | PLAN | [Implement leaving the per-unit variables out of passed-on environments, and release `v1.20.0`](decisions/0033-PLAN-scrub-service-manager-environment-from-handoffs.md) | complete |
 | 0034 | MADR | [Export `Task.Enable` and `Task.Disable`, keep `Start`'s rule, and stop counting the task's switch as definition drift](decisions/0034-MADR-export-task-scheduler-enable-and-disable.md) | accepted |
-| 0034 | PLAN | [Implement `Task.Enable`, `Task.Disable`, `Status.Disabled` and the switch left out of `DiffDefinitions`, and release `v1.21.0`](decisions/0034-PLAN-export-task-scheduler-enable-and-disable.md) | in-progress |
+| 0034 | PLAN | [Implement `Task.Enable`, `Task.Disable`, `Status.Disabled` and the switch left out of `DiffDefinitions`, and release `v1.21.0`](decisions/0034-PLAN-export-task-scheduler-enable-and-disable.md) | complete |
 
 ## I want to…
 
