@@ -894,3 +894,17 @@ this plan.
   * `scripts/check-docs.sh --links`: "419 links in 6 files, 0 broken";
     `--ids`: "0 findings"; `--arch`: "19 rows, 0 differ".
   * `make pre-add-check` on `doc.go`: "1 file(s) clean".
+
+### M8: `v1.22.0` (2026-10-24, in progress)
+
+* M7 was committed by the owner as `7d65c5f`.
+* **Step 1:** `CHANGELOG.md`'s `## Unreleased` becomes `## v1.22.0 -
+  2026-10-24`; the guide's §22 came in M7.
+* **Step 2:** `make gate` with this change in the tree: every step
+  `rc=0` (gofmt, lint "0 issues.", vet, race, shuffle, tidy, apicheck
+  "compatible with v1.21.0", fuzz, vuln "No vulnerabilities found.",
+  scripts, shellcheck, crossvet, links "809 links in 95 files, 0 broken",
+  arch, ids), `overall=0`. The disclosure guard passed over the 13
+  commits `main` was ahead of `origin`.
+* The steps that follow wait on the owner's word for the push and the
+  tag.

@@ -8,7 +8,7 @@ listed in the
 [migration guide](docs/guides/migrating-from-mcplib-selfupdate.md), one
 section per release, and each entry links its section and its records.
 
-## Unreleased
+## v1.22.0 - 2026-10-24
 
 See [the guide](docs/guides/migrating-from-mcplib-selfupdate.md#22-from-v121-to-v122),
 [0035-MADR](docs/decisions/0035-MADR-serve-supervisors-through-a-supervised-adapter.md) and
