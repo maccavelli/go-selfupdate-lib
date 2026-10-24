@@ -87,7 +87,7 @@ name, and the files they cite moved with the rename
 | 0033 | PLAN | [Implement leaving the per-unit variables out of passed-on environments, and release `v1.20.0`](decisions/0033-PLAN-scrub-service-manager-environment-from-handoffs.md) | complete |
 | 0034 | MADR | [Export `Task.Enable` and `Task.Disable`, keep `Start`'s rule, and stop counting the task's switch as definition drift](decisions/0034-MADR-export-task-scheduler-enable-and-disable.md) | accepted |
 | 0034 | PLAN | [Implement `Task.Enable`, `Task.Disable`, `Status.Disabled` and the switch left out of `DiffDefinitions`, and release `v1.21.0`](decisions/0034-PLAN-export-task-scheduler-enable-and-disable.md) | complete |
-| 0035 | MADR | [Serve runit, s6, OpenRC and any other supervisor through one hardened adapter in `service`, which the program feeds with its supervisor's state and commands](decisions/0035-MADR-serve-supervisors-through-a-supervised-adapter.md) | proposed |
+| 0035 | MADR | [Serve runit, s6, OpenRC and any other supervisor through one hardened adapter in `service`, which the program feeds with its supervisor's state and commands](decisions/0035-MADR-serve-supervisors-through-a-supervised-adapter.md) | accepted |
 | 0035 | REPORT | [runit, s6 and OpenRC: full backends in the library, or a seam the consumer fills](reports/0035-REPORT-library-backends-or-consumer-api-for-runit-s6-and-openrc.md) | — |
 
 ## I want to…

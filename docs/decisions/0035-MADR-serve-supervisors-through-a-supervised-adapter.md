@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-24
 decision-makers: go-selfupdate-lib maintainers
 consulted: "GitHub issue #2, \"service: add runit, s6 and OpenRC backends\" (2026-10-22), and its comment, from the owner for magic-cli-remote; 0035-REPORT-library-backends-or-consumer-api-for-runit-s6-and-openrc.md; a read of `selfupdate/service` and its four backends at 009838f (v1.21.0); magic-cli-remote at be41ef9, its code and its 0054, 0207 and 0210 MADRs; runit's sv(8), runsv(8), runsvdir(8) and FAQ; s6 2.15.1.1's s6-svc, s6-svstat, s6-supervise, s6-svscan, s6-svwait and servicedir pages; OpenRC's user-guide, service-script-guide, NEWS, rc.conf and man pages; all read 2026-10-24"
@@ -241,6 +241,9 @@ As in 0032-MADR and 0034-MADR:
 
 ## Considered Options
 
+The owner was offered three options for each of D1 to D14, the
+recommended one first.
+
 ### D0: who owns the supervisor-specific part
 
 * **D0-A.** Three full backends, `service/runit`, `service/s6` and
@@ -254,9 +257,12 @@ As in 0032-MADR and 0034-MADR:
 ### D1: place and name
 
 * **D1-A.** In `service`, beside `ProcessDetacher` and `ExecReconciler`:
-  * `type Supervised struct`;
-  * `func NewSupervised(o SupervisedOptions) (*Supervised, error)`.
+  `type Supervised struct` and
+  `func NewSupervised(o SupervisedOptions) (*Supervised, error)`.
 * **D1-B.** A new package, `selfupdate/service/supervised`.
+* **D1-C.** A new package, `selfupdate/service/supervise`, which holds
+  the adapter now and later first-party backends beneath it, such as
+  `supervise/s6`.
 
 ### D2: what the program supplies
 
@@ -265,15 +271,19 @@ As in 0032-MADR and 0034-MADR:
   * `Up func(ctx) error`;
   * `Down func(ctx) error`.
 
-  The optional ones are `Name`, `Poll`, `Probe` and `DetachCheck`.
-  `SupervisedState` is exported, JSON-tagged and documented field by
-  field:
+  The optional ones are `Name`, `Poll`, `Probe`, `DetachCheck`, and
+  D4's `Kill` and `KillAfter`. `SupervisedState` is exported, JSON-tagged
+  and documented field by field:
   * `Installed`, `Supervised`, `Up` and `PID`;
   * `WantUp`, `NormallyUp` and `Restarting`;
   * `Failed`, `Ready` (a `*bool`, nil when the supervisor has no
     readiness) and `Detail`.
+
+  The adapter fills `Instance`.
 * **D2-B.** An interface, `Supervisor{State; Up; Down}`, that the program
   implements.
+* **D2-C.** That interface, and a `SupervisorFuncs` struct of functions
+  that implements it, as `Runner` and `RunnerFunc` are.
 
 ### D3: the instance
 
@@ -281,6 +291,8 @@ As in 0032-MADR and 0034-MADR:
   field 22 of `/proc/<pid>/stat`, as `"<pid>@<ticks>"`, so a reused PID
   is a new instance (F6's rule, on Linux).
 * **D3-B.** The PID alone.
+* **D3-C.** The PID, the start time and the binary's identity, from
+  `/proc/<pid>/exe`.
 
 ### D4: Stop
 
@@ -304,6 +316,12 @@ As in 0032-MADR and 0034-MADR:
   supervisor's own signal, which the program handles.
 * **D4-B.** Call `Down`, and wait on `State` only, bounded by the
   caller's context.
+* **D4-C.** D4-A, with an optional escalation:
+  * `SupervisedOptions.Kill func(ctx) error` asks the supervisor to kill
+    the process, such as `sv kill` or `s6-svc -k`;
+  * `KillAfter` is how long the step-5 wait runs before `Kill` is
+    called, once;
+  * the wait then goes on to `Poll.Timeout`.
 
 ### D5: Start
 
@@ -314,22 +332,26 @@ As in 0032-MADR and 0034-MADR:
     supervisor first (F29).
   * Errors from `State` or `Up` pass through, wrapped with the step.
 * **D5-B.** `Up` always.
+* **D5-C.** `Up`, then block until `State` shows a new instance.
 
 ### D6: WaitHealthy
 
 * **D6-A.** `PollHealthy`, with `Previous` set to the instance `Stop`
-  recorded, over a probe that reports `Failed` in four cases:
-  * when `State.Failed`;
-  * when the instance changes after one has counted, which is a restart
-    during the wait;
-  * when `State.Restarting`, a "down, want up", is seen after the
-    service was up;
-  * when it is seen twice in a row.
+  recorded, over a probe built from `State`:
+  * an observation is `Ready` when the service is up and, where the
+    supervisor reports readiness (`Ready` not nil), ready;
+  * it reports `Failed` when `State.Failed`;
+  * it reports `Failed` when the instance changes after one has counted,
+    which is a restart during the wait;
+  * it reports `Failed` when `State.Restarting`, a "down, want up", is
+    seen after the service was up, or twice in a row.
 
   Then `Options.Probe` runs, the program's application check, as for
   the other backends. This keeps every failure of F30, and the settle
   window and timeout are the program's, through `Poll`.
 * **D6-B.** `PollHealthy` over `State.Up` alone.
+* **D6-C.** An optional `Health func(ctx) (service.Health, error)` from
+  the program, in place of the adapter's mapping.
 
 ### D7: inside
 
@@ -343,7 +365,10 @@ As in 0032-MADR and 0034-MADR:
 
   That is the consumer's rule (F27). It is also the reach of every
   supervisor's stop (F12, F16, F24).
-* **D7-B.** Descent, or a shared process group.
+* **D7-B.** Descent, or a shared process group, as launchd's check has.
+* **D7-C.** Membership of the supervisor's tree: descent from the
+  `runsv` or `s6-supervise` that serves the service, or membership of
+  the service's cgroup.
 
 ### D8: Detach
 
@@ -369,7 +394,9 @@ As in 0032-MADR and 0034-MADR:
 
   A program that owns its definition passes its own reconciler, as the
   consumer does (F34).
-* **D9-B.** `Supervised` implements no `Reconciler`.
+* **D9-B.** An optional `Reconciler` field, which `Reconcile` and
+  `Restore` delegate to when it is set, with D9-A otherwise.
+* **D9-C.** `Supervised` implements no `Reconciler`.
 
 ### D10: no supervisor
 
@@ -380,26 +407,39 @@ As in 0032-MADR and 0034-MADR:
     alive.
   * `Start`'s `Up` is where a program starts a supervisor, so the
     sentinel reaches the caller only when the program chose not to.
-* **D10-B.** No sentinel: the program picks an existing one.
+* **D10-B.** `ErrNotInstalled`.
+* **D10-C.** `ErrUnsupported`.
 
 ### D11: a state call
 
 * **D11-A.** `Supervised.Status(ctx) (SupervisedState, error)`, the
   program's own `State`, with the adapter's `Instance` filled in.
-* **D11-B.** None.
+* **D11-B.** A separate exported `SupervisedStatus` for the adapter's
+  view: the instance, inside, and the recorded binary, beside the
+  program's state.
+* **D11-C.** None.
 
 ### D12: platform
 
 * **D12-A.** Linux. `NewSupervised` returns `ErrUnsupported` elsewhere,
   as the adapter reads `/proc` for D3, D7 and D9.
-* **D12-B.** Every Unix, with `ps` for the walk and no start time or
-  binary.
+* **D12-B.** Every Unix, with `ps -o ppid=` for the walk, and no start
+  time or binary.
+* **D12-C.** Linux in full, and other Unix degraded: PID-only instances
+  and no binary check.
 
 ### D13: where the `/proc` reads live
 
 * **D13-A.** Unexported, in `service` (`supervised_linux.go`), which is
   its only user.
 * **D13-B.** In `internal/winproc`, beside `Descends`.
+* **D13-C.** A new internal package, `internal/procfs`:
+  * it reads a process's parent, start time and binary on Linux, and
+    returns an unsupported error elsewhere;
+  * it has a `depguard` rule of its own that allows the standard library
+    only;
+  * any package of this module can reuse it later, such as an s6
+    backend or launchd's ancestor walk.
 
 ### D14: tests
 
@@ -412,7 +452,9 @@ As in 0032-MADR and 0034-MADR:
     `SELFUPDATE_REQUIRE_SUPERVISED`. Its test-only `State` reads
     `s6-svstat -o`, the one documented form (F17).
   * Every new test is seen failing first.
-* **D14-B.** Fakes only.
+* **D14-B.** D14-A without the live s6 test.
+* **D14-C.** D14-A, with live runit on the Ubuntu runner and OpenRC in an
+  Alpine container as well.
 
 ## Decision Outcome
 
@@ -420,54 +462,77 @@ As in 0032-MADR and 0034-MADR:
   The library owns the contract, and the program owns its supervisor.
   A first-party s6 backend is left to a later record.
 
-Proposed for the owner, D1 to D14:
+Chosen by the owner on 2026-10-24, from three options each:
 
-* **D1: "D1-A",** because `ProcessDetacher`, `ExecReconciler` and
-  `PollHealthy` already sit in `service` as generic pieces a program
-  combines (F1), and a new package would need its own rule for no gain.
-* **D2: "D2-A", function fields,** because they grow compatibly within
-  v1 and an interface does not (F11). They also match `HealthProbe` and
-  `RequestStop`, so a program wraps the code it has (F31, F29).
-  `Ready` is a pointer, so "no readiness" is not "not ready".
-* **D3: "D3-A",** because the stop and the health wait compare
-  instances, and a PID alone can be reused in between (F6).
-* **D4: "D4-A",** because the managed installer's recovery relies on a
-  stop that either completes or leaves the service as it was (F6). A
-  stop that gives up early leaves a process that the supervisor no
-  longer wants up, and a crash there would not be restarted.
-* **D5: "D5-A",** because an instance already running needs no `Up`, and
-  the program's `Up` keeps its session logic (F29) without a wrapper.
-  Under D0-A, a library `Start` that returned `ErrNoSupervisor` would
-  have forced the program to wrap the backend to start one. That would
-  bring back the consumer-side lifecycle the issue wanted gone.
-* **D6: "D6-A",** because it keeps every failure the consumer's `settle`
-  detects (F30), on the library's tested wait (F4). It also adds the
-  application probe, which the consumer's script backend lacks.
-* **D7: "D7-A",** because descent is what each supervisor's stop and
-  the consumer's teardown reach (F12, F16, F24, F27). A shared group
-  adds false positives, and s6's child is a session leader anyway
-  (F18).
-* **D8: "D8-A",** because only the program knows whether its OpenRC
-  service runs under cgroup cleanup (F24). A built-in cgroup rule would
-  refuse a runit or s6 tree that runs inside a desktop session's cgroup,
-  which those supervisors never kill. With no check, the update is
-  killed halfway, and the service is left down.
-* **D9: "D9-A",** because the managed installer requires a
-  `Reconciler` (F5), and verifying the recorded binary needs no script.
-  The consumer passes its own (F34).
-* **D10: "D10-A",** because the state is distinct, fixable, and common
-  after a logout (F29). It joins `service`'s errors for any adapter
-  user, and for a first-party backend later.
-* **D11: "D11-A",** because a program's `doctor` and status commands
-  then read the same state the update does, as with launchd's and Task
-  Scheduler's `Status`.
-* **D12: "D12-A",** because every fact and test host is Linux, and the
+* **D1: "D1-A", in `service`.** `ProcessDetacher`, `ExecReconciler` and
+  `PollHealthy` already sit there as generic pieces a program combines
+  (F1). D1-B and D1-C would add a package for one type, or a tree before
+  there is a second user.
+* **D2: "D2-A", function fields.** They grow compatibly within v1, and an
+  interface does not (F11). They also match `HealthProbe` and
+  `RequestStop`, so a program wraps the code it has (F29, F31). `Ready`
+  is a pointer, so "no readiness" is not "not ready".
+* **D3: "D3-A", PID and start time.** The stop and the health wait
+  compare instances, and a PID alone can be reused in between (F6).
+  Adding the binary (D3-C) would make every update a new instance by
+  design.
+* **D4: "D4-C", D4-A with an optional kill escalation,** the owner's
+  choice over the recommended D4-A:
+  * `Kill` and `KillAfter` are optional, and with no `Kill` the stop is
+    D4-A's.
+  * `KillAfter` defaults to half of `Poll.Timeout`. `NewSupervised`
+    refuses a `KillAfter` that is not shorter than `Poll.Timeout`, as
+    taskscheduler refuses such a `StopGrace` (0024-MADR Amendment A1),
+    and refuses a `KillAfter` set without a `Kill`.
+  * `Kill` runs once, when the wait reaches `KillAfter`.
+  * Its error is part of `Stop`'s error only when the stop fails as
+    well, as with Task Scheduler's `RequestStop`.
+  * D4-A's restore still applies: a stop that fails with the process
+    alive calls `Up`.
+
+  This gives runit, whose `sv down` sends TERM only (F12), the
+  escalation that s6 (`timeout-kill`) and OpenRC (`retry`) configure for
+  themselves.
+* **D5: "D5-A", leave a current instance, otherwise `Up`.** The program's
+  `Up` keeps its session logic (F29) without a wrapper. D5-C repeats
+  `WaitHealthy`'s work.
+* **D6: "D6-A", failure-aware, with the application probe.** It keeps
+  every failure the consumer's `settle` detects (F30), and honours
+  readiness where the supervisor reports it, on the library's tested
+  wait (F4). D6-C would leave each program to re-derive restart
+  detection.
+* **D7: "D7-A", descent, checked by start time.** Descent is what each
+  supervisor's stop and the consumer's teardown reach (F12, F16, F24,
+  F27). D7-B adds false positives, and D7-C hands off updates that a
+  stop would not kill.
+* **D8: "D8-A", the program's `DetachCheck`, then `DetachProcess`.** Only
+  the program knows whether its OpenRC service runs under cgroup
+  cleanup (F24). D8-B would refuse safe runit and s6 handoffs, and D8-C
+  lets the update die halfway.
+* **D9: "D9-A", verify only.** The managed installer requires a
+  `Reconciler` (F5), and the consumer passes its own (F34). D9-B
+  duplicates the installer's own reconciler argument.
+* **D10: "D10-A", `ErrNoSupervisor`.** The state is distinct, fixable,
+  and common after a logout (F29). The existing sentinels would misreport
+  it.
+* **D11: "D11-A", `Status`.** A program's `doctor` and the update read
+  the same state, as with launchd's and Task Scheduler's `Status`.
+* **D12: "D12-A", Linux.** Every fact and test host is Linux, and the
   hardening rests on `/proc`.
-* **D13: "D13-A",** because the adapter is the only user, and
-  `internal/winproc`'s role is starting processes and Windows liveness.
-* **D14: "D14-A",** because fakes alone cannot show that the adapter
-  meets a real supervisor. s6 is the supervisor with a documented form,
-  which also prepares the later first-party backend.
+* **D13: "D13-C", `internal/procfs`,** the owner's choice over the
+  recommended D13-A:
+  * a new internal package with its own `depguard` rule, named
+    `internal-procfs`, that allows the standard library only;
+  * excluded from `other-packages`;
+  * allowed in `service`'s rule;
+  * listed in AGENTS.md's internal helpers and in the architecture
+    table.
+
+  The reads are then available to a later s6 backend, and to launchd's
+  ancestor walk, without moving them again.
+* **D14: "D14-A", fakes, real processes, and a live s6 tree.** Fakes
+  alone cannot show the adapter meets a real supervisor, and s6 is the
+  one with a documented form.
 
 ### Hardening, together
 
@@ -477,7 +542,9 @@ Proposed for the owner, D1 to D14:
   installed, and a failed `DetachCheck`.
 * **Instances** are `PID@start-time`, so a reused PID never passes for
   the old or the new instance (D3, D7).
-* **A failed stop** puts the supervisor's want back (D4).
+* **A failed stop** puts the supervisor's want back (D4). An optional
+  `Kill` escalates a stop the program does not finish, once, at
+  `KillAfter` (D4-C).
 * **A restart, a crash loop or a failure** during the health wait fails
   it at once (D6).
 * **Errors** wrap the sentinels:
@@ -514,7 +581,8 @@ restates them.
    serves the service, and keep starting one in `Up` (F29).
 6. **Set `DetachCheck` for OpenRC**, refusing when cgroup cleanup is on
    for the user's services. The library's probes measure that first
-   (F24).
+   (F24). Set `Kill` where the supervisor does not escalate itself: on
+   runit, `sv kill <dir>` (F12).
 7. **Delete what the adapter replaces:** the inside walk, the stop poll,
    the script `WaitHealthy`, and `settle` for script kinds. Keep
    `refuseInside` for any backend that is not a `Detacher`.
@@ -539,7 +607,9 @@ restates them.
 * Neutral, because `DetachCheck` puts OpenRC's cgroup judgement on the
   program, which is the only party that can make it.
 * Bad, because `service` grows by one type, one options struct, one
-  state struct and one sentinel, all permanent within v1.
+  state struct and one sentinel, all permanent within v1. The module
+  also gains an internal package, `internal/procfs`, with its own rule
+  (D13-C).
 * Bad, because Linux only: runit and s6 on a BSD wait for a later
   record.
 
@@ -560,6 +630,9 @@ restates them.
   * the inside refusal, not installed, and no supervisor;
   * a stop that completes;
   * a stop that times out, which calls `Up` again;
+  * a stop that `Kill` finishes at `KillAfter`, a `Kill` that fails on
+    a stop that times out, and `NewSupervised`'s refusals of a bad
+    `KillAfter`;
   * a stop whose context ends, which waits on and returns the context's
     error;
   * a start that is left alone, and a start that runs `Up`;
@@ -580,8 +653,10 @@ restates them.
   that completes.
 * **Seen failing.** Each test fails on a planted break. The breaks: no
   inside check; the stop bound by the caller's context; no `Up` after a
-  failed stop; the PID alone as the instance; no restart detection; no
-  `DetachCheck` call.
+  failed stop; no `Kill` at `KillAfter`; the PID alone as the instance;
+  no restart detection; no `DetachCheck` call.
+* **`internal/procfs`'s own tests,** on Linux and elsewhere, and its
+  `depguard` rule seen failing on a planted import.
 * **`make apicheck`:** additions only.
 * **The consumer's adoption** passes its own reproduction (step 9 above).
   That is the consumer's record. It is linked from the PLAN's closing.
@@ -593,9 +668,9 @@ restates them.
 * Good, because a program writes only its scripts.
 * Bad, because two of the three rest on undocumented forms (F14, F22),
   below 0011-MADR's bar.
-* Bad, because the consumer would still keep its scripts, PID layout and
-  session start. It would also need a wrapper around a library `Start`
-  to start a supervisor (D5).
+* Bad, because the consumer would keep its scripts, PID layout and
+  session start, and also need a wrapper around a library `Start` to
+  start a supervisor (D5).
 * Bad, because the handoff arrives one backend per release.
 
 ### D0-B. The adapter only
@@ -613,9 +688,14 @@ restates them.
 
 * Good, because it sits with the other generic pieces, with no new rule.
 
-### D1-B. A new package
+### D1-B. `service/supervised`
 
-* Bad, because there is a new rule and a new import for one type.
+* Bad, because it means a new rule and a new import for one type.
+
+### D1-C. `service/supervise`, for the adapter and later backends
+
+* Good, because supervisor code would be grouped.
+* Bad, because it adds a package tree before there is a second user.
 
 ### D2-A. Function fields
 
@@ -627,25 +707,43 @@ restates them.
 * Good, because it suits a program with state.
 * Bad, because any method added later breaks every implementer.
 
+### D2-C. An interface and a functions adapter
+
+* Bad, because there are two spellings, and it keeps the interface's
+  growth problem.
+
 ### D3-A. PID and start time
 
 * Good, because a reused PID cannot pass for an instance.
 
 ### D3-B. PID only
 
-* Bad, because a stop, then a quick reuse of the PID by another
-  process, reads as the old instance still running, or as a new start.
+* Bad, because a quick reuse of the PID reads as the old instance still
+  running, or as a new start.
+
+### D3-C. PID, start time and binary
+
+* Bad, because an update changes the binary on purpose, so the binary
+  adds reads for no gain in telling instances apart.
 
 ### D4-A. Ordered stop, bound past the context, want restored
 
 * Good, because it is the same discipline as Task Scheduler's (F6).
+* Neutral, because a program that ignores TERM under runit times out,
+  with no escalation.
 
 ### D4-B. Down and a context-bound wait
 
 * Bad, because a cancelled context mid-stop leaves the service in an
   unknown state, with the supervisor holding it down.
 
-### D5-A. Start leaves a current instance alone
+### D4-C. D4-A, with an optional kill
+
+* Good, because runit gains the escalation that s6 and OpenRC configure
+  for themselves, and the program chooses the command.
+* Neutral, because it adds two optional fields and a validation rule.
+
+### D5-A. Leave a current instance, otherwise `Up`
 
 * Good, because it keeps idempotence and the program's session logic.
 
@@ -654,22 +752,38 @@ restates them.
 * Neutral, because `Up` is usually idempotent. But it cannot see an
   instance that came up on its own.
 
+### D5-C. `Up`, then wait for a new instance
+
+* Bad, because it repeats `WaitHealthy`'s work, with a second wait to
+  bound.
+
 ### D6-A. Failure-aware probe, then the application probe
 
 * Good, because it is at least as strict as the consumer's `settle`
-  (F30).
+  (F30), and honours readiness.
 
 ### D6-B. `Up` only
 
 * Bad, because a crash loop that is up at each sample passes.
 
-### D7-A. Descent, start-time checked
+### D6-C. A program's health function
+
+* Good, because it gives full control.
+* Bad, because each program re-derives restart detection, which the
+  library would otherwise own.
+
+### D7-A. Descent, checked by start time
 
 * Good, because it matches the stops' reach and the consumer's rule.
 
-### D7-B. Descent or group
+### D7-B. Descent or a shared group
 
-* Bad, because it adds false positives.
+* Bad, because it adds false positives. s6's child is a session leader
+  anyway (F18).
+
+### D7-C. The supervisor's tree
+
+* Bad, because it hands off updates that a stop would not kill.
 
 ### D8-A. A program's check, then `DetachProcess`
 
@@ -688,7 +802,12 @@ restates them.
 
 * Good, because it keeps the contract with no script parsing.
 
-### D9-B. No Reconciler
+### D9-B. An optional delegate
+
+* Bad, because it duplicates the reconciler the managed installer
+  already takes.
+
+### D9-C. No Reconciler
 
 * Bad, because `NewManagedInstaller` refuses that (F5).
 
@@ -697,15 +816,24 @@ restates them.
 * Good, because it is precise, and is shared by every user of
   `service`.
 
-### D10-B. No sentinel
+### D10-B. `ErrNotInstalled`
 
-* Bad, because `ErrNotInstalled` misreports a service that exists.
+* Bad, because it misreports a service that exists.
+
+### D10-C. `ErrUnsupported`
+
+* Bad, because it hides a common, fixable state.
 
 ### D11-A. Status
 
 * Good, because one call serves `doctor` and the update alike.
 
-### D11-B. None
+### D11-B. A separate status type
+
+* Neutral, because the separation is cleaner, but it means two exported
+  types for one view.
+
+### D11-C. None
 
 * Bad, because a program calls `State` and computes the instance
   itself.
@@ -718,23 +846,42 @@ restates them.
 
 * Bad, because it would lose D3's start time and D9's binary there.
 
+### D12-C. Linux in full, other Unix degraded
+
+* Bad, because there would be two behaviours to document and test, with
+  no host to test the second.
+
 ### D13-A. In `service`
 
-* Good, because it is next to its one user.
+* Good, because it sits next to its one user.
+* Neutral, because a later user would have to move it.
 
 ### D13-B. In `internal/winproc`
 
 * Bad, because it mixes Linux process reads into the package that starts
   processes.
 
+### D13-C. `internal/procfs`
+
+* Good, because it is a clear home, reusable by a later backend or by
+  launchd's walk.
+* Neutral, because it adds one package, one rule and one row before a
+  second user exists.
+
 ### D14-A. Fakes, real processes and a live s6 tree
 
 * Good, because it proves the adapter against a real supervisor.
-* Bad, because it adds one CI step.
+* Neutral, because it adds one CI step.
 
-### D14-B. Fakes only
+### D14-B. Without the live tree
 
 * Bad, because nothing meets a real supervisor.
+
+### D14-C. Live runit, s6 and OpenRC
+
+* Good, because it gives the broadest proof.
+* Bad, because there would be three CI setups, and test-only parsers
+  for forms that are not documented.
 
 ## More Information
 
@@ -770,4 +917,6 @@ restates them.
 
   Its adoption is tracked in
   <https://github.com/maccavelli/magic-cli-remote/issues/27>.
-* The PLAN follows once the owner decides D1 to D14.
+* Plan:
+  `0035-PLAN-serve-supervisors-through-a-supervised-adapter.md`,
+  to follow.
