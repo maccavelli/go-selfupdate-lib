@@ -125,3 +125,33 @@ func TestDetachFailureRemovesFile(t *testing.T) {
 		t.Fatalf("a failed handoff left %v", entries)
 	}
 }
+
+// TestDetachScrubsManagerEnv: the environment file leaves out the caller's
+// unit's own variables, keeps the rest, and keeps one spec.Env names
+// (0033-MADR D3-A, D5-A). systemd 239 keeps the file to read.
+func TestDetachScrubsManagerEnv(t *testing.T) {
+	t.Setenv("NOTIFY_SOCKET", "/run/caller/notify")
+	t.Setenv("INVOCATION_ID", "caller0000")
+	t.Setenv("RUNTIME_DIRECTORY", "/run/caller")
+	t.Setenv("STATE_DIRECTORY", "/var/lib/demo")
+	f := newFake()
+	f.version = "systemd 239 (239-68.el8)"
+	u := testUnit(t, f, Options{Scope: User})
+	spec := handOffSpec(t)
+	spec.Env = append(spec.Env, "NOTIFY_SOCKET=/run/explicit")
+	if _, err := u.Detach(context.Background(), spec); err != nil {
+		t.Fatal(err)
+	}
+	body := readFile(t, filepath.Join(u.getenv("XDG_RUNTIME_DIR"), "selfupdate", "demo.service", "handoff-abc123.env"))
+	lines := strings.Split(body, "\n")
+	for _, want := range []string{`STATE_DIRECTORY="/var/lib/demo"`, `NOTIFY_SOCKET="/run/explicit"`} {
+		if !slices.Contains(lines, want) {
+			t.Errorf("environment file lacks %s:\n%s", want, body)
+		}
+	}
+	for _, gone := range []string{"INVOCATION_ID=", "RUNTIME_DIRECTORY=", `NOTIFY_SOCKET="/run/caller`} {
+		if strings.Contains(body, gone) {
+			t.Errorf("environment file holds the caller's %s:\n%s", gone, body)
+		}
+	}
+}

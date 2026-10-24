@@ -206,7 +206,10 @@ func (u *Unit) writeEnvFile(spec service.HandOff) (path string, err error) {
 	if err != nil {
 		return "", err
 	}
-	if _, err := f.Write(envFileBody(append(os.Environ(), spec.Env...))); err != nil {
+	// The caller's unit's own variables stay behind; the run's unit sets
+	// its own, and spec.Env passes on whatever it names (0033-MADR D3-A,
+	// D5-A).
+	if _, err := f.Write(envFileBody(append(service.ScrubManagerEnv(os.Environ()), spec.Env...))); err != nil {
 		return "", errors.Join(err, f.Close(), os.Remove(path))
 	}
 	if err := f.Close(); err != nil {

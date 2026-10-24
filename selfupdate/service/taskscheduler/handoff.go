@@ -75,7 +75,9 @@ func (t *Task) detachTask(ctx context.Context, spec service.HandOff) (service.De
 	if err != nil {
 		return service.Detached{}, err
 	}
-	env := append(append(os.Environ(), spec.Env...), service.EnvHandOffHop+"=1")
+	// The scrubbed environment, then spec.Env, then the hop variable
+	// (0033-MADR D3-A, D5-A).
+	env := append(append(service.ScrubManagerEnv(os.Environ()), spec.Env...), service.EnvHandOffHop+"=1")
 	file, err := service.WriteHandOffEnv(dir, spec.ID, env)
 	if err != nil {
 		return service.Detached{}, err

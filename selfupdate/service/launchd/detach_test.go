@@ -2,6 +2,7 @@ package launchd
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -131,5 +132,39 @@ func TestCleanupHandOffs(t *testing.T) {
 	}
 	if bootouts != 1 {
 		t.Fatalf("%d bootouts, want 1", bootouts)
+	}
+}
+
+// TestDetachScrubsManagerEnv: the environment file leaves out the service
+// job's own variables, keeps the rest, and keeps one spec.Env names
+// (0033-MADR D3-A, D5-A).
+func TestDetachScrubsManagerEnv(t *testing.T) {
+	t.Setenv("XPC_SERVICE_NAME", "com.example.demo")
+	t.Setenv("NOTIFY_SOCKET", "/run/caller/notify")
+	t.Setenv("INVOCATION_ID", "caller0000")
+	t.Setenv("RUNTIME_DIRECTORY", "/run/caller")
+	t.Setenv("STATE_DIRECTORY", "/var/lib/demo")
+	f := newFake()
+	j := testJob(t, f, Options{})
+	spec := handOffSpec()
+	spec.Env = append(spec.Env, "NOTIFY_SOCKET=/run/explicit")
+	if _, err := j.Detach(context.Background(), spec); err != nil {
+		t.Fatal(err)
+	}
+	var vars []string
+	if err := json.Unmarshal([]byte(readString(t, filepath.Join(j.o.JobDir, "handoff-abc123.env"))), &vars); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"STATE_DIRECTORY=/var/lib/demo", "NOTIFY_SOCKET=/run/explicit"} {
+		if !slices.Contains(vars, want) {
+			t.Errorf("the environment file lacks %s: %q", want, vars)
+		}
+	}
+	for _, kv := range vars {
+		for _, gone := range []string{"XPC_SERVICE_NAME=", "INVOCATION_ID=", "RUNTIME_DIRECTORY=", "NOTIFY_SOCKET=/run/caller"} {
+			if strings.HasPrefix(kv, gone) {
+				t.Errorf("the environment file holds the caller's %s", kv)
+			}
+		}
 	}
 }

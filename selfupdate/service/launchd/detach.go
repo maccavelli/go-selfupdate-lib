@@ -97,7 +97,9 @@ func (j *Job) Detach(ctx context.Context, spec service.HandOff) (service.Detache
 	if err := j.CleanupHandOffs(ctx); err != nil && ctx.Err() != nil {
 		return service.Detached{}, ctx.Err()
 	}
-	envFile, err := service.WriteHandOffEnv(dir, spec.ID, append(os.Environ(), spec.Env...))
+	// The service job's own variables stay behind; spec.Env passes on
+	// whatever it names (0033-MADR D3-A, D5-A).
+	envFile, err := service.WriteHandOffEnv(dir, spec.ID, append(service.ScrubManagerEnv(os.Environ()), spec.Env...))
 	if err != nil {
 		return service.Detached{}, err
 	}

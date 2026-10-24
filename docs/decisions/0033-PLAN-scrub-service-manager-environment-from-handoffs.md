@@ -341,3 +341,43 @@ in place.
   `TestHopKeepsEnvironment` pins that, and failed on a plant of the
   scrub. No decision changes: MADR D3-A's "the hop" is covered by what
   starts it, and the MADR is annotated in place.
+
+### K3: the handoffs (2026-10-24)
+
+* K2 was committed by the owner as `7f82c67`.
+* **Sources.** `systemd/detach.go` (the environment file's body),
+  `launchd/detach.go` (`WriteHandOffEnv`'s list) and
+  `taskscheduler/handoff.go` (the one-shot's list) now start from
+  `service.ScrubManagerEnv(os.Environ())`, then `spec.Env`; Task
+  Scheduler's hop variable stays last.
+* **Tests**, one per backend, each with `NOTIFY_SOCKET`, `INVOCATION_ID`,
+  `RUNTIME_DIRECTORY` and `STATE_DIRECTORY` set by `t.Setenv` and an
+  explicit `NOTIFY_SOCKET=/run/explicit` in `spec.Env`:
+  * `systemd/detach_unix_test.go` `TestDetachScrubsManagerEnv`, at
+    systemd 239 so that the file stays to be read;
+  * `launchd/detach_test.go` `TestDetachScrubsManagerEnv`, with
+    `XPC_SERVICE_NAME` set as well;
+  * `taskscheduler/handoff_test.go` `TestDetachOneShotScrubsManagerEnv`,
+    which also checks the hop variable is the last entry.
+
+  Each checks that the file keeps `STATE_DIRECTORY` and the explicit
+  `NOTIFY_SOCKET`, and holds none of the caller's.
+* **Here and on the Windows test host:** the three tests pass, and so do
+  the five `selfupdate/service/...` packages on the Windows test host.
+* **Seen failing** (`scripts/plant-copy.sh`, each backend passing
+  `append(os.Environ(), spec.Env...)`):
+
+  | Plant | Failure |
+  | :--- | :--- |
+  | (a) systemd | `detach_unix_test.go:154: environment file holds the caller's INVOCATION_ID=`, and `RUNTIME_DIRECTORY=` |
+  | (b) launchd | `detach_test.go:166: the environment file holds the caller's XPC_SERVICE_NAME=com.example.demo`, and `NOTIFY_SOCKET`, `INVOCATION_ID`, `RUNTIME_DIRECTORY` |
+  | (c) Task Scheduler | `handoff_test.go:292: the environment file holds the caller's NOTIFY_SOCKET=/run/caller/notify`, and `INVOCATION_ID`, `RUNTIME_DIRECTORY` |
+
+  systemd's plant does not show the caller's `NOTIFY_SOCKET`: the
+  environment file keeps a name's last value, and the explicit one comes
+  last. The other two names catch the plant.
+* **Checks.** `make pre-add-check` on the six Go files: "6 file(s) clean
+  (gofmt, golangci-lint, go vet, go test, govulncheck)". `go vet` on
+  `./selfupdate/service/...` for `linux`, `darwin` and `windows`: clean.
+  `make apicheck`: "compatible with v1.19.0". No `.go` file was added, so
+  the architecture table is unchanged.

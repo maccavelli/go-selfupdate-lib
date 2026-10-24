@@ -257,3 +257,43 @@ func TestCleanupHandOffs(t *testing.T) {
 		t.Fatalf("a missing folder: %v", err)
 	}
 }
+
+// TestDetachOneShotScrubsManagerEnv: the environment file leaves out the
+// manager's per-unit variables, keeps the rest and one spec.Env names, and
+// ends with the hop variable (0033-MADR D3-A, D5-A).
+func TestDetachOneShotScrubsManagerEnv(t *testing.T) {
+	t.Setenv("NOTIFY_SOCKET", "/run/caller/notify")
+	t.Setenv("INVOCATION_ID", "caller0000")
+	t.Setenv("RUNTIME_DIRECTORY", "/run/caller")
+	t.Setenv("STATE_DIRECTORY", "/var/lib/demo")
+	f := newFake()
+	task, dir := oneShotTask(t, f, Options{})
+	spec := oneShotSpec
+	spec.Env = append(slices.Clone(spec.Env), "NOTIFY_SOCKET=/run/explicit")
+	if _, err := task.Detach(context.Background(), spec); err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(filepath.Join(dir, "handoff-abc123.env")) //nolint:gosec // the test's own file
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vars []string
+	if err := json.Unmarshal(body, &vars); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"STATE_DIRECTORY=/var/lib/demo", "NOTIFY_SOCKET=/run/explicit"} {
+		if !slices.Contains(vars, want) {
+			t.Errorf("the environment file lacks %s: %q", want, vars)
+		}
+	}
+	for _, kv := range vars {
+		for _, gone := range []string{"INVOCATION_ID=", "RUNTIME_DIRECTORY=", "NOTIFY_SOCKET=/run/caller"} {
+			if strings.HasPrefix(kv, gone) {
+				t.Errorf("the environment file holds the caller's %s", kv)
+			}
+		}
+	}
+	if last := vars[len(vars)-1]; last != service.EnvHandOffHop+"=1" {
+		t.Errorf("the last variable is %s, want the hop variable", last)
+	}
+}
