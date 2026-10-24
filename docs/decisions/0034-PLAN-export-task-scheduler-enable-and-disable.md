@@ -417,3 +417,44 @@ which approves this plan.
   * `docs/architecture.md`: the `taskscheduler` row is 15 source and 18
     test files, and its paragraph names the two methods and the field.
     `--arch`: "18 rows, 0 differ".
+
+### L3: the switch left out of `DiffDefinitions` (2026-10-24)
+
+* L2 was committed by the owner as `4f5b24d`. P1 confirmed F16, so this
+  phase ran.
+* **`definition.go`:**
+  * `compared` returns false for `settingsSwitch`, a new constant
+    `"Settings/Enabled"`, whose comment gives the reason (MADR D5-B,
+    Amendment A1, P1);
+  * `DiffDefinitions`'s list of compared `Settings` elements names
+    `Enabled` as skipped, and why;
+  * `settingsDefaults` keeps its `Enabled` entry.
+* **`register.go`:** `Register`'s documentation says the definition sets
+  the switch, that one leaving `Settings/Enabled` out enables a disabled
+  task (Amendment A1, P2), and that a setup keeping a task disabled
+  calls `Disable` after `Register`.
+* **`definition_test.go`:**
+  * the `TestDiffOneChange` case for `<Enabled>` in the `settings` pair,
+    which expected `Settings/Enabled`, is removed;
+  * `TestDiffIgnores` gains three cases that report nothing: a disabled
+    task's stored definition, `<Enabled>false` inserted into `Settings`
+    as P1 stored it; a wanted definition with `<Enabled>false`; and the
+    removed `settings` change, now expecting no difference.
+
+  The other `Settings` cases in `TestDiffOneChange` are unchanged and
+  pass.
+* **Here and on the Windows test host:** the `taskscheduler` package's
+  tests pass.
+* **Seen failing:** plant (f), `compared` without the skip:
+
+  ```text
+  --- FAIL: TestDiffIgnores (0.00s)
+      definition_test.go:159: a disabled task's stored definition: [{Path:Settings/Enabled Stored:false Wanted:true}]
+      definition_test.go:162: a wanted definition that is disabled: [{Path:Settings/Enabled Stored:true Wanted:false}]
+      definition_test.go:165: the settings pair, Enabled changed: [{Path:Settings/Enabled Stored:false Wanted:true}]
+  ```
+
+* **Checks:** `make pre-add-check` on the three files reports "3 file(s)
+  clean (gofmt, golangci-lint, go vet, go test, govulncheck)", and
+  `make apicheck` reports "compatible with v1.20.0". No `.go` file was
+  added.

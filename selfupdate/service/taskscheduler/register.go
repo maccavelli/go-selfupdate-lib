@@ -24,6 +24,13 @@ import (
 // because Task Scheduler refuses one that says UTF-8 and the definition
 // travels as UTF-16 whatever it says (Amendment A1, P1-6).
 //
+// The definition sets the task's switch: one that leaves Settings/Enabled
+// out, or sets it true, enables a disabled task, including one Stop or
+// Disable disabled
+// (docs/decisions/0034-MADR-export-task-scheduler-enable-and-disable.md
+// Amendment A1, P2). A setup that keeps a task disabled calls Disable
+// after Register.
+//
 // It checks ctx before it starts and ignores it after: each Task
 // Scheduler call takes no context. Errors, matched with errors.Is:
 // service.ErrPermission when Task Scheduler denies the registration.

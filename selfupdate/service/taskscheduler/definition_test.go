@@ -58,7 +58,6 @@ func TestDiffOneChange(t *testing.T) {
 		{"settings", "<StartWhenAvailable>true", "<StartWhenAvailable>false", "Settings/StartWhenAvailable"},
 		{"settings", "<RunOnlyIfNetworkAvailable>true", "<RunOnlyIfNetworkAvailable>false", "Settings/RunOnlyIfNetworkAvailable"},
 		{"settings", "<Settings>\n  <AllowStartOnDemand>false</AllowStartOnDemand>", "<Settings>\n  <AllowStartOnDemand>false</AllowStartOnDemand><Volatile>true</Volatile>", "Settings/Volatile"},
-		{"settings", "<Enabled>false</Enabled>\n  <Hidden>", "<Enabled>true</Enabled>\n  <Hidden>", "Settings/Enabled"},
 		{"settings", "<Hidden>true", "<Hidden>false", "Settings/Hidden"},
 		{"settings", "<RunOnlyIfIdle>true", "<RunOnlyIfIdle>false", "Settings/RunOnlyIfIdle"},
 		{"settings", "<DisallowStartOnRemoteAppSession>true", "<DisallowStartOnRemoteAppSession>false", "Settings/DisallowStartOnRemoteAppSession"},
@@ -151,6 +150,19 @@ func TestDiffIgnores(t *testing.T) {
 	}
 	if d := mustDiff(t, fixture(t, "minimal.stored"), fixture(t, "minimal.wanted")); len(d) != 0 {
 		t.Fatalf("a wanted principal with no UserId: %+v", d)
+	}
+	// The task's switch is state that Stop, Enable and Disable set, not
+	// drift (0034-MADR D5-B): a disabled task stores <Enabled>false in
+	// Settings (Amendment A1, P1), and a definition may set it either way.
+	disabled := strings.Replace(stored, "<UseUnifiedSchedulingEngine>true", "<Enabled>false</Enabled><UseUnifiedSchedulingEngine>true", 1)
+	if d := mustDiff(t, disabled, wanted); len(d) != 0 {
+		t.Errorf("a disabled task's stored definition: %+v", d)
+	}
+	if d := mustDiff(t, stored, strings.Replace(wanted, "\n  <Enabled>true</Enabled>", "\n  <Enabled>false</Enabled>", 1)); len(d) != 0 {
+		t.Errorf("a wanted definition that is disabled: %+v", d)
+	}
+	if d := mustDiff(t, fixture(t, "settings.stored"), strings.Replace(fixture(t, "settings.wanted"), "<Enabled>false</Enabled>\n  <Hidden>", "<Enabled>true</Enabled>\n  <Hidden>", 1)); len(d) != 0 {
+		t.Errorf("the settings pair, Enabled changed: %+v", d)
 	}
 }
 

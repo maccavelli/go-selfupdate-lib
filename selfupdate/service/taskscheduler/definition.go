@@ -40,8 +40,11 @@ func SameDefinition(stored, wanted string) (bool, error) {
 //   - compared: every trigger, in order, by type, with every element it
 //     holds; the principal's UserId, GroupId, LogonType and RunLevel;
 //     every Settings element except IdleSettings and
-//     UseUnifiedSchedulingEngine, which Task Scheduler adds; and every
-//     action, in order, with every element it holds;
+//     UseUnifiedSchedulingEngine, which Task Scheduler adds, and Enabled,
+//     the task's switch, which Stop, Enable and Disable set and
+//     Status.Disabled reads
+//     (docs/decisions/0034-MADR-export-task-scheduler-enable-and-disable.md
+//     D5-B); and every action, in order, with every element it holds;
 //   - not compared: RegistrationInfo, the task's Data, attributes, and
 //     anything else; a difference there is not reported;
 //   - an element absent on one side compares as its default, where Task
@@ -171,7 +174,7 @@ func compared(path string) bool {
 		}
 		return false
 	case strings.HasPrefix(path, "Settings/"):
-		return !strings.HasPrefix(path, "Settings/IdleSettings/") && path != "Settings/UseUnifiedSchedulingEngine"
+		return !strings.HasPrefix(path, "Settings/IdleSettings/") && path != "Settings/UseUnifiedSchedulingEngine" && path != settingsSwitch
 	case strings.HasPrefix(path, "Triggers/"), strings.HasPrefix(path, "Actions/"):
 		return strings.Count(path, "/") >= 2
 	}
@@ -221,6 +224,13 @@ var principalDefaults = map[string]string{
 	"LogonType": "InteractiveToken",
 	"RunLevel":  "LeastPrivilege",
 }
+
+// settingsSwitch is the task's switch, as its definition stores it: Task
+// Scheduler writes put_Enabled into it (0034-MADR Amendment A1, P1), so
+// it is state, not part of the definition a program renders, and
+// DiffDefinitions does not compare it. settingsDefaults keeps its
+// default.
+const settingsSwitch = "Settings/Enabled"
 
 // triggerPart matches Triggers/<Type>[n]/ and captures what follows.
 var triggerPart = regexp.MustCompile(`^Triggers/[A-Za-z]+\[\d+\]/(.+)$`)
