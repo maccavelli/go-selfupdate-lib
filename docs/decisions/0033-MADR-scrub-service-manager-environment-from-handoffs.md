@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-23
 decision-makers: go-selfupdate-lib maintainers
 consulted: "GitHub issue #7, \"service: Detach copies the caller's per-unit service-manager variables into the detached run\" (2026-10-23), from the owner for magic-cli-remote; a read of `selfupdate/service` and its backends at a6af9dc (v1.19.0); systemd.exec(5) and systemd-run(1) of systemd 259 on the Linux test host, read 2026-10-23; sd_notify(3) and sd_listen_fds(3), read 2026-10-23; launchd.plist(5) and launchd(8) on this Mac"
@@ -75,7 +75,10 @@ systemd 259, "Environment Variables in Spawned Processes")
   unit: they replace the values systemd sets for it. A name systemd sets
   only for the caller's unit, such as `NOTIFY_SOCKET`, arrives in a unit
   that has no such socket [derived]. Whether the replacement happens as
-  derived is [unverified until probe K1-2].
+  derived is [unverified until probe K1-2]. *(Measured, Amendment A1,
+  K1-2: the detached run's `INVOCATION_ID` was the caller's, not its own
+  unit's, and it held the caller's `NOTIFY_SOCKET`, `JOURNAL_STREAM`,
+  `SYSTEMD_EXEC_PID` and `MEMORY_PRESSURE_*`.)*
 * **F10. The variables systemd sets for a unit's processes**, with what
   each describes:
   * the user and session: `PATH`, `LANG`, `USER`, `LOGNAME`, `HOME`,
@@ -104,7 +107,8 @@ systemd 259, "Environment Variables in Spawned Processes")
   always removed when the service stops" (`RuntimeDirectoryPreserve=`).
   The credentials directory is "per-unit" and "only accessible to the UID
   associated with the unit"; whether it outlives the unit is not stated
-  [unverified until probe K1-3]. The state, cache, logs and configuration
+  [unverified until probe K1-3]. *(Measured, Amendment A1, K1-3: it is
+  gone once the unit has stopped.)* The state, cache, logs and configuration
   directories are persistent paths, valid for another process of the same
   program [docs, derived].
 * **F12. sd_notify(3) and sd_listen_fds(3) name the hazard.** With
@@ -122,10 +126,12 @@ systemd 259, "Environment Variables in Spawned Processes")
   (launchd.plist(5)) [docs]. Whether launchd sets per-job variables of its
   own, such as `XPC_SERVICE_NAME`, is not documented
   [unverified until probe K1-4]. If it does, F5 and F7 replace the
-  one-shot job's value with the caller's [derived].
+  one-shot job's value with the caller's [derived]. *(Measured, Amendment
+  A1, K1-4: it sets `XPC_SERVICE_NAME` to the job's label, and
+  `XPC_FLAGS`.)*
 * **F14. Windows.** Neither the Service Control Manager nor Task
   Scheduler documents per-service variables [unverified until probe
-  K1-5].
+  K1-5]. *(Measured, Amendment A1, K1-5: neither sets one.)*
 * **F15. The consumer** (magic-cli-remote,
   `0210-MADR-hand-off-agent-run-updates-outside-the-service.md`,
   amendment A, F5) recorded the journal line in the issue. Its daemon is
@@ -161,6 +167,7 @@ systemd 259, "Environment Variables in Spawned Processes")
   variables stay.
 * **D1-C.** D1-B, plus any per-job variable probe K1-4 measures launchd
   setting, and any per-service variable probe K1-5 measures on Windows.
+  *(Amendment A1: `XPC_SERVICE_NAME` and `XPC_FLAGS`; none on Windows.)*
 
 ### D2: the unit's directory variables
 
@@ -202,9 +209,11 @@ systemd 259, "Environment Variables in Spawned Processes")
 
 ## Decision Outcome
 
-Proposed, for the owner to decide: "D1-C", "D2-C", "D3-A", "D4-A",
-"D5-A" and "D6-A", released as `v1.20.0`, a minor release because D6-A
-adds API.
+Chosen options (the owner, 2026-10-23, who committed this pair and said
+"committed proceed" after it was presented with these options proposed):
+"D1-C", "D2-C", "D3-A", "D4-A", "D5-A" and "D6-A", released as
+`v1.20.0`, a minor release because D6-A adds API. Amendment A1 fills
+D1-C's launchd and Windows parts from the probes.
 
 * **D1-C** takes every variable systemd documents as being about the
   unit and not about the user (F10). Each of them describes something
@@ -339,6 +348,25 @@ adds API.
 ### D6-B. Unexported
 
 * Bad, because every program writes the list again.
+
+## Amendment A1 (2026-10-23): probe results
+
+Measured by
+[0033-PLAN-scrub-service-manager-environment-from-handoffs.md](0033-PLAN-scrub-service-manager-environment-from-handoffs.md)
+K1: on the Linux test host (systemd 259, user scope), with the library's
+own `systemd.Unit.Detach` from the working tree; on this Mac; and on the
+Windows test host. No probe tripped a decision point.
+
+| Probe | Question | Result | Effect |
+| :--- | :--- | :--- | :--- |
+| K1-1 | What a `Type=notify` user unit's process has | Of F10's per-unit names: `INVOCATION_ID`, `SYSTEMD_EXEC_PID`, `NOTIFY_SOCKET`, `MEMORY_PRESSURE_WATCH`, `MEMORY_PRESSURE_WRITE`, `JOURNAL_STREAM`, `MANAGERPID`, `MANAGERPIDFDID`; the rest of its environment is the user manager's | `MEMORY_PRESSURE_*`, outside the issue's list, are set by default: D1-B's wider list over D1-A |
+| K1-2 | Does a handoff's environment file replace the transient unit's own values (F9) | The detached run's `INVOCATION_ID` equalled the caller's and not its own unit's (which `systemctl show` gave as different); it had the caller's `NOTIFY_SOCKET`, though its unit's `NotifyAccess` is `none`, and the caller's `JOURNAL_STREAM`, `SYSTEMD_EXEC_PID`, `MEMORY_PRESSURE_WATCH` and `MEMORY_PRESSURE_WRITE` | F9 holds: the file replaces systemd's own values. D1 stands |
+| K1-3 | Does a unit's `CREDENTIALS_DIRECTORY` outlive it | Inside the unit it was `/run/user/<uid>/credentials/<unit>` and held the credential; once the unit had stopped, the path was gone | D2-C's reason holds |
+| K1-4 | What launchd sets for a job | Two LaunchAgents' environments differed only in `XPC_SERVICE_NAME`, each its own label; both also had `XPC_FLAGS`, which launchd sets, and `OSLogRateLimit`, with the same value | `XPC_SERVICE_NAME` and `XPC_FLAGS` join the list under D1-C: the one-shot job's own would otherwise be replaced by the caller's (F7). `OSLogRateLimit` names no job, and stays |
+| K1-5 | What Task Scheduler and the Service Control Manager set | Two tasks' environments were the same as each other, and so were two services'; no value named its task or service | Nothing joins the list for Windows |
+
+After the probes, no `selfupdate-probe-*` unit, LaunchAgent, task or
+service was left on any host, and their scratch directories were removed.
 
 ## More Information
 

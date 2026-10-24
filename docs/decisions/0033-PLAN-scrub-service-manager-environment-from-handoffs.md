@@ -1,14 +1,13 @@
 ---
-status: proposed
+status: in-progress
 date: 2026-10-23
 associated-madr: "0033-MADR-scrub-service-manager-environment-from-handoffs.md"
 ---
 # Implement leaving the service manager's per-unit variables out of passed-on environments, and release `v1.20.0`
 
 Associated MADR: [0033-MADR-scrub-service-manager-environment-from-handoffs.md](0033-MADR-scrub-service-manager-environment-from-handoffs.md)
-(D1-C, D2-C, D3-A, D4-A, D5-A and D6-A, as proposed; the owner's decision
-may change them, and this plan is amended to match before any phase after
-K0 runs).
+(D1-C, D2-C, D3-A, D4-A, D5-A and D6-A, as the owner chose on
+2026-10-23).
 
 ## Goal
 
@@ -233,3 +232,57 @@ comment naming `v1.20.0`, on the owner's ask.
   `HandOff.Env`.
 * **Rollback:** before the tag, `git revert` of a phase; after it, fix
   forward.
+
+## Execution record
+
+### Approval
+
+* 2026-10-23: the owner committed K0 (`73818da`) and said "committed
+  proceed" after the pair was presented with D1-C to D6-A proposed. The
+  MADR becomes `accepted` and this plan `in-progress`, in K1's commit.
+
+### K1: probes (2026-10-23)
+
+**Built, outside the tree.** `envprobe`, a Go program built for
+linux/amd64 from the scratchpad, with this module `replace`d by the
+working tree, so its handoff is the library's own `systemd.Unit.Detach`;
+`run.sh`, which starts it as a transient `Type=notify` user unit with
+`NotifyAccess=all`, waits for the handoff, stops the unit, and runs K1-3;
+`k1mac.sh`, two throwaway LaunchAgents running `/usr/bin/env`;
+`k1win.ps1`, two throwaway tasks and two throwaway services running
+`cmd /c set`.
+
+**Results.**
+
+* **K1-1** (Linux): the unit's own invocation ID, from `systemd-run`, was
+  the process's `INVOCATION_ID`. Of MADR F10's per-unit names it had
+  `INVOCATION_ID`, `SYSTEMD_EXEC_PID`, `NOTIFY_SOCKET`,
+  `MEMORY_PRESSURE_WATCH`, `MEMORY_PRESSURE_WRITE`, `JOURNAL_STREAM`,
+  `MANAGERPID` and `MANAGERPIDFDID`.
+* **K1-2** (Linux): `Detach` reported `transient unit
+  <unit>-selfupdate-probe.service`. The detached run: `INVOCATION_ID ==
+  caller's: True`, `== its own unit's: False`; `NOTIFY_SOCKET`,
+  `JOURNAL_STREAM`, `SYSTEMD_EXEC_PID`, `MANAGERPID`, `MANAGERPIDFDID` and
+  `MEMORY_PRESSURE_WATCH` each set and equal to the caller's; its unit's
+  `NotifyAccess` `none`.
+* **K1-3** (Linux): `CREDENTIALS_DIRECTORY` was
+  `/run/user/<uid>/credentials/<unit>`, holding `probe`;
+  `cred.after=gone`.
+* **K1-4** (macOS): the two jobs' environments were `HOME LOGNAME
+  OSLogRateLimit PATH SHELL SSH_AUTH_SOCK TMPDIR USER XPC_FLAGS
+  XPC_SERVICE_NAME`, differing only in `XPC_SERVICE_NAME=<label-a>`
+  against `<label-b>`.
+* **K1-5** (Windows): tasks, 68 names, none differing, none naming the
+  task; services, 39 names, none differing, none naming the service.
+
+**Decision points.** None tripped: K1-2 confirmed F9, and K1-3 showed the
+credentials directory gone. K1-4's two variables join the list (MADR
+D1-C); K1-5 adds none.
+
+**Left behind.** `systemctl --user list-units 'selfupdate-probe-*'`: 0;
+`launchctl list` matching `selfupdate-probe`: 0; tasks and services named
+`selfupdate-probe-*`: 0. The scratch directories on all three hosts were
+removed.
+
+**Recorded.** The MADR's Amendment A1, and F9, F11, F13 and F14 annotated
+in place.
