@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
+
+	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 )
 
 // Stop implements selfupdate.Lifecycle
@@ -165,6 +168,135 @@ func (s *Supervised) Start(ctx context.Context, _ string) error {
 		return s.fail("start", err)
 	}
 	return nil
+}
+
+// WaitHealthy implements selfupdate.Lifecycle: PollHealthy, with the
+// instance Stop recorded as Previous, over State (D6-A). An observation
+// counts when the service is up as an instance other than the recorded
+// one and, where the supervisor reports readiness (Ready set), ready. The
+// wait fails at once with ErrUnhealthy when:
+//
+//   - State reports the service Failed;
+//   - the instance changes after one has counted: it restarted during the
+//     wait;
+//   - State reports it Restarting after it was up, or twice in a row:
+//     it keeps exiting while its supervisor starts it again.
+//
+// Then Options.Probe, the program's application check, runs, as for the
+// other backends. Errors, matched with errors.Is: ErrUnhealthy and
+// ErrTimeout. When ctx ends, its error is returned.
+func (s *Supervised) WaitHealthy(ctx context.Context, _ string) error {
+	s.mu.Lock()
+	rec := s.recorded
+	s.mu.Unlock()
+	poll := s.o.Poll
+	if rec.pid != 0 {
+		poll.Previous = rec.String()
+	}
+	var counted string
+	wasUp, restarts := false, 0
+	probe := func(ctx context.Context) (Health, error) {
+		st, err := s.state(ctx)
+		if err != nil {
+			return Health{}, err
+		}
+		h := Health{Instance: st.Instance, Detail: describeState(s.name, st)}
+		if st.Failed {
+			h.Failed = true
+			return h, nil
+		}
+		if st.Restarting {
+			restarts++
+			if wasUp || restarts >= 2 {
+				h.Failed = true
+				h.Detail = fmt.Sprintf("%s keeps exiting while its supervisor starts it again (%s)", s.name, h.Detail)
+			}
+			return h, nil
+		}
+		restarts = 0
+		if !st.Up || st.Instance == "" || st.Instance == poll.Previous {
+			return h, nil
+		}
+		wasUp = true
+		if counted != "" && st.Instance != counted {
+			h.Failed = true
+			h.Detail = fmt.Sprintf("%s restarted during the health wait (%s, then %s)", s.name, counted, st.Instance)
+			return h, nil
+		}
+		if st.Ready == nil || *st.Ready {
+			counted = st.Instance
+			h.Ready = true
+		}
+		return h, nil
+	}
+	if err := PollHealthy(ctx, probe, poll); err != nil {
+		return err
+	}
+	if s.o.Probe == nil {
+		return nil
+	}
+	app := s.o.Poll
+	app.Settle = -1
+	return PollHealthy(ctx, s.o.Probe, app)
+}
+
+// describeState is one observation, for an error message.
+func describeState(name string, st SupervisedState) string {
+	d := fmt.Sprintf("%s up=%t instance=%q want_up=%t", name, st.Up, st.Instance, st.WantUp)
+	if st.Ready != nil {
+		d += fmt.Sprintf(" ready=%t", *st.Ready)
+	}
+	if st.Detail != "" {
+		d += ": " + st.Detail
+	}
+	return d
+}
+
+// Reconcile implements selfupdate.Reconciler, verifying only (D9-A): the
+// binary the service ran when Stop recorded it must be executable, by
+// SameExecutable. With nothing recorded, because the service was not
+// running, it reports no change and a warning that it could not check. A
+// mismatch is an error: a program whose service runs another binary, or
+// which moves its binary, passes NewExecReconciler instead. Nothing is
+// ever rewritten, so Restore does nothing.
+func (s *Supervised) Reconcile(_ context.Context, _, executable string) (selfupdate.ReconcileResult, error) {
+	s.mu.Lock()
+	bin := s.binary
+	s.mu.Unlock()
+	if bin == "" {
+		return selfupdate.ReconcileResult{
+			Detail:   s.name + " was not running when it was stopped; its binary was not checked",
+			Warnings: selfupdate.NewWarnings(s.name + "'s binary could not be checked: the service was not running"),
+		}, nil
+	}
+	// A binary replaced before the stop reads "<path> (deleted)"
+	// (0035-MADR Amendment A1, P1).
+	ran := strings.TrimSuffix(bin, " (deleted)")
+	if !SameExecutable(ran, executable) {
+		return selfupdate.ReconcileResult{}, s.fail("reconcile",
+			fmt.Errorf("the service ran %s, not %s; a program whose service runs another binary passes service.NewExecReconciler", ran, executable))
+	}
+	return selfupdate.ReconcileResult{Detail: s.name + " runs " + executable}, nil
+}
+
+// Restore implements selfupdate.Reconciler. Reconcile rewrites nothing, so
+// there is nothing to restore.
+func (*Supervised) Restore(context.Context, string, selfupdate.ReconcileResult) error {
+	return nil
+}
+
+// Detach implements Detacher: Options.DetachCheck, when set, runs first,
+// and its error refuses the handoff, wrapped with ErrUnsupported; then
+// DetachProcess starts the run in a new session, with the service
+// manager's per-unit variables left out of its environment (D8-A;
+// docs/decisions/0033-MADR-scrub-service-manager-environment-from-handoffs.md).
+func (s *Supervised) Detach(ctx context.Context, spec HandOff) (Detached, error) {
+	if s.o.DetachCheck != nil {
+		if err := s.o.DetachCheck(ctx); err != nil {
+			return Detached{}, fmt.Errorf("%w: %w", ErrUnsupported, s.fail("hand an update off from", err))
+		}
+	}
+	return DetachProcess(ctx, spec)
 }
 
 // sleepCtx sleeps for d, or until ctx ends.

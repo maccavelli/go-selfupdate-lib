@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/maccavelli/go-selfupdate-lib/internal/procfs"
+	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 )
 
 // SupervisedState is one observation of a service under a supervisor this
@@ -91,6 +92,13 @@ type SupervisedOptions struct {
 	// kills its cgroup on stop (D8-A; Amendment A1, P4).
 	DetachCheck func(ctx context.Context) error
 }
+
+var (
+	_ selfupdate.Lifecycle        = (*Supervised)(nil)
+	_ selfupdate.EnabledLifecycle = (*Supervised)(nil)
+	_ selfupdate.Reconciler       = (*Supervised)(nil)
+	_ Detacher                    = (*Supervised)(nil)
+)
 
 // goosLinux is runtime.GOOS on Linux, the one OS the adapter runs on.
 const goosLinux = "linux"
