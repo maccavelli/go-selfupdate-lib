@@ -755,6 +755,81 @@ func TestLiveTaskStopHoldsDisabled(t *testing.T) {
 	}
 }
 
+// TestLiveTaskEnableDisable: Disable leaves the program running and the
+// task disabled, and the stored definition is not drift; a Stop made by
+// another Task leaves Start failing until Enable; and after a Stop and a
+// Disable, Start keeps the task disabled
+// (docs/decisions/0034-MADR-export-task-scheduler-enable-and-disable.md
+// D2-A to D6-A; 0034-PLAN L4).
+func TestLiveTaskEnableDisable(t *testing.T) {
+	cfg := newLiveTask(t)
+	s := liveSvc(t, cfg)
+	ctx := context.Background()
+	pid := waitReady(t, cfg, 0)
+	before, err := s.Definition(ctx, "demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Disable(ctx, "demo"); err != nil {
+		t.Fatal(err)
+	}
+	if !s.s.running(uint32(pid), 0) { //nolint:gosec // test PID; 0 reads the process snapshot
+		t.Fatal("Disable ended the program")
+	}
+	if st, err := s.Status(ctx, "demo"); err != nil || !st.Disabled || !st.Running || st.State != "running" {
+		t.Fatalf("Status after Disable = %+v, %v; want disabled and running", st, err)
+	}
+	after, err := s.Definition(ctx, "demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(after, "<Enabled>false</Enabled>") {
+		t.Fatalf("the stored definition does not hold the switch (0034-MADR Amendment A1, P1):\n%s", after)
+	}
+	if d, err := DiffDefinitions(after, before); err != nil || len(d) != 0 {
+		t.Fatalf("the disabled task's definition differs from the enabled one's: %+v, %v", d, err)
+	}
+	if err := s.Enable(ctx, "demo"); err != nil {
+		t.Fatal(err)
+	}
+	if st, err := s.Status(ctx, "demo"); err != nil || st.Disabled {
+		t.Fatalf("Status after Enable = %+v, %v; want enabled", st, err)
+	}
+
+	// A Stop in one Task, a Start in another, as in a later process.
+	if err := s.Stop(ctx, "demo"); err != nil {
+		t.Fatal(err)
+	}
+	other := liveSvc(t, cfg)
+	if err := other.Start(ctx, "demo"); !errors.Is(err, ErrTaskDisabled) {
+		t.Fatalf("Start in another Task after Stop: %v, want ErrTaskDisabled", err)
+	}
+	if err := other.Enable(ctx, "demo"); err != nil {
+		t.Fatal(err)
+	}
+	if err := other.Start(ctx, "demo"); err != nil {
+		t.Fatalf("Start after Enable: %v", err)
+	}
+	second := waitReady(t, cfg, pid)
+	if st, err := other.Status(ctx, "demo"); err != nil || st.Disabled || !st.Running {
+		t.Fatalf("Status after Enable and Start = %+v, %v; want enabled and running", st, err)
+	}
+
+	// Stop, then Disable: Start does not undo the Disable.
+	if err := other.Stop(ctx, "demo"); err != nil {
+		t.Fatal(err)
+	}
+	if err := other.Disable(ctx, "demo"); err != nil {
+		t.Fatal(err)
+	}
+	if err := other.Start(ctx, "demo"); !errors.Is(err, ErrTaskDisabled) {
+		t.Fatalf("Start after Stop and Disable: %v, want ErrTaskDisabled", err)
+	}
+	if st, err := other.Status(ctx, "demo"); err != nil || !st.Disabled || st.Running {
+		t.Fatalf("Status at the end = %+v, %v; want disabled and stopped (last instance %d)", st, err, second)
+	}
+}
+
 func instancePIDs(t *testing.T, s *Task, name string) []uint32 {
 	t.Helper()
 	r, err := s.s.open(`\`, name)
@@ -867,8 +942,9 @@ func TestLiveTaskStopRefusesDisabled(t *testing.T) {
 	s := liveSvc(t, cfg)
 	ctx := context.Background()
 	pid := waitReady(t, cfg, 0)
-	if out, err := exec.Command("schtasks", "/change", "/tn", cfg.Name, "/disable").CombinedOutput(); err != nil {
-		t.Fatal(err, string(out))
+	// The user disables the task while it runs (0034-MADR F11).
+	if err := s.Disable(ctx, "demo"); err != nil {
+		t.Fatal(err)
 	}
 	err := s.Stop(ctx, "demo")
 	if !errors.Is(err, ErrTaskDisabled) {

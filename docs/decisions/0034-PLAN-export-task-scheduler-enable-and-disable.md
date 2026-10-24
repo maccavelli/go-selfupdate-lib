@@ -458,3 +458,53 @@ which approves this plan.
   clean (gofmt, golangci-lint, go vet, go test, govulncheck)", and
   `make apicheck` reports "compatible with v1.20.0". No `.go` file was
   added.
+
+### L4: the live tests (2026-10-24)
+
+* L3 was committed by the owner as `27e52fe`. The owner confirmed the
+  console sign-in on the Windows test host.
+* **`TestLiveTaskStopRefusesDisabled`** disables the running task with
+  `s.Disable` in place of `schtasks /change /disable`. Its other
+  assertions are unchanged.
+* **`TestLiveTaskEnableDisable`** (new) checks, in order:
+  * after `Disable`, the program still runs, and `Status` reads
+    `Disabled`, `Running` and `State` `running`;
+  * the stored definition holds `<Enabled>false</Enabled>`, and
+    `DiffDefinitions` against the definition read before the `Disable`
+    reports nothing;
+  * after `Enable`, `Status.Disabled` is false;
+  * `Stop`, then a second `Task` value's `Start`, returns
+    `ErrTaskDisabled`. After its `Enable`, its `Start` runs a new
+    instance, and `Status` reads enabled and running;
+  * that `Task`'s `Stop`, then `Disable`, then `Start` returns
+    `ErrTaskDisabled`, and the task stays disabled and stopped.
+* **Not as written:** step 1 asked for
+  `SameDefinition(Definition, the registered definition)`. The live
+  task's definition is rendered inside `newLiveTaskWith` with the
+  current time as its `StartBoundary`, and is not returned. So the test
+  compares the stored definition after `Disable` with the one stored
+  before it. The two differ only in what `put_Enabled` writes, which is
+  what MADR D5-B is about. Asserting `<Enabled>false</Enabled>` first
+  shows the comparison is not vacuous. This is a narrower reference, not
+  a change of scope or decision.
+* **The Windows test host**, from the ssh shell with
+  `SELFUPDATE_REQUIRE_TASKSCHED=1`: the whole `taskscheduler` package
+  passes (99 s). All nine live tests ran and passed:
+  `TestLiveTaskUpdate`, `TestLiveTaskHandOffOneShot`,
+  `TestLiveTaskStopHoldsDisabled`, `TestLiveTaskEnableDisable`,
+  `TestLiveTaskRollback`, `TestLiveTaskRequestStop`,
+  `TestLiveTaskStopRefusesDisabled`, `TestLiveTaskRegister` and
+  `TestLiveTaskzCleanup`.
+* **Seen failing, live** (`scripts/plant-copy.sh`, the copy run on the
+  Windows test host):
+
+  | Plant | Failure |
+  | :--- | :--- |
+  | (a) the record not cleared | `live_windows_test.go:826: Start after Stop and Disable: <nil>, want ErrTaskDisabled` |
+  | (d) `Enable` disabling | `live_windows_test.go:796: Status after Enable = {Installed:true Enabled:false Disabled:true State:running Running:true ...}, <nil>; want enabled` |
+  | (f) the switch compared | `live_windows_test.go:790: the disabled task's definition differs from the enabled one's: [{Path:Settings/Enabled Stored:false Wanted:true}], <nil>` |
+
+  After the runs, the host had no `selfupdate-live-*` task.
+* **Checks:** `make pre-add-check` on the file reports "1 file(s) clean
+  (gofmt, golangci-lint, go vet, go test, govulncheck)". CI's
+  `windows-2025` job runs the live tests on the push.
