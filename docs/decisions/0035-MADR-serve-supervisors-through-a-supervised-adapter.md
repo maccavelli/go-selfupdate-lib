@@ -448,7 +448,9 @@ recommended one first.
 * **D13-B.** In `internal/winproc`, beside `Descends`.
 * **D13-C.** A new internal package, `internal/procfs`:
   * it reads a process's parent, start time and binary on Linux, and
-    returns an unsupported error elsewhere;
+    returns an unsupported error elsewhere *(0035-PLAN Deviation D1: one
+    `Stat` read gives the parent, the start time and the state, so a
+    zombie counts as gone; Amendment A1, P4)*;
   * it has a `depguard` rule of its own that allows the standard library
     only;
   * any package of this module can reuse it later, such as an s6

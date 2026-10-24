@@ -154,6 +154,10 @@ Hosts:
    * `StartTime(pid int) (uint64, error)`, field 22 in clock ticks;
    * `Exe(pid int) (string, error)`.
 
+   *(Deviation D1: `Parent` and `StartTime` are one read,
+   `ReadStat(pid int) (Stat, error)`, which returns `Parent`,
+   `StartTime` and `State`, with `Stat.Zombie()`.)*
+
    A missing process is an error wrapping `fs.ErrNotExist`.
 3. **`procfs_other.go`:** each function returns `ErrUnsupported`.
 4. **Tests:**
@@ -434,3 +438,85 @@ this plan.
     unmeasured.
 * **Left in place for M6:** `runit` and `s6` in the WSL, with
   `runit.service`.
+
+### Deviation D1 (2026-10-24): one `Stat` read in `internal/procfs`
+
+* **Found.** M2 step 2 names `Parent` and `StartTime` as separate reads.
+  M1's P4 showed that a process which has exited, but which nothing has
+  reaped, keeps its `/proc` entry and its start time. So the adapter's
+  stop wait, and `Running`'s "the recorded process is alive", must also
+  read the process's state, and count a zombie as gone. Two separate
+  reads could also come from two processes, if the PID were reused
+  between them.
+* **Decision (the owner, 2026-10-24, "One `Stat` read").**
+  * `procfs.ReadStat(pid int) (Stat, error)` returns `Parent`,
+    `StartTime` and `State`, from one read of `/proc/<pid>/stat`. A Go
+    function cannot share the type's name `Stat`, so the owner's
+    "`Stat` read" is spelled `ReadStat`.
+  * `Stat.Zombie()` reports state `Z`.
+  * `Exe(pid int)` stays.
+  * `Parent` and `StartTime` are not separate functions.
+* **Effect.** M2's tests and plant (b) target `Stat`. M3's `Inside` and
+  M4's wait use `Stat`, and count a zombie as gone. No decision changes;
+  the MADR's D13-C is annotated in place.
+
+### M2: `internal/procfs` (2026-10-24)
+
+* M1 was committed by the owner as `e00a413`. Deviation D1, above, was
+  decided and recorded before any code.
+* **`internal/procfs`:**
+  * `procfs.go` holds the package documentation, `ErrUnsupported`, and
+    `Stat` with `Parent`, `StartTime`, `State` and `Zombie()`. It also
+    holds `parseStat`, which reads after the command name's last `)`
+    and refuses a missing name, fewer than 20 fields, a state that is not
+    one letter, and a parent or start time that is not a number.
+  * `procfs_linux.go`: `ReadStat(pid)` and `Exe(pid)`. A PID that is not
+    positive is an error, and a missing process wraps `fs.ErrNotExist`.
+    `ReadStat`'s path carries a justified `//nolint:gosec` for G703,
+    since the path is a checked positive integer under `/proc`.
+  * `procfs_other.go`: both return `ErrUnsupported`.
+* **Tests:**
+  * `procfs_test.go`: `TestParseStat`, over command names `sleep`,
+    `a b) (c`, `x)`, `(` and `) ) )`, a zombie and a running state; and
+    `TestParseStatRefuses`, over six malformed lines.
+  * `procfs_linux_test.go`: `TestReadStatSelf`, `TestExeSelf`,
+    `TestReadStatChild` (a helper through `testproc.Start`),
+    `TestReadStatZombieAndGone` (a child read as a zombie before it is
+    reaped, then `fs.ErrNotExist` for both reads) and `TestInvalidPID`.
+  * `procfs_other_test.go`: `TestUnsupported`.
+  * `main_test.go`: the helper modes.
+* **Config and documents:**
+  * `.golangci.yml` adds a rule `internal-procfs` (the standard library
+    only), excludes the package from `other-packages`, and lets
+    `service`'s rule import it.
+  * AGENTS.md names the package and the rule.
+  * `docs/architecture.md` has the tree line, the table row (3 source, 4
+    test files) and a paragraph. `--arch`: "19 rows, 0 differ".
+* **Runs:** the tests pass here (the parser and `TestUnsupported`) and on
+  the Linux test host (all seven Linux tests).
+* **Seen failing** (`scripts/plant-copy.sh`; (a) to (c) run on the Linux
+  test host):
+
+  | Plant | Failure |
+  | :--- | :--- |
+  | (a) the parser splits at the first `)` | `procfs_test.go:24: command "a b) (c": … stat state "(c)" is not one letter`, and the same for `x)` and `) ) )` |
+  | (b) field 21 read as the start time | `procfs_linux_test.go:27: this process: {Parent:… StartTime:0 …}; want … a start time`; `TestReadStatChild` and `TestParseStat` too |
+  | (c) `Exe` reads `/proc/self/exe`, not the PID's | `procfs_linux_test.go:109: Exe of a reaped process: <nil>, want fs.ErrNotExist` |
+  | (z) a zombie not recognised | `procfs_test.go:28: zombie: {Parent:41 StartTime:9876 State:90}, <nil>` |
+  | (d) a foreign import | `procfs.go:17:2: import 'github.com/maccavelli/go-selfupdate-lib/internal/winproc' is not allowed from list 'internal-procfs' (depguard)` |
+
+  The plan named (c) as "`Exe` returning the link's target
+  unresolved". A link's target is what `Exe` returns by design, so the
+  plant broke the PID it reads instead. (z) is added for `Zombie()`.
+
+  The first try at (d) planted a blank, unsorted import. Lint refused
+  it for format and `revive` reasons, not `depguard`. So it was
+  replanted as a sorted, used import, which only `depguard` refused.
+* **Checks:** `make pre-add-check` on the seven files reports "7 file(s)
+  clean (gofmt, golangci-lint, go vet, go test, govulncheck)". The first
+  run found the gosec G703 above. Cross-target `go vet` for `linux` and
+  `windows` is clean, and `make apicheck` reports "compatible with
+  v1.21.0".
+* **Tooling.** The remote test runner and the plant driver are now
+  Python scripts (`remoterun.py`, `plants_m2.py`) in place of the earlier
+  bash runners, per the owner's direction in M1.

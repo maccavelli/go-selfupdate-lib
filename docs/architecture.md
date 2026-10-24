@@ -109,6 +109,8 @@ selfupdate/                 the self-update package
 internal/winproc/           the library's process starts: no console
                             window, no batch file; the ancestor walk and
                             the liveness check
+internal/procfs/            Linux /proc reads for service.Supervised:
+                            parent, start time, state, binary
 internal/testproc/          test support: fixture builds that ignore the
                             git state around them, helper-process waits,
                             and the goroutine leak check
@@ -150,6 +152,7 @@ docs/
 | `selfupdate/service/scm/` | `scm` | 7 | 13 | `x/sys/windows`, `x/sys/windows/svc`, `x/sys/windows/svc/mgr` (and `selfupdate`, `service`, `internal/winproc`) |
 | `selfupdate/service/taskscheduler/` | `taskscheduler` | 15 | 18, plus 12 `testdata/definitions/` captures of task XML as registered and as stored, and the one-shot handoff task as stored | `x/sys/windows` (and `selfupdate`, `service`, `internal/winproc`) |
 | `internal/winproc/` | `winproc` | 5 | 4 | `x/sys/windows` |
+| `internal/procfs/` | `procfs` | 3 | 4 | none |
 | `internal/testproc/` | `testproc` | 1 | 1 | none |
 | `internal/cmd/selfupdate-note/` | `main` | 1 | 1 | `x/mod/sumdb/note` (and `signednote`) |
 | `internal/cmd/selfupdate-release/` | `main` | 12, plus the 2 `installer/` templates | 11, plus the `testdata/fixture/` module (2 programs, 2 specs, an extra) | none (`buildinfo`, `selfupdate`, `archive`, `releasespec`) |
@@ -344,6 +347,13 @@ docs/
   ([0022-MADR](decisions/0022-MADR-documentation-pass-after-v1-14-0.md) A3). On Unix the
   liveness checks use `kill(pid, 0)`. `TestNoDirectProcessStart` (`selfupdate/spawn_test.go`)
   refuses any other process start in a non-test file under `selfupdate/`.
+- `internal/procfs` reads `/proc/<pid>/stat` once per call
+  (`ReadStat`: the parent, the start time and the state) and
+  `/proc/<pid>/exe` (`Exe`), for `service.Supervised`'s inside check, its
+  instances and its recorded binary
+  ([0035-MADR](decisions/0035-MADR-serve-supervisors-through-a-supervised-adapter.md)
+  D13-C). It parses after the command name's last `)`, counts a zombie as
+  gone, and returns `ErrUnsupported` off Linux.
 - `internal/testproc` is test support, which only `_test.go` files
   import
   ([0023-MADR](decisions/0023-MADR-robust-test-fixtures-and-process-waits.md)):

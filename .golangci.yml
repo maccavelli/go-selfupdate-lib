@@ -90,6 +90,16 @@ linters:
             - "!$test"
           allow:
             - $gostd
+        # Linux /proc reads for service.Supervised: the standard library
+        # only, and nothing in this module
+        # (docs/decisions/0035-MADR-serve-supervisors-through-a-supervised-adapter.md D13-C).
+        internal-procfs:
+          list-mode: strict
+          files:
+            - "**/internal/procfs/*.go"
+            - "!$test"
+          allow:
+            - $gostd
         selfupdate:
           list-mode: strict
           files:
@@ -132,6 +142,7 @@ linters:
             - golang.org/x/sys/windows$
             - github.com/maccavelli/go-selfupdate-lib/selfupdate$
             - github.com/maccavelli/go-selfupdate-lib/internal/winproc$
+            - github.com/maccavelli/go-selfupdate-lib/internal/procfs$
         service-launchd:
           list-mode: strict
           files:
@@ -276,6 +287,7 @@ linters:
             - "!**/internal/cmd/selfupdate-note/*.go"
             - "!**/internal/winproc/*.go"
             - "!**/internal/testproc/*.go"
+            - "!**/internal/procfs/*.go"
           allow:
             - $gostd
             - github.com/maccavelli/go-selfupdate-lib
