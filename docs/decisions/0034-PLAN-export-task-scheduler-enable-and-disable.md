@@ -365,3 +365,55 @@ which approves this plan.
   D6-A expected.
 * The MADR gains Amendment A1, and its five [unverified] items are
   annotated in place.
+
+### L2: `Enable`, `Disable` and `Status.Disabled` (2026-10-24)
+
+* L1 was committed by the owner as `4c6416c`.
+* **`lifecycle.go`:**
+  * `Enable` and `Disable`, after `Start`, through `setSwitch`. It checks
+    `ctx`, opens the task, reads the switch, writes it only when it
+    differs, and deletes `Stop`'s record under `t.mu`.
+  * `Start`'s documentation names `Enable` for a `Stop` made by another
+    `Task`.
+  * `Stop`'s unexported helper `disable` is renamed `stopDisable`.
+    revive's `confusing-naming` refused `Disable` beside `disable` in one
+    file, as it refused `refuseBatchFile`'s old name in 0032. This is an
+    unexported rename in a file the phase names, and no behaviour
+    changes.
+* **`status.go`:** `Status.Disabled` (JSON `disabled`), after `Enabled`,
+  set from the switch `readStatus` already reads.
+* **`task.go`:** the package documentation names `Enable` and `Disable`.
+  The `Task` type's note on contexts names the methods that check `ctx`
+  first.
+* **`fake_test.go`:** `fakeTask.setErr`, returned by `setEnabled` after
+  it records the call.
+* **`enable_test.go`** (new): `TestEnableDisableWrites`,
+  `TestStartAfterStopElsewhere` (the issue's case),
+  `TestSwitchClearsStopRecord`, `TestDisableLeavesProgramRunning` and
+  `TestEnableDisableErrors`.
+* **`status_test.go`:** the `disabled` case expects `Disabled`, and a new
+  case, "disabled while running", expects `Disabled` with `State`
+  `running` (MADR Amendment A1, P5). The JSON goldens gain `disabled`.
+* **Here and on the Windows test host:** the `taskscheduler` package's
+  tests pass.
+* **Seen failing** (`scripts/plant-copy.sh`):
+
+  | Plant | Failure |
+  | :--- | :--- |
+  | (a) the record not cleared | `enable_test.go:102: Stop, Disable, Start: Start = <nil>, want ErrTaskDisabled`; `enable_test.go:105: ... Start enabled the task: ["enable true" "run"]`, both cases |
+  | (b) the write unconditional | `enable_test.go:42: enable an enabled task: calls ["enable true"], want []`, and the disable case |
+  | (c) `Disabled` never set | `enable_test.go:126: Status {... Disabled:false State:running ...}; want running and disabled`; `status_test.go:49: disabled: ...` and `disabled while running: ...` |
+  | (d) `Enable` disabling | `enable_test.go:42: enable a disabled task: calls [], want ["enable true"]`; `enable_test.go:45: ... switch false, want true`; `TestStartAfterStopElsewhere` failing |
+  | (e) no `ctx` check | `enable_test.go:164: Disable, cancelled: <nil>`; `enable_test.go:167: a cancelled Disable changed the task: calls ["enable false"], switch false` |
+
+* **Checks:**
+  * `make pre-add-check` on the six Go files: "6 file(s) clean (gofmt,
+    golangci-lint, go vet, go test, govulncheck)", after the rename. The
+    first run reported the revive finding above.
+  * `make apicheck`: "compatible with v1.20.0".
+  * `go doc` shows `func (t *Task) Enable(ctx context.Context, product
+    string) error`, `func (t *Task) Disable(...)` and `Disabled bool
+    \`json:"disabled"\``.
+  * `docs/architecture.md`: the `taskscheduler` row is 15 source and 18
+    test files, and its paragraph names the two methods and the field.
+    `--arch`: "18 rows, 0 differ".

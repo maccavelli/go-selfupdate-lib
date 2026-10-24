@@ -55,6 +55,8 @@ type fakeTask struct {
 	staleList bool
 	stopErr   error
 	runErr    error
+	// setErr makes setEnabled fail before it changes anything.
+	setErr error
 	// runExits makes a run end at once with this result.
 	runExits *int32
 	// readErr makes a read fail, by method: state, enabled,
@@ -273,6 +275,9 @@ func (r *fakeReg) enabled() (bool, error) { defer r.lock()(); return r.t.on, r.t
 func (r *fakeReg) setEnabled(on bool) error {
 	defer r.lock()()
 	r.f.record("enable %t", on)
+	if r.t.setErr != nil {
+		return r.t.setErr
+	}
 	r.t.on = on
 	switch {
 	case !on && r.t.st != stateRunning:

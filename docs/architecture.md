@@ -148,7 +148,7 @@ docs/
 | `selfupdate/service/systemd/` | `systemd` | 9 | 18, plus 3 `testdata/` captures of `systemctl show` | none (`selfupdate`, `service`) |
 | `selfupdate/service/launchd/` | `launchd` | 7 | 14, plus 7 `testdata/` captures of `launchctl print` and `list` | none (`selfupdate`, `service`) |
 | `selfupdate/service/scm/` | `scm` | 7 | 13 | `x/sys/windows`, `x/sys/windows/svc`, `x/sys/windows/svc/mgr` (and `selfupdate`, `service`, `internal/winproc`) |
-| `selfupdate/service/taskscheduler/` | `taskscheduler` | 15 | 17, plus 12 `testdata/definitions/` captures of task XML as registered and as stored, and the one-shot handoff task as stored | `x/sys/windows` (and `selfupdate`, `service`, `internal/winproc`) |
+| `selfupdate/service/taskscheduler/` | `taskscheduler` | 15 | 18, plus 12 `testdata/definitions/` captures of task XML as registered and as stored, and the one-shot handoff task as stored | `x/sys/windows` (and `selfupdate`, `service`, `internal/winproc`) |
 | `internal/winproc/` | `winproc` | 5 | 4 | `x/sys/windows` |
 | `internal/testproc/` | `testproc` | 1 | 1 | none |
 | `internal/cmd/selfupdate-note/` | `main` | 1 | 1 | `x/mod/sumdb/note` (and `signednote`) |
@@ -316,7 +316,11 @@ docs/
     defaults (`definition*.go`), and `Status` (`status.go`); `Inside` as
     `scm`'s, and the handoff by a one-shot task, `CleanupHandOffs` and the
     hop under `HopDetach` (`handoff.go`, `detach.go`)
-    ([0032-MADR](decisions/0032-MADR-task-scheduler-registration-and-one-shot-handoff.md)).
+    ([0032-MADR](decisions/0032-MADR-task-scheduler-registration-and-one-shot-handoff.md));
+    and `Enable` and `Disable`, which set the task's switch and clear
+    `Stop`'s record of it (`lifecycle.go`), with `Status.Disabled` to read
+    it
+    ([0034-MADR](decisions/0034-MADR-export-task-scheduler-enable-and-disable.md)).
 
   Each backend compiles on every OS and returns `ErrUnsupported` on the
   wrong one. Each has live tests against its real service manager, which

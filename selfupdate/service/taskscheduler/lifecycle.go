@@ -177,7 +177,7 @@ func (t *Task) Stop(ctx context.Context, product string) (err error) {
 		t.previous[path] = inst
 		t.mu.Unlock()
 	}
-	if err := t.disable(r, path, on); err != nil {
+	if err := t.stopDisable(r, path, on); err != nil {
 		return err
 	}
 	if len(pids) == 0 {
@@ -210,9 +210,9 @@ func (t *Task) Stop(ctx context.Context, product string) (err error) {
 	return nil
 }
 
-// disable disables the task when on, its state as Stop read it, and
+// stopDisable disables the task when on, its state as Stop read it, and
 // records that it did.
-func (t *Task) disable(r registered, path string, on bool) error {
+func (t *Task) stopDisable(r registered, path string, on bool) error {
 	if !on {
 		return nil
 	}
@@ -274,7 +274,10 @@ func (t *Task) waitGone(ctx context.Context, path string, inst instance, limit t
 // count once its process has exited, though Task Scheduler may still list
 // it (0021-MADR Amendment A4, Q7). A task disabled by anyone but Stop is
 // not enabled, and Task Scheduler refuses to run it: Start returns
-// ErrTaskDisabled (0022-MADR Amendment A1).
+// ErrTaskDisabled (0022-MADR Amendment A1). That includes a Stop made by
+// another Task, such as one in an earlier process: call Enable first
+// (docs/decisions/0034-MADR-export-task-scheduler-enable-and-disable.md
+// D2-A).
 //
 // Errors, matched with errors.Is: service.ErrPermission,
 // service.ErrNotInstalled and service.ErrUnsupported. ErrTaskDisabled is a task Start cannot run.
@@ -315,6 +318,67 @@ func (t *Task) Start(_ context.Context, product string) (err error) {
 	}
 	t.mu.Lock()
 	t.started[path] = at
+	t.mu.Unlock()
+	return nil
+}
+
+// Enable enables the task, so its triggers start it and Start can run it.
+// It forgets that this Task's Stop disabled it, so the switch stays as
+// Enable left it (0034-MADR D3-A). A task already enabled is left as it
+// is. It checks ctx before it starts and ignores it after.
+//
+// Errors, matched with errors.Is: service.ErrNotInstalled when the task
+// does not exist; service.ErrPermission when Task Scheduler denies the
+// change.
+func (t *Task) Enable(ctx context.Context, product string) error {
+	return t.setSwitch(ctx, product, true)
+}
+
+// Disable disables the task, so neither its triggers nor Start run it. It
+// forgets that this Task's Stop disabled it, so Start does not enable it
+// again (0034-MADR D3-A). It does not end a running instance: Stop does.
+// Until the program exits, the task reads running, and an update's Stop
+// refuses it with ErrTaskDisabled (0034-MADR D4-A). A task already
+// disabled is left as it is. It checks ctx before it starts and ignores
+// it after.
+//
+// Errors, matched with errors.Is: service.ErrNotInstalled when the task
+// does not exist; service.ErrPermission when Task Scheduler denies the
+// change.
+func (t *Task) Disable(ctx context.Context, product string) error {
+	return t.setSwitch(ctx, product, false)
+}
+
+// setSwitch sets the task's switch to on, writing only when it differs
+// (0034-MADR Amendment A1, P3), and clears Stop's record.
+func (t *Task) setSwitch(ctx context.Context, product string, on bool) (err error) {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	name, path, err := t.task(product)
+	if err != nil {
+		return err
+	}
+	r, err := t.open(name, path)
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, r.close()) }()
+	was, err := r.enabled()
+	if err != nil {
+		return mapError("query", path, err)
+	}
+	if was != on {
+		step := "disable"
+		if on {
+			step = "enable"
+		}
+		if err := r.setEnabled(on); err != nil {
+			return mapError(step, path, err)
+		}
+	}
+	t.mu.Lock()
+	delete(t.disabled, path)
 	t.mu.Unlock()
 	return nil
 }

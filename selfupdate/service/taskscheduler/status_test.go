@@ -31,7 +31,11 @@ func TestStatus(t *testing.T) {
 		}, 0,
 			Status{Installed: true, Enabled: true, State: "ready", LastResult: hasNotRun}},
 		{"disabled", func(ft *fakeTask) { ft.on, ft.st = false, stateDisabled }, 0,
-			Status{State: "disabled", Installed: true}},
+			Status{State: "disabled", Installed: true, Disabled: true}},
+		// A task disabled while its program runs reads running
+		// (0034-MADR Amendment A1, P5): only Disabled tells it.
+		{"disabled while running", func(ft *fakeTask) { ft.on = false }, 4242,
+			Status{Installed: true, Disabled: true, State: "running", Running: true, PIDs: []uint32{4242}}},
 		{"no trigger that starts it", func(ft *fakeTask) { ft.trig = []trigger{{Type: triggerTime, Enabled: true}} }, 0,
 			Status{Installed: true, State: "ready"}},
 		{"listed while ready", func(ft *fakeTask) { ft.pids = []uint32{99} }, 0,
@@ -78,17 +82,17 @@ func TestStatusMissingAndErrors(t *testing.T) {
 func TestStatusJSON(t *testing.T) {
 	ran := time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC)
 	b, err := json.Marshal(Status{Installed: true, Enabled: true, State: "running", Running: true, PIDs: []uint32{4242}, LastRunTime: ran, LastResult: 0})
-	want := `{"installed":true,"enabled":true,"state":"running","running":true,"pids":[4242],"last_run_time":"2026-10-23T12:00:00Z","last_result":0}`
+	want := `{"installed":true,"enabled":true,"disabled":false,"state":"running","running":true,"pids":[4242],"last_run_time":"2026-10-23T12:00:00Z","last_result":0}`
 	if err != nil || string(b) != want {
 		t.Fatalf("%s, %v; want %s", b, err, want)
 	}
 	b, err = json.Marshal(Status{})
-	if want := `{"installed":false,"enabled":false,"state":"","running":false,"pids":null,"last_result":0}`; err != nil || string(b) != want {
+	if want := `{"installed":false,"enabled":false,"disabled":false,"state":"","running":false,"pids":null,"last_result":0}`; err != nil || string(b) != want {
 		t.Fatalf("zero: %s, %v; want %s", b, err, want)
 	}
 	var back Status
-	if err := json.Unmarshal([]byte(`{"installed":true,"state":"ready","pids":[1,2],"last_result":7}`), &back); err != nil ||
-		!reflect.DeepEqual(back, Status{Installed: true, State: "ready", PIDs: []uint32{1, 2}, LastResult: 7}) {
+	if err := json.Unmarshal([]byte(`{"installed":true,"disabled":true,"state":"ready","pids":[1,2],"last_result":7}`), &back); err != nil ||
+		!reflect.DeepEqual(back, Status{Installed: true, Disabled: true, State: "ready", PIDs: []uint32{1, 2}, LastResult: 7}) {
 		t.Fatalf("round trip %+v, %v", back, err)
 	}
 }

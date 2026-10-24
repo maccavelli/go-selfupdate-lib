@@ -21,6 +21,12 @@ type Status struct {
 	// Enabled is Enabled's answer: the task is enabled and has an enabled
 	// trigger that starts it with nobody acting.
 	Enabled bool `json:"enabled"`
+	// Disabled is the task's own switch, off: neither its triggers nor a
+	// run start it. A disabled task whose program still runs reads State
+	// running, so only this field tells it apart
+	// (docs/decisions/0034-MADR-export-task-scheduler-enable-and-disable.md
+	// D6-A; Amendment A1, P5).
+	Disabled bool `json:"disabled"`
 	// State is the task's TASK_STATE by name: unknown, disabled, queued,
 	// ready or running; empty when the task is not installed.
 	State string `json:"state"`
@@ -39,7 +45,7 @@ type Status struct {
 }
 
 // Status reads every state of the task with one open: whether it is
-// installed, Enabled's answer, its TASK_STATE, Running's answer, its
+// installed, Enabled's answer, its switch, its TASK_STATE, Running's answer, its
 // running instances' processes, and its last run. A task that is not
 // installed is a zero Status and no error. It checks ctx before it starts
 // and ignores it after.
@@ -84,6 +90,7 @@ func readStatus(r registered) (Status, error) {
 	s := Status{
 		Installed:  true,
 		Enabled:    enabledBy(on, triggers),
+		Disabled:   !on,
 		State:      stateName(st),
 		Running:    st == stateRunning || len(pids) > 0,
 		PIDs:       pids,

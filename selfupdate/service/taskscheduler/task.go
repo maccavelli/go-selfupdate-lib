@@ -10,7 +10,9 @@
 // renders the program's definition: the program's setup does, and
 // registers, reads and deletes it with Register, Definition and Delete
 // (docs/decisions/0032-MADR-task-scheduler-registration-and-one-shot-handoff.md
-// D1-A). A task has no polite stop of its own, so Stop disables the task
+// D1-A), and switches it on and off with Enable and Disable
+// (docs/decisions/0034-MADR-export-task-scheduler-enable-and-disable.md).
+// A task has no polite stop of its own, so Stop disables the task
 // first, so that a repeating trigger cannot start it mid-update, and then
 // asks Options.RequestStop, when set, before ending the task's process. It
 // compiles on every OS; New returns service.ErrUnsupported off Windows.
@@ -104,7 +106,9 @@ type instance struct {
 //
 // Installed, Running, Enabled, Start, Reconcile and Restore ignore their
 // context: each makes a few Task Scheduler calls that take none, and
-// Start runs the task without waiting for it.
+// Start runs the task without waiting for it. Enable, Disable, Status,
+// Register, Definition and Delete check it before they start, and ignore
+// it after.
 type Task struct {
 	o     Options
 	s     scheduler
