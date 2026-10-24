@@ -620,7 +620,10 @@ for Task Scheduler,
     Plist: …})`, or `launchd.GUI(uid)` or `launchd.User(uid)` for an agent;
   - `scm.New(scm.Options{Name: "relay"})`;
   - `taskscheduler.New(taskscheduler.Options{Name: "relay"})`, for a
-    per-user task ([Task Scheduler](#task-scheduler)).
+    per-user task ([Task Scheduler](#task-scheduler));
+  - `service.NewSupervised(service.SupervisedOptions{…})`, since
+    `v1.22.0`, for runit, s6, OpenRC or any other supervisor on Linux
+    ([Runit, s6, OpenRC and other supervisors](#runit-s6-openrc-and-other-supervisors))
 - **Use it twice.** Each is a `selfupdate.Lifecycle`, an
   `EnabledLifecycle` and a `Reconciler`:
   `selfupdate.NewManagedInstaller(inner, b, b)`. Each backend's `ExampleNew`
@@ -918,6 +921,133 @@ Pointers:
 - `selfupdate/service/taskscheduler/lifecycle_test.go`, over a fake Task
   Scheduler; `live_windows_test.go`, against the real one
 
+### Runit, s6, OpenRC and other supervisors
+
+Since `v1.22.0`, `service.NewSupervised` is the backend for a supervisor
+this module has none for, on Linux
+([0035-MADR](../decisions/0035-MADR-serve-supervisors-through-a-supervised-adapter.md)). You supply three
+functions:
+
+- `State` reads the service once;
+- `Up` asks the supervisor to start it and keep it up;
+- `Down` asks it to stop it and not restart it.
+
+The adapter does the rest, as the other backends do. The result is a
+`Lifecycle`, an `EnabledLifecycle`, a `Reconciler` and a `Detacher`. The
+library parses none of your supervisor's output, so the parsing is yours.
+An s6 service, whose `s6-svstat -o` is documented as machine-readable:
+
+```go
+svc := "/home/<user>/.local/share/s6/service/relay"
+run := service.ExecRunner()
+s6 := func(ctx context.Context, tool string, args ...string) (service.Output, error) {
+    return run.Run(ctx, service.Command{Path: "/usr/bin/" + tool, Args: append(args, svc), Env: os.Environ()})
+}
+ctl := func(flag string) func(context.Context) error {
+    return func(ctx context.Context) error {
+        out, err := s6(ctx, "s6-svc", flag)
+        if err == nil && out.ExitCode != 0 {
+            err = fmt.Errorf("s6-svc %s: exit %d", flag, out.ExitCode)
+        }
+        return err
+    }
+}
+sv, err := service.NewSupervised(service.SupervisedOptions{
+    Name: "relay",
+    State: func(ctx context.Context) (service.SupervisedState, error) {
+        _, derr := os.Stat(filepath.Join(svc, "down"))
+        st := service.SupervisedState{Installed: true, NormallyUp: errors.Is(derr, fs.ErrNotExist)}
+        out, err := s6(ctx, "s6-svstat", "-o", "up,wantedup,pid")
+        if err != nil {
+            return st, err
+        }
+        if out.ExitCode == 1 { // s6-supervise not running on the directory
+            return st, service.ErrNoSupervisor
+        }
+        f := strings.Fields(string(out.Stdout)) // e.g. "true true 4242"
+        st.Supervised, st.Up, st.WantUp = true, f[0] == "true", f[1] == "true"
+        st.Restarting = !st.Up && st.WantUp
+        if st.Up {
+            st.PID, _ = strconv.Atoi(f[2])
+        }
+        return st, nil
+    },
+    Up:    ctl("-u"),
+    Down:  ctl("-d"),
+    Kill:  ctl("-k"),
+    Probe: relayReady, // your application check, as for the other backends
+})
+if err != nil {
+    return err
+}
+m, err := selfupdate.NewManagedInstaller(inner, sv, sv)
+```
+
+`selfupdate/service/supervised_live_linux_test.go` drives this against a
+real s6 tree.
+
+- **What you supply in `State`:**
+  - `Installed`, `Supervised`, `Up`, the service's own `PID` while it is
+    up, and `WantUp`;
+  - `NormallyUp`, which is `Enabled`'s answer: for runit and s6, no `down`
+    file; for OpenRC, the service in the `default` runlevel;
+  - `Restarting`: down while the supervisor wants it up;
+  - `Failed`: failed for good, such as OpenRC's `crashed`;
+  - `Ready`, only when the service reports readiness. s6 reads `false`
+    for a service with no `notification-fd`, so leave `Ready` nil
+    there.
+
+  When nothing supervises the service, return an error wrapping
+  `service.ErrNoSupervisor`, with a state that still says `Installed`
+  and `NormallyUp`. Start a supervisor in `Up` when your program owns
+  one for the session.
+- **What each supervisor printed** (0035-MADR Amendment A1):
+  - **runit 2.1.2:** `sv status <dir>` prints `run: <dir>: (pid N) Ns`,
+    `down: <dir>: Ns, normally up, want up` while restarting, and exits
+    1 with `unable to open supervise/ok` when no `runsv` serves the
+    directory.
+  - **s6 2.12:** `s6-svstat -o up,wantedup,pid` prints `true true N`. It
+    exits 1 when no `s6-supervise` runs, and `s6-svc` then exits 100.
+  - **OpenRC 0.63:** `rc-service <svc> status` exits 0 when started, 3
+    when stopped and 32 when crashed. No command prints the PID, so read
+    the PID file your script writes.
+- **What the library guarantees:**
+  - `Stop` refuses, before anything changes, when this process is the
+    service's process or descends from it. It counts a process by PID
+    and start time, so a reused PID never counts.
+  - `Stop` calls `Down`, then waits to `Poll.Timeout` even if your
+    context ends, and returns the context's error after.
+  - `Kill`, when set, runs once at `KillAfter`, half the timeout by
+    default: `sv kill <dir>` or `s6-svc -k <dir>`, since runit's
+    `sv down` sends TERM only.
+  - A stop that fails while the process runs calls `Up` again, so the
+    supervisor still wants the service up.
+  - `WaitHealthy` needs a new instance up, and ready where `Ready` is
+    set, for `Poll.Settle`. It fails with `ErrUnhealthy` when the
+    service:
+    - fails;
+    - restarts during the wait;
+    - exits after it was up;
+    - or keeps restarting for longer than the settle window.
+
+    One restart before the first up is tolerated. Then `Probe` runs.
+- **Updating from inside the service** works as for the other backends,
+  with `service.HandOffFunc(sv, service.HandOff{Args: os.Args[1:]})`.
+  The run starts through the hop, so it no longer descends from the
+  service once the hop exits. Call `service.ReportFunc` or
+  `LoadHandOffEnv` first in `main`.
+  - `DetachCheck` refuses a handoff the supervisor would kill: an OpenRC
+    system service with `rc_cgroup_cleanup=YES`, whose cgroup holds the
+    detached run.
+  - A runit or s6 stop signals only the service's process, and an
+    OpenRC user service has no cgroup of its own, so neither needs a
+    check (Amendment A1, P2 to P4).
+- **`Reconcile`** checks that the service ran the executable when it was
+  stopped, and rewrites nothing. A program whose setup renders the
+  service's run script or init script passes `service.NewExecReconciler`
+  as the reconciler instead.
+- **Off Linux,** `NewSupervised` returns `service.ErrUnsupported`.
+
 ### Replace before the stop
 
 By default a managed install stops a running service, replaces its binary,
@@ -1082,7 +1212,10 @@ func main() {
     `Task.CleanupHandOffs` at start-up to remove finished ones; the next
     handoff does it too. With `Options.HopDetach`, the detached process of
     the SCM line, which a kill-on-close job of your program's would end.
-  - **A service manager with no backend here:**
+  - **runit, s6, OpenRC and other supervisors** (since `v1.22.0`):
+    `service.Supervised`, whose run starts through the hop; see
+    [Runit, s6, OpenRC and other supervisors](#runit-s6-openrc-and-other-supervisors).
+  - **A service manager with neither:**
     `service.ProcessDetacher(inside)`, with your own check of whether this
     process is inside. On Unix it is no defence against a cgroup kill or a
     launchd job's reap.

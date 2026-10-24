@@ -277,7 +277,11 @@ docs/
     `ManagerEnvNames` lists and `ScrubManagerEnv` leaves out of every
     environment `service` and its backends pass on (`managerenv.go`;
     [0033-MADR](decisions/0033-MADR-scrub-service-manager-environment-from-handoffs.md));
-    and `SameExecutable` (`sameexec.go`);
+    `SameExecutable` (`sameexec.go`); and `Supervised`, the lifecycle for
+    a supervisor with no backend here, built from the program's `State`,
+    `Up` and `Down`, with `ErrNoSupervisor` (`supervised.go`,
+    `supervised_lifecycle.go`;
+    [0035-MADR](decisions/0035-MADR-serve-supervisors-through-a-supervised-adapter.md));
   - **`systemd`:** probes over one `systemctl show` per call, read by key;
     `Stop`, `Start` and `WaitHealthy` on the unit's state and
     `InvocationID`, with the restart count read after the start; a

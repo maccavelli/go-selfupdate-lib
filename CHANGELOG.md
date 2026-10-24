@@ -8,6 +8,22 @@ listed in the
 [migration guide](docs/guides/migrating-from-mcplib-selfupdate.md), one
 section per release, and each entry links its section and its records.
 
+## Unreleased
+
+See [the guide](docs/guides/migrating-from-mcplib-selfupdate.md#22-from-v121-to-v122),
+[0035-MADR](docs/decisions/0035-MADR-serve-supervisors-through-a-supervised-adapter.md) and
+[0035-PLAN](docs/decisions/0035-PLAN-serve-supervisors-through-a-supervised-adapter.md),
+from [issue #2](https://github.com/maccavelli/go-selfupdate-lib/issues/2).
+
+### Added
+
+- `service.NewSupervised`, `Supervised`, `SupervisedOptions` and
+  `SupervisedState`: a `Lifecycle`, `EnabledLifecycle`, `Reconciler` and
+  `Detacher` for runit, s6, OpenRC or any other supervisor on Linux,
+  built from the program's own `State`, `Up` and `Down`.
+- `service.ErrNoSupervisor`: a service that exists but that nothing
+  supervises.
+
 ## v1.21.0 - 2026-10-24
 
 See [the guide](docs/guides/migrating-from-mcplib-selfupdate.md#21-from-v120-to-v121),

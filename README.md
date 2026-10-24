@@ -45,7 +45,7 @@ go get github.com/maccavelli/go-selfupdate-lib@v1.21.0
 | [`selfupdate/verify/ghattest`](selfupdate/verify/ghattest/) | opt-in check that a release was built by its workflow, with `gh attestation verify` |
 | [`selfupdate/verify/signednote`](selfupdate/verify/signednote/) | opt-in check that a release's `SHA256SUMS` was signed by a key the program embeds, as a signed note |
 | [`selfupdate/releasespec`](selfupdate/releasespec/) | the release spec a program embeds and the build workflow reads: products, platforms, packaging, extras, channels, installers |
-| [`selfupdate/service`](selfupdate/service/) | what the service lifecycles share: health polling, typed errors, and the handoff of an update started inside the service |
+| [`selfupdate/service`](selfupdate/service/) | what the service lifecycles share: health polling, typed errors, and the handoff of an update started inside the service; and `NewSupervised`, the lifecycle for runit, s6, OpenRC or any other supervisor, from the program's own state and commands |
 | [`selfupdate/service/systemd`](selfupdate/service/systemd/), [`launchd`](selfupdate/service/launchd/), [`scm`](selfupdate/service/scm/), [`taskscheduler`](selfupdate/service/taskscheduler/) | the managed-update lifecycle for a systemd unit, a launchd job, a Windows service and a per-user Task Scheduler task |
 
 `selfupdate` and its release workflow come from `mcplib` `v1.6.0`, with the

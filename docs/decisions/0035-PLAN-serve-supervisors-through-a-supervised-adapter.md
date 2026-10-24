@@ -853,3 +853,44 @@ this plan.
     carries a justified `//nolint:gosec`: it reads metadata only, and
     nothing is opened, read or written.
   * `make apicheck` reports "compatible with v1.21.0".
+
+### M7: the documents (2026-10-24)
+
+* M6 was committed by the owner as `3acfef3`.
+* **`selfupdate/service/doc.go`:** a paragraph on `NewSupervised`, for a
+  supervisor with no backend here, on Linux, citing the MADR.
+* **`docs/guides/extending-selfupdate.md`:**
+  * "Pick the backend" names `service.NewSupervised`.
+  * A new section, "Runit, s6, OpenRC and other supervisors", has a
+    worked s6 example, the same code as the live test's, trimmed. It
+    then covers:
+    * what `State` supplies, including `ErrNoSupervisor` and leaving
+      `Ready` nil without readiness;
+    * what each supervisor printed in M1's probes;
+    * what the library guarantees: `Stop`'s order and bound, `Kill`,
+      the restore, and `WaitHealthy`'s failures as of Deviation D3;
+    * the handoff through the hop (D2), and `DetachCheck` for an OpenRC
+      system service under cgroup cleanup;
+    * verify-only `Reconcile`, with `NewExecReconciler` for a program
+      that renders its scripts;
+    * Linux only.
+  * The handoff's per-platform list points to the section, and keeps
+    `ProcessDetacher` for a manager with neither.
+* **`README.md`:** the `selfupdate/service` row names `NewSupervised`.
+  **`docs/README.md`:** an "I want to…" row for runit, s6, OpenRC or
+  another supervisor.
+* **The migration guide:** `## 22. From v1.21 to v1.22`, in §21's shape.
+  It links the MADR and the REPORT. "Adopting it" covers a program with
+  its own backend, as magic-cli-remote's.
+* **`CHANGELOG.md`:** `## Unreleased`, with `### Added`: the adapter's
+  four types and `ErrNoSupervisor`.
+* **`docs/architecture.md`:** `service`'s paragraph names `Supervised`,
+  `ErrNoSupervisor` and their files. The table was updated in M2 to M6.
+* **Checks:**
+  * `npx --yes markdownlint-cli2@0.23.2` on the six Markdown files: "0
+    issues in 0 files". The first run found `*` list markers and a list
+    with no blank line before it in the new guide section, which were
+    corrected.
+  * `scripts/check-docs.sh --links`: "419 links in 6 files, 0 broken";
+    `--ids`: "0 findings"; `--arch`: "19 rows, 0 differ".
+  * `make pre-add-check` on `doc.go`: "1 file(s) clean".

@@ -133,6 +133,7 @@ name, and the files they cite moved with the rename
 | rehearse an update without installing | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#rehearse-without-installing) |
 | keep the previous binary after an update | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#keep-the-previous-binary) |
 | replace a setuid or setgid binary | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#replace-a-setuid-or-setgid-binary) |
+| run my program under runit, s6, OpenRC or another supervisor, and update it from inside | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#runit-s6-openrc-and-other-supervisors) |
 | replace a service's binary before stopping it | [guides/extending-selfupdate.md](guides/extending-selfupdate.md#replace-before-the-stop) |
 | know why `selfupdate` moved here, and what changed on the way | [0002-MADR](decisions/0002-MADR-rehome-selfupdate-from-mcplib.md) |
 | know why `bridge-release` is gone | [0002-MADR, §3](decisions/0002-MADR-rehome-selfupdate-from-mcplib.md#3-what-changes-in-transit-and-nothing-else) |

@@ -8,6 +8,13 @@
 // selfupdate.EnabledLifecycle, selfupdate.Reconciler and Detacher, compiles
 // on every OS, and returns ErrUnsupported on the wrong one.
 //
+// For a supervisor with no backend here, such as runit, s6 or OpenRC,
+// NewSupervised builds the same four from the program's own State, Up and
+// Down: the program says how its supervisor reports and commands the
+// service, and Supervised owns the rest of the contract, from the inside
+// check to the handoff (docs/decisions/0035-MADR-serve-supervisors-through-a-supervised-adapter.md).
+// It runs on Linux.
+//
 // # The handoff
 //
 // An update run from inside the service it manages, such as by an agent the

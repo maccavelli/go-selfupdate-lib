@@ -1603,3 +1603,63 @@ what each change does is in the [changelog](../../CHANGELOG.md).
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
 - `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.21.0`.
+
+## 22. From v1.21 to v1.22
+
+```bash
+go get github.com/maccavelli/go-selfupdate-lib@v1.22.0
+```
+
+`v1.22.0` answers [issue #2](https://github.com/maccavelli/go-selfupdate-lib/issues/2), which asked for runit,
+s6 and OpenRC backends, with one adapter for any supervisor.
+`make apicheck` reports it compatible with `v1.21.0`: every exported
+change is an addition. Why, and how, is in
+[0035-MADR](../decisions/0035-MADR-serve-supervisors-through-a-supervised-adapter.md), with the review
+behind it in
+[0035-REPORT](../reports/0035-REPORT-library-backends-or-consumer-api-for-runit-s6-and-openrc.md).
+What each change does is in the [changelog](../../CHANGELOG.md).
+
+### What is new
+
+- **`service.NewSupervised`** builds a `Lifecycle`, an
+  `EnabledLifecycle`, a `Reconciler` and a `Detacher` from three
+  functions you supply: `State`, `Up` and `Down`. It runs on Linux. See
+  [Runit, s6, OpenRC and other supervisors](extending-selfupdate.md#runit-s6-openrc-and-other-supervisors).
+- **`service.SupervisedOptions`** also take `Kill` and `KillAfter`, an
+  escalation for a stop the program does not finish; `Poll`; `Probe`;
+  and `DetachCheck`, which refuses a handoff the supervisor would kill.
+- **`service.SupervisedState`** is the state your `State` returns, and
+  `Supervised.Status` reads, JSON-tagged.
+- **`service.ErrNoSupervisor`** reports a service that exists but that
+  nothing supervises, such as after a logout.
+
+### Behaviour you may notice
+
+- Nothing changes for a program that does not call `NewSupervised`.
+  The other backends, and `service.ProcessDetacher`, are unchanged.
+
+### Adopting it
+
+- **If your program has its own backend** for runit, s6 or OpenRC, as
+  magic-cli-remote's `scriptBackend` is, move its state reads and its
+  commands behind `State`, `Up` and `Down`, and delete:
+  - its inside walk;
+  - its stop poll;
+  - its health wait.
+
+  The adapter gives the handoff, `ctx`, the typed errors and the
+  application probe.
+- **Run your tools by absolute path through a `service.Runner`,** with
+  your context, and capture their output rather than printing it.
+- **Leave `Ready` nil** unless the service reports readiness.
+- **Return `ErrNoSupervisor`** when nothing supervises the service, and
+  start your session's supervisor in `Up` if your program owns one.
+- **Set `Kill` on runit** (`sv kill <dir>`), whose `sv down` sends TERM
+  only.
+- **Set `DetachCheck` for an OpenRC system service** whose
+  `rc_cgroup_cleanup` is on.
+
+### Check
+
+- `go build ./...`, `go vet ./...` and `go test ./...` pass.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.22.0`.
