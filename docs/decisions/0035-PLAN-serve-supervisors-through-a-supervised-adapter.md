@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: in-progress
 date: 2026-10-24
 associated-madr: "0035-MADR-serve-supervisors-through-a-supervised-adapter.md"
 ---
@@ -385,4 +385,52 @@ As 0034-PLAN L6:
 
 ### Approval
 
-Pending: the owner approves this plan to execute it.
+The owner committed M0 and said "proceed" on 2026-10-24, which approves
+this plan.
+
+### M1: re-reads and probes (2026-10-24)
+
+* **Re-reads:** by a fetch of each page; all matched (MADR Amendment A1).
+* **P1:** run with `python3` on the Linux test host and in the WSL. The
+  first version was a bash script. It hung on the Linux test host,
+  whose `/bin/sleep` is a multi-call binary that refuses another name,
+  and it left one directory and two `sleep` processes there, which were
+  removed by PID. The owner then directed that probes be Python, as the
+  global instructions say. Every probe since is Python.
+* **P2 and P3:** `sudo apt-get install runit s6` in the WSL (exit 0).
+  Ubuntu's `runit` package enabled `runit.service`, a root
+  `runsvdir -P /etc/service` over an empty `/etc/service`, which the
+  probes do not use.
+
+  The first run stopped in its s6 teardown: `s6-svscan` did not exit on
+  TERM while a TERM-ignoring service ran. It left six processes in the
+  WSL, which were listed and ended by PID. The teardown was hardened:
+  `-k` first, KILL after 5 s, every detached PID recorded, and a sweep
+  of the user's processes under the probe directory. The second run
+  completed and left nothing.
+* **P4:** Docker Desktop was stopped. The owner granted starting,
+  running and stopping it ("you have the permissions to start/run/stop
+  docker desktop on this host"), and `docker desktop start` started it.
+  * A registry pull failed in the Windows credential helper from the
+    ssh logon ("A specified logon session does not exist"), with or
+    without a probe-only Docker config. The image was built instead by
+    `docker import` of Alpine's minirootfs 3.24.3, downloaded on this
+    Mac and checked against the SHA-256 in Alpine's
+    `latest-releases.yaml`.
+  * The first container's PID 1 did not reap, so a stopped daemon
+    stayed a zombie, and `rc-service stop` reported "1 process refused
+    to stop". It was rerun with `--init`, and the user's runlevel
+    directories made.
+  * A third run added an `rc_sys=""` pass.
+  * Each run removed its container and image. Docker Desktop was
+    stopped again at the end, and the host has no probe container,
+    image or file.
+* **Results:** the MADR's Amendment A1, with the facts annotated in
+  place. No decision point tripped:
+  * P1 holds D3;
+  * P2 and P3 show a detached run surviving each supervisor's stop;
+  * P4 shows no OpenRC user-service cgroup, which the plan records
+    rather than stops on. Cleanup on a real OpenRC host stays
+    unmeasured.
+* **Left in place for M6:** `runit` and `s6` in the WSL, with
+  `runit.service`.

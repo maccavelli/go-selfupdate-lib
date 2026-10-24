@@ -124,20 +124,29 @@ As in 0032-MADR and 0034-MADR:
 * **F13. runit exit codes.** `sv` exits 0 on success, 1 to 99 by the
   count of failed services, including "the directory is not controlled
   by a runsv(8) process, or sv timed out", and 100 on error.
+  *(Measured, Amendment A1, P3: with no `runsv`, `sv status` and
+  `sv down` exit 1 with "warning: <dir>: unable to open supervise/ok:
+  file does not exist".)*
 * **F14. What runit leaves undocumented.** The text `sv status`
   prints, beyond one FAQ example ("ok: run: cron: (pid 5869) 0s"). Also
   the contents of `supervise/stat` and `supervise/pid`, and any process
-  group or session for `./run`.
+  group or session for `./run`. *(Measured, Amendment A1, P3, runit
+  2.1.2: `run: <dir>: (pid N) Ns`; `down: <dir>: Ns, normally up, want
+  up` for a crashing service; `…, want down, got TERM` for one that
+  ignores TERM; `sv` takes an absolute directory.)*
 * **F15. runit's down file.** "If the file service/down exists, runsv
   does not start ./run immediately." A user tree is a `runsvdir` run as
   the user.
 * **F16. s6 control.** `s6-svc -d` sends SIGTERM, then SIGCONT, to "the
   supervised process". Only `-P`, `-C` and `-K` reach "the process
-  group".
+  group". *(Amendment A1, P2, s6 2.12.0.3: with no supervisor, `s6-svc`
+  exits 100, "supervisor not listening", where the current manual lists
+  102.)*
 * **F17. s6 state.** `s6-svstat -o` prints "programmatically parsable"
   fields: `up`, `wantedup`, `normallyup`, `ready`, `pid`, `exitcode` and
   `updownfor`. It exits 1 when "s6-supervise not running on
-  servicedir".
+  servicedir". *(Measured, Amendment A1, P2: as quoted; `ready` reads
+  `false` for a running service with no `notification-fd`.)*
 * **F18. s6 sessions.** "s6-supervise always spawns its child in a new
   session, as a session leader."
 * **F19. s6 readiness and restarts.** Ready is `up,ready` reading
@@ -150,14 +159,18 @@ As in 0032-MADR and 0034-MADR:
   `${XDG_CONFIG_HOME}/rc/init.d`, and "XDG_RUNTIME_DIR … must be set".
 * **F22. OpenRC status.** `status`'s "return code matches the status,
   with the exception of 'started' returning 0", and the other codes are
-  not given. No command prints a service's PID.
+  not given. No command prints a service's PID. *(Measured, Amendment
+  A1, P4: started 0, stopped 3, crashed 32.)*
 * **F23. OpenRC crashes.** A service whose daemon is gone is "marked as
   crashed". start-stop-daemon, the default, does not restart it.
 * **F24. OpenRC's stop scope.** A stop signals the PID, and with
   `stopgroup` the process group. With `rc_cgroup_cleanup=YES`, "all of
   the processes in a service's cgroup [are] killed". The default
   is shown commented as `NO`. Whether user services get cgroups is
-  [unverified].
+  [unverified]. *(Amendment A1, P4, OpenRC 0.63.2 in a container: a
+  system service and its detached run are in `openrc.<svc>`; a user
+  service gets no cgroup of its own; a detached run survived every
+  stop, cleanup on or off. Cleanup on a real host stays unmeasured.)*
 * **F25. OpenRC runlevels.** A runlevel is a directory of symlinks, and
   `rc-update add <svc> default` enables a service.
 
@@ -882,6 +895,41 @@ restates them.
 * Good, because it gives the broadest proof.
 * Bad, because there would be three CI setups, and test-only parsers
   for forms that are not documented.
+
+## Amendment A1 (2026-10-24): re-reads and probe results
+
+0035-PLAN M1. The probes were Python scripts, run as follows:
+
+* **P1:** on the Linux test host, and in the WSL on the Windows test
+  host (Ubuntu 24.04).
+* **P2 and P3:** in the WSL, with `s6` 2.12.0.3 and `runit` 2.1.2 from
+  Ubuntu's packages, each supervisor run as the WSL user over a scan
+  directory of the probe's own.
+* **P4:** as root in a throwaway, privileged Alpine 3.24.3 container
+  with OpenRC 0.63.2. The container ran `--init`, from Alpine's
+  minirootfs, checked against its published SHA-256 and imported, on
+  the Windows test host's Docker Desktop.
+
+Values are as the probes printed them, with PIDs redacted. Every probe
+removed what it made.
+
+**Re-reads.** Each quote of F12, F13, F16, F17, F18, F19 and F24 matched
+its page word for word. Two refinements:
+* runit's `kill` is one entry, "pause cont hup alarm interrupt quit 1 2
+  term kill", which sends "the STOP, CONT, HUP, ALRM, INT, QUIT, USR1,
+  USR2, TERM, or KILL signal respectively";
+* `sv`'s path rule reads "If service doesn't start with a dot or slash
+  and doesn't end with a slash, it is searched in the default services
+  directory /service/, otherwise relative to the current directory".
+
+| Probe | Question | Result | Effect |
+| :--- | :--- | :--- | :--- |
+| P1 | Is `/proc/<pid>/stat` field 22 a usable instance key, and do the reads hold? | `CLK_TCK` 100. Field 22 is non-zero, the same across reads, and differs between processes. Parsing after the last `)` reads a command name `a b) (c` correctly. `/proc/<pid>/exe` reads `<dir>/prog (deleted)` after the binary is replaced by rename. An exited PID gives `ENOENT` for `stat` and `exe`. The same on both hosts | D3, D7 and D9 stand. `internal/procfs` parses after the last `)`, and maps `ENOENT` to `fs.ErrNotExist` |
+| P2 | s6's machine form, its codes, and its stop's reach | `-o up,wantedup,normallyup,ready,pid,exitcode,updownfor`: running `true true true false <pid> -1 3`; crashing `false true true false -1 3 0`; down file `false false false false -1 0 3`. No supervisor: `s6-svstat` exits 1, "s6-supervise not running"; `s6-svc` exits 100, "supervisor not listening". A detached run survived `s6-svc -d`. A TERM-ignoring program stayed up after `-d`, with `wantedup` false, until `-k`. `s6-svscan` did not exit on TERM while a supervised program ignored TERM | D8-A's premise holds for s6, and D4-C's `Kill` has a use (`s6-svc -k`). `Ready` is `false`, not absent, without a `notification-fd`, so a program sets `Ready` only when the service has one. The live test (M6) tears down with `-k` before `-dx` |
+| P3 | runit's forms, its codes, and its stop's reach | As F14's note. No supervisor: exit 1 with "unable to open supervise/ok". A detached run survived `sv down`. `sv kill` ended a TERM-ignoring program. `supervise/stat` reads `run`, and `supervise/pid` the PID | D8-A's premise holds for runit, and `Kill` is `sv kill`. The forms are for magic-cli-remote#27's fixtures |
+| P4 | OpenRC's codes, cgroups and cleanup, for a system and a user service | `status`: started 0, stopped 3, crashed 32, for both. System service: the daemon and its detached run are in `0::/openrc.<svc>`. User service: both are in `0::/`, so there is no service cgroup to clean. With `rc_cgroup_cleanup=YES`, and again with `rc_sys=""` as well, the detached run survived `rc-service stop`. OpenRC reported itself as `[DOCKER]` | For user services, `DetachCheck` has nothing to refuse. For system services, cleanup killed nothing here, but a real host may differ. So D8-A stands, and a program's `DetachCheck` keeps the refusal for a system service with cleanup on until a real host shows otherwise |
+
+No result trips a decision point of 0035-PLAN. Every decision stands.
 
 ## More Information
 
