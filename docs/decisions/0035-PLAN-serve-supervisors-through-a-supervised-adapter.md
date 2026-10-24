@@ -588,3 +588,62 @@ this plan.
   * `make apicheck` reports "compatible with v1.21.0".
   * `docs/architecture.md`'s `service` row is 20 source and 20 test
     files, and names `internal/procfs`. `--arch`: "19 rows, 0 differ".
+
+### M4: `Stop` and `Start` (2026-10-24)
+
+* M3 was committed by the owner as `9e0681e`.
+* **`supervised_lifecycle.go`** (new):
+  * `Stop` follows step 1's order. It records the instance and the binary
+    (`procfs.Exe`, best-effort, empty when unreadable) under `mu`. It
+    then calls `Down`, and waits in `waitDown` under
+    `context.WithoutCancel` and `Poll.Timeout`, joining the caller's
+    context error after. `Kill` runs once at `KillAfter`.
+  * A failed `Down` or wait joins `Kill`'s error, and calls `Up` when
+    the recorded process still runs.
+  * A service that is down and not wanted up is left alone. With no
+    supervisor, `Stop` returns nil when nothing runs, and an error
+    wrapping `ErrNoSupervisor` when the recorded process does.
+  * `Start` leaves a running instance other than the recorded one, and
+    otherwise calls `Up`.
+  * `sleepCtx` is the real sleep.
+* **`supervised.go`:** the `exe`, `now` and `sleep` seams, and the
+  `binary` field.
+* **`supervised_lifecycle_test.go`** (new): a fake supervisor whose
+  process exits a set number of clock ticks after `Down`, or never, on a
+  virtual clock. The tests:
+  * `TestSupervisedStop`;
+  * `TestSupervisedStopRefusesFirst`: inside, not installed, and down
+    and not wanted, each with no call;
+  * `TestSupervisedStopTimeout`: `down`, then `up`, after the 4 s bound;
+  * `TestSupervisedStopOutlivesContext`;
+  * `TestSupervisedStopKill`: killed at 1 s;
+  * `TestSupervisedStopKillError`;
+  * `TestSupervisedStopReusedPID`;
+  * `TestSupervisedStopDownFails`;
+  * `TestSupervisedStopNoSupervisor`;
+  * `TestSupervisedStart`: left alone, a new process after a stop, the
+    recorded instance, and `Up`'s `ErrNoSupervisor`.
+* **Runs:** the `service` package passes here, on the Linux test host
+  and on the Windows test host.
+* **Seen failing** (`scripts/plant-copy.sh`, run here):
+
+  | Plant | Failure |
+  | :--- | :--- |
+  | (i) no inside check | `supervised_lifecycle_test.go:214: inside: <nil>, want ErrInsideService` |
+  | (j) the wait bound by the caller's context | `supervised_lifecycle_test.go:274: Stop: selfupdate: service: timed out: demo: context canceled` |
+  | (k) no `Up` after a failed stop | `supervised_lifecycle_test.go:248: calls ["down"], want down then up`; `:342` the same for a refused `Down` |
+  | (l) no `Kill` at `KillAfter` | `supervised_lifecycle_test.go:289: … timed out: demo still runs 4s after it was stopped (last: up=true pid=100 )`; `:314` |
+  | (m) the PID alone compared | `supervised_lifecycle_test.go:326: Stop with the PID reused: … timed out …`; `supervised_test.go:168: Running with no supervisor, PID reused: true, <nil>` |
+
+  The plants were run again after the gocritic change below, and each
+  failed the same tests.
+* **Checks:**
+  * `make pre-add-check` on the three files reports "3 file(s) clean
+    (gofmt, golangci-lint, go vet, go test, govulncheck)". Its first run
+    found gocritic's `ptrToRefParam` on `waitDown`'s `*error` parameter,
+    so `waitDown` now returns `Kill`'s error as a result.
+  * The timeout message drops its trailing space when the state has no
+    `Detail`.
+  * `make apicheck` reports "compatible with v1.21.0".
+  * `docs/architecture.md`'s `service` row is 21 source and 21 test
+    files.

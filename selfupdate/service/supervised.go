@@ -119,13 +119,18 @@ type Supervised struct {
 	o    SupervisedOptions
 	name string
 
-	// readStat and self read /proc and this process; tests replace them.
+	// readStat, exe and self read /proc and this process, and now and
+	// sleep are the clock; tests replace them.
 	readStat func(pid int) (procfs.Stat, error)
+	exe      func(pid int) (string, error)
 	self     func() int
+	now      func() time.Time
+	sleep    func(context.Context, time.Duration) error
 
 	mu sync.Mutex
-	// recorded is the instance Stop saw.
+	// recorded is the instance Stop saw, and binary the binary it ran.
 	recorded instance
+	binary   string
 }
 
 // NewSupervised returns a Supervised for o. It refuses a missing State, Up
@@ -166,7 +171,10 @@ func supervisedOn(o SupervisedOptions, goos string) (*Supervised, error) {
 	if name == "" {
 		name = "the service"
 	}
-	return &Supervised{o: o, name: name, readStat: procfs.ReadStat, self: os.Getpid}, nil
+	return &Supervised{
+		o: o, name: name, readStat: procfs.ReadStat, exe: procfs.Exe, self: os.Getpid,
+		now: time.Now, sleep: sleepCtx,
+	}, nil
 }
 
 // fail wraps err with the step and the service's name.
