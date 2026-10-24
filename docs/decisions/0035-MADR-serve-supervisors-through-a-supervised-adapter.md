@@ -918,5 +918,4 @@ restates them.
   Its adoption is tracked in
   <https://github.com/maccavelli/magic-cli-remote/issues/27>.
 * Plan:
-  `0035-PLAN-serve-supervisors-through-a-supervised-adapter.md`,
-  to follow.
+  [0035-PLAN-serve-supervisors-through-a-supervised-adapter.md](0035-PLAN-serve-supervisors-through-a-supervised-adapter.md).
