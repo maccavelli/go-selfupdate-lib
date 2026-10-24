@@ -539,7 +539,7 @@ which approves this plan.
   "0 issues in 0 files"; `scripts/check-docs.sh --links`: "182 links in
   3 files, 0 broken"; `--ids`: "0 findings".
 
-### L6: `v1.21.0` (2026-10-24, in progress)
+### L6: `v1.21.0` (2026-10-24)
 
 * L5 was committed by the owner as `b58ef7b`.
 * **Step 1:** `CHANGELOG.md`'s `## Unreleased` becomes `## v1.21.0 -
@@ -549,5 +549,35 @@ which approves this plan.
   "compatible with v1.20.0", fuzz, vuln "No vulnerabilities found.",
   scripts, shellcheck, crossvet, links "778 links in 92 files, 0 broken",
   arch, ids), `overall=0`.
-* The steps that follow wait on the owner's word for the push and the
-  tag.
+* **Step 3:** the owner committed the pre-tag change as `29337d0` and
+  pushed `main`. The push carried L2 to L4's code, so CI ran in full: run
+  40121996740 completed `success`, all 18 jobs. On `windows-2025`,
+  `TestLiveTaskEnableDisable`, `TestLiveTaskStopRefusesDisabled` and the
+  other Task Scheduler live tests passed. `TestLiveTaskUpdate` does not
+  run on the runner, which gives no medium integrity, as before. The
+  Docs run passed.
+* **Step 4:** `scripts/check-release-tag.sh v1.21.0` exited 0, and the
+  disclosure guard passed with `main` level with `origin`. The owner made
+  the annotated tag and pushed it: tag object `ac1ab94…`, on `29337d0`.
+* **Step 5:** the tag's CI run 40122878715 completed `success`, all 18
+  jobs. Its identity legs print `v1.21.0 (release) 29337d004689`, 10
+  times. `TestLiveTaskEnableDisable` and
+  `TestLiveTaskStopRefusesDisabled` passed again on `windows-2025`.
+* **Step 6, this commit:** `git diff --stat v1.20.0 v1.21.0 -- .github
+  internal/cmd scripts go.mod go.sum` is empty, so the workflow pins move
+  with no other change. Moved to `v1.21.0` and `29337d0…`:
+  * `README.md`'s current release, `go get` line and publish pin;
+  * `docs/architecture.md`'s current release and commit;
+  * `building-releases.md`'s "examples below pin", three workflow pins
+    and `git ls-remote` example;
+  * in the migration guide: the 16 `go get` and 14 `go list -m` lines,
+    "is the current release", §3's workflow pin, "the example pins" and
+    `git ls-remote`, §5's "Require go-selfupdate-lib", and §2's release
+    list, which gains `v1.21.0` and links §21.
+
+  Three lines name `v1.20.0` as history and stay: §2's list entry, §20's
+  opening, and §21's "compatible with `v1.20.0`".
+* **Step 7:** `go list -m -json github.com/maccavelli/go-selfupdate-lib@v1.21.0`
+  gives `Hash 29337d004689272c3f347db4c444ed81e0bec21c`, `Ref
+  refs/tags/v1.21.0`, and `@latest` resolves to `v1.21.0`.
+* **Step 8** waits on the owner's ask to close issue #8.
