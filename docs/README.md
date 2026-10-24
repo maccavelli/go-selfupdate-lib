@@ -84,7 +84,7 @@ name, and the files they cite moved with the rename
 | 0032 | MADR | [Let `taskscheduler` register, read, compare and delete a definition, report its state, and hand an update off as a one-shot task](decisions/0032-MADR-task-scheduler-registration-and-one-shot-handoff.md) | accepted |
 | 0032 | PLAN | [Implement Task Scheduler registration, comparison, state and the one-shot handoff, and release `v1.19.0`](decisions/0032-PLAN-task-scheduler-registration-and-one-shot-handoff.md) | complete |
 | 0033 | MADR | [Leave the service manager's per-unit variables out of every environment the library passes on](decisions/0033-MADR-scrub-service-manager-environment-from-handoffs.md) | accepted |
-| 0033 | PLAN | [Implement leaving the per-unit variables out of passed-on environments, and release `v1.20.0`](decisions/0033-PLAN-scrub-service-manager-environment-from-handoffs.md) | in-progress |
+| 0033 | PLAN | [Implement leaving the per-unit variables out of passed-on environments, and release `v1.20.0`](decisions/0033-PLAN-scrub-service-manager-environment-from-handoffs.md) | complete |
 
 ## I want to…
 

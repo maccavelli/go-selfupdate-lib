@@ -1,6 +1,6 @@
 ---
-status: in-progress
-date: 2026-10-23
+status: complete
+date: 2026-10-24
 associated-madr: "0033-MADR-scrub-service-manager-environment-from-handoffs.md"
 ---
 # Implement leaving the service manager's per-unit variables out of passed-on environments, and release `v1.20.0`
@@ -487,4 +487,47 @@ in place.
 * **Step 7:** `go list -m -json github.com/maccavelli/go-selfupdate-lib@v1.20.0`
   gives `Hash ca1c0e227e3ca59fb59a46e64d8c934f47d48698`, `Ref
   refs/tags/v1.20.0`, and `@latest` resolves to `v1.20.0`.
-* **Step 8** waits on the owner's ask to close issue #7.
+* The pin commit was committed and pushed by the owner as `86621a9`.
+* **Step 8:** on the owner's word, issue #7 was closed as completed,
+  with a comment naming `v1.20.0`: the two functions, the variables they
+  cover and what still passes on, every place the library now scrubs,
+  that `HandOff.Env` and `ExecOptions.Env` pass any name, what K1's
+  probes measured, how it was verified, and how to adopt it. The comment
+  passed the identifier check before it was posted.
+
+### K7: closing (2026-10-24)
+
+* This plan becomes `complete`, and its index row follows. The MADR
+  stays `accepted`.
+
+### Verification, at closing (2026-10-24)
+
+* **V1 (probes):** K1's five probes ran on the Linux test host, this Mac
+  and the Windows test host, and the MADR's Amendment A1 records them.
+  None tripped a decision point; K1-4 added `XPC_SERVICE_NAME` and
+  `XPC_FLAGS` to the list under D1-C.
+* **V2 (filter):** `managerenv_test.go` passes here and on the Windows
+  test host, and on CI's three runners; each of K2's four plants failed.
+* **V3 (process starts):** `DetachProcess`, `ExecReconciler` and the
+  systemd, launchd and Task Scheduler handoffs pass on nothing on the
+  list and pass an explicit variable on (K2, K3), each seen failing on an
+  unscrubbed plant. The hop passes its environment on unchanged, since
+  what starts it has scrubbed it, and keeps an explicit variable
+  (Deviation D1).
+* **V4 (live):** the systemd handoff's run has its own unit's
+  `INVOCATION_ID` and no `NOTIFY_SOCKET`, on the Linux test host and in
+  CI in both scopes, on `main` and on the tag; launchd's run has its own
+  job's `XPC_SERVICE_NAME`, on this Mac and in CI. Task Scheduler needed
+  no change, as K1-5 found no per-task variable. Each live check failed
+  on a plant (K4).
+* **V5 (API):** `make apicheck` against `v1.19.0` reported no
+  incompatibility at every phase and in `make gate`.
+* **V6 (release):** `v1.20.0` is the annotated tag on `ca1c0e2`; its CI
+  passed every job with identity legs `v1.20.0 (release) ca1c0e227e3c`;
+  the proxy serves it as `@latest`; #7 is closed (K6).
+
+Not done here, as the plan's scope says: the library does not unset the
+variables in the caller's own process, which stays the program's choice
+(sd_notify(3)'s `unset_environment`); and `internal/testproc`'s and
+`verify/ghattest`'s environments are unchanged. magic-cli-remote, which
+reported the issue, adopts `v1.20.0` in its own repository.
