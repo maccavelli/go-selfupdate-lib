@@ -381,3 +381,43 @@ in place.
   `./selfupdate/service/...` for `linux`, `darwin` and `windows`: clean.
   `make apicheck`: "compatible with v1.19.0". No `.go` file was added, so
   the architecture table is unchanged.
+
+### K4: the live tests (2026-10-24)
+
+* K3 was committed by the owner as `e3744b3`.
+* **systemd** (`systemd/live_linux_test.go`): `insideUpdate` passes the
+  unit's `INVOCATION_ID` as `CALLER_INVOCATION_ID` in `HandOff.Env`;
+  `runLiveUpdate` returns an error when `CALLER_INVOCATION_ID` is empty
+  or equals the run's own `INVOCATION_ID`, or when `NOTIFY_SOCKET` is
+  set, so `TestLiveHandOff`'s result check fails.
+* **launchd** (`launchd/live_darwin_test.go`): the same with
+  `CALLER_XPC_SERVICE_NAME`. K1-4 found one per-job variable:
+  `XPC_SERVICE_NAME`. `XPC_FLAGS`, which joined the list because launchd
+  sets it, had the same value in both probe jobs, so a run cannot tell
+  its own from the caller's, and it gets no check.
+* **Task Scheduler:** K1-5 found no per-task variable, so
+  `TestLiveTaskHandOffOneShot` is unchanged.
+* **The Linux test host** (`SELFUPDATE_REQUIRE_SYSTEMD=1`,
+  `SELFUPDATE_SYSTEMD_SCOPE=user`, the tree copied to `/var/tmp` and
+  removed after): all nine `TestLive` tests in `systemd` pass, among them
+  `TestLiveHandOff` and `TestLiveHandOffHealthFailureReportsRollback`.
+  CI's Linux job runs them in both scopes on the push.
+* **This Mac** (`SELFUPDATE_REQUIRE_LAUNCHD=1`): `TestLiveHandOff`
+  passes.
+* **Seen failing**, live (`scripts/plant-copy.sh`; the systemd plants
+  run on the Linux test host):
+
+  | Plant | Failure |
+  | :--- | :--- |
+  | (a) K3's systemd change reverted | `live_linux_test.go:429: handoff result {... ExitCode:1 Error:the run's INVOCATION_ID "43ac2906…", the caller's "43ac2906…" ...}` |
+  | (b) `NOTIFY_SOCKET` dropped from the list, so the `INVOCATION_ID` check passes | `live_linux_test.go:429: handoff result {... ExitCode:1 Error:the run has NOTIFY_SOCKET="/run/user/<uid>/systemd/notify" ...}` |
+  | (c) K3's launchd change reverted | `live_darwin_test.go:556: handoff result {... ExitCode:1 Error:the run's XPC_SERVICE_NAME "io.github.maccavelli.selfupdate.livetest", the caller's "io.github.maccavelli.selfupdate.livetest" ...}` |
+
+  Plant (a) is the one the plan names; (b) shows the `NOTIFY_SOCKET`
+  check fails on its own, and (c) shows the same for the launchd check.
+  After each run, the Linux test host had no `selfupdate` user units
+  and no copy left in `/var/tmp`, and this Mac had no `selfupdate`
+  launchd job.
+* **Checks.** `make pre-add-check` on the two files: "2 file(s) clean
+  (gofmt, golangci-lint, go vet, go test, govulncheck)". No `.go` file
+  was added.

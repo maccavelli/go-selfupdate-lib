@@ -95,8 +95,10 @@ func insideUpdate() {
 		return
 	}
 	report("backstop", "refused")
+	// The unit's own invocation, for the run to compare with its own
+	// (0033-PLAN K4).
 	det, handed, err := service.HandOffIfInside(context.Background(), u, service.HandOff{
-		Env: []string{liveModeEnv + "=update", "FAKE_SECRET=" + secretValue},
+		Env: []string{liveModeEnv + "=update", "FAKE_SECRET=" + secretValue, "CALLER_INVOCATION_ID=" + os.Getenv("INVOCATION_ID")},
 	})
 	if err != nil || !handed {
 		report("inside-error", fmt.Sprintf("handoff: handed %t, %v", handed, err))
@@ -121,6 +123,14 @@ func liveUpdate() int {
 func runLiveUpdate() (selfupdate.Result, error) {
 	if got := os.Getenv("FAKE_SECRET"); got != secretValue {
 		return selfupdate.Result{}, fmt.Errorf("the environment file changed FAKE_SECRET to %q", got)
+	}
+	// The run is its own unit's, not the caller's: its own invocation, and
+	// no channel to the caller's manager (0033-MADR D3-A).
+	if mine, caller := os.Getenv("INVOCATION_ID"), os.Getenv("CALLER_INVOCATION_ID"); caller == "" || mine == caller {
+		return selfupdate.Result{}, fmt.Errorf("the run's INVOCATION_ID %q, the caller's %q", mine, caller)
+	}
+	if v, ok := os.LookupEnv("NOTIFY_SOCKET"); ok {
+		return selfupdate.Result{}, fmt.Errorf("the run has NOTIFY_SOCKET=%q", v)
 	}
 	u, err := liveUnit()
 	if err != nil {

@@ -86,8 +86,10 @@ func insideUpdate() {
 		return
 	}
 	report("backstop", "refused")
+	// The job's own name, for the run to compare with its own (0033-PLAN
+	// K4).
 	det, handed, err := service.HandOffIfInside(context.Background(), j, service.HandOff{
-		Env: []string{"FAKE_SECRET=" + secretValue},
+		Env: []string{"FAKE_SECRET=" + secretValue, "CALLER_XPC_SERVICE_NAME=" + os.Getenv("XPC_SERVICE_NAME")},
 	})
 	if err != nil || !handed {
 		report("inside-error", fmt.Sprintf("handoff: handed %t, %v", handed, err))
@@ -113,6 +115,11 @@ func liveUpdate() int {
 func runLiveUpdate() (selfupdate.Result, error) {
 	if got := os.Getenv("FAKE_SECRET"); got != secretValue {
 		return selfupdate.Result{}, fmt.Errorf("the environment file changed FAKE_SECRET to %q", got)
+	}
+	// The run reports as its own job, not the caller's (0033-MADR D1-C,
+	// Amendment A1 K1-4).
+	if mine, caller := os.Getenv("XPC_SERVICE_NAME"), os.Getenv("CALLER_XPC_SERVICE_NAME"); caller == "" || mine == caller {
+		return selfupdate.Result{}, fmt.Errorf("the run's XPC_SERVICE_NAME %q, the caller's %q", mine, caller)
 	}
 	j, err := liveJob()
 	if err != nil {
