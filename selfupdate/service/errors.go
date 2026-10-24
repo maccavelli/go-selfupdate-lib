@@ -28,6 +28,13 @@ var (
 	// ErrUnhealthy is returned when the service failed, crashed or restarted
 	// during a health wait.
 	ErrUnhealthy = errors.New("selfupdate: service: not healthy")
+	// ErrNoSupervisor is returned when the service exists, but nothing
+	// supervises it, such as a runit or s6 service directory that no
+	// runsvdir or s6-svscan serves after a logout. A program can start a
+	// supervisor and try again
+	// (docs/decisions/0035-MADR-serve-supervisors-through-a-supervised-adapter.md
+	// D10-A).
+	ErrNoSupervisor = errors.New("selfupdate: service: nothing supervises the service")
 )
 
 // CommandError is a service manager command that exited non-zero: a
