@@ -448,7 +448,7 @@ in place.
   files, 0 broken"; `--ids`: "0 findings"; `--arch docs/architecture.md`:
   "18 rows, 0 differ".
 
-### K6: `v1.20.0` (2026-10-24, in progress)
+### K6: `v1.20.0` (2026-10-24)
 
 * K5 was committed by the owner as `374d919`.
 * **Step 1:** `CHANGELOG.md`'s `## Unreleased` becomes `## v1.20.0 -
@@ -458,5 +458,33 @@ in place.
   "compatible with v1.19.0", fuzz, vuln "No vulnerabilities found.",
   scripts, shellcheck, crossvet, links "761 links in 90 files, 0 broken",
   arch, ids), `overall=0`.
-* The steps that follow wait on the owner's word for the push and the
-  tag.
+* **Step 3:** the owner committed the pre-tag change as `ca1c0e2` and
+  pushed `main`. The push carried K2 to K5's code, so CI ran in full: run
+  40112891564 completed `success`, all 18 jobs, with `TestLiveHandOff`
+  passing for systemd in both scopes on `ubuntu-24.04` and for launchd on
+  `macos-15`. The Docs run passed.
+* **Step 4:** `scripts/check-release-tag.sh v1.20.0` exited 0, and the
+  disclosure guard passed with `main` level with `origin`. The owner made
+  the annotated tag and pushed it: tag object `df610c6…`, on `ca1c0e2`.
+* **Step 5:** the tag's CI run 40114207654 completed `success`, all 18
+  jobs; its identity legs print `v1.20.0 (release) ca1c0e227e3c`, 10
+  times. `TestLiveHandOff` passed for systemd in both scopes, launchd and
+  the SCM, and `TestLiveTaskHandOffOneShot` on `windows-2025`. The
+  run-wide log (`gh run view --log`) held only the Ubuntu job's set-up
+  lines; that job's own log (`gh run view --job`) has the rest.
+* **Step 6, this commit:** `git diff --stat v1.19.0 v1.20.0 -- .github
+  internal/cmd scripts go.mod go.sum` is empty, so the workflow pins move
+  with no other change. Moved to `v1.20.0` and `ca1c0e2…`: `README.md`'s
+  current release, `go get` line and publish pin; `docs/architecture.md`'s
+  current release and commit; `building-releases.md`'s "examples below
+  pin", three workflow pins and `git ls-remote` example; and the
+  migration guide's 15 `go get` and 13 `go list -m` lines, "is the
+  current release", §3's workflow pin, "the example pins" and
+  `git ls-remote`, §5's "Require go-selfupdate-lib", and §2's release
+  list, which gains `v1.20.0` and links §20. Three lines name `v1.19.0`
+  as history and stay: §2's list entry, §19's opening, and §20's
+  "compatible with `v1.19.0`".
+* **Step 7:** `go list -m -json github.com/maccavelli/go-selfupdate-lib@v1.20.0`
+  gives `Hash ca1c0e227e3ca59fb59a46e64d8c934f47d48698`, `Ref
+  refs/tags/v1.20.0`, and `@latest` resolves to `v1.20.0`.
+* **Step 8** waits on the owner's ask to close issue #7.
