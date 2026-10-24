@@ -8,7 +8,7 @@ listed in the
 [migration guide](docs/guides/migrating-from-mcplib-selfupdate.md), one
 section per release, and each entry links its section and its records.
 
-## Unreleased
+## v1.21.0 - 2026-10-24
 
 See [the guide](docs/guides/migrating-from-mcplib-selfupdate.md#21-from-v120-to-v121),
 [0034-MADR](docs/decisions/0034-MADR-export-task-scheduler-enable-and-disable.md) and

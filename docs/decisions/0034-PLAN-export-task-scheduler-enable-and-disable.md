@@ -538,3 +538,16 @@ which approves this plan.
 * **Checks** on the three files: `npx --yes markdownlint-cli2@0.23.2`:
   "0 issues in 0 files"; `scripts/check-docs.sh --links`: "182 links in
   3 files, 0 broken"; `--ids`: "0 findings".
+
+### L6: `v1.21.0` (2026-10-24, in progress)
+
+* L5 was committed by the owner as `b58ef7b`.
+* **Step 1:** `CHANGELOG.md`'s `## Unreleased` becomes `## v1.21.0 -
+  2026-10-24`; the guide's §21 came in L5.
+* **Step 2:** `make gate` with this change in the tree: every step
+  `rc=0` (gofmt, lint "0 issues.", vet, race, shuffle, tidy, apicheck
+  "compatible with v1.20.0", fuzz, vuln "No vulnerabilities found.",
+  scripts, shellcheck, crossvet, links "778 links in 92 files, 0 broken",
+  arch, ids), `overall=0`.
+* The steps that follow wait on the owner's word for the push and the
+  tag.
