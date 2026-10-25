@@ -14,8 +14,11 @@
 #   --ids [--ids-optional] FILE...
 #                    no file holds an identifier (AGENTS.md, Identifiers):
 #                    nothing the deny list's content rules match, and no
-#                    macOS or Linux home directory path other than the
-#                    <user> placeholder. The deny list is the pre-push
+#                    macOS, Linux or Windows home directory path other than
+#                    the <user> placeholder
+#                    (docs/decisions/0036-MADR-align-docs-ci-and-disclosure-gates.md
+#                    A1 G2). A file it cannot read is a finding. The
+#                    deny list is the pre-push
 #                    guard's, DISCLOSURE_DENY or ~/.config/git/disclosure-deny,
 #                    one "<regex> TAB <placeholder> [TAB identity]" rule per
 #                    line; identity rules apply to commit authors, not to
@@ -78,6 +81,14 @@ FENCE = re.compile(r"^\s*(```|~~~)")
 # A home directory: the macOS or the Linux root, then a name that is not the
 # placeholder. Not inside a host or a longer path, such as a URL's.
 HOME = re.compile(r"(?<![\w.-])/(?:Users|home)/(?!<user>)[^/\s`'\")<>\]]+")
+# A Windows one: a drive, then Users or Documents and Settings in any case,
+# with slashes or backslashes, escaped or not, then a name that is not the
+# placeholder. A name of exactly "user" passes too: XML cannot hold <user>,
+# so selfupdate/service/taskscheduler/testdata/definitions/README.md
+# documents "user" as the redaction there
+# (docs/decisions/0036-PLAN-align-docs-ci-and-disclosure-gates.md D1).
+WINHOME = re.compile(r"(?<![\w.-])[A-Za-z]:[\\/]+(?i:Users|Documents and Settings)[\\/]+"
+                     r"(?!<user>)(?!user(?:[\\/\s`'\")<>\]]|$))[^\\/\s`'\")<>\]]+")
 
 
 def read_lines(path):
@@ -180,11 +191,16 @@ def check_ids():
         rules = []
     bad = []
     for f in files:
-        for n, line in enumerate(read_lines(f), 1):
+        try:
+            lines = read_lines(f)
+        except OSError as err:
+            bad.append(f"{f}: unreadable: {err.strerror or type(err).__name__}")
+            continue
+        for n, line in enumerate(lines, 1):
             for pattern, placeholder in rules:
                 if pattern.search(line):
                     bad.append(f"{f}:{n}: {placeholder}")
-            if HOME.search(line):
+            if HOME.search(line) or WINHOME.search(line):
                 bad.append(f"{f}:{n}: home directory path")
     for b in bad:
         print(b)

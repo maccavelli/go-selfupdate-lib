@@ -3434,9 +3434,11 @@ No API change; `make apicheck` reports `v1.10.1` compatible with
   37713627683): `validate (windows-2025)` failed
   `TestInstallPs1/*/a_relative_-InstallDir_is_made_absolute`, all four
   runs (`installer_ps_test.go:824`). The runner's `%TEMP%` is an 8.3 path
-  (`C:\Users\RUNNER~1\…`); PowerShell reports the folder by its long name
-  (`C:\Users\runneradmin\…`), so the installer printed the long form and
-  the test expected the short one. The install itself was right. The
+  (`C:\Users\<user>~1\…`); PowerShell reports the folder by its long name
+  (`C:\Users\<user>\…`), so the installer printed the long form and
+  the test expected the short one. *(The runner's account is the `<user>`
+  placeholder since 0036-PLAN-align-docs-ci-and-disclosure-gates.md,
+  Deviation D1.)* The install itself was right. The
   Windows test host's temp folder has no short form, so P7's runs there
   passed. Every other CI job passed, the container installer jobs
   included.

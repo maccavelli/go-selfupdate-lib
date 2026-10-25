@@ -2,15 +2,18 @@
 # (no binary packaging targets).
 #
 # Each tool is looked for in GOBIN, then GOPATH/bin, then PATH; set its
-# variable to name another binary.
-GOPATH_BIN    := $(shell go env GOPATH)/bin
-GOBIN         := $(shell go env GOBIN)
+# variable to name another binary. GOPATH_BIN and GOBIN are expanded only
+# by a target that uses them, so the documentation targets never start go
+# (docs/decisions/0036-MADR-align-docs-ci-and-disclosure-gates.md A1 G1).
+GOPATH_BIN    = $(shell go env GOPATH)/bin
+GOBIN         = $(shell go env GOBIN)
 GOLANGCI_LINT ?= $(or $(wildcard $(GOBIN)/golangci-lint),$(wildcard $(GOPATH_BIN)/golangci-lint),$(shell command -v golangci-lint 2>/dev/null))
 GOVULNCHECK   ?= $(or $(wildcard $(GOBIN)/govulncheck),$(wildcard $(GOPATH_BIN)/govulncheck),$(shell command -v govulncheck 2>/dev/null))
 GOTESTSUM     ?= $(or $(wildcard $(GOBIN)/gotestsum),$(wildcard $(GOPATH_BIN)/gotestsum),$(shell command -v gotestsum 2>/dev/null))
 FLEET_LINT_CFG := .golangci.yml
 
-.PHONY: all help test test-sum fmt vet lint tidy vuln apicheck fuzz pre-add-check gate
+.PHONY: all help test test-sum fmt vet lint tidy vuln apicheck fuzz pre-add-check gate \
+	check-records markdownlint docs-check disclosure-check
 
 all: help
 
@@ -92,6 +95,30 @@ pre-add-check: ## Runs the pre-add checks (gofmt, golangci-lint, vet, test, govu
 # passed through (docs/decisions/0015-PLAN-remediate-third-debugging-pass-findings.md R1).
 gate: ## Runs the full pre-commit gate (scripts/gate.sh)
 	@./scripts/gate.sh
+
+# The documentation checks. Full CI and the Docs run call these targets, so
+# both, and a local run, share one command and one pin
+# (docs/decisions/0036-MADR-align-docs-ci-and-disclosure-gates.md A1 G1).
+# Each runs its checker's own tests first. disclosure-check reads every
+# tracked file for a home directory path; with the owner's deny list
+# present, as on a development host, it applies that too, while CI holds
+# none (AGENTS.md, Identifiers).
+MARKDOWNLINT ?= npx --yes markdownlint-cli2@0.23.2
+
+check-records: ## Checks record names, MADR/PLAN pairs, statuses and the docs/README.md index
+	@python3 scripts/check_records_test.py
+	@python3 scripts/check_records.py
+
+markdownlint: ## Lints Markdown with the pinned markdownlint-cli2 (needs npx)
+	@$(MARKDOWNLINT)
+
+docs-check: ## Checks relative links and the architecture table, after check-docs.sh's tests
+	@./scripts/check-docs_test.sh
+	@git ls-files -z '*.md' | xargs -0 ./scripts/check-docs.sh --links
+	@./scripts/check-docs.sh --arch docs/architecture.md
+
+disclosure-check: ## Checks every tracked file for a home directory path (and the deny list, when present)
+	@git ls-files -z | xargs -0 ./scripts/check-docs.sh --ids --ids-optional
 
 help: ## Displays this help message
 	@echo "Usage: make [target]"

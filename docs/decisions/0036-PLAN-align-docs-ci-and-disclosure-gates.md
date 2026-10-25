@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: in-progress
 date: 2026-10-25
 associated-madr: "0036-MADR-align-docs-ci-and-disclosure-gates.md"
 ---
@@ -26,7 +26,7 @@ Boundary: The owner deny list cannot be reproduced on an untrusted pull-request 
 1. Re-read workflow triggers, job commands, Markdownlint globs, tracked Markdown files and every code or script reader of tracked Markdown. Record the docs-safe path set in this PLAN before editing filters. Include hidden agent-rule trees and test fixtures. Review required-status settings; if a filtered job would stay pending, amend this pair with a concrete migration before changing filters.
 2. Add four `Makefile` targets, each wrapping today's command where one exists: `check-records` (`python3 scripts/check_records.py`); `markdownlint` (`npx --yes markdownlint-cli2@0.23.2` over the tracked Markdown, as `docs.yml` runs it); `docs-check` (`scripts/check-docs.sh --links` over the tracked Markdown, `--arch docs/architecture.md`, and `scripts/check-docs_test.sh`); and `disclosure-check` (`scripts/check-docs.sh --ids --ids-optional` over `git ls-files`). Both workflows call these targets, so full CI, Docs and a local run share one command and one pin. Keep Go lint, tests, vulnerability, builds and releases in full CI. *Amended 2026-10-25 (MADR Amendment A1, G1): the step named record/link and Markdownlint targets only, while phase 3, step 2 runs all four.*
 3. Extend `scripts/check-docs.sh --ids --ids-optional`, the existing standard-library home-path check, rather than adding a second scanner. Add a Windows user-home rule (`C:\Users\<user>` and `C:/Users/<user>` as the placeholder forms, either drive letter case) beside the macOS and Linux rule, accepting the `<user>` placeholder alone. Make an unreadable or missing tracked file a reported failure, not a traceback. Keep the finding format (file, line, category; never the match). Add cases to `scripts/check-docs_test.sh`. Run `make disclosure-check` in full CI and Docs; `make gate`'s ids step keeps `--ids` with the private deny list. Retain the global pre-push guard locally. *Amended 2026-10-25 (MADR Amendment A1, G2): `--ids-optional` already checks macOS and Linux home paths without the private list, but not Windows.*
-4. Before the gate runs in CI, clear the four existing findings: `selfupdate/cleanup_test.go:22` and `:32` and `selfupdate/service/managerenv_test.go:34` use a made-up Linux home directory for an account named `u`, and `docs/decisions/0003-PLAN-remediate-debugging-pass-findings.md:932` quotes the first. Rewrite each to `/home/<user>/…`; annotate the 0003-PLAN line in place as changed by this plan. Both tests compare strings only; re-run them on this host and with `GOOS=windows` `go vet`, and run `make pre-add-check` on the two Go files. Record the scan at 4 findings before and 0 after. *Amended 2026-10-25 (MADR Amendment A1, G3): a scan of all 697 tracked files on 2026-10-25 found these four, all made-up fixtures.*
+4. Before the gate runs in CI, clear the four existing findings: `selfupdate/cleanup_test.go:22` and `:32` and `selfupdate/service/managerenv_test.go:34` use a made-up Linux home directory for an account named `u`, and `docs/decisions/0003-PLAN-remediate-debugging-pass-findings.md:932` quotes the first. Rewrite each to `/home/<user>/…`; annotate the 0003-PLAN line in place as changed by this plan. Both tests compare strings only; re-run them on this host and with `GOOS=windows` `go vet`, and run `make pre-add-check` on the two Go files. Record the scan at 4 findings before and 0 after. *Amended 2026-10-25 (MADR Amendment A1, G3): a scan of all 697 tracked files on 2026-10-25 found these four, all made-up fixtures.* *Deviation D1, 2026-10-25: the Windows rule of step 3 finds eight more; see the execution record.*
 5. Add fixture tests for new gates. Prove each fails on deliberately broken input in a scratch copy and passes on clean input. Record commands, statuses and redacted diagnostics. Commit the approved phase after checks pass.
 
 ### Phase 2: workflow routing and parity
@@ -60,3 +60,65 @@ Land gates before relying on the filters. If routing misclassifies a change, rev
 
 A read-only review found four gaps, which the owner decided, each on the recommended option; MADR Amendment A1 records them. G1: all four `make` targets in phase 1, called by both workflows. G2: extend `--ids-optional` with a Windows rule. G3: rewrite the four fixtures that name an account `u` to `/home/<user>`. G4: the MADR becomes `accepted` with this amendment; this plan stays `proposed` until the owner approves phase 1.
 
+### Approval (2026-10-25)
+
+The owner committed the amended pair as `92c2097` and said "proceed", which approves this plan; it becomes `in-progress`.
+
+### Deviation D1 (2026-10-25): the Windows rule finds eight more lines
+
+* **Found** in step 2's first `make disclosure-check`, after step 3 added the Windows rule: 8 findings beyond step 4's four, which the macOS and Linux rule alone had found. The search for Windows paths during step 1 had escaped the backslash wrongly, and missed them. None names a person:
+  * `selfupdate/service/taskscheduler/testdata/oneshot.stored.xml:26-28` and `handoff_test.go:30` and `:43` use `user`, the account redaction `testdata/definitions/README.md` documents, because "an angle-bracket placeholder would not be valid XML";
+  * `selfupdate/service/taskscheduler/reconcile_test.go:30` uses a made-up account, `Demo`;
+  * `docs/decisions/0015-PLAN-remediate-third-debugging-pass-findings.md:3437-3438` quotes the GitHub-hosted runner's account in its 8.3 short form and its long form, from a CI log.
+* **Decision (the owner, 2026-10-25, "Honour `user`, rewrite the rest").**
+  * The Windows rule also accepts `user` as the whole account segment, the tree's documented XML redaction, which is an existing redaction and so a standing instruction. `check-docs.sh` says why. `username` and the like still fail.
+  * `reconcile_test.go`'s account becomes `<user>`.
+  * The 0015-PLAN lines become `<user>~1` and `<user>`, keeping the short-against-long point, annotated in place.
+* **Files added to phase 1's scope:** `selfupdate/service/taskscheduler/reconcile_test.go`, and the 0015-PLAN. The MADR gets Amendment A2.
+
+### Phase 1 (2026-10-25)
+
+* **Step 1, inventory** (read before any edit):
+  * **Triggers.** `ci.yml`: `push` to `main` and `release/**` and tags `v*`, with `paths-ignore: ['**.md']`; `pull_request` with the same `paths-ignore`. It has no `schedule` or `workflow_dispatch`. `docs.yml`: `push` to `main` and `release/**`, and `pull_request`, each with `paths: ['**.md', '.markdownlint-cli2.jsonc', '.github/workflows/docs.yml']`. `build-selfupdate-release.yml` and `publish-selfupdate-release.yml` are reusable workflows that this change leaves alone.
+  * **Commands before this phase.** Both ran `npx --yes markdownlint-cli2@0.23.2`, `scripts/check-docs.sh --links` over `git ls-files '*.md'` and `--arch docs/architecture.md`. Only `ci.yml` ran `scripts/check-docs_test.sh`. Neither ran a records check or a disclosure check.
+  * **Tracked Markdown.** 97 files: 81 in `docs/decisions/`, 3 in `docs/reports/`, `docs/README.md`, `docs/architecture.md`, three guides, `README.md`, `CHANGELOG.md`, `SECURITY.md`, `AGENTS.md`, the agent-rule files `.claude/rules/madr-and-plan-skill.md`, `.grok/rules/madr-plan-before-mutating-work.md` and `.opencode/rules.md`, and one fixture note, `selfupdate/service/taskscheduler/testdata/definitions/README.md`.
+  * **Markdownlint's reach.** It lints 14 of them: the config excludes every file whose name holds MADR or PLAN in either case, which also covers the `.claude` and `.grok` rule files. It lints by the config's globs over the checkout, which in CI is the tracked set.
+  * **Readers of tracked Markdown.** `scripts/check-docs.sh` (`--links`, `--arch`), which the Docs run already runs. No Go test reads a tracked `.md` file: the archive tests build `README.md` entries in memory, and the Task Scheduler tests read named `.xml` fixtures, never the definitions directory's `README.md`. No script under `scripts/` or `internal/cmd/` reads one.
+  * **Docs-safe path set, for phase 2:** `**.md`, every tracked Markdown file, hidden agent-rule trees and the fixture note included. No reader of one runs outside the Docs run.
+  * **Required status checks.** `main` has no branch protection (`gh api …/branches/main/protection`: 404, "Branch not protected") and no ruleset (`…/rulesets` and `…/rules/branches/main`: `[]`). So no filtered job can stay pending as a required check, and no migration is needed.
+* **Step 2, `Makefile`:**
+  * The four targets are `check-records` (`check_records_test.py`, then `check_records.py`), `markdownlint` (`$(MARKDOWNLINT)`, default `npx --yes markdownlint-cli2@0.23.2`), `docs-check` (`check-docs_test.sh`, then `--links` over `git ls-files -z '*.md'`, then `--arch`) and `disclosure-check` (`--ids --ids-optional` over `git ls-files -z`).
+  * `GOPATH_BIN` and `GOBIN` are now expanded only when used (`=`, not `:=`). With `:=`, every `make` ran `go env` twice while reading the file: with no Go on `PATH` it printed "make: go: Command not found" twice. On the Docs runner, Go reading `go.mod`'s toolchain line could fetch a toolchain. With `PATH=/usr/bin:/bin`, the three non-`npx` targets ran with no `go` call.
+  * `docs.yml` runs `make markdownlint`, `make check-records`, `make docs-check` and `make disclosure-check`. `ci.yml`'s validate job runs `make markdownlint` in place of its `npx` line, and `make check-records`, `make docs-check` and `make disclosure-check` in "Verify the gate and document tools", after `gate_test.sh` and `plant-copy_test.sh`. Triggers are unchanged here; they are phase 2's.
+* **Step 3, `check-docs.sh`:**
+  * `WINHOME` matches a drive, `Users` or `Documents and Settings` in any case, and one or more slashes or backslashes, so a Go-escaped path matches too. A line is one finding when either rule matches.
+  * An unreadable file is a finding, `<file>: unreadable: <reason>`, and the scan goes on. Step 3's text said this replaced "a traceback". That premise was wrong: the script's top level already caught `OSError` and exited 2 at the first such file, as plant (c) shows. What changes is that every unreadable file is now reported, located, as a finding.
+  * `check-docs_test.sh` gains Windows placeholders in the clean file, a file of four Windows paths that must each fail without printing the name, and an unreadable file. 19 cases pass.
+* **Step 4:** the four lines are now `/home/<user>/…`. `gofmt -w` realigned `cleanup_test.go`'s comment column. The 0003-PLAN line is annotated in place. Then Deviation D1, below: `reconcile_test.go` and the 0015-PLAN lines. `TestValidateReceiptBackup`, `TestManagerEnvNames`, `TestScrubManagerEnv`, `TestReconcileMoved` and `TestOneShotGolden` pass, and `GOOS=windows go vet` is clean on their packages. The scan of every tracked file went from 4 findings (12 with the Windows rule) to 0, with the private deny list and without it.
+* **Step 5, `scripts/check_records.py`** (new), with `--next`, and **`scripts/check_records_test.py`** (new), 20 cases over throwaway repositories.
+  * Its first run on the tree found the one real defect: a blank line in `docs/README.md` before the 0036 rows had ended the table, so those rows rendered outside it. The line is removed, and the run reports "84 records, 0 findings". `--next` prints `0037`.
+  * **Seen failing** (`plants_36p1.py`; (a) to (k) through `scripts/plant-copy.sh`, (l) to (n) in a scratch copy of the repository with its `.git`):
+
+    | Plant | Failure |
+    | :--- | :--- |
+    | (a) the Windows rule not applied | `FAIL Windows home paths: rc=0 … 0 findings`; "18 passed, 1 failed" |
+    | (b) the `user` redaction not accepted | `FAIL clean ids: rc=1 … clean.md:3: home directory path`, and the `--ids-optional` case |
+    | (c) an unreadable file not caught | `FAIL unreadable: rc=2 out=[check-docs: missing.md: No such file or directory]` |
+    | (d) rows outside the table not caught | `test_row_outside_the_table`: `0 != 1 : check-records: 3 records, 0 findings` |
+    | (e) the row status not compared | `test_row_status_kind_and_duplicate`: the status finding not found |
+    | (f) a gap not caught | `test_gap`: `0 != 1 : check-records: 4 records, 0 findings` |
+    | (g) a lone PLAN's slug not compared | `test_lone_plan_slug`: `0 != 1` |
+    | (h) `associated-madr` not compared | `test_associated_madr`: `0 != 1` |
+    | (i) a second MADR not caught | `test_second_madr`: the finding not found |
+    | (j) a record with no row not caught | `test_missing_row` and `test_untracked_counts_and_ignored_does_not`: `0 != 1` |
+    | (k) a misplaced record not caught | `test_wrong_directory`: "a MADR belongs in docs/decisions/" not found |
+    | (l) a blank line splits the records table | `make check-records`: "84 records, 4 findings", `Error 1` |
+    | (m) a macOS home path in `README.md` | `make disclosure-check`, no deny list: "697 files, 0 deny-list rules, 1 findings", `Error 1` |
+    | (n) a Windows home path in a Go test | the same, 1 finding |
+
+    Each passes on the clean tree. The first try at the expected lines put the index's rows from line 6; they start at line 7, and the test was corrected, with the checker unchanged. An out-of-order row also flagged the correct row after it, so order is now checked against the previous row, and the test asserts the single finding.
+* **Checks:**
+  * `make pre-add-check` on the three Go files: "3 file(s) clean (gofmt, golangci-lint, go vet, go test, govulncheck)".
+  * `shellcheck` 0.11.0 on `check-docs.sh` and `check-docs_test.sh`: clean. `actionlint` 1.7.12: clean. `check-workflows.sh` with its three rules over both workflows, `check-workflows_test.sh` and `workflow-shape_test.sh`: pass.
+  * `make check-records`, `make markdownlint` ("0 issues"), `make docs-check` ("815 links in 97 files, 0 broken"; "19 rows … 0 differ") and `make disclosure-check` ("697 files, … 0 findings"): exit 0.
+  * `make gate`: every step `rc=0`, apicheck "compatible with v1.22.0", ids "15 files, 16 deny-list rules, 0 findings", `overall=0`.

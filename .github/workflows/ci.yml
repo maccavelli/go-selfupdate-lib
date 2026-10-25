@@ -245,7 +245,7 @@ jobs:
           ./scripts/check-installers_test.sh
           ./scripts/check-installers.sh internal/cmd/selfupdate-release/installer/install.sh \
             internal/cmd/selfupdate-release/installer/install.ps1
-          npx --yes markdownlint-cli2@0.23.2
+          make markdownlint
           go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
       # The reusable release workflow's own tests
       # (docs/decisions/0002-MADR-rehome-selfupdate-from-mcplib.md §6).
@@ -276,19 +276,22 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: ./scripts/go-precheck_test.sh
-      # The full gate's own test, the document checker and the plant helper,
-      # and the link check over every tracked Markdown file. The identifier
+      # The full gate's own test and the plant helper's, then the document
+      # checks docs.yml runs, through the same make targets: the records and
+      # their index, the links and the architecture table, and the
+      # home-path check over every tracked file. The rest of the identifier
       # check needs the owner's deny list, which CI does not hold
-      # (docs/decisions/0015-PLAN-remediate-third-debugging-pass-findings.md R1).
+      # (docs/decisions/0015-PLAN-remediate-third-debugging-pass-findings.md R1;
+      # docs/decisions/0036-MADR-align-docs-ci-and-disclosure-gates.md A1 G1, G2).
       - name: Verify the gate and document tools
         if: runner.os == 'Linux'
         shell: bash
         run: |
           ./scripts/gate_test.sh
-          ./scripts/check-docs_test.sh
           ./scripts/plant-copy_test.sh
-          git ls-files -z '*.md' | xargs -0 ./scripts/check-docs.sh --links
-          ./scripts/check-docs.sh --arch docs/architecture.md
+          make check-records
+          make docs-check
+          make disclosure-check
       # The workflow checker parses YAML with PyYAML, which the runner image
       # does not ship; it is installed hash-pinned into a venv. Like the
       # release fixtures above it runs on Linux: its verdict depends on the

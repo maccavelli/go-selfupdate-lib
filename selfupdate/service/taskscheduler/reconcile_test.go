@@ -27,7 +27,7 @@ func TestReconcileMatch(t *testing.T) {
 // RewritePath, and is rewritten with it: the Path alone changes, and the
 // receipt holds the definition as it was.
 func TestReconcileMoved(t *testing.T) {
-	const moved = `C:\Users\Demo\AppData\Local\Demo\demo.exe`
+	const moved = `C:\Users\<user>\AppData\Local\Demo\demo.exe`
 	f := newFake()
 	f.add(`\demo`, 0)
 	task, _ := testTask(t, f, Options{})

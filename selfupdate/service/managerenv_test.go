@@ -31,7 +31,7 @@ var wantManagerEnv = []string{
 
 // kept are variables of the user or the session, and the unit's persistent
 // directories, which pass on (0033-MADR D1-C, D2-C).
-var kept = []string{"PATH=/usr/bin", "HOME=/home/u", "XDG_RUNTIME_DIR=/run/user/1000", "STATE_DIRECTORY=/var/lib/demo",
+var kept = []string{"PATH=/usr/bin", "HOME=/home/<user>", "XDG_RUNTIME_DIR=/run/user/1000", "STATE_DIRECTORY=/var/lib/demo",
 	"CACHE_DIRECTORY=/var/cache/demo", "TMPDIR=/tmp", "OSLogRateLimit=64", "LANG=C.UTF-8", "malformed", "=x"}
 
 func TestManagerEnvNames(t *testing.T) {

@@ -42,12 +42,22 @@ printf '%s\t%s\n' "${u}user" '<user>' >"$WORK/deny"
 printf '%s\t%s\t%s\n' 'idonly' '<someone>' 'identity' >>"$WORK/deny"
 mac="/Us""ers"
 lin="/ho""me"
+# Windows: a backslash path, the same escaped as in a Go string, and a
+# lowercase one with slashes
+# (docs/decisions/0036-MADR-align-docs-ci-and-disclosure-gates.md A1 G2).
+win="C:\\Us""ers"
+wesc="C:\\\\Us""ers\\\\"
+wlow="c:/us""ers"
 printf '%s\n' "this file names ${u}user once" >"$D/leak.md"
 printf '%s\n' "a placeholder path: $mac/<user>/x and $lin/<user>/y" \
+	"Windows placeholders: $win\\<user>\\x, $wesc<user>\\\\y and $wlow/<user>/z" \
+	"the XML redaction: <Command>$win\\user\\AppData\\x.exe</Command>" \
 	"a URL: https://example.com${lin}/bob and a lowercase path /users/shared/x" \
 	'an identity-only rule does not apply to content: idonly' >"$D/clean.md"
 printf '%s\n' "a real path: $mac/bob/x" >"$D/machome.md"
 printf '%s\n' "a real path: $lin/bob/y" >"$D/linhome.md"
+printf '%s\n' "a real path: $win\\bob\\x" "escaped: \"${wesc}bob\"" "lowercase: $wlow/bob/z" \
+	"only the whole word passes: $win\\username\\x" >"$D/winhome.md"
 
 # run [ENV=VALUE ...] -- ARG...: run the checker in $D; its exit status goes
 # to $rc and its output to $out.
@@ -88,6 +98,21 @@ if [ "$rc" -eq 1 ] && has 'machome.md:1' && has 'linhome.md:1' && ! has 'bob'; t
 	ok "a macOS or Linux home path fails, without printing it"
 else
 	bad "home paths: rc=$rc out=[$out]"
+fi
+
+run -- --ids winhome.md
+if [ "$rc" -eq 1 ] && has 'winhome.md:1' && has 'winhome.md:2' && has 'winhome.md:3' &&
+	has 'winhome.md:4' && ! has 'bob' && ! has 'username'; then
+	ok "a Windows home path fails, with backslashes, escaped or lowercase, without printing it"
+else
+	bad "Windows home paths: rc=$rc out=[$out]"
+fi
+
+run DISCLOSURE_DENY="$WORK/none" -- --ids --ids-optional clean.md missing.md
+if [ "$rc" -eq 1 ] && has 'missing.md: unreadable' && ! has 'Traceback'; then
+	ok "a file that cannot be read is a finding, not a traceback"
+else
+	bad "unreadable: rc=$rc out=[$out]"
 fi
 
 run DISCLOSURE_DENY="$WORK/none" -- --ids clean.md

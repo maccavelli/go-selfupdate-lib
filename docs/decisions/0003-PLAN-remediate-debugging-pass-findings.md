@@ -929,7 +929,9 @@ Commit: `339fd17`.
 
 * `TestValidateReceiptBackup` FAIL. The old check accepted `demo.exe`,
   the lock, the receipt, the bare prefix, another product's backup,
-  `victim`, `/home/u/bin/…`, `.` and `..`.
+  `victim`, `/home/<user>/bin/…`, `.` and `..`. *(The fixture's account
+  became the `<user>` placeholder in
+  0036-PLAN-align-docs-ci-and-disclosure-gates.md, phase 1.)*
 * `TestWindowsCleanupReceiptMissingBackup` FAIL:
   `stale receipt blocked the update: selfupdate: stat pending backup: GetFileAttributesEx …`.
 * `TestWindowsCleanupReceiptMalformed` FAIL on *names target*, *names

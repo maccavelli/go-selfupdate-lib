@@ -1,10 +1,12 @@
 name: Docs
 
 # Checks a change to Markdown alone, which ci.yml skips: markdownlint, the
-# link check over every tracked Markdown file, and the architecture table
-# check, with the commands ci.yml's validate job runs for them. A change to
+# records and their index, the link check over every tracked Markdown file,
+# the architecture table, and the home-path check over every tracked file,
+# through the make targets ci.yml's validate job runs for them. A change to
 # anything else runs ci.yml, and so does every tag
-# (docs/decisions/0028-MADR-skip-full-ci-for-docs-only-pushes.md).
+# (docs/decisions/0028-MADR-skip-full-ci-for-docs-only-pushes.md;
+# docs/decisions/0036-MADR-align-docs-ci-and-disclosure-gates.md A1 G1).
 on:
   push:
     branches: [main, 'release/**']
@@ -28,10 +30,10 @@ jobs:
         with:
           persist-credentials: false
       - name: markdownlint
-        run: npx --yes markdownlint-cli2@0.23.2
-      - name: links
-        shell: bash
-        run: git ls-files -z '*.md' | xargs -0 ./scripts/check-docs.sh --links
-      - name: architecture table
-        shell: bash
-        run: ./scripts/check-docs.sh --arch docs/architecture.md
+        run: make markdownlint
+      - name: records and index
+        run: make check-records
+      - name: links and architecture table
+        run: make docs-check
+      - name: home paths
+        run: make disclosure-check
