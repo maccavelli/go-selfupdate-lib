@@ -178,4 +178,14 @@ The owner committed the amended pair as `92c2097` and said "proceed", which appr
     | (x7) a Windows home path in `SECURITY.md` | the same |
     | (x8) full CI drops `make check-records` | `workflow-shape_test.sh`: `FAIL ci.yml runs every documentation target through make (missing ['check-records'])` |
 
-* **Step 3** waits for the owner's word to push. `main` is five commits ahead of `origin`, from `868cfea` to `39a83e1`, and they change workflows, scripts and Go tests: a mixed push. The disclosure guard passed over them. This phase's commit changes Markdown alone. Pushed in that order, the first push should start CI and Docs, and the second Docs alone.
+* **Step 3, before the push:** `main` is five commits ahead of `origin`, from `868cfea` to `39a83e1`, and they change workflows, scripts and Go tests: a mixed push. The disclosure guard passed over them. This phase's commit changes Markdown alone. Pushed in that order, the first push should start CI and Docs, and the second Docs alone.
+* **Step 3, the pushes.** The owner committed this phase as `ecc4f6e` and approved pushing to `main` in two parts, in one turn.
+  * **A mixed push**, `c3dfce3..39a83e1`, five commits changing workflows, scripts, Go tests and Markdown, started CI run 40224873981 and Docs run 40224873877. Docs completed `success`. The second push waited for it, since `docs.yml` cancels a run in progress on a newer push to the same ref.
+  * **A Markdown-only push**, `39a83e1..ecc4f6e` (`AGENTS.md`, `docs/architecture.md`, this plan), started Docs run 40225487355 alone, which completed `success`. Two minutes after the push, `gh api …/actions/runs?head_sha=<ecc4f6e>` reported `total_count` 1, that run.
+  * CI run 40224873981 completed `failure`: one job of 18, `validate (ubuntu-24.04)`, in one step, `go test -shuffle=on -count=2`. Deviation D2, below.
+
+### Deviation D2 (2026-10-25): a flaky start-time test fails CI on the mixed push
+
+* **Found** in CI run 40224873981: `procfs_linux_test.go:77: child {Parent:32407 StartTime:24773 State:83}; this process {Parent:32280 StartTime:24773 State:83}`, in `TestReadStatChild`. The same test passed in the job's plain `go test ./...`, and the other 17 jobs passed.
+* **Cause, which predates this plan.** The test came with 0035-PLAN-serve-supervisors-through-a-supervised-adapter.md M2 (`dbd4492`). It asserts that a child's start time differs from its parent's. `/proc/<pid>/stat` counts start time in clock ticks, 100 a second on the runner and the Linux test host, and the shuffled run started the child within the test binary's first tick. Nothing in this plan's changes reaches `internal/procfs`.
+* **Decision (the owner, 2026-10-25, "Fix under 0035, as M10").** The bug is in 0035's test, so 0035's pair is amended with a phase M10, which fixes the assertion. This plan records the failed run and its cause. It is marked complete once M10's push has a green CI run on `main`: the routing criteria already hold, and that run shows the mixed-push conclusion this plan's verification expects.

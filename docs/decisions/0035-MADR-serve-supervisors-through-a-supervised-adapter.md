@@ -975,3 +975,7 @@ No result trips a decision point of 0035-PLAN. Every decision stands.
   <https://github.com/maccavelli/magic-cli-remote/issues/27>.
 * Plan:
   [0035-PLAN-serve-supervisors-through-a-supervised-adapter.md](0035-PLAN-serve-supervisors-through-a-supervised-adapter.md).
+
+## Amendment A2 (2026-10-25): two processes can share a start time
+
+A process's start time in `/proc/<pid>/stat` is in clock ticks since boot, so two processes started within one tick read the same value. D3-A's instance, `<pid>@<start time>`, is unaffected: two live processes never share a PID. But a test that expected a child's start time to differ from its parent's failed in CI (0035-PLAN-serve-supervisors-through-a-supervised-adapter.md, phase M10).

@@ -1,6 +1,6 @@
 ---
-status: complete
-date: 2026-10-24
+status: in-progress
+date: 2026-10-25
 associated-madr: "0035-MADR-serve-supervisors-through-a-supervised-adapter.md"
 ---
 # Implement `service.Supervised`, `internal/procfs` and `ErrNoSupervisor`, and release `v1.22.0`
@@ -360,6 +360,22 @@ As 0034-PLAN L6:
      the final API, `Kill`, and M1's probe results for its runit fixtures
      and its OpenRC `DetachCheck`.
 3. Remove `runit` and `s6` from the WSL unless the owner keeps them.
+
+### Phase M10: the start-time test (added 2026-10-25)
+
+Added after closing, for a flaky test found in CI
+(0036-PLAN-align-docs-ci-and-disclosure-gates.md, Deviation D2).
+
+1. `TestReadStatChild` asserts what is guaranteed: the child's parent is
+   this process, its start time is not zero and not before this
+   process's, and it is not a zombie. Two processes can start in one
+   clock tick, so equal start times are allowed.
+2. Seen failing: a plant reversing the comparison fails on the Linux
+   test host. The old assertion is shown failing, and the new one
+   passing, over many fresh runs of the test binary there.
+3. `make pre-add-check` on the file, the commit on the owner's word,
+   and a green CI run on `main` after the push. This plan then returns
+   to `complete`.
 
 ## Verification
 
@@ -1014,3 +1030,24 @@ Not done here, as the plan's scope says:
 * launchd's ancestor walk stays where it is.
 * magic-cli-remote adopts `v1.22.0` under magic-cli-remote#27, in its own
   repository.
+
+### Deviation found after closing (2026-10-25): `TestReadStatChild` is flaky
+
+* **Found** in CI run 40224873981 on `39a83e1`, in `go test -shuffle=on -count=2` on `ubuntu-24.04`: `procfs_linux_test.go:77: child {Parent:32407 StartTime:24773 State:83}; this process {Parent:32280 StartTime:24773 State:83}`.
+* **Cause.** M2's test asserted `child.StartTime != self.StartTime`. Start time is in clock ticks since boot, 100 a second there, so a child started within its parent's first tick reads the same value. The shuffled run put the test first in a fresh test binary. M2's runs did not hit it. V2 above, "its tests pass on Linux", stands for those runs, but the test was not robust.
+* **Decision (the owner, 2026-10-25, "Fix under 0035, as M10").** Phase M10, above. This plan is `in-progress` until M10's CI run on `main` is green.
+
+### M10: the start-time test (2026-10-25)
+
+* **`internal/procfs/procfs_linux_test.go`:** `TestReadStatChild` now fails on a child whose start time is zero or before this process's, in place of one equal to it, with a comment saying why. The parent and zombie checks are unchanged.
+* **Fresh runs** (`m10runs.py`): the test binary built three ways and run on the Linux test host 300 times each as a new process, with `-test.run ^TestReadStatChild$`, so the test runs first in it, as in the failing CI run:
+
+  | Variant | Failed |
+  | :--- | :--- |
+  | the old assertion, `!=` | 189 of 300, each with equal start times, such as `child {Parent:… StartTime:28046676 …}; this process {… StartTime:28046676 …}` |
+  | the new assertion | 0 of 300 |
+  | plant (y), the comparison reversed | 99 of 300, each a child one tick later, such as `StartTime:28047715` against `28047714` |
+
+  M2's runs passed only because other tests ran first, so the test binary was over a tick old when the child started. Plant (y) shows the new comparison is the line that holds. The remote directory was removed.
+* **Runs:** `go test -count=10 -shuffle=on ./internal/procfs/` on the Linux test host: `ok`. `make pre-add-check` on the file: "1 file(s) clean (gofmt, golangci-lint, go vet, go test, govulncheck)".
+* **Waiting:** the commit, a push on the owner's word, and a green CI run on `main`. This plan then returns to `complete`.
