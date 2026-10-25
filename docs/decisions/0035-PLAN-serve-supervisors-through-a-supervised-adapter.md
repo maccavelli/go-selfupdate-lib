@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 date: 2026-10-25
 associated-madr: "0035-MADR-serve-supervisors-through-a-supervised-adapter.md"
 ---
@@ -1050,4 +1050,4 @@ Not done here, as the plan's scope says:
 
   M2's runs passed only because other tests ran first, so the test binary was over a tick old when the child started. Plant (y) shows the new comparison is the line that holds. The remote directory was removed.
 * **Runs:** `go test -count=10 -shuffle=on ./internal/procfs/` on the Linux test host: `ok`. `make pre-add-check` on the file: "1 file(s) clean (gofmt, golangci-lint, go vet, go test, govulncheck)".
-* **Waiting:** the commit, a push on the owner's word, and a green CI run on `main`. This plan then returns to `complete`.
+* **Closing:** the owner committed M10 as `8d82512` (records) and `bb3585c` (the test), and pushed them. CI run 40226404892 on `bb3585c` completed `success`, all 18 jobs, the shuffled Linux step included, and Docs run 40226404890 `success`. This plan returns to `complete`; the MADR stays `accepted`.

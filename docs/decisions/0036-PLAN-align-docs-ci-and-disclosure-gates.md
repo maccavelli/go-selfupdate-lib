@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 date: 2026-10-25
 associated-madr: "0036-MADR-align-docs-ci-and-disclosure-gates.md"
 ---
@@ -153,7 +153,7 @@ The owner committed the amended pair as `92c2097` and said "proceed", which appr
   Each plant fails one assertion alone, except (w), whose single edit also breaks the two events' agreement. The clean tree passes: "all assertions hold".
 * **Checks:** `actionlint` 1.7.12: clean. `check-workflows.sh`'s three rules over both workflows, its default run and `check-workflows_test.sh`: pass. `shellcheck` on the test: clean. `make gate`: every step `rc=0`, ids "3 files, 16 deny-list rules, 0 findings", `overall=0`.
 
-### Phase 3 (2026-10-25, in progress)
+### Phase 3 (2026-10-25)
 
 * Phase 2 was committed by the owner as `39a83e1`.
 * **Step 1, documents:**
@@ -189,3 +189,19 @@ The owner committed the amended pair as `92c2097` and said "proceed", which appr
 * **Found** in CI run 40224873981: `procfs_linux_test.go:77: child {Parent:32407 StartTime:24773 State:83}; this process {Parent:32280 StartTime:24773 State:83}`, in `TestReadStatChild`. The same test passed in the job's plain `go test ./...`, and the other 17 jobs passed.
 * **Cause, which predates this plan.** The test came with 0035-PLAN-serve-supervisors-through-a-supervised-adapter.md M2 (`dbd4492`). It asserts that a child's start time differs from its parent's. `/proc/<pid>/stat` counts start time in clock ticks, 100 a second on the runner and the Linux test host, and the shuffled run started the child within the test binary's first tick. Nothing in this plan's changes reaches `internal/procfs`.
 * **Decision (the owner, 2026-10-25, "Fix under 0035, as M10").** The bug is in 0035's test, so 0035's pair is amended with a phase M10, which fixes the assertion. This plan records the failed run and its cause. It is marked complete once M10's push has a green CI run on `main`: the routing criteria already hold, and that run shows the mixed-push conclusion this plan's verification expects.
+* **After D2.** The owner committed and pushed 0035's M10 (`8d82512`, `bb3585c`), a mixed push: CI run 40226404892 completed `success`, all 18 jobs, and Docs run 40226404890 `success`.
+
+### Verification, at closing (2026-10-25)
+
+* **Both workflows pass the shared gates through their `make` targets.** Docs runs 40224873877, 40225487355 and 40226404890, and CI run 40226404892, completed `success`. Each ran `make markdownlint`, `make check-records`, `make docs-check` and `make disclosure-check`.
+* **`make disclosure-check` reports 0 findings over every tracked file**, from 4, and 12 with the Windows rule (phase 1, step 4, and Deviation D1). Planted home paths failed it: (m), (n), (x6) and (x7).
+* **Each Markdown reader runs on changes to its input.** Phase 1's inventory found every reader of tracked Markdown in `docs.yml`. `workflow-shape_test.sh` holds full CI's skipped paths to that audited set, and plants (p) and (q) failed it.
+* **Routing, observed.** The mixed push `c3dfce3..39a83e1` started CI and Docs. The Markdown-only push `39a83e1..ecc4f6e` started Docs alone, `total_count` 1. Tags, release branches and pull requests are held by the contract (plants (u) and (v)). `ci.yml` has no `schedule` or `workflow_dispatch` to keep.
+* **Plants fail their gates, and drift fails the parity test:** phase 1's (a) to (n), phase 2's (o) to (w), and phase 3's (x1) to (x8).
+* **The pre-push guard ran before the authorized push**, over the six outgoing commits, and passed. CI holds no private deny list: it runs `--ids-optional`, which checks home paths alone.
+
+Not done here, as the plan's scope says:
+
+* CI checks home paths only. The private deny list stays local, in `make gate`'s identifier step, in `make disclosure-check` where it is present, and in the pre-push guard.
+* The mixed push's first CI run failed, from a flaky test that predates this plan. It was fixed under 0035-PLAN-serve-supervisors-through-a-supervised-adapter.md M10 (Deviation D2), and CI on `main` is green since `bb3585c`.
+* The other repositories' versions of this decision are their own records.
