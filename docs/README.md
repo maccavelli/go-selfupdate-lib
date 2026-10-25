@@ -91,7 +91,7 @@ name, and the files they cite moved with the rename
 | 0035 | PLAN | [Implement `service.Supervised`, `internal/procfs` and `ErrNoSupervisor`, and release `v1.22.0`](decisions/0035-PLAN-serve-supervisors-through-a-supervised-adapter.md) | complete |
 | 0035 | REPORT | [runit, s6 and OpenRC: full backends in the library, or a seam the consumer fills](reports/0035-REPORT-library-backends-or-consumer-api-for-runit-s6-and-openrc.md) | — |
 
-| 0036 | MADR | [Align docs-only CI and disclosure gates](decisions/0036-MADR-align-docs-ci-and-disclosure-gates.md) | proposed |
+| 0036 | MADR | [Align docs-only CI and disclosure gates](decisions/0036-MADR-align-docs-ci-and-disclosure-gates.md) | accepted |
 | 0036 | PLAN | [Implement aligned docs-only CI and disclosure gates](decisions/0036-PLAN-align-docs-ci-and-disclosure-gates.md) | proposed |
 
 ## I want to…

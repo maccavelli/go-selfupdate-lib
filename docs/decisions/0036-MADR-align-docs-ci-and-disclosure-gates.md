@@ -1,6 +1,7 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-25
+decision-makers: go-selfupdate-lib maintainers
 ---
 # Align docs-only CI and disclosure gates
 
@@ -28,7 +29,7 @@ Across the repositories, the common documentation contract is pinned Markdownlin
 
 ## Decision Outcome
 
-Chosen option: "Align the documentation gates and add a portable disclosure check, with a path and gate parity test", because it gives both workflows the same common documentation checks, covers local Markdown readers, and makes filter drift observable. This is proposed for the owner; it does not approve CI implementation.
+Chosen option: "Align the documentation gates and add a portable disclosure check, with a path and gate parity test", because it gives both workflows the same common documentation checks, covers local Markdown readers, and makes filter drift observable. The owner accepted it on 2026-10-25, with Amendment A1. Acceptance does not approve a phase; each still waits for the owner's word.
 
 ### Consequences
 
@@ -64,4 +65,13 @@ The paired [0036-PLAN-align-docs-ci-and-disclosure-gates.md](0036-PLAN-align-doc
 Retain both workflows' current Markdownlint, link and architecture commands and release-branch triggers. Add a numbered-record/pair/index target and run it in both workflows. Run `scripts/check-docs.sh --ids-optional` on every tracked text file in both workflows as the public home-path disclosure baseline, and keep `--ids` plus the global pre-push guard locally for the private deny list. Add a workflow contract test to `scripts/workflow-shape_test.sh` for trigger symmetry and docs gate parity; update `AGENTS.md` and `docs/architecture.md`.
 
 This fleet alignment decision cites 0028-MADR-skip-full-ci-for-docs-only-pushes.md without rewriting its history. The implementation is [0036-PLAN-align-docs-ci-and-disclosure-gates.md](0036-PLAN-align-docs-ci-and-disclosure-gates.md).
+
+## Amendment A1 (2026-10-25): gaps found before approval
+
+A read-only review of this pair against the tree found four gaps. The owner chose the recommended option for each.
+
+* **G1, the `make` targets.** The plan's phase 3 runs `make check-records markdownlint docs-check disclosure-check`; the `Makefile` has none of them, and phase 1 named only record/link and Markdownlint targets. Chosen: phase 1 adds all four, each wrapping today's command, and both workflows call them. Not chosen: two targets with scripts called directly, which leaves the commands written out in each workflow; and `scripts/gate.sh` steps, which would need the Go toolchain in the Docs job.
+* **G2, the disclosure scanner.** `scripts/check-docs.sh --ids --ids-optional` already checks macOS and Linux home paths without the private deny list (`HOME` at `scripts/check-docs.sh:80`), but not Windows paths. Chosen: extend it with a Windows rule and a reported failure for an unreadable file, so the local gate and CI share one regex. Not chosen: a new fleet-wide scanner, which would leave two home-path rules here; and the mode unchanged, which would miss Windows paths.
+* **G3, existing findings.** `--ids-optional` over all 697 tracked files reports four lines, each a made-up Linux home directory for an account named `u`, not a real account: `selfupdate/cleanup_test.go:22` and `:32`, `selfupdate/service/managerenv_test.go:34`, and `docs/decisions/0003-PLAN-remediate-debugging-pass-findings.md:932`. Chosen: rewrite them to `/home/<user>`, the placeholder AGENTS.md names. Not chosen: accepting `u` as a second placeholder, which widens the allowlist; and an inline suppression marker, which is easy to copy onto a real leak.
+* **G4, status.** Chosen: this record becomes `accepted` with this amendment, and the plan stays `proposed` until the owner approves phase 1. Not chosen: staying `proposed` until phase 1's inventory, or holding for the other repositories' pairs.
 
