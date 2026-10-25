@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 date: 2026-10-24
 associated-madr: "0035-MADR-serve-supervisors-through-a-supervised-adapter.md"
 ---
@@ -937,3 +937,80 @@ this plan.
   gives `Hash 84805563ed252df384f59ced45a3daf529702ab4`, `Ref
   refs/tags/v1.22.0`, and `@latest` resolves to `v1.22.0`.
 * M9 follows: issue #2 and magic-cli-remote#27 on the owner's ask.
+
+### M9: closing (2026-10-24)
+
+* The owner committed the pin commit as `35a9d05`, pushed it, and said
+  "proceed". The Docs run on it completed `success`.
+* **Step 2, on that word:**
+  * magic-cli-remote#27 has a comment saying that the adapter shipped in
+    `v1.22.0`. It covers:
+    * the final `SupervisedOptions`;
+    * what changed from that issue's proposal: `Kill` and `KillAfter`,
+      the library-filled `Instance`, `Ready` left nil without
+      readiness, `State`'s contract with no supervisor, the handoff
+      through the hop (Deviation D2) and its call first in `main`, the
+      crash-loop rule (Deviation D3), and verify-only `Reconcile`;
+    * M1's runit forms for its fixtures, s6's exit codes, and OpenRC's
+      status codes 0, 3 and 32;
+    * P4's cgroup results, from which its OpenRC `DetachCheck` is
+      defensive for a user service, and needed for a system service
+      with `rc_cgroup_cleanup=YES`.
+  * Issue #2 is closed, with a comment naming `v1.22.0`, the records,
+    the guides, and magic-cli-remote#27.
+  * `scripts/check-docs.sh --ids` over both comments before posting: "0
+    findings".
+* **Step 3:** `runit` and `s6` are out of the WSL.
+  * M1's install line, in apt's history, added eight packages:
+    `execline`, `libexecline2.9`, `libs6-2.12t64`, `libskarnet2.14t64`,
+    `runit`, `runit-run`, `s6` and `sysuser-helper`.
+  * `apt-get -s purge` of those eight purged that set and no other
+    package. Then `runit.service` was disabled and stopped, and the eight
+    were purged (exit 0).
+  * dpkg left `/usr/share/runit/sv.now`, an empty directory made at the
+    install's second and owned by no package. It was removed with
+    `rmdir`.
+  * After: none of the eight is installed, `runit.service` is not found,
+    no `runsvdir`, `runsv`, `s6-svscan` or `s6-supervise` runs, and
+    `/etc/service` is gone.
+* This plan becomes `complete`, and its index row follows. The MADR
+  stays `accepted`.
+
+### Verification, at closing (2026-10-24)
+
+* **V1 (facts):** the re-reads and P1 to P4 are in the MADR's Amendment
+  A1, annotated in place where they settle a fact. None tripped a
+  decision point. Deviations D1 to D3 were decided by the owner at a
+  stop, and annotated in the MADR at D13-C, D8-A and D6-A.
+* **V2 (procfs):** its tests pass here, on the Linux test host (all seven
+  Linux tests) and on CI's three runners. Plants (a) to (d), and (z) for
+  `Zombie()`, failed.
+* **V3 (adapter):** the fake tests pass here, on the Linux and Windows
+  test hosts and on CI's three runners. The real-process tests pass on
+  the Linux test host and on CI's `ubuntu-24.04`. Plants (e) to (r)
+  failed, and (n) to (r) failed again after D3.
+* **V4 (live):** `TestLiveSupervisedS6` passes in the WSL (8.62 s, and
+  8.68 s with the whole package) and on CI's `ubuntu-24.04`, on `main`
+  (8.44 s) and on the tag (8.43 s). Live plants (s) and (t) failed it.
+  M6's record says why (j), (n) and (o) are held by the fakes instead.
+* **V5 (API):** `make apicheck` reported "compatible with v1.21.0" at
+  every phase and in `make gate`. `go doc` shows `NewSupervised` and the
+  twelve methods of `*Supervised`.
+* **V6 (release):** `v1.22.0` is the annotated tag on `8480556`. Its CI
+  passed all 18 jobs, with identity legs `v1.22.0 (release)
+  84805563ed25`. The proxy serves it as `@latest`. #2 is closed, and #27
+  is told.
+
+Not done here, as the plan's scope says:
+
+* No first-party runit, s6 or OpenRC backend, and no parsing of their
+  output in the library (D0-C).
+* No Unix other than Linux (D12-A).
+* The live test covers s6 only. runit and OpenRC rest on M1's probes and
+  the fakes.
+* OpenRC's cgroup cleanup on a real host stays unmeasured (Amendment A1,
+  P4). The guide's `DetachCheck` advice rests on the container probe and
+  OpenRC's manual.
+* launchd's ancestor walk stays where it is.
+* magic-cli-remote adopts `v1.22.0` under magic-cli-remote#27, in its own
+  repository.
