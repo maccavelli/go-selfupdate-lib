@@ -73,7 +73,10 @@ func TestReadStatChild(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if child.Parent != os.Getpid() || child.StartTime == self.StartTime || child.Zombie() {
+	// Start time is in clock ticks, so a child started within this
+	// process's first tick has the same one; it is never earlier
+	// (0035-PLAN-serve-supervisors-through-a-supervised-adapter.md M10).
+	if child.Parent != os.Getpid() || child.StartTime == 0 || child.StartTime < self.StartTime || child.Zombie() {
 		t.Fatalf("child %+v; this process %+v", child, self)
 	}
 }
