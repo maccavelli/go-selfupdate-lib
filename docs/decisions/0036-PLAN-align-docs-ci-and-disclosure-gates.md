@@ -152,3 +152,30 @@ The owner committed the amended pair as `92c2097` and said "proceed", which appr
 
   Each plant fails one assertion alone, except (w), whose single edit also breaks the two events' agreement. The clean tree passes: "all assertions hold".
 * **Checks:** `actionlint` 1.7.12: clean. `check-workflows.sh`'s three rules over both workflows, its default run and `check-workflows_test.sh`: pass. `shellcheck` on the test: clean. `make gate`: every step `rc=0`, ids "3 files, 16 deny-list rules, 0 findings", `overall=0`.
+
+### Phase 3 (2026-10-25, in progress)
+
+* Phase 2 was committed by the owner as `39a83e1`.
+* **Step 1, documents:**
+  * `AGENTS.md`: the four targets and what each runs; that `docs.yml` and full CI both run them; that CI may skip only paths whose every reader runs in `docs.yml`, today `**.md`, held by `workflow-shape_test.sh` and its `DOCS_SAFE`; under Records, `check_records.py --next` and `make check-records`; under Identifiers, the narrower CI baseline, the `user` redaction (Deviation D1), and the deny list and pre-push guard kept local.
+  * `docs/architecture.md`: the tree gains `docs.yml`, which it had left out, `check_records.py` and its test, and the wider descriptions of `check-docs.sh` and `workflow-shape_test.sh`; "Tooling" lists the targets and what `disclosure-check` covers; the CI paragraph names the four targets and the routing contract; the Linux list runs `make markdownlint` and the three other targets. The checker's three rules were listed for `ci.yml` alone, though CI also runs them on `docs.yml`; that now says so.
+  * The index row for this pair reads `accepted` and `in-progress`, matching the front matter; `make check-records` checks it.
+* **Step 2, checks** (statuses captured before any filter):
+  * `make check-records markdownlint docs-check disclosure-check`: exit 0. "84 records, 0 findings"; "0 issues"; `check-docs_test.sh` 19 passed, "817 links in 97 files, 0 broken", "19 rows … 0 differ"; "699 files, 16 deny-list rules, 0 findings".
+  * `workflow-shape_test.sh`: "all assertions hold". `actionlint` 1.7.12: clean.
+  * `make gate`: every step `rc=0`, `overall=0`. After a last edit to `docs/architecture.md`, the four targets and `--ids` on the two documents were run again: clean.
+  * Each edited document's diff was read in full.
+  * **Seen failing** (`plants_36p3.py`: a scratch copy of the repository with its `.git`, one plant each):
+
+    | Plant | Failure |
+    | :--- | :--- |
+    | (x1) a PLAN with no MADR, with its row | `make check-records`: "85 records, 1 findings", `Error 1` |
+    | (x2) an index status that differs from the front matter | `make check-records`: "84 records, 1 findings" |
+    | (x3) a broken link | `make docs-check`: `building-releases.md:666: broken link: no-such-guide.md` |
+    | (x4) a `.go` file the architecture table does not count | `make docs-check`: "19 rows … 1 differ" |
+    | (x5) MD018 in `README.md` | `make markdownlint`: `MD018/no-missing-space-atx` |
+    | (x6) a Linux home path in a guide | `make disclosure-check`, no deny list: "1 findings" |
+    | (x7) a Windows home path in `SECURITY.md` | the same |
+    | (x8) full CI drops `make check-records` | `workflow-shape_test.sh`: `FAIL ci.yml runs every documentation target through make (missing ['check-records'])` |
+
+* **Step 3** waits for the owner's word to push. `main` is five commits ahead of `origin`, from `868cfea` to `39a83e1`, and they change workflows, scripts and Go tests: a mixed push. The disclosure guard passed over them. This phase's commit changes Markdown alone. Pushed in that order, the first push should start CI and Docs, and the second Docs alone.

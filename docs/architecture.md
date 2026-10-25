@@ -51,6 +51,8 @@ Makefile                    development targets (below)
 .gitattributes              LF line endings, except the byte-exact parity fixtures
 .github/workflows/
   ci.yml                    CI
+  docs.yml                  the documentation checks, for a change to
+                            Markdown alone
   build-selfupdate-release.yml     reusable build workflow (workflow_call):
                             builds, checks, packs and stages from a spec
   publish-selfupdate-release.yml   reusable release workflow (workflow_call)
@@ -58,8 +60,12 @@ scripts/
   gate.sh                   the full pre-commit gate, one line per step
                             (make gate)
   check-docs.sh             link and anchor check, the identifier check
-                            against the pre-push guard's deny list, and
-                            the check of this page's file counts
+                            against the pre-push guard's deny list and
+                            for home directory paths, and the check of
+                            this page's file counts
+  check_records.py          the records' names, pairs, statuses and index;
+                            --next prints the next number
+  check_records_test.py     its offline tests
   plant-copy.sh             copies the tree with one planted break, so a
                             new test is seen to fail outside the tree
   go-precheck.sh            the pre-add check
@@ -79,7 +85,9 @@ scripts/
                             a top-level permissions block, and every action
                             pinned to a commit SHA
   workflow-shape_test.sh    holds the two reusable workflows' step order,
-                            guards and permissions in place
+                            guards and permissions in place, and ci.yml's
+                            and docs.yml's paths, triggers, targets and
+                            pins in step
   check-api-compat.sh       fails on an incompatible exported API change
                             against the newest v1.* tag (apidiff)
   go-fuzz.sh                fuzzes each fuzz target of a package in turn
@@ -713,8 +721,17 @@ D9; the threat analysis is
 ## Tooling
 
 - **`make` targets:** `test`, `test-sum`, `fmt`, `vet`, `lint`, `tidy`,
-  `vuln`, `apicheck`, `fuzz`, `pre-add-check`, `gate`, and `help`, which
-  `make` alone runs.
+  `vuln`, `apicheck`, `fuzz`, `pre-add-check`, `gate`, the four
+  documentation checks below, and `help`, which `make` alone runs.
+- **The documentation checks** are `make markdownlint`,
+  `make check-records`, `make docs-check` and `make disclosure-check`.
+  Full CI and `docs.yml` both run them, so each run shares one command and
+  one pin, and none of them starts `go`
+  ([0036-MADR](decisions/0036-MADR-align-docs-ci-and-disclosure-gates.md)).
+  `disclosure-check` reads every tracked file for a macOS, Linux or
+  Windows home directory path, and, where the owner's deny list is
+  present, for what it names; CI has no deny list, so the pre-push guard
+  stays the check for the rest.
 - **`make fuzz`** runs `scripts/go-fuzz.sh` on `selfupdate`,
   `selfupdate/archive`, `selfupdate/releasespec` and
   `selfupdate/verify/signednote`. In each it finds every fuzz target,
@@ -792,10 +809,13 @@ D9; the threat analysis is
   `release/**` branches, on `v*` tags and on pull requests, on Linux,
   macOS and Windows, with the Go version read from `go.mod`, except in the
   `go126` job. A push or pull request that changes only Markdown skips
-  it, and `.github/workflows/docs.yml` runs instead: markdownlint, the
-  link check over every tracked Markdown file and the architecture table
-  check, on one Linux runner. A tag push is never filtered, so every tag
-  runs CI in full ([0028-MADR](decisions/0028-MADR-skip-full-ci-for-docs-only-pushes.md)).
+  it, and `.github/workflows/docs.yml` runs instead: the four
+  documentation checks, on one Linux runner. A tag push is never
+  filtered, so every tag runs CI in full ([0028-MADR](decisions/0028-MADR-skip-full-ci-for-docs-only-pushes.md)).
+  CI skips only `**.md`, whose readers all run in `docs.yml`, and the
+  workflow shape test fails when the two workflows' paths, triggers,
+  targets or pins drift apart
+  ([0036-PLAN](decisions/0036-PLAN-align-docs-ci-and-disclosure-gates.md)).
   - **Every OS:** `go test`, plus, under bash, the refuse-existing-release
     test. The installer tests must reach the runner's shells
     (`SELFUPDATE_INSTALL_REQUIRE_SHELLS`): dash and bash on Linux, `sh`
@@ -840,17 +860,18 @@ D9; the threat analysis is
     v2.14.0); `make apicheck` and the API gate's test; `govulncheck` v1.8.0;
     `shellcheck` v0.11.0 (the latest release, pinned by SHA-256 and first
     on `PATH`, so actionlint's embedded checks use it too),
-    `markdownlint-cli2` 0.23.2 and `actionlint` v1.7.12; the installer
+    `make markdownlint` (`markdownlint-cli2` 0.23.2) and `actionlint`
+    v1.7.12; the installer
     lint script's test, then the script on both templates, with the
     runner's PSScriptAnalyzer; the verifier's
     fixture test; the release tag rule's test; the latest-release rule's
     test (`release-latest-flag_test.sh`); the pre-add gate's test
     (`go-precheck_test.sh`); the workflow checker, with
     every rule on both reusable workflows and `expressions`,
-    `permissions` and `pins` on `ci.yml`, its test, and the workflow shape
-    test; the full gate's test, the document checker's and the plant
-    helper's, the link check over every tracked Markdown file, and the
-    check of this page's package table.
+    `permissions` and `pins` on `ci.yml` and `docs.yml`, its test, and
+    the workflow shape test, which holds the routing too; the full gate's test and the plant
+    helper's; and `make check-records`, `make docs-check` and
+    `make disclosure-check`.
   - **The release rehearsal:** two calls of `build-selfupdate-release.yml`
     by its local path on the release tool's fixture, one of raw binaries
     and one of archives, each with its identity runs on the five runners;

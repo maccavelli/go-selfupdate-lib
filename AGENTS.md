@@ -157,8 +157,9 @@ docs/reports/NNNN-GATES-short-slug.md
   `docs/decisions/` and `docs/reports/`. A MADR and its PLAN share the same
   number and the same slug.
 - **Next number** is the highest `NNNN` among all four kinds anywhere under
-  `docs/`, plus one. Never reuse a number, never renumber an existing record,
-  never leave a gap deliberately.
+  `docs/`, plus one; `python3 scripts/check_records.py --next` prints it.
+  Never reuse a number, never renumber an existing record, never leave a
+  gap deliberately. `make check-records` checks these rules and the index.
 - Cite records by full filename, never by number alone. Cite another
   repository's record by repository and filename; a relative link cannot reach
   it.
@@ -207,13 +208,32 @@ is no `git add` hook on every host; do not rely on one.
 per step: gofmt, lint, vet, race, shuffle, tidy, apicheck, fuzz, vuln, the
 script tests, shellcheck, cross-target vet, the link check, the
 architecture table check and the identifier check. It ends `overall=0` when every step passed.
-It does not run markdownlint (`npx --yes markdownlint-cli2@0.23.2` on the
-changed Markdown files), `actionlint` on a changed workflow, or the
-stray-`.git` run below, which CI runs; run those by hand when they apply. A
-change to Markdown alone does not run CI: `.github/workflows/docs.yml` runs
-markdownlint, the link check and the architecture table check for it, and
-every tag runs CI in full
-(`docs/decisions/0028-MADR-skip-full-ci-for-docs-only-pushes.md`). Each step's
+It does not run `make markdownlint`, `make check-records`, `actionlint` on a
+changed workflow, or the stray-`.git` run below, which CI runs; run those by
+hand when they apply.
+
+Four `make` targets are the documentation checks, and full CI and
+`.github/workflows/docs.yml` both run them, so every run shares one command
+and one pin
+(`docs/decisions/0036-MADR-align-docs-ci-and-disclosure-gates.md`):
+
+- `make markdownlint`: `markdownlint-cli2`, pinned in the `Makefile`;
+- `make check-records`: `scripts/check_records.py`, after its tests, on
+  the records' names, MADR/PLAN pairs, statuses and the `docs/README.md`
+  index;
+- `make docs-check`: `scripts/check-docs.sh`'s tests, then its link check
+  over every tracked Markdown file and its architecture table check;
+- `make disclosure-check`: `scripts/check-docs.sh --ids --ids-optional`
+  over every tracked file, which in CI checks home directory paths alone.
+
+A change to Markdown alone does not run full CI: `docs.yml` runs the four
+targets for it, and every tag runs CI in full
+(`docs/decisions/0028-MADR-skip-full-ci-for-docs-only-pushes.md`). CI may
+skip only paths whose every reader runs in `docs.yml`, today `**.md`; a
+change that touches anything else runs full CI. `scripts/workflow-shape_test.sh`
+fails when the two workflows' paths, triggers, targets or pins drift
+apart, and a new path to skip is audited, then added to its `DOCS_SAFE`
+set. Each step's
 output is kept in `GATE_OUT` (a new temporary directory by default);
 `GATE_SKIP=fuzz,vuln` skips named steps, and a record must say so. The
 identifier step runs `scripts/check-docs.sh --ids` on the changed and
@@ -262,6 +282,14 @@ real-machine absolute path. Use placeholders (`<user>`, `/home/<user>/...`).
 - When recording an identifier scan in a record or a commit, describe what was
   scanned for ("the local account name", "the hostname domain"); never quote
   it.
+- CI holds no private deny list. `make disclosure-check` there rejects a
+  macOS, Linux or Windows home directory path in any tracked file, except
+  the `<user>` placeholder and, in a Windows path, the `user` redaction an
+  XML fixture needs
+  (`docs/decisions/0036-PLAN-align-docs-ci-and-disclosure-gates.md` D1).
+  Everything else is caught locally: `make gate`'s identifier step and
+  `make disclosure-check` apply the deny list where it is present, and the
+  pre-push guard below.
 - Pushes to GitHub pass through a global pre-push disclosure guard. Before
   asking the owner to push, run the guard itself over the outgoing commits:
 
