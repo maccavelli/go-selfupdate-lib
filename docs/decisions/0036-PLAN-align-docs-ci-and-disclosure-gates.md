@@ -122,3 +122,33 @@ The owner committed the amended pair as `92c2097` and said "proceed", which appr
   * `shellcheck` 0.11.0 on `check-docs.sh` and `check-docs_test.sh`: clean. `actionlint` 1.7.12: clean. `check-workflows.sh` with its three rules over both workflows, `check-workflows_test.sh` and `workflow-shape_test.sh`: pass.
   * `make check-records`, `make markdownlint` ("0 issues"), `make docs-check` ("815 links in 97 files, 0 broken"; "19 rows … 0 differ") and `make disclosure-check` ("697 files, … 0 findings"): exit 0.
   * `make gate`: every step `rc=0`, apicheck "compatible with v1.22.0", ids "15 files, 16 deny-list rules, 0 findings", `overall=0`.
+
+### Phase 2 (2026-10-25)
+
+* Phase 1 was committed by the owner as `64c0cc8`.
+* **Step 1, routing:** no trigger changes. Phase 1's inventory found `ci.yml`'s push and pull_request already ignoring the same set, `**.md`, which is the audited docs-safe set. `docs.yml` already watches that set and itself, on `ci.yml`'s push branches. A mixed change still runs full CI, since a `paths-ignore` skips a run only when every changed path matches. Tags, release branches and permissions are untouched. Each workflow's comment now points to the contract below.
+* **Step 2, the contract** is a new section of `scripts/workflow-shape_test.sh`, which already reads the workflows as YAML with PyYAML. It runs in CI's "Verify the workflow contract" step and in `make gate`'s scripts step. Its usage gains two optional arguments, the CI and the Docs workflow; the Makefile is read from the root. It asserts:
+  * `ci.yml` keeps its push to `main` and `release/**`, its `v*` tags and its pull_request, and has no `paths` filter;
+  * `ci.yml`'s two events ignore the same paths, and only those in `DOCS_SAFE`, `{"**.md"}`, the set phase 1 audited;
+  * `docs.yml`'s two events take the same paths, covering every ignored path and `docs.yml` itself, on `ci.yml`'s push branches;
+  * each workflow runs the four documentation targets through `make`, and neither names `markdownlint-cli2`, `check-docs.sh` or `check_records.py` directly;
+  * the Makefile pins `markdownlint-cli2` to an exact version;
+  * both check out with one pinned `actions/checkout`.
+
+  PyYAML reads the key `on` as the boolean `true` (YAML 1.1), and the test reads either. There is no `schedule` or `workflow_dispatch` in `ci.yml` to keep, so the trigger assertion holds the push branches, the tags and the pull_request.
+* **Seen failing** (`plants_36p2.py`: each a scratch copy of the tree without `.git`, with its edits, running the copy's test):
+
+  | Plant | Failure |
+  | :--- | :--- |
+  | (o) pull_request ignores more than push | `FAIL ci.yml's push and pull_request ignore the same paths` |
+  | (p) both events skip XML fixtures, which Go tests read, with `docs.yml` watching them | `FAIL ci.yml ignores only audited docs-safe paths ['**.md']` |
+  | (q) a Markdown reader run directly in full CI | `FAIL ci.yml runs no Markdown reader except through make (['check-docs.sh'])` |
+  | (r) a missing Docs gate | `FAIL docs.yml runs every documentation target through make (missing ['disclosure-check'])` |
+  | (s) a differing checkout pin in `docs.yml` | `FAIL ci.yml and docs.yml check out with the same pinned actions/checkout` |
+  | (t) markdownlint unpinned in the Makefile | `FAIL the Makefile pins markdownlint-cli2 to an exact version` |
+  | (u) full CI loses its tag trigger | `FAIL ci.yml keeps its push to main and release/**, its v* tags and its pull_request` |
+  | (v) full CI gains a `paths` filter | `FAIL ci.yml has no paths filter` |
+  | (w) `docs.yml` stops watching itself, on push | `FAIL docs.yml's paths cover every path ci.yml ignores, and docs.yml itself`, and the two-events check |
+
+  Each plant fails one assertion alone, except (w), whose single edit also breaks the two events' agreement. The clean tree passes: "all assertions hold".
+* **Checks:** `actionlint` 1.7.12: clean. `check-workflows.sh`'s three rules over both workflows, its default run and `check-workflows_test.sh`: pass. `shellcheck` on the test: clean. `make gate`: every step `rc=0`, ids "3 files, 16 deny-list rules, 0 findings", `overall=0`.

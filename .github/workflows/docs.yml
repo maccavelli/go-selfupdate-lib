@@ -7,6 +7,9 @@ name: Docs
 # anything else runs ci.yml, and so does every tag
 # (docs/decisions/0028-MADR-skip-full-ci-for-docs-only-pushes.md;
 # docs/decisions/0036-MADR-align-docs-ci-and-disclosure-gates.md A1 G1).
+# scripts/workflow-shape_test.sh holds the two workflows' paths and
+# documentation targets in step
+# (docs/decisions/0036-PLAN-align-docs-ci-and-disclosure-gates.md).
 on:
   push:
     branches: [main, 'release/**']

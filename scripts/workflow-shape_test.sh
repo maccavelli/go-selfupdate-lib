@@ -28,7 +28,21 @@
 #   - the identity job needs the build job and runs the tool's identity
 #     check; no step or job has continue-on-error.
 #
-# Usage: workflow-shape_test.sh [PUBLISH-WORKFLOW [BUILD-WORKFLOW]]
+# ci.yml and docs.yml, the routing contract
+# (docs/decisions/0036-PLAN-align-docs-ci-and-disclosure-gates.md, phase 2):
+#   - ci.yml keeps its push to main and release/**, its v* tags and its
+#     pull_request, and has no paths filter; its push and pull_request
+#     ignore the same paths, and only the audited docs-safe set (DOCS_SAFE
+#     below: every reader of those files runs in docs.yml);
+#   - docs.yml's push and pull_request take the same paths, covering every
+#     path ci.yml ignores and docs.yml itself, on ci.yml's branches;
+#   - both run every documentation target (DOC_TARGETS) through make, and
+#     neither runs a Markdown reader any other way, so no reader runs only
+#     in the workflow an ignored path skips; markdownlint's pin is the
+#     Makefile's alone;
+#   - both check out with the same pinned actions/checkout.
+#
+# Usage: workflow-shape_test.sh [PUBLISH-WORKFLOW [BUILD-WORKFLOW [CI-WORKFLOW [DOCS-WORKFLOW]]]]
 # Exit 0 when every assertion holds, 1 otherwise, 2 when PyYAML is missing.
 # PyYAML is required: pip install -r scripts/requirements-workflow-check.txt
 set -euo pipefail
@@ -36,8 +50,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PUBLISH="${1:-$ROOT/.github/workflows/publish-selfupdate-release.yml}"
 BUILD="${2:-$ROOT/.github/workflows/build-selfupdate-release.yml}"
+CI="${3:-$ROOT/.github/workflows/ci.yml}"
+DOCS="${4:-$ROOT/.github/workflows/docs.yml}"
 
-python3 - "$PUBLISH" "$BUILD" <<'PY'
+python3 - "$PUBLISH" "$BUILD" "$CI" "$DOCS" "$ROOT/Makefile" <<'PY'
+import re
 import sys
 
 try:
@@ -177,6 +194,59 @@ check(any("identity" in st.get("run", "") and "-want-version" in st.get("run", "
 check(all("continue-on-error" not in st for j in jobs.values() for st in j.get("steps", []))
       and all("continue-on-error" not in j for j in jobs.values()),
       "nothing in the build workflow has continue-on-error")
+
+# The routing contract (0036-PLAN phase 2). DOCS_SAFE is the audited set of
+# paths full CI may skip: 0036-PLAN phase 1, step 1 found every reader of
+# tracked Markdown in docs.yml. A new pattern is audited, then added here.
+DOCS_SAFE = {"**.md"}
+DOC_TARGETS = ("markdownlint", "check-records", "docs-check", "disclosure-check")
+# Markdown readers, called other than through make.
+DIRECT_READERS = ("markdownlint-cli2", "check-docs.sh", "check_records.py")
+ci_wf, docs_wf = load(sys.argv[3]), load(sys.argv[4])
+
+
+def on(wf):
+    # PyYAML reads the key on as the boolean true (YAML 1.1).
+    trig = wf.get("on", wf.get(True)) or {}
+    return {k: (v or {}) for k, v in trig.items()}
+
+
+def runs(wf):
+    return [st.get("run", "") for j in wf.get("jobs", {}).values() for st in j.get("steps", [])]
+
+
+def uses(wf, action):
+    return {st["uses"] for j in wf.get("jobs", {}).values() for st in j.get("steps", [])
+            if st.get("uses", "").startswith(action + "@")}
+
+
+ci_on, docs_on = on(ci_wf), on(docs_wf)
+ci_push, ci_pr = ci_on.get("push", {}), ci_on.get("pull_request", {})
+docs_push, docs_pr = docs_on.get("push", {}), docs_on.get("pull_request", {})
+check(set(ci_push.get("branches", [])) == {"main", "release/**"} and ci_push.get("tags") == ["v*"]
+      and "pull_request" in ci_on,
+      "ci.yml keeps its push to main and release/**, its v* tags and its pull_request")
+check(all("paths" not in t for t in ci_on.values()), "ci.yml has no paths filter")
+ignored = set(ci_push.get("paths-ignore", []))
+check(ignored == set(ci_pr.get("paths-ignore", [])), "ci.yml's push and pull_request ignore the same paths")
+check(ignored <= DOCS_SAFE, "ci.yml ignores only audited docs-safe paths %s" % sorted(DOCS_SAFE))
+watched = set(docs_push.get("paths", []))
+check(watched == set(docs_pr.get("paths", [])), "docs.yml's push and pull_request take the same paths")
+check(ignored <= watched and ".github/workflows/docs.yml" in watched,
+      "docs.yml's paths cover every path ci.yml ignores, and docs.yml itself")
+check(docs_push.get("branches") == ci_push.get("branches"), "docs.yml runs on ci.yml's push branches")
+for name, wf in (("ci.yml", ci_wf), ("docs.yml", docs_wf)):
+    scripts = "\n".join(runs(wf))
+    missing = [t for t in DOC_TARGETS if ("make " + t) not in scripts]
+    check(not missing, "%s runs every documentation target through make%s" % (name, " (missing %s)" % missing if missing else ""))
+    direct = [r for r in DIRECT_READERS if r in scripts]
+    check(not direct, "%s runs no Markdown reader except through make%s" % (name, " (%s)" % direct if direct else ""))
+with open(sys.argv[5], encoding="utf-8") as f:
+    makefile = f.read()
+check(re.search(r"^MARKDOWNLINT \?= npx --yes markdownlint-cli2@\d+\.\d+\.\d+$", makefile, re.M) is not None,
+      "the Makefile pins markdownlint-cli2 to an exact version")
+ci_co, docs_co = uses(ci_wf, "actions/checkout"), uses(docs_wf, "actions/checkout")
+check(len(ci_co) == 1 and ci_co == docs_co, "ci.yml and docs.yml check out with the same pinned actions/checkout")
 
 if failures:
     print("workflow-shape_test: %d failed" % len(failures))

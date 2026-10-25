@@ -8,6 +8,9 @@ on:
     # A change to Markdown alone runs docs.yml instead. GitHub does not
     # evaluate path filters for a tag push, so every tag runs this in full
     # (docs/decisions/0028-MADR-skip-full-ci-for-docs-only-pushes.md).
+    # scripts/workflow-shape_test.sh holds both events' ignores to the
+    # audited docs-safe set, and docs.yml to cover them
+    # (docs/decisions/0036-PLAN-align-docs-ci-and-disclosure-gates.md).
     paths-ignore: ['**.md']
   pull_request:
     paths-ignore: ['**.md']
