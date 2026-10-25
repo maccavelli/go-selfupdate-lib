@@ -895,7 +895,7 @@ this plan.
     `--ids`: "0 findings"; `--arch`: "19 rows, 0 differ".
   * `make pre-add-check` on `doc.go`: "1 file(s) clean".
 
-### M8: `v1.22.0` (2026-10-24, in progress)
+### M8: `v1.22.0` (2026-10-24)
 
 * M7 was committed by the owner as `7d65c5f`.
 * **Step 1:** `CHANGELOG.md`'s `## Unreleased` becomes `## v1.22.0 -
@@ -906,5 +906,34 @@ this plan.
   scripts, shellcheck, crossvet, links "809 links in 95 files, 0 broken",
   arch, ids), `overall=0`. The disclosure guard passed over the 13
   commits `main` was ahead of `origin`.
-* The steps that follow wait on the owner's word for the push and the
-  tag.
+* **Step 3:** the owner committed the pre-tag change as `8480556` and
+  pushed `main`, with all of 0035's code. CI run 40140162592 completed
+  `success`, all 18 jobs. The new step ran on `ubuntu-24.04`: `--- PASS:
+  TestLiveSupervisedS6 (8.44s)`. The Docs run passed.
+* **Step 4:** `scripts/check-release-tag.sh v1.22.0` exited 0, and the
+  disclosure guard passed with `main` level with `origin`. The owner made
+  the annotated tag and pushed it: tag object `b7c2181…`, on `8480556`.
+* **Step 5:** the tag's CI run 40141253980 completed `success`, all 18
+  jobs. Its identity legs print `v1.22.0 (release) 84805563ed25`, 10
+  times. `TestLiveSupervisedS6` passed again on `ubuntu-24.04` (8.43 s).
+* **Step 6, this commit:** `git diff --stat v1.21.0 v1.22.0 -- .github
+  internal/cmd scripts go.mod go.sum` shows `ci.yml` only, the new s6
+  step. The two release workflows that consumers pin,
+  `build-selfupdate-release.yml` and `publish-selfupdate-release.yml`,
+  have no diff, so the pins move with no other change. Moved to
+  `v1.22.0` and `8480556…`:
+  * `README.md`'s current release, `go get` line and publish pin;
+  * `docs/architecture.md`'s current release and commit;
+  * `building-releases.md`'s "examples below pin", three workflow pins
+    and `git ls-remote` example;
+  * in the migration guide: the 17 `go get` and 15 `go list -m` lines,
+    "is the current release", §3's workflow pin, "the example pins" and
+    `git ls-remote`, §5's "Require go-selfupdate-lib", and §2's release
+    list, which gains `v1.22.0` and links §22.
+
+  Three lines name `v1.21.0` as history and stay: §2's list entry, §21's
+  opening, and §22's "compatible with `v1.21.0`".
+* **Step 7:** `go list -m -json github.com/maccavelli/go-selfupdate-lib@v1.22.0`
+  gives `Hash 84805563ed252df384f59ced45a3daf529702ab4`, `Ref
+  refs/tags/v1.22.0`, and `@latest` resolves to `v1.22.0`.
+* M9 follows: issue #2 and magic-cli-remote#27 on the owner's ask.
