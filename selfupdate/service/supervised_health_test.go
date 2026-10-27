@@ -48,13 +48,31 @@ func boolPtr(b bool) *bool { return &b }
 
 // healthOver is a Supervised over seq, after a Stop that recorded 100@7,
 // polling every millisecond with a 30 ms settle window and a 2 s bound.
+// Its clock advances one interval per reading, so the restart window
+// counts readings, however slow the runner
+// (0035-PLAN-serve-supervisors-through-a-supervised-adapter.md D4).
 func healthOver(t *testing.T, probe HealthProbe, seq ...SupervisedState) *Supervised {
 	t.Helper()
+	const interval = time.Millisecond
+	var mu sync.Mutex
+	var now time.Time
+	read := observations(seq...)
+	state := func(ctx context.Context) (SupervisedState, error) {
+		mu.Lock()
+		now = now.Add(interval)
+		mu.Unlock()
+		return read(ctx)
+	}
 	s := fakeSupervised(t, SupervisedOptions{
-		Name: "demo", State: observations(seq...), Probe: probe,
-		Poll: PollOptions{Interval: time.Millisecond, Settle: 30 * time.Millisecond, Timeout: 2 * time.Second},
+		Name: "demo", State: state, Probe: probe,
+		Poll: PollOptions{Interval: interval, Settle: 30 * time.Millisecond, Timeout: 2 * time.Second},
 	}, healthProcs(), 400)
 	s.recorded = instance{pid: 100, start: 7}
+	s.now = func() time.Time {
+		mu.Lock()
+		defer mu.Unlock()
+		return now
+	}
 	return s
 }
 
