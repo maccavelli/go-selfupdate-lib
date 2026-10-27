@@ -649,7 +649,11 @@ for Task Scheduler,
     and creation time and, since `v1.15.1`, by its process object's
     signalled state, so a process that has exited reads as gone though
     another process still holds a handle to it. Once the stop is issued,
-    the wait does not end with your context. On systemd and launchd it
+    the wait does not end with your context. Since `v1.22.2`, neither does
+    the stop command: launchd's `bootout` runs to the stop's bound, and
+    systemd's `systemctl stop` only queues the job (`--no-block`). Before
+    that, a unit with `TimeoutStopSec=infinity` whose program ignores
+    TERM held `Stop` for as long as the program ran. On systemd and launchd it
     runs to the service manager's own kill bound, the longer of
     `Options.Poll.Timeout` and launchd's `ExitTimeOut` (5 s when unset) or
     systemd's `TimeoutStopUSec`, plus 30 s. On the SCM and on Task

@@ -191,23 +191,27 @@ func (t *Task) Stop(ctx context.Context, product string) (err error) {
 	var asked error
 	if t.o.RequestStop != nil {
 		if asked = t.o.RequestStop(ctx, inst.pid); asked == nil {
-			gone, err := t.waitGone(ctx, path, inst, t.o.StopGrace)
-			if err != nil || gone {
-				return err
+			if t.waitGone(ctx, inst, t.o.StopGrace) {
+				return nil
+			}
+			if ctx.Err() != nil {
+				// The bound ran out within the grace: the task is not ended.
+				return stillRuns(path)
 			}
 		}
 	}
 	if err := r.stop(); err != nil {
 		return errors.Join(mapError("stop", path, err), requestError(asked))
 	}
-	gone, err := t.waitGone(ctx, path, inst, t.o.Poll.Timeout)
-	if err == nil && !gone {
-		err = fmt.Errorf("%w: %s still runs after it was stopped", service.ErrTimeout, path)
-	}
-	if err != nil {
-		return errors.Join(err, requestError(asked))
+	if !t.waitGone(ctx, inst, t.o.Poll.Timeout) {
+		return errors.Join(stillRuns(path), requestError(asked))
 	}
 	return nil
+}
+
+// stillRuns is the stop's timeout: the task's program outlived the bound.
+func stillRuns(path string) error {
+	return fmt.Errorf("%w: %s still runs after it was stopped", service.ErrTimeout, path)
 }
 
 // stopDisable disables the task when on, its state as Stop read it, and
@@ -247,24 +251,26 @@ func requestError(err error) error {
 	return fmt.Errorf("selfupdate: taskscheduler: Options.RequestStop: %w", err)
 }
 
-// waitGone waits, for at most limit by this Task's clock, until inst's
-// process has exited, checked by PID and creation time. It reports whether
-// it had; the error is ctx ending. Stop calls it only with a recorded
+// waitGone waits, for at most limit by this Task's clock and until ctx's
+// deadline, until inst's process has exited, checked by PID and creation
+// time. It reports whether it had. Stop calls it only with a recorded
 // instance.
-func (t *Task) waitGone(ctx context.Context, path string, inst instance, limit time.Duration) (bool, error) {
+func (t *Task) waitGone(ctx context.Context, inst instance, limit time.Duration) bool {
 	if limit <= 0 {
 		limit = service.DefaultPollTimeout
 	}
 	end := t.now().Add(limit)
 	for {
 		if !t.s.running(inst.pid, inst.born) {
-			return true, nil
+			return true
 		}
-		if !t.now().Before(end) {
-			return false, nil
-		}
-		if err := t.sleep(ctx, t.interval()); err != nil {
-			return false, fmt.Errorf("%w: %s: %w", service.ErrTimeout, path, err)
+		// The wait ends at limit by this clock, or at ctx's deadline, which
+		// Stop sets from the same timeout before the grace: either way the
+		// bound is reached, and Stop reports what still runs
+		// (docs/decisions/0037-MADR-honour-contexts-in-backend-fakes-and-stop-commands.md
+		// D5-A).
+		if !t.now().Before(end) || t.sleep(ctx, t.interval()) != nil {
+			return false
 		}
 	}
 }

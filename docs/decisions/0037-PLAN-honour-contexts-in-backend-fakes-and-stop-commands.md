@@ -181,3 +181,19 @@ The owner answered "proceed" to the proposed pair, which approves this plan and 
   * `go test ./selfupdate/service/launchd/`: `ok`, here and on the Linux test host.
   * `SELFUPDATE_REQUIRE_LAUNCHD=1 go test -run ^TestLive`, on this host: all 11 pass in 164 s, `TestLiveStopWaitsForSlowExit` included (8.91 s). No test job was left loaded.
 * **`make pre-add-check`** on the four files: "4 file(s) clean (gofmt, golangci-lint, go vet, go test, govulncheck)".
+
+### N5: messages and documentation (2026-10-27)
+
+* **`taskscheduler/lifecycle.go`:**
+  * `waitGone` ends at its own clock's limit or at its context's deadline, the same bound, and reports only whether the process went. Its error result and its unused `path` parameter are gone, and a comment cites D5-A.
+  * `Stop` reports `stillRuns(path)`, `ErrTimeout: <path> still runs after it was stopped`, for either end.
+  * A bound that runs out within the `RequestStop` grace still returns without ending the task, as before, now with that message. My first edit ended the task in that case, which D5-A does not cover. I restored the old path before recording.
+  * That path is not covered by a test: it needs the reads before the grace to spend the timeout, and `New` refuses a grace that is not shorter than it.
+* **`taskscheduler/lifecycle_test.go`, `TestStopTimeoutOnRealClock`:** a task that never exits, with a 300 ms `Poll.Timeout`, a 100 ms grace and `RequestStop`, on the real clock (`time.Now`, `sleepCtx`). `Stop` must be `ErrTimeout` saying `\demo still runs after it was stopped`.
+* **Seen failing:** `plants_37.py N5`, (g) HEAD's `lifecycle.go`: `Stop = selfupdate: service: timed out: \demo: context deadline exceeded, want ErrTimeout saying the task still runs`. `TestStopGraceRunsOut`, `TestStopRequestFails` and `TestStopRequestHonoured` pass on both.
+* **`errors.go`:** `CommandError.Backend`'s comment, D6-A.
+* **`docs/guides/extending-selfupdate.md`:** the stop guarantee adds that, since `v1.22.2`, the stop command does not end with the caller's context either. launchd's `bootout` runs to the stop's bound, and systemd's `systemctl stop` only queues the job. It also says how `TimeoutStopSec=infinity` behaved before.
+* **Runs:**
+  * `go test ./selfupdate/service/taskscheduler/` here: `ok`.
+  * On the Windows test host: `taskscheduler` and `service` `ok`, then `taskscheduler` again after the grace path was restored, `ok`. The live Task Scheduler tests were not run: `Stop`'s live path is unchanged apart from the message.
+* **`make pre-add-check`** on the three Go files: "3 file(s) clean (gofmt, golangci-lint, go vet, go test, govulncheck)".

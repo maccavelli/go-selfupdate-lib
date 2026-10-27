@@ -193,6 +193,28 @@ func TestStopGraceRunsOut(t *testing.T) {
 	}
 }
 
+// TestStopTimeoutOnRealClock: on the real clock, the stop's context, bounded
+// by Poll's timeout from before the grace, ends before waitGone's own
+// clock. The timeout still says what still runs
+// (docs/decisions/0037-MADR-honour-contexts-in-backend-fakes-and-stop-commands.md
+// D5-A).
+func TestStopTimeoutOnRealClock(t *testing.T) {
+	testproc.CheckNoLeak(t)
+	f := newFake()
+	ft := f.add(`\demo`, 4242)
+	ft.stopKeeps, ft.exitIn = true, 1<<30 // never exits: no virtual sleeps tick it
+	task, _ := testTask(t, f, Options{
+		Poll:        service.PollOptions{Interval: 10 * time.Millisecond, Timeout: 300 * time.Millisecond},
+		StopGrace:   100 * time.Millisecond,
+		RequestStop: func(context.Context, uint32) error { return nil },
+	})
+	task.now, task.sleep = time.Now, sleepCtx
+	err := task.Stop(context.Background(), "demo")
+	if !errors.Is(err, service.ErrTimeout) || !strings.Contains(err.Error(), `\demo still runs after it was stopped`) {
+		t.Fatalf("Stop = %v, want ErrTimeout saying the task still runs", err)
+	}
+}
+
 // TestStopRequestFails: a RequestStop error ends the grace at once. When
 // ending the task then works, Stop succeeds; when it fails, both errors
 // are reported (0021-MADR D4).

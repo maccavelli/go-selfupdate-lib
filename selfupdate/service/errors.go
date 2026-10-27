@@ -46,7 +46,10 @@ var (
 // commands, and return none.
 type CommandError struct {
 	// Backend names the backend: "systemd", "launchd", or "service" for the
-	// exec reconciler.
+	// exec reconciler. A program that reports its own commands this way,
+	// such as those it runs for Supervised, names its own, such as "runit"
+	// (docs/decisions/0037-MADR-honour-contexts-in-backend-fakes-and-stop-commands.md
+	// D6-A).
 	Backend string
 	// Step is what was run, such as "stop" or "bootout".
 	Step string
