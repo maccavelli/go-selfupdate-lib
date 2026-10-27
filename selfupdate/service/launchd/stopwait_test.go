@@ -19,9 +19,11 @@ import (
 // caller's context does, bounded by launchd's own kill bound; and a managed
 // update whose stop failed after the job went starts it again.
 
-// TestStopFinishesAfterCancel: a caller's context that ends after bootout
-// does not cut the wait short. Stop waits until the job is gone, then
-// reports the cancellation.
+// TestStopFinishesAfterCancel: a caller's context that ends during bootout
+// does not cut the stop short: bootout is not killed, and Stop waits until
+// the job is gone, then reports the cancellation
+// (docs/decisions/0037-MADR-honour-contexts-in-backend-fakes-and-stop-commands.md
+// D3-A).
 func TestStopFinishesAfterCancel(t *testing.T) {
 	f := newFake()
 	f.pid = 99999999 // a PID no process has

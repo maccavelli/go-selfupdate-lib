@@ -155,3 +155,29 @@ The owner answered "proceed" to the proposed pair, which approves this plan and 
   * No `selfupdate-live-*` unit was left on the Linux test host after any run.
 * **`make pre-add-check`** on the four files: "4 file(s) clean (gofmt, golangci-lint, go vet, go test, govulncheck)".
 * **Found:** 0011-MADR's systemd rules say `Stop` blocks on its job. D2-A supersedes that line, as the MADR's Amendment A2 records.
+
+### N4: launchd's bootout and bootstrap (2026-10-27)
+
+* **`launchd/lifecycle.go`:**
+  * `Stop` returns the caller's error if its context has ended before `bootout`, as systemd's `Stop` does.
+  * It then runs `bootout` on `context.WithTimeout(context.WithoutCancel(ctx), bound)`, with `stopBound`'s bound. A run that the bound ends is `ErrTimeout`, and the caller's error is joined to any failure.
+  * In `bootstrap`, a `launchctl` run that fails after the bound ended is `ErrTimeout`, wrapping the run's error, as the retry loop's own deadline already was.
+  * Each change has a comment citing D3-A or D4-A.
+* **`launchd/fake_test.go`:**
+  * `bootout`, after its effect, returns the call's context error when that context ended during the call. That is P2's kill after launchd took the request: the job goes, and `ExecRunner` reports the error.
+  * `bootstrapHangs` holds every `bootstrap` until its context ends.
+* **Tests:**
+  * `TestStopFinishesAfterCancel` (`stopwait_test.go`) already cancelled the caller during `bootout`. Its fake then answered as if `launchctl` had not been killed, so it passed on today's code. With the fake above it covers D3-A, and its comment now says so.
+  * `TestStartBootstrapHangs` (`launchd_test.go`) checks a hung `bootstrap` under a 200 ms `Poll.Timeout`: `Start` must return `ErrTimeout` wrapping `context.DeadlineExceeded`.
+* **Seen failing** (`plants_37.py N4`, scratch copies):
+
+  | Plant | `TestStopFinishesAfterCancel` | `TestStartBootstrapHangs` |
+  | :--- | :--- | :--- |
+  | (d) HEAD's `lifecycle.go` | FAIL: `verbs ["managername" "list" "list" "bootout"], loaded true: Stop returned while the job was still loaded` | FAIL: `Start = context deadline exceeded, want ErrTimeout wrapping the deadline` |
+  | (e) `bootout` on the caller's context | FAIL, as (d) | pass |
+  | (f) `bootstrap`'s run error unwrapped | pass | FAIL, as (d) |
+
+* **Runs:**
+  * `go test ./selfupdate/service/launchd/`: `ok`, here and on the Linux test host.
+  * `SELFUPDATE_REQUIRE_LAUNCHD=1 go test -run ^TestLive`, on this host: all 11 pass in 164 s, `TestLiveStopWaitsForSlowExit` included (8.91 s). No test job was left loaded.
+* **`make pre-add-check`** on the four files: "4 file(s) clean (gofmt, golangci-lint, go vet, go test, govulncheck)".

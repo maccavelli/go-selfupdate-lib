@@ -166,9 +166,23 @@ func (j *Job) Stop(ctx context.Context, _ string) error {
 		return nil
 	}
 	bound := j.stopBound(ctx)
-	out, err := j.launchctlRun(ctx, "bootout", j.target())
-	if err != nil {
+	if err := ctx.Err(); err != nil {
 		return err
+	}
+	// Once bootout is issued the job goes whatever the caller does, so
+	// neither bootout nor the wait ends with the caller's context, and its
+	// error is returned after (0015-MADR B3). launchctl killed after launchd
+	// took the request leaves the job going
+	// (docs/decisions/0037-MADR-honour-contexts-in-backend-fakes-and-stop-commands.md
+	// D3-A; Amendment A1, P2).
+	bctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), bound)
+	out, err := j.launchctlRun(bctx, "bootout", j.target())
+	cancel()
+	if err != nil {
+		if bctx.Err() != nil {
+			err = fmt.Errorf("%w: selfupdate: launchd: bootout %s: %w", service.ErrTimeout, j.target(), err)
+		}
+		return errors.Join(err, ctx.Err())
 	}
 	switch out.ExitCode {
 	case 0, exitNotFound, exitNoProcess, exitInProgress:
@@ -296,6 +310,12 @@ func (j *Job) bootstrap(ctx context.Context) error {
 	for {
 		out, err := j.launchctlRun(ctx, "bootstrap", j.o.Domain.String(), j.o.Plist)
 		if err != nil {
+			if ctx.Err() != nil {
+				// The bound ended the run, as it ends the retries below
+				// (docs/decisions/0037-MADR-honour-contexts-in-backend-fakes-and-stop-commands.md
+				// D4-A).
+				return fmt.Errorf("%w: bootstrap %s: %w", service.ErrTimeout, j.o.Plist, err)
+			}
 			return err
 		}
 		switch out.ExitCode {

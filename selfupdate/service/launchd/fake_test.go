@@ -54,6 +54,8 @@ type fakeLaunchd struct {
 	// printDeadlines records, for each print of the job, how long its
 	// context had left: zero when it had no deadline.
 	printDeadlines []time.Duration
+	// bootstrapHangs holds every bootstrap until its context ends.
+	bootstrapHangs bool
 }
 
 func newFake() *fakeLaunchd {
@@ -82,6 +84,10 @@ func (f *fakeLaunchd) processGroups(pid int) (mine, theirs int, ok bool) {
 func (f *fakeLaunchd) Run(ctx context.Context, c service.Command) (service.Output, error) {
 	if err := ctx.Err(); err != nil {
 		return service.Output{}, err
+	}
+	if f.bootstrapHangs && len(c.Args) > 0 && c.Args[0] == "bootstrap" {
+		<-ctx.Done()
+		return service.Output{}, ctx.Err()
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -146,6 +152,12 @@ func (f *fakeLaunchd) Run(ctx context.Context, c service.Command) (service.Outpu
 			f.loaded = false
 		}
 		f.pid, f.state = 0, "not running"
+		// A context that ended during the call killed launchctl after
+		// launchd took the request: the job goes, and ExecRunner reports
+		// the context's error (0037-MADR Amendment A1, P2).
+		if err := ctx.Err(); err != nil {
+			return service.Output{}, err
+		}
 	case "bootstrap":
 		if len(f.bootstrapCodes) > 0 {
 			code := f.bootstrapCodes[0]

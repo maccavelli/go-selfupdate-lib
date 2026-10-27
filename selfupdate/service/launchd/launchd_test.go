@@ -389,6 +389,21 @@ func TestStartBootstrapsAndRetries(t *testing.T) {
 	}
 }
 
+// TestStartBootstrapHangs: a bootstrap that its bound ends mid-run is
+// ErrTimeout, as one that its retries run out on is
+// (docs/decisions/0037-MADR-honour-contexts-in-backend-fakes-and-stop-commands.md
+// D4-A).
+func TestStartBootstrapHangs(t *testing.T) {
+	testproc.CheckNoLeak(t)
+	f := newFake()
+	f.loaded, f.pid = false, 0
+	f.bootstrapHangs = true
+	j := testJob(t, f, Options{Poll: service.PollOptions{Interval: time.Millisecond, Timeout: 200 * time.Millisecond, Settle: -1}})
+	if err := j.Start(context.Background(), "demo"); !errors.Is(err, service.ErrTimeout) || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Start = %v, want ErrTimeout wrapping the deadline", err)
+	}
+}
+
 // TestStartLoadedSkipsBootstrap: a job still loaded, such as an on-demand
 // one, is only kickstarted.
 func TestStartLoadedSkipsBootstrap(t *testing.T) {
