@@ -234,3 +234,9 @@ Not done here, as the plan's scope says, or as found:
 * The Task Scheduler grace path, where the bound runs out within the grace, is not covered by a test (N5).
 * The live Task Scheduler tests were not run, since its live path changed only in a message.
 * Programs that adopt `v1.22.2` do so in their own repositories. magic-cli-remote's systemd and launchd backends take the stop fixes with the bump.
+
+### After closing (2026-10-27): magic-cli-remote#27 told
+
+On the owner's ask ("post the note on #27"), a comment on magic-cli-remote#27, `issuecomment-6447386782`, names `v1.22.2` and its commit. It covers the four fixes, says that `Supervised` is unchanged since `v1.22.1`, and suggests that Magic's own fakes fail on an ended context. It was scanned for identifiers first: 0 findings.
+
+Before posting, one claim in the draft was corrected. Magic's systemd unit sets no `TimeoutStopSec` (`internal/cli/service`, read at its `HEAD`), so it gets systemd's finite default. The draft had credited this to 0212's D17, which bounds the adapter's waits instead.

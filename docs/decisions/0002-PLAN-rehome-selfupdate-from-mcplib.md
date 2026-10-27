@@ -485,7 +485,7 @@ then to tag.
 
 Commit: `3700381` (`370038110816f9f97a4f2edb2c658ff0f7abd16d`).
 
-### Phase 6: push, CI, tag (2026-09-29, in progress)
+### Phase 6: push, CI, tag (2026-09-29 to 2026-09-30)
 
 * **Step 1.** The pre-push disclosure guard from `AGENTS.md`, over
   `origin/main..main` (the ten 0001 and 0002 commits): exit 0, no output.
