@@ -2,6 +2,7 @@ package launchd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -75,7 +76,13 @@ func (f *fakeLaunchd) processGroups(pid int) (mine, theirs int, ok bool) {
 	return 1, g, ok
 }
 
+// Run answers as launchctl, plutil and ps would. Like ExecRunner, it
+// refuses a call on an ended context and records nothing
+// (docs/decisions/0037-MADR-honour-contexts-in-backend-fakes-and-stop-commands.md D1-A).
 func (f *fakeLaunchd) Run(ctx context.Context, c service.Command) (service.Output, error) {
+	if err := ctx.Err(); err != nil {
+		return service.Output{}, err
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, append([]string{c.Path}, c.Args...))
@@ -256,4 +263,16 @@ func testJob(t *testing.T, f *fakeLaunchd, o Options) *Job {
 	}
 	j.groups = f.processGroups
 	return j
+}
+
+// TestFakeHonoursContext: the fake refuses a call on an ended context, and
+// records nothing, as ExecRunner does
+// (docs/decisions/0037-MADR-honour-contexts-in-backend-fakes-and-stop-commands.md D1-A).
+func TestFakeHonoursContext(t *testing.T) {
+	f := newFake()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := f.Run(ctx, service.Command{Path: "/bin/launchctl", Args: []string{"list"}}); !errors.Is(err, context.Canceled) || len(f.calls) != 0 {
+		t.Fatalf("Run on a cancelled context: %v, calls %q; want context.Canceled and none", err, f.calls)
+	}
 }

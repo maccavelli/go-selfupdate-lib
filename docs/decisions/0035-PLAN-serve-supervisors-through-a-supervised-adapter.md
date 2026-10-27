@@ -1192,5 +1192,5 @@ Not done here, as the plan's scope says:
 
   Lines that name `v1.22.0` as history stay: §2's entry, §22's opening, the "From v1.22.0 to v1.22.1" section, and the extending guide's "since `v1.22.0`".
 * **Step 6:** `go list -m -json github.com/maccavelli/go-selfupdate-lib@v1.22.1` gives `Hash 4d9ae417f61c4cdd0a7bccd1d342d773d9cc34cd`, `Ref refs/tags/v1.22.1`, `Time 2026-10-27T04:27:36Z` (UTC), and `@latest` resolves to `v1.22.1`.
-* **Step 7** waits on the owner's ask.
+* **Step 7** (the owner, 2026-10-27, "post it"): a comment on magic-cli-remote#27, `issuecomment-6442871478`, names `v1.22.1` and its commit for the adapter phase. It covers the bug, what changed, that a failed `Stop` can take twice `Poll.Timeout`, and fakes that fail on an ended context. It was scanned for identifiers first: 0 findings.
 * **Closing:** M11's fix is released, its CI and the tag's are green, and the proxy serves it. This plan returns to `complete`; the MADR stays `accepted`.

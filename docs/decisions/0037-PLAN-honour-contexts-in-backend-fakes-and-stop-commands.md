@@ -1,0 +1,134 @@
+---
+status: in-progress
+date: 2026-10-27
+associated-madr: "0037-MADR-honour-contexts-in-backend-fakes-and-stop-commands.md"
+---
+<!-- markdownlint-disable MD004 MD013 MD024 MD060 -->
+
+# Implement context-honest fakes and bounded stop commands for systemd, launchd and Task Scheduler
+
+Associated MADR: [0037-MADR-honour-contexts-in-backend-fakes-and-stop-commands.md](0037-MADR-honour-contexts-in-backend-fakes-and-stop-commands.md)
+(D1-A to D6-A, as the owner accepted on 2026-10-27).
+
+## Goal
+
+Every fake runner fails a call on an ended context, as `ExecRunner` does. Every `Stop` returns `ErrTimeout` at its documented bound, and no caller cancellation ends a stop that has been issued. Each change is first seen failing.
+
+## Scope
+
+### In scope
+
+* `selfupdate/service/systemd`: `fake_test.go`; `lifecycle.go`'s `Stop` (D2-A); its tests; a live test.
+* `selfupdate/service/launchd`: `fake_test.go`; `lifecycle.go`'s `Stop` and `bootstrap` (D3-A, D4-A); its tests.
+* `selfupdate/service/taskscheduler`: `lifecycle.go`'s `waitGone` (D5-A); its tests.
+* `selfupdate/service/errors.go`: `CommandError.Backend`'s comment (D6-A).
+* `docs/guides/extending-selfupdate.md`, where it states a stop's bound; the records.
+* `v1.22.2`, on the owner's word, if N3 or N4 changes behaviour.
+
+### Out of scope
+
+* scm (MADR F6). `WaitHealthy`. Any exported API.
+
+## Implementation Steps
+
+### Rules for every phase
+
+* The phase's files are named in its step. A file outside them is a deviation: stop and prompt.
+* Each new test or check is seen failing first, on the current code or a plant, in a scratch copy of the tree (`scripts/plant-copy.sh`, or a scratchpad script). The tree is never dirtied for it.
+* `make pre-add-check` on the phase's Go files, and `make gate` ending `overall=0`, before the owner's commit.
+
+### N0: the records
+
+This MADR and PLAN, `proposed`, and the `docs/README.md` index rows. The owner's approval moves the plan to `in-progress`.
+
+### N1: probes
+
+1. **P1, on the Linux test host,** in a scratch directory, removed after:
+   * a user unit, `TimeoutStopSec=infinity`, whose program traps TERM and keeps running;
+   * time `systemctl --user stop <unit>`, killed after 20 s if still running, then `--no-block`;
+   * record `ActiveState` and `SubState` during each;
+   * clean up with `systemctl --user kill -s KILL`, then remove the unit.
+2. **P2, on this macOS host:**
+   * a job, `ExitTimeOut` 15, whose program traps TERM;
+   * time `launchctl bootout`;
+   * start a second `bootout` against a fresh copy of the job, kill `launchctl` 50 ms in, and record whether the job still goes;
+   * clean up the job and its plist.
+3. The results go into the MADR as Amendment A1. A result that voids a fact, such as P1 showing that `systemctl stop` returns at once, stops the work for the owner (MADR, D2-A's outcome).
+
+### N2: the fakes (D1-A)
+
+1. `systemd/fake_test.go` and `launchd/fake_test.go`: `Run` returns `service.Output{}, ctx.Err()`, and records nothing, when `ctx` has ended.
+2. Run both packages' tests, on this host and the Linux test host. A test that fails is a finding: stop and prompt, before any fix.
+3. A test in each package: a call on a cancelled context returns its error, and records no call. Seen failing with the check planted out.
+
+### N3: systemd's stop (D2-A)
+
+1. `lifecycle.go`: `Stop` runs `systemctl stop --no-block --no-ask-password --quiet -- <unit>`.
+2. A fake test: a stop job that never ends makes `Stop` return `ErrTimeout` at `stopBound`, measured on the real clock with a short `Poll.Timeout` and `TimeoutStopUSec` `infinity`.
+   * The fake's `stop` blocks until its context ends unless `--no-block` is passed, as P1 shows `systemctl` does.
+   * Seen failing on today's `Stop`, which never returns: the test bounds itself and reports the hang.
+3. A live test, `TestLiveStopInfinityTimesOut`, under `SELFUPDATE_REQUIRE_SYSTEMD`: P1's unit, with `Poll.Timeout` 3 s. `Stop` returns `ErrTimeout` within 3 to 10 s, and the unit is `deactivating`. Cleanup kills it. Run on the Linux test host and the WSL.
+
+### N4: launchd's bootout and bootstrap (D3-A, D4-A)
+
+1. `lifecycle.go`:
+   * `Stop` runs `bootout` on `context.WithoutCancel(ctx)`, bounded by `stopBound`;
+   * a `launchctl` run that the deadline ends is `ErrTimeout` in `bootstrap`.
+2. Fake tests:
+   * a caller cancelled during `bootout` still waits for the job to go, then returns the caller's error;
+   * a `bootstrap` whose `launchctl` blocks past the deadline is `ErrTimeout`.
+
+   Each is seen failing on today's code.
+3. `go test` on this host, and the live launchd tests with `SELFUPDATE_REQUIRE_LAUNCHD=1`.
+
+### N5: messages and documentation (D5-A, D6-A)
+
+1. `taskscheduler/lifecycle.go`: `waitGone` returns `<path> still runs after it was stopped`, as `ErrTimeout`, when the context's deadline ends the wait. A test with `RequestStop` and a grace sees it, seen failing on today's message.
+2. `errors.go`: `CommandError.Backend`'s comment, D6-A.
+3. `extending-selfupdate.md`: systemd's stop bound holds under `TimeoutStopUSec=infinity`, and launchd's issued stop outlives the caller.
+4. `go test` for `taskscheduler` on the Windows test host.
+
+### N6: `v1.22.2`, on the owner's word
+
+As 0035-PLAN-serve-supervisors-through-a-supervised-adapter.md M12: the `CHANGELOG.md` entry and migration-guide section; `make gate`; the push and CI; the tag check, the disclosure guard and the tag; the tag's CI; the pin commit; the proxy.
+
+## Verification
+
+* **V1 (probes):** P1 and P2 are recorded in the MADR's Amendment A1.
+* **V2 (fakes):** both fakes fail on an ended context, and every existing test passes, or a deviation records why not.
+* **V3 (bounds):**
+  * the fake tests for D2-A to D5-A fail on today's code and pass after;
+  * the systemd live test passes on the Linux test host and the WSL;
+  * the launchd live tests pass on this host.
+* **V4 (API):** `make apicheck` reports compatibility with `v1.22.1`.
+* **V5 (release):** `v1.22.2` tagged, its CI green, the proxy serving it, if the owner chooses N6.
+
+## Rollout and Rollback
+
+* **Rollout:** one commit per phase on `main`, pushed on the owner's word, then `v1.22.2`. A program takes it by bumping its requirement. Nothing in the API changes.
+* **Rollback:** before the tag, `git revert` of a phase. After it, fix forward. D2-A's rollback is removing `--no-block`.
+
+## Execution record
+
+### Approval (2026-10-27)
+
+The owner answered "proceed" to the proposed pair, which approves this plan and accepts the MADR's D1-A to D6-A. D2-A still rests on P1.
+
+### N1: probes (2026-10-27)
+
+* **P1** (`p1_systemd.py`, Linux test host, systemd 259): `systemctl --user stop` on a `TimeoutStopSec=infinity` unit that ignores TERM was still running at 20 s. `--no-block` exited 0 in 0.03 s. Both left the unit `deactivating`, `stop-sigterm`. Transient units only, so no unit file was written. Each was killed and reset, ending `inactive`, `dead`.
+* **P2** (`p2_launchd.py`, this host, macOS 26.6.2): `bootout` exited 0 in 0.04 s, with the job gone 15.0 s later at `ExitTimeOut`. `launchctl` killed at 0 ms left the job running. At 50 ms, `bootout` had already exited and the job went at 15.1 s. Plists lived in a temporary directory, since removed, and no job was left loaded.
+* Recorded in the MADR as Amendment A1. Both premises hold, F3's only for a few tens of milliseconds. No fact is voided, so N2 follows.
+
+### N2: the fakes (2026-10-27)
+
+* **`systemd/fake_test.go` and `launchd/fake_test.go`:** `Run` returns `service.Output{}, ctx.Err()`, and records nothing, on an ended context, with a comment citing D1-A. `TestFakeHonoursContext` in each package checks it.
+* **Existing tests, with the stricter fakes:** `go test -count=1 ./selfupdate/service/systemd/ ./selfupdate/service/launchd/` passes, both here and on the Linux test host. No test relied on a fake answering on an ended context, so N2 found nothing to stop for.
+* **Seen failing** (`plants_37.py N2`, scratch copies):
+
+  | Plant | Result |
+  | :--- | :--- |
+  | (a) systemd's check removed | FAIL: `Run on a cancelled context: <nil>, calls [["/usr/bin/systemctl" "show"]]; want context.Canceled and none` |
+  | (b) launchd's check removed | FAIL: `Run on a cancelled context: <nil>, calls [["/bin/launchctl" "list"]]; want context.Canceled and none` |
+
+* **`make pre-add-check`** on the two files: "2 file(s) clean (gofmt, golangci-lint, go vet, go test, govulncheck)".

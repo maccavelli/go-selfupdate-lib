@@ -2,6 +2,7 @@ package systemd
 
 import (
 	"context"
+	"errors"
 	"os"
 	"strings"
 	"sync"
@@ -43,7 +44,13 @@ func newFake() *fakeSystemd {
 	}
 }
 
-func (f *fakeSystemd) Run(_ context.Context, c service.Command) (service.Output, error) {
+// Run answers as systemctl would. Like ExecRunner, it refuses a call on an
+// ended context and records nothing
+// (docs/decisions/0037-MADR-honour-contexts-in-backend-fakes-and-stop-commands.md D1-A).
+func (f *fakeSystemd) Run(ctx context.Context, c service.Command) (service.Output, error) {
+	if err := ctx.Err(); err != nil {
+		return service.Output{}, err
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, append([]string{c.Path}, c.Args...))
@@ -169,4 +176,16 @@ func readFile(t *testing.T, path string) string {
 		t.Fatal(err)
 	}
 	return string(b)
+}
+
+// TestFakeHonoursContext: the fake refuses a call on an ended context, and
+// records nothing, as ExecRunner does
+// (docs/decisions/0037-MADR-honour-contexts-in-backend-fakes-and-stop-commands.md D1-A).
+func TestFakeHonoursContext(t *testing.T) {
+	f := newFake()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := f.Run(ctx, service.Command{Path: "/usr/bin/systemctl", Args: []string{"show"}}); !errors.Is(err, context.Canceled) || len(f.calls) != 0 {
+		t.Fatalf("Run on a cancelled context: %v, calls %q; want context.Canceled and none", err, f.calls)
+	}
 }
