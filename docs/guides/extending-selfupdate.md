@@ -1016,12 +1016,17 @@ real s6 tree.
     service's process or descends from it. It counts a process by PID
     and start time, so a reused PID never counts.
   - `Stop` calls `Down`, then waits to `Poll.Timeout` even if your
-    context ends, and returns the context's error after.
+    context ends, and returns the context's error after. The timeout
+    counts from before `Down`, so a `Down` that blocks, as
+    `rc-service stop` does, spends part of it.
   - `Kill`, when set, runs once at `KillAfter`, half the timeout by
     default: `sv kill <dir>` or `s6-svc -k <dir>`, since runit's
     `sv down` sends TERM only.
   - A stop that fails while the process runs calls `Up` again, so the
-    supervisor still wants the service up.
+    supervisor still wants the service up. `Up` gets a context of its
+    own, `Poll.Timeout` long, so a failed `Stop` can take twice that.
+    Before `v1.22.1`, this `Up` ran on the stop's spent context, and a
+    command it ran never started.
   - `WaitHealthy` needs a new instance up, and ready where `Ready` is
     set, for `Poll.Settle`. It fails with `ErrUnhealthy` when the
     service:

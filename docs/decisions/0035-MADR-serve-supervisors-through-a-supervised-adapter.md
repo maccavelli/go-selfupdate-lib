@@ -979,3 +979,31 @@ No result trips a decision point of 0035-PLAN. Every decision stands.
 ## Amendment A2 (2026-10-25): two processes can share a start time
 
 A process's start time in `/proc/<pid>/stat` is in clock ticks since boot, so two processes started within one tick read the same value. D3-A's instance, `<pid>@<start time>`, is unaffected: two live processes never share a PID. But a test that expected a child's start time to differ from its parent's failed in CI (0035-PLAN-serve-supervisors-through-a-supervised-adapter.md, phase M10).
+
+## Amendment A3 (2026-10-26): the restore after a failed stop runs on a context of its own
+
+**Found** reading the adapter for magic-cli-remote#27, on `main` at `96115f8`, the code of `v1.22.0`:
+
+* D4-A's step 6 calls `Up` when the stop fails with the recorded process still running. `Stop` ran `Down`, the wait and that `Up` on one context, bounded by `Poll.Timeout` from before `Down` (`supervised_lifecycle.go:87`, `:103`).
+* The wait measured its own `Poll.Timeout` from after `Down` returned (`:116`). So the context always ended first. The wait ended on its deadline, and the restoring `Up` ran on a context that had already ended. A program's `Up` that runs its command through `ExecRunner` never starts it, so the service stayed down, and not wanted up.
+* The wait's error also lost its last observation: `timed out: demo: context deadline exceeded`, in place of `still runs … (last: up=true pid=100)`.
+* M4's tests did not see it. They run on a virtual clock, which never reaches the context's real deadline, and the fake `Up` ignored its context.
+* **Measured** with a probe test in a scratch copy of the tree, on the real clock, with a 400 ms timeout and a service that ignores the stop. Only the process table was faked, and the fake `Up` failed on an ended context, as `ExecRunner` does:
+
+  | `Down` returns after | The restoring `Up`'s context | Wanted up after `Stop` |
+  | :--- | :--- | :--- |
+  | at once | ended 457 µs before; `context deadline exceeded` | false |
+  | 200 ms | ended 1.09 ms before; `context deadline exceeded` | false |
+
+  A first run of the at-once case passed with the context a few microseconds from its end, so that case is a race at best.
+* OpenRC is the worst case. magic-cli-remote's probes measured `rc-service stop` blocking about 48 s inside its 75 s `Poll.Timeout`.
+
+**Decision** (the owner, 2026-10-26: "fix the bug now"). D4-C stands, with steps 5 and 6 made exact:
+
+* **Step 5.** The wait and its context share one start, taken before `Down`. `Poll.Timeout` bounds `Down` and the wait together, as the context already did. A wait that reaches the bound reports `ErrTimeout` with its last observation, whether the clock or the context ends it first: both are the same bound.
+* **Step 6.** `Up` runs on a context of its own, bounded by `Poll.Timeout` and, like the wait, not ended by the caller's context. A `Stop` that fails can therefore take up to twice `Poll.Timeout`.
+* **Not chosen:**
+  * Reserving part of `Poll.Timeout` for the restore. It shortens every stop's wait, and no share fits an `Up` that may first start a session supervisor.
+  * Running the restore on the caller's context. A caller that gave up would skip it, which 0015-MADR B3 rules out for the stop itself.
+
+Phase M11 of [0035-PLAN-serve-supervisors-through-a-supervised-adapter.md](0035-PLAN-serve-supervisors-through-a-supervised-adapter.md) carries it, and `v1.22.1` releases it on the owner's word.

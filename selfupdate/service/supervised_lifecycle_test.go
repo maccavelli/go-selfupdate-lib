@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -20,7 +21,8 @@ import (
 // fakeSup models a supervisor and its one service. After Down, the
 // service's process exits on the clock tick downAfter ticks later, or
 // never when downAfter is negative (a program that ignores TERM); Kill
-// ends it at once.
+// ends it at once. Like a command run through ExecRunner, a call on an
+// ended context fails and changes nothing (0035-MADR Amendment A3).
 type fakeSup struct {
 	mu         sync.Mutex
 	calls      []string
@@ -51,7 +53,10 @@ func newFakeSup(c *vclock) *fakeSup {
 
 func (f *fakeSup) record(call string) { f.calls = append(f.calls, call) }
 
-func (f *fakeSup) State(context.Context) (SupervisedState, error) {
+func (f *fakeSup) State(ctx context.Context) (SupervisedState, error) {
+	if err := ctx.Err(); err != nil {
+		return SupervisedState{}, err
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	st := SupervisedState{Installed: f.installed, Supervised: f.supervised, Up: f.up, WantUp: f.wantUp, NormallyUp: true}
@@ -65,7 +70,10 @@ func (f *fakeSup) State(context.Context) (SupervisedState, error) {
 	return st, nil
 }
 
-func (f *fakeSup) Up(context.Context) error {
+func (f *fakeSup) Up(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.record("up")
@@ -81,7 +89,10 @@ func (f *fakeSup) Up(context.Context) error {
 	return nil
 }
 
-func (f *fakeSup) Down(context.Context) error {
+func (f *fakeSup) Down(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.record("down")
@@ -92,7 +103,10 @@ func (f *fakeSup) Down(context.Context) error {
 	return nil
 }
 
-func (f *fakeSup) Kill(context.Context) error {
+func (f *fakeSup) Kill(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.record("kill")
@@ -249,6 +263,70 @@ func TestSupervisedStopTimeout(t *testing.T) {
 	}
 	if !f.wantUp || c.now().Sub(time.Time{}) < 4*time.Second {
 		t.Fatalf("want up %t after %s", f.wantUp, c.now().Sub(time.Time{}))
+	}
+}
+
+// TestSupervisedStopRestoresOnRealClock: on the real clock, a stop that
+// times out reports its last observation, and Up then runs on a context
+// with time left, whether Down returns at once or spends half the bound
+// (0035-MADR Amendment A3).
+func TestSupervisedStopRestoresOnRealClock(t *testing.T) {
+	testproc.CheckNoLeak(t)
+	const timeout = 400 * time.Millisecond
+	for _, downFor := range []time.Duration{0, timeout / 2} {
+		f := newFakeSup(&vclock{})
+		f.downAfter = -1
+		down := func(ctx context.Context) error {
+			time.Sleep(downFor)
+			return f.Down(ctx)
+		}
+		o := SupervisedOptions{
+			Name: "demo", State: f.State, Up: f.Up, Down: down,
+			Poll: PollOptions{Timeout: timeout, Interval: 20 * time.Millisecond, Settle: -1},
+		}
+		s, err := supervisedOn(o, goosLinux)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s.readStat, s.self = f.read, func() int { return 400 }
+		s.exe = func(pid int) (string, error) { return fmt.Sprintf("/opt/demo/demo-%d", pid), nil }
+		err = s.Stop(context.Background(), "demo")
+		if !errors.Is(err, ErrTimeout) || !strings.Contains(err.Error(), "still runs") {
+			t.Fatalf("Down for %s: Stop: %v, want ErrTimeout with the last observation", downFor, err)
+		}
+		if got := f.history(); !slices.Equal(got, []string{"down", "up"}) || !f.wantUp {
+			t.Fatalf("Down for %s: calls %q, want up %t; want down, then up with time left", downFor, got, f.wantUp)
+		}
+	}
+}
+
+// TestSupervisedStopBoundIncludesDown: Poll's timeout and KillAfter count
+// from before Down, so a Down that blocks, as OpenRC's rc-service stop
+// does, leaves Kill and the timeout where they were
+// (0035-MADR Amendment A3).
+func TestSupervisedStopBoundIncludesDown(t *testing.T) {
+	testproc.CheckNoLeak(t)
+	for _, killNop := range []bool{false, true} {
+		f := newFakeSup(&vclock{})
+		f.downAfter, f.killNop = -1, killNop
+		s, c := supervisedOver(t, f, true, 400)
+		s.o.Down = func(ctx context.Context) error {
+			if err := c.sleep(ctx, 3*time.Second); err != nil {
+				return err
+			}
+			return f.Down(ctx)
+		}
+		err := s.Stop(context.Background(), "demo")
+		if at := f.killAt.Sub(time.Time{}); at != 3*time.Second {
+			t.Fatalf("killed at %s, want at once after Down's 3 s, past KillAfter's 1 s", at)
+		}
+		took := c.now().Sub(time.Time{})
+		switch {
+		case !killNop && err != nil:
+			t.Fatalf("a stop the kill ends: %v", err)
+		case killNop && (!errors.Is(err, ErrTimeout) || took > 4*time.Second):
+			t.Fatalf("a kill that ends nothing: %v after %s, want ErrTimeout at the 4 s bound", err, took)
+		}
 	}
 }
 

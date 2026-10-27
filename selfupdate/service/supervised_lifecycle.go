@@ -21,14 +21,17 @@ import (
 //     binary it runs;
 //  4. it calls Down;
 //  5. it waits until State reports the service down and the recorded
-//     process has gone, bounded by Poll's timeout whatever the caller's
-//     context does, and returns that context's error after
+//     process has gone, bounded by Poll's timeout, counted from before
+//     Down, whatever the caller's context does, and returns that
+//     context's error after
 //     (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md
 //     B3). Kill, when set, is called once when the wait reaches KillAfter;
 //  6. when the stop fails with the recorded process still running, it
 //     calls Up, so the supervisor wants the service up again, as it did
 //     before (docs/decisions/0024-MADR-documentation-pass-after-v1-15-1.md
-//     D4-A). Kill's error is part of Stop's only when the stop fails.
+//     D4-A). Up has a bound of its own, Poll's timeout, so a failed Stop
+//     can take twice that (0035-MADR Amendment A3). Kill's error is part
+//     of Stop's only when the stop fails.
 //
 // A service that is down and not wanted up is left as it is. With no
 // supervisor, nothing can be stopped: Stop returns nil when nothing runs,
@@ -84,6 +87,9 @@ func (s *Supervised) Stop(ctx context.Context, _ string) (err error) {
 
 	caller := ctx
 	timeout := s.o.Poll.withDefaults().Timeout
+	// One bound, from before Down, for Down and the wait
+	// (0035-MADR Amendment A3).
+	begin := s.now()
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
 	defer cancel()
 	defer func() { err = errors.Join(err, caller.Err()) }()
@@ -93,26 +99,29 @@ func (s *Supervised) Stop(ctx context.Context, _ string) (err error) {
 	if werr != nil {
 		werr = s.fail("stop", werr)
 	} else {
-		killErr, werr = s.waitDown(ctx, rec, timeout)
+		killErr, werr = s.waitDown(ctx, rec, begin, timeout)
 	}
 	if werr == nil {
 		return nil
 	}
 	werr = errors.Join(werr, killErr)
 	if alive, aerr := s.still(rec); aerr == nil && alive {
-		if uerr := s.o.Up(ctx); uerr != nil {
+		// The wait may have spent ctx, so Up gets a bound of its own.
+		uctx, ucancel := context.WithTimeout(context.WithoutCancel(caller), timeout)
+		defer ucancel()
+		if uerr := s.o.Up(uctx); uerr != nil {
 			werr = errors.Join(werr, s.fail("start again after the failed stop of", uerr))
 		}
 	}
 	return werr
 }
 
-// waitDown waits, for at most limit by this Supervised's clock, until State
-// reports the service down and rec has gone, calling Kill once at
-// KillAfter. Its error is ErrTimeout, with the last observation; killErr
-// is Kill's, which Stop reports only when the stop fails.
-func (s *Supervised) waitDown(ctx context.Context, rec instance, limit time.Duration) (killErr, err error) {
-	begin := s.now()
+// waitDown waits, until limit after begin by this Supervised's clock,
+// until State reports the service down and rec has gone, calling Kill
+// once at KillAfter. Its error is ErrTimeout, with the last observation,
+// when the clock or ctx's deadline, the same bound, ends it; killErr is
+// Kill's, which Stop reports only when the stop fails.
+func (s *Supervised) waitDown(ctx context.Context, rec instance, begin time.Time, limit time.Duration) (killErr, err error) {
 	end, killAt := begin.Add(limit), begin.Add(s.o.KillAfter)
 	killed := false
 	var last SupervisedState
@@ -135,17 +144,15 @@ func (s *Supervised) waitDown(ctx context.Context, rec instance, limit time.Dura
 				killErr = s.fail("kill", kerr)
 			}
 		}
-		if !now.Before(end) {
-			seen := fmt.Sprintf("up=%t pid=%d", last.Up, last.PID)
-			if last.Detail != "" {
-				seen += " " + last.Detail
-			}
-			terr := fmt.Errorf("%w: %s still runs %s after it was stopped (last: %s)", ErrTimeout, s.name, limit, seen)
-			return killErr, errors.Join(terr, lastErr)
+		if now.Before(end) && s.sleep(ctx, min(s.o.Poll.withDefaults().Interval, end.Sub(now))) == nil {
+			continue
 		}
-		if err := s.sleep(ctx, min(s.o.Poll.withDefaults().Interval, end.Sub(now))); err != nil {
-			return killErr, fmt.Errorf("%w: %s: %w", ErrTimeout, s.name, err)
+		seen := fmt.Sprintf("up=%t pid=%d", last.Up, last.PID)
+		if last.Detail != "" {
+			seen += " " + last.Detail
 		}
+		terr := fmt.Errorf("%w: %s still runs %s after it was stopped (last: %s)", ErrTimeout, s.name, limit, seen)
+		return killErr, errors.Join(terr, lastErr)
 	}
 }
 

@@ -1,6 +1,6 @@
 ---
-status: complete
-date: 2026-10-25
+status: in-progress
+date: 2026-10-26
 associated-madr: "0035-MADR-serve-supervisors-through-a-supervised-adapter.md"
 ---
 # Implement `service.Supervised`, `internal/procfs` and `ErrNoSupervisor`, and release `v1.22.0`
@@ -376,6 +376,40 @@ Added after closing, for a flaky test found in CI
 3. `make pre-add-check` on the file, the commit on the owner's word,
    and a green CI run on `main` after the push. This plan then returns
    to `complete`.
+
+### Phase M11: the restore after a failed stop (added 2026-10-26)
+
+Added after closing, for a bug found reading the adapter for
+magic-cli-remote#27 (the MADR's Amendment A3). The owner's word,
+2026-10-26: "fix the bug now".
+
+1. **`selfupdate/service/supervised_lifecycle.go`:**
+   * `Stop` takes the wait's start before `Down`, and `waitDown` measures
+     its bound and `KillAfter` from it;
+   * a wait that reaches the bound, by the clock or by the context's
+     deadline, reports `ErrTimeout` with its last observation;
+   * the restoring `Up` runs on a context of its own, `Poll.Timeout`
+     long and not ended by the caller's;
+   * `Stop`'s comment, steps 5 and 6, says so.
+2. **`selfupdate/service/supervised_lifecycle_test.go`:**
+   * the fake supervisor's `State`, `Up`, `Down` and `Kill` fail on an
+     ended context, as `ExecRunner` does;
+   * a new test runs `Stop` on the real clock against a service that
+     ignores the stop, with `Down` returning at once and after half the
+     timeout. Each must time out with its last observation, call `Down`
+     then `Up`, and leave the service wanted up.
+3. **Seen failing:** the new test against `v1.22.0`'s `Stop`, and two
+   plants in scratch copies: (z1) the restore on the stop's context,
+   (z2) the wait's start taken after `Down`.
+4. **`docs/guides/extending-selfupdate.md`:** the guarantee says the
+   restore has a bound of its own.
+5. **Checks:** `make pre-add-check` on the Go files, `make gate`, the
+   four documentation targets, and the package's tests under `-race`
+   and `-shuffle=on` on the Linux test host. The commit on the owner's
+   word.
+6. **Release:** `v1.22.1` follows on the owner's word, with its
+   `CHANGELOG.md` entry and migration-guide section. It is not part of
+   M11.
 
 ## Verification
 
@@ -1051,3 +1085,41 @@ Not done here, as the plan's scope says:
   M2's runs passed only because other tests ran first, so the test binary was over a tick old when the child started. Plant (y) shows the new comparison is the line that holds. The remote directory was removed.
 * **Runs:** `go test -count=10 -shuffle=on ./internal/procfs/` on the Linux test host: `ok`. `make pre-add-check` on the file: "1 file(s) clean (gofmt, golangci-lint, go vet, go test, govulncheck)".
 * **Closing:** the owner committed M10 as `8d82512` (records) and `bb3585c` (the test), and pushed them. CI run 40226404892 on `bb3585c` completed `success`, all 18 jobs, the shuffled Linux step included, and Docs run 40226404890 `success`. This plan returns to `complete`; the MADR stays `accepted`.
+
+### Deviation found after closing (2026-10-26): the restore after a failed stop has no time left
+
+* **Found** reading the adapter for magic-cli-remote#27. `Stop` runs its restoring `Up` on the stop's context, which the wait has always spent: the MADR's Amendment A3 has the code, the cause and the probe.
+* **Decision (the owner, 2026-10-26, "fix the bug now").** Phase M11, above. This plan is `in-progress` until M11's CI run on `main` is green.
+
+### M11: the restore after a failed stop (2026-10-26)
+
+* **`selfupdate/service/supervised_lifecycle.go`:**
+  * `Stop` takes `begin` before `Down`, and passes it to `waitDown`, which measures its end and `KillAfter` from it.
+  * `waitDown` reports the same `ErrTimeout`, `… still runs <timeout> after it was stopped (last: …)`, whether its clock or the context's deadline ends the wait, in place of `timed out: demo: context deadline exceeded` for the second.
+  * The restoring `Up` runs on `context.WithTimeout(context.WithoutCancel(caller), timeout)`.
+  * `Stop`'s comment, steps 5 and 6, says so and cites Amendment A3.
+* **`selfupdate/service/supervised_lifecycle_test.go`:**
+  * The fake supervisor's `State`, `Up`, `Down` and `Kill` return the context's error, and change and record nothing, on an ended context.
+  * `TestSupervisedStopRestoresOnRealClock` runs `Stop` on the real clock against a service that ignores the stop, with a 400 ms timeout and `Down` returning at once and after 200 ms. Each must be `ErrTimeout` with "still runs", call `down` then `up`, and leave the service wanted up.
+  * `TestSupervisedStopBoundIncludesDown` is added to step 2's list, since plant (z2) needs a test that observes the start. It runs on the virtual clock, with a `Down` that takes 3 s of a 4 s timeout and `KillAfter` 1 s. `Kill` must run at 3 s, at once after `Down`. With a kill that ends the process, the stop succeeds. With one that ends nothing, it is `ErrTimeout` at the 4 s bound.
+* **Seen failing** (`plants_m11.py`, each a scratch copy of the tree, the tree untouched):
+
+  | Variant | `…RestoresOnRealClock` | `…BoundIncludesDown` |
+  | :--- | :--- | :--- |
+  | v0, `v1.22.0`'s `supervised_lifecycle.go` | FAIL: `Down for 0s: calls ["down"], want up false` | FAIL: `killed at 4s, want at once after Down's 3 s` |
+  | (z1), the restore on the stop's context | FAIL: `Down for 0s: calls ["down"], want up false` | pass |
+  | (z2), the wait's start taken after `Down` | pass | FAIL: `killed at 4s, want at once after Down's 3 s` |
+
+  Each plant fails the test aimed at it, and only that test.
+* **`docs/guides/extending-selfupdate.md`:** the supervisor guarantees say that the timeout counts from before `Down`, and that the restore has a context of its own, so a failed `Stop` can take twice `Poll.Timeout`. They also say how it behaved before `v1.22.1`.
+* **Runs:**
+  * `go test -count=3 -race -shuffle=on ./selfupdate/service/`: `ok`, here and on the Linux test host.
+  * `make pre-add-check` on the two Go files: "2 file(s) clean (gofmt, golangci-lint, go vet, go test, govulncheck)".
+  * `make gate`: `overall=0`, with `apicheck` "compatible with v1.22.0".
+  * `make markdownlint`, `make check-records`, `make docs-check` and `make disclosure-check`: each exit 0; the last "699 files, 16 deny-list rules, 0 findings".
+* **Not changed:** the `scm` and `taskscheduler` backends also bound their stop with a deadline over `context.WithoutCancel`. Whether either restores on a spent context was not read here, and a finding there would be a record of its own.
+* **Waiting:**
+  * the commit on the owner's word, a push, and a green CI run on `main`;
+  * `v1.22.1` on the owner's word.
+
+  This plan then returns to `complete`.
