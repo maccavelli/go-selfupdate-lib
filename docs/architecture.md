@@ -30,8 +30,8 @@ declared `github.com/maccavelli/go-core-lib`, so the module's version
 list starts at `v1.5.0`
 ([0025-MADR](decisions/0025-MADR-align-with-go-sdk-design-practices.md) D7).
 Its current
-release is `v1.22.1`, an annotated tag on commit
-`4d9ae417f61c4cdd0a7bccd1d342d773d9cc34cd`. `v1.5.0`, the first under this
+release is `v1.22.2`, an annotated tag on commit
+`50deb3f1317bcd9142f2c91be2b5609957c677c9`. `v1.5.0`, the first under this
 path, is the annotated tag on commit
 `6deaa524cfb28aad90bea97a6d9162e5b4257204`.
 

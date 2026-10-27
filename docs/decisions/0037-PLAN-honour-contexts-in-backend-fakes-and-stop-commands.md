@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 date: 2026-10-27
 associated-madr: "0037-MADR-honour-contexts-in-backend-fakes-and-stop-commands.md"
 ---
@@ -203,3 +203,34 @@ The owner answered "proceed" to the proposed pair, which approves this plan and 
 * The owner committed N2 to N5 as `9fc2ed6`, `ca84b70`, `3c1951f` and `ef560c5`, and said "proceed".
 * **Step 1:** `CHANGELOG.md` gains `## v1.22.2 - 2026-10-27`, under `### Fixed`. The migration guide's §22 gains "From v1.22.1 to v1.22.2". The pins stay at `v1.22.1` until the pin commit.
 * **Gate:** `make gate` with this change in the tree: `overall=0`, with `apicheck` "compatible with v1.22.1", `links` "836 links in 99 files, 0 broken" and `ids` "3 files, 16 deny-list rules, 0 findings". The four documentation targets each exit 0. `scripts/check-release-tag.sh v1.22.2` exited 0, and no `v1.22.2` tag exists on `origin`.
+* **Step 2:** the owner committed the pre-tag change as `50deb3f`. The disclosure guard passed over the five commits `main` was ahead of `origin` (`9fc2ed6` to `50deb3f`), and the owner pushed them.
+  * CI run 40529249460's first attempt passed 16 jobs, including every live test. `TestLiveStopInfinityTimesOut` passed in system and user scope (3.58 s).
+  * `release-rehearsal-archive / identity (relay, darwin/arm64)` was cancelled: "The job was not acquired by Runner of type hosted even after multiple attempts", with GitHub's notice of macOS arm64 capacity constraints. No step of it ran, and `release-rehearsal-check`, which needs it, was skipped.
+  * On the owner's "rerun", `gh run rerun 40529249460 --failed`: attempt 2 completed `success`, all 18 jobs. Docs run 40529249462 `success`.
+* **Step 3:** `scripts/check-release-tag.sh v1.22.2` had exited 0 (step 1). The owner made the annotated tag and pushed it: tag object `2af9c53…`, on `50deb3f`.
+* **Step 4:** the tag's CI run 40537640616 completed `success` on its first attempt, all 18 jobs. Its identity legs print `v1.22.2 (release) 50deb3f1317b`, 10 times. `TestLiveStopInfinityTimesOut` passed in both scopes (3.59 s, 3.33 s), as did `TestLiveStopWaitsForSlowExit` (8.27 s) and `TestLiveSupervisedS6` (8.32 s).
+* **Step 5, this commit:** `git diff --stat v1.22.1 v1.22.2 -- .github internal/cmd scripts go.mod go.sum` is empty, so the pins move with no other change. Moved to `v1.22.2` and `50deb3f…` (`n6pins.py`, each count asserted):
+  * `README.md`'s current release, `go get` line and publish pin;
+  * `docs/architecture.md`'s current release and commit;
+  * `building-releases.md`'s "examples below pin", three workflow pins and `git ls-remote` example;
+  * in the migration guide: the 18 `go get` and 16 `go list -m` lines, "is the current release", §3's workflow pin, "the example pins" and its range, `git ls-remote`, §5's "Require go-selfupdate-lib", and §2's release list, which gains `v1.22.2` and links its section.
+
+  Lines that name `v1.22.1` as history stay.
+* **Step 6:** `go list -m -json github.com/maccavelli/go-selfupdate-lib@v1.22.2` gives `Hash 50deb3f1317bcd9142f2c91be2b5609957c677c9`, `Ref refs/tags/v1.22.2`, `Time 2026-10-27T15:11:15Z` (UTC), and `@latest` resolves to `v1.22.2`.
+
+### Verification, at closing (2026-10-27)
+
+* **V1:** P1 and P2 are in the MADR's Amendment A1. Amendment A2 records the line of 0011 that D2-A supersedes.
+* **V2:** both fakes fail on an ended context, plants (a) and (b) failed, and every existing test passed with them. No deviation was needed.
+* **V3:**
+  * the tests for D2-A to D5-A failed on the code before the change: plants (c) to (g), and the systemd live test, still blocked at 30 s;
+  * all pass after: the systemd live tests on the Linux test host, the WSL and CI, and the launchd live tests on this host and CI.
+* **V4:** `make apicheck` reported compatibility with `v1.22.1` at each phase and before the tag.
+* **V5:** `v1.22.2` is tagged, its CI is green, and the proxy serves it as `@latest`.
+
+Not done here, as the plan's scope says, or as found:
+
+* scm is unchanged (MADR F6).
+* The Task Scheduler grace path, where the bound runs out within the grace, is not covered by a test (N5).
+* The live Task Scheduler tests were not run, since its live path changed only in a message.
+* Programs that adopt `v1.22.2` do so in their own repositories. magic-cli-remote's systemd and launchd backends take the stop fixes with the bump.

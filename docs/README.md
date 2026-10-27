@@ -93,7 +93,7 @@ name, and the files they cite moved with the rename
 | 0036 | MADR | [Align docs-only CI and disclosure gates](decisions/0036-MADR-align-docs-ci-and-disclosure-gates.md) | accepted |
 | 0036 | PLAN | [Implement aligned docs-only CI and disclosure gates](decisions/0036-PLAN-align-docs-ci-and-disclosure-gates.md) | complete |
 | 0037 | MADR | [Make the backend fakes honour their context, and bound every stop command the way its wait is bounded](decisions/0037-MADR-honour-contexts-in-backend-fakes-and-stop-commands.md) | accepted |
-| 0037 | PLAN | [Implement context-honest fakes and bounded stop commands for systemd, launchd and Task Scheduler](decisions/0037-PLAN-honour-contexts-in-backend-fakes-and-stop-commands.md) | in-progress |
+| 0037 | PLAN | [Implement context-honest fakes and bounded stop commands for systemd, launchd and Task Scheduler](decisions/0037-PLAN-honour-contexts-in-backend-fakes-and-stop-commands.md) | complete |
 
 ## I want to…
 
