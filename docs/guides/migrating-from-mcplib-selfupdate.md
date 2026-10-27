@@ -1662,6 +1662,31 @@ What each change does is in the [changelog](../../CHANGELOG.md).
 - **Set `DetachCheck` for an OpenRC system service** whose
   `rc_cgroup_cleanup` is on.
 
+### From v1.22.0 to v1.22.1
+
+`v1.22.1` changes no exported API: `make apicheck` reports it compatible
+with `v1.22.0`. §22's `go get` above takes the current release. What
+changed, and why, is in
+[0035-MADR](../decisions/0035-MADR-serve-supervisors-through-a-supervised-adapter.md)'s Amendment A3.
+
+- **A failed stop wants the service up again.** When `Supervised.Stop`
+  failed with the process still running, it called your `Up` on the
+  stop's context, which its wait had already spent, so a command your
+  `Up` ran never started, and the supervisor was left not wanting the
+  service up. `Up` now gets a context of its own, `Poll.Timeout` long.
+- **The stop's bound counts from before `Down`.** `Poll.Timeout` and
+  `KillAfter` count from before your `Down`, as the stop's context
+  already did, so a `Down` that blocks, as `rc-service stop` does, leaves
+  `Kill` inside the bound. A stop that times out reports its last
+  observation.
+
+Adopting it:
+
+- **A `Stop` that fails can take up to twice `Poll.Timeout`:** the wait,
+  then `Up`. If your program bounds the update with a deadline of its
+  own, allow for that.
+- Nothing changes for a program that does not call `NewSupervised`.
+
 ### Check
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.

@@ -8,6 +8,21 @@ listed in the
 [migration guide](docs/guides/migrating-from-mcplib-selfupdate.md), one
 section per release, and each entry links its section and its records.
 
+## v1.22.1 - 2026-10-26
+
+### Fixed
+
+- `service.Supervised`'s `Stop`, when a stop fails with the process still
+  running, calls `Up` on a context of its own, `Poll.Timeout` long. It ran
+  on the stop's context, which the wait had spent, so the supervisor was
+  left not wanting the service up. `Poll.Timeout` and `KillAfter` now
+  count from before `Down`, and a stop that times out reports its last
+  observation.
+
+See [the guide](docs/guides/migrating-from-mcplib-selfupdate.md#from-v1220-to-v1221),
+[0035-MADR](docs/decisions/0035-MADR-serve-supervisors-through-a-supervised-adapter.md) Amendment A3 and
+[0035-PLAN](docs/decisions/0035-PLAN-serve-supervisors-through-a-supervised-adapter.md) M11.
+
 ## v1.22.0 - 2026-10-24
 
 See [the guide](docs/guides/migrating-from-mcplib-selfupdate.md#22-from-v121-to-v122),

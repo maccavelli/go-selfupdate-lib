@@ -410,11 +410,28 @@ magic-cli-remote#27 (the MADR's Amendment A3). The owner's word,
 6. **Release:** `v1.22.1` follows on the owner's word, with its
    `CHANGELOG.md` entry and migration-guide section. It is not part of
    M11.
-7. *Added 2026-10-27, Deviation D4:* `selfupdate/service/supervised_health_test.go`.
+7. *Added 2026-10-26, Deviation D4:* `selfupdate/service/supervised_health_test.go`.
    The health tests' clock advances one poll interval per `State`
    reading, so the restart window counts readings. A planted 10 ms
    latency per reading no longer fails them, and a plant (z4) that
    widens the window still fails the too-long restart.
+
+### Phase M12: `v1.22.1` (added 2026-10-26)
+
+The owner's word, 2026-10-26: "prepare v1.22.1". As M8:
+
+1. the pre-tag change, a `## v1.22.1` entry in `CHANGELOG.md` and a
+   "From v1.22.0 to v1.22.1" section in the migration guide's §22, and
+   `make gate`;
+2. the push and CI on `main`;
+3. the tag check, the disclosure guard, and the tag on the owner's word;
+4. the tag's CI, its identity legs printing `v1.22.1 (release) <12hex>`;
+5. the pin commit;
+6. the proxy;
+7. on the owner's ask, a comment on magic-cli-remote#27 naming
+   `v1.22.1` for its adapter phase.
+
+This plan then returns to `complete`.
 
 ## Verification
 
@@ -1125,16 +1142,16 @@ Not done here, as the plan's scope says:
 * **Not changed:** the `scm` and `taskscheduler` backends also bound their stop with a deadline over `context.WithoutCancel`. Whether either restores on a spent context was not read here, and a finding there would be a record of its own.
 * **Committed and pushed** by the owner as `685e0c2`. Its CI run failed one Windows job on a pre-existing flake: Deviation D4, below.
 
-### Deviation D4 (2026-10-27): the health test's restart window runs on wall time
+### Deviation D4 (2026-10-26): the health test's restart window runs on wall time
 
 * **Found** in CI run 40438257320 on `685e0c2`, M11's commit: 17 of 18 jobs passed, and `validate (windows-2025)` failed in `go test ./...`: `supervised_health_test.go:89: several readings of one restart: selfupdate: service: not healthy: demo keeps exiting while its supervisor starts it again, for over 30ms (demo up=false instance="" want_up=true), want <nil>`. Docs run 40438257211 passed.
 * **Pre-existing, from M5.** M11 changed neither `WaitHealthy` nor `supervised_health_test.go`. That case scripts four `Restarting` readings, then up, and `WaitHealthy` measures how long `Restarting` lasts with `s.now()`, which `healthOver` leaves on the real clock. Four readings, 1 ms apart, must therefore arrive within the 30 ms settle window, in wall time.
 * **Measured:**
   * on the Windows test host, `-count=300 -run ^TestSupervisedWaitHealthy$`, at `685e0c2` and at `v1.22.0`: 0 failures each, so the failure needs a loaded runner;
   * in a scratch copy, with 10 ms of latency added to each scripted reading (`wh_latency.py`): the same failure and message; with none, a pass.
-* **Decision (the owner, 2026-10-27, "Virtual clock, in M11").** `healthOver`'s clock advances one poll interval per `State` reading, so the window counts readings, whatever the runner's speed. The assertions are unchanged. `supervised_health_test.go` joins M11 (step 7). Not chosen: widening the test's window, which only makes the failure rarer; re-running the job, which leaves the flake for the tag run.
+* **Decision (the owner, 2026-10-26, "Virtual clock, in M11").** `healthOver`'s clock advances one poll interval per `State` reading, so the window counts readings, whatever the runner's speed. The assertions are unchanged. `supervised_health_test.go` joins M11 (step 7). Not chosen: widening the test's window, which only makes the failure rarer; re-running the job, which leaves the flake for the tag run.
 
-### D4: the result (2026-10-27)
+### D4: the result (2026-10-26)
 
 * **`selfupdate/service/supervised_health_test.go`:** `healthOver` wraps the scripted `State` in one that advances a test clock by the 1 ms poll interval per reading, and sets the `Supervised`'s `now` to that clock. A comment cites this deviation. No case or assertion changed.
 * **Seen** (`plants_d4.py`, scratch copies, the tree untouched), `-run ^TestSupervisedWaitHealthy$`:
@@ -1156,3 +1173,11 @@ Not done here, as the plan's scope says:
   * `v1.22.1` on the owner's word.
 
   This plan then returns to `complete`.
+
+* **Closing M11:** the owner committed and pushed D4 as `7e20f57`. CI run 40441766869 completed `success`, all 18 jobs, `validate (windows-2025)` included, and Docs run 40441766876 `success`.
+* **Dates corrected, 2026-10-26:** D4's entries were first dated 2026-10-27, the UTC date of its CI run. They now carry the owner's local date, as every other entry does.
+
+### M12: `v1.22.1` (2026-10-26)
+
+* **Step 1:** `CHANGELOG.md` gains `## v1.22.1 - 2026-10-26`, under `### Fixed`. The migration guide's §22 gains "From v1.22.0 to v1.22.1". The pins stay at `v1.22.0` until step 5.
+* **Gate:** `make gate` with this change in the tree: `overall=0`, with `apicheck` "compatible with v1.22.0", `links` "822 links in 97 files, 0 broken" and `ids` "3 files, 16 deny-list rules, 0 findings". `make markdownlint`, `make check-records`, `make docs-check` and `make disclosure-check`: each exit 0. `scripts/check-release-tag.sh v1.22.1` exited 0, and no `v1.22.1` tag exists here or on `origin`.
