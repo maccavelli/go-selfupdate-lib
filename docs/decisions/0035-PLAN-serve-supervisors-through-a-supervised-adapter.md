@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 date: 2026-10-26
 associated-madr: "0035-MADR-serve-supervisors-through-a-supervised-adapter.md"
 ---
@@ -1181,3 +1181,16 @@ Not done here, as the plan's scope says:
 
 * **Step 1:** `CHANGELOG.md` gains `## v1.22.1 - 2026-10-26`, under `### Fixed`. The migration guide's §22 gains "From v1.22.0 to v1.22.1". The pins stay at `v1.22.0` until step 5.
 * **Gate:** `make gate` with this change in the tree: `overall=0`, with `apicheck` "compatible with v1.22.0", `links` "822 links in 97 files, 0 broken" and `ids` "3 files, 16 deny-list rules, 0 findings". `make markdownlint`, `make check-records`, `make docs-check` and `make disclosure-check`: each exit 0. `scripts/check-release-tag.sh v1.22.1` exited 0, and no `v1.22.1` tag exists here or on `origin`.
+* **Step 2:** the owner committed the pre-tag change as `4d9ae41`. The disclosure guard passed over it, the one commit `main` was ahead of `origin`, and the owner pushed it. It changed Markdown only, so Docs run 40449960656 ran alone and completed `success`. The code it tags passed CI in full on `7e20f57`, run 40441766869.
+* **Step 3:** `scripts/check-release-tag.sh v1.22.1` had exited 0 (step 1). The owner made the annotated tag and pushed it: tag object `56f5f20…`, on `4d9ae41`.
+* **Step 4:** the tag's CI run 40450082229 completed `success`, all 18 jobs. Its identity legs print `v1.22.1 (release) 4d9ae417f61c`, 10 times. `TestLiveSupervisedS6` passed on `ubuntu-24.04` (8.55 s). No GitHub release is made, as for every tag: 0030-MADR-publish-github-release-on-tag.md was rejected, Amendment A1.
+* **Step 5, this commit:** `git diff --stat v1.22.0 v1.22.1 -- .github internal/cmd scripts go.mod go.sum` shows `ci.yml`, `docs.yml` and five scripts, all from 0036-PLAN-align-docs-ci-and-disclosure-gates.md. The two release workflows that consumers pin, `build-selfupdate-release.yml` and `publish-selfupdate-release.yml`, have no diff, so the pins move with no other change. Moved to `v1.22.1` and `4d9ae41…` (`m12pins.py`, each count asserted):
+  * `README.md`'s current release, `go get` line and publish pin;
+  * `docs/architecture.md`'s current release and commit;
+  * `building-releases.md`'s "examples below pin", three workflow pins and `git ls-remote` example;
+  * in the migration guide: the 18 `go get` and 16 `go list -m` lines, "is the current release", §3's workflow pin, "the example pins" and its range, `git ls-remote`, §5's "Require go-selfupdate-lib", and §2's release list, which gains `v1.22.1` and links its section.
+
+  Lines that name `v1.22.0` as history stay: §2's entry, §22's opening, the "From v1.22.0 to v1.22.1" section, and the extending guide's "since `v1.22.0`".
+* **Step 6:** `go list -m -json github.com/maccavelli/go-selfupdate-lib@v1.22.1` gives `Hash 4d9ae417f61c4cdd0a7bccd1d342d773d9cc34cd`, `Ref refs/tags/v1.22.1`, `Time 2026-10-27T04:27:36Z` (UTC), and `@latest` resolves to `v1.22.1`.
+* **Step 7** waits on the owner's ask.
+* **Closing:** M11's fix is released, its CI and the tag's are green, and the proxy serves it. This plan returns to `complete`; the MADR stays `accepted`.
