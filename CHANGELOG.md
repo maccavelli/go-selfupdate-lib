@@ -8,6 +8,25 @@ listed in the
 [migration guide](docs/guides/migrating-from-mcplib-selfupdate.md), one
 section per release, and each entry links its section and its records.
 
+## v1.22.2 - 2026-10-27
+
+### Fixed
+
+- systemd's `Stop` runs `systemctl stop --no-block`, so its bound holds:
+  under `TimeoutStopSec=infinity`, a program that ignores TERM held `Stop`
+  for as long as it ran. A stop that outlives the bound is `ErrTimeout`.
+- launchd's `Stop` runs `bootout` on a context the caller cannot end,
+  bounded by the stop's bound, so a cancellation during it no longer
+  returns before the job has gone. A `bootstrap` that its bound ends
+  mid-run is `ErrTimeout`.
+- Task Scheduler's `Stop` reports `<path> still runs after it was
+  stopped` whichever clock ends its wait.
+- `CommandError.Backend`'s documentation covers a program's own commands.
+
+See [the guide](docs/guides/migrating-from-mcplib-selfupdate.md#from-v1221-to-v1222),
+[0037-MADR](docs/decisions/0037-MADR-honour-contexts-in-backend-fakes-and-stop-commands.md) and
+[0037-PLAN](docs/decisions/0037-PLAN-honour-contexts-in-backend-fakes-and-stop-commands.md).
+
 ## v1.22.1 - 2026-10-26
 
 ### Fixed

@@ -197,3 +197,9 @@ The owner answered "proceed" to the proposed pair, which approves this plan and 
   * `go test ./selfupdate/service/taskscheduler/` here: `ok`.
   * On the Windows test host: `taskscheduler` and `service` `ok`, then `taskscheduler` again after the grace path was restored, `ok`. The live Task Scheduler tests were not run: `Stop`'s live path is unchanged apart from the message.
 * **`make pre-add-check`** on the three Go files: "3 file(s) clean (gofmt, golangci-lint, go vet, go test, govulncheck)".
+
+### N6: `v1.22.2` (2026-10-27)
+
+* The owner committed N2 to N5 as `9fc2ed6`, `ca84b70`, `3c1951f` and `ef560c5`, and said "proceed".
+* **Step 1:** `CHANGELOG.md` gains `## v1.22.2 - 2026-10-27`, under `### Fixed`. The migration guide's §22 gains "From v1.22.1 to v1.22.2". The pins stay at `v1.22.1` until the pin commit.
+* **Gate:** `make gate` with this change in the tree: `overall=0`, with `apicheck` "compatible with v1.22.1", `links` "836 links in 99 files, 0 broken" and `ids` "3 files, 16 deny-list rules, 0 findings". The four documentation targets each exit 0. `scripts/check-release-tag.sh v1.22.2` exited 0, and no `v1.22.2` tag exists on `origin`.

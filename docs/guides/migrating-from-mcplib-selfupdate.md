@@ -1689,6 +1689,39 @@ Adopting it:
   own, allow for that.
 - Nothing changes for a program that does not call `NewSupervised`.
 
+### From v1.22.1 to v1.22.2
+
+`v1.22.2` changes no exported API: `make apicheck` reports it compatible
+with `v1.22.1`. §22's `go get` above takes the current release. What
+changed, and why, is in
+[0037-MADR](../decisions/0037-MADR-honour-contexts-in-backend-fakes-and-stop-commands.md).
+
+- **systemd's stop holds its bound.** `Stop` ran a blocking `systemctl
+  stop`, on a context neither yours nor the bound could end. Under
+  `TimeoutStopSec=infinity`, a program that ignores TERM held `Stop` for
+  as long as it ran. `Stop` now queues the job with `--no-block`, and
+  returns `ErrTimeout` at its bound, the longer of `Options.Poll.Timeout`
+  and `TimeoutStopUSec` plus 30 s, with the unit still stopping.
+- **launchd's stop outlives your context from `bootout` on.** A
+  cancellation during `bootout` killed `launchctl`, and `Stop` returned at
+  once while launchd could still be letting the job go. `bootout` now runs
+  to the stop's bound, and `Stop` waits for the job, then returns your
+  context's error.
+- **launchd's `Start`** returns `ErrTimeout` for a `bootstrap` that its
+  bound ends mid-run, as its documentation said.
+- **Task Scheduler's stop timeout** says `<path> still runs after it was
+  stopped` in every case. When the stop's context ran out first, it said
+  `context deadline exceeded`. The class, `ErrTimeout`, is unchanged.
+
+Adopting it:
+
+- **A unit with `TimeoutStopSec=infinity`** whose program can hang on stop
+  now fails the update with `ErrTimeout`, and the update rolls back,
+  rather than holding it. Give the program a stop it can finish, or set a
+  finite `TimeoutStopSec`.
+- **A test that matched Task Scheduler's timeout text** should test
+  `errors.Is(err, service.ErrTimeout)`.
+
 ### Check
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
