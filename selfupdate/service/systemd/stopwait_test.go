@@ -43,6 +43,35 @@ func TestStopFinishesAfterCancel(t *testing.T) {
 	}
 }
 
+// TestStopBoundsAJobThatNeverEnds: under TimeoutStopUSec=infinity, a
+// stop job whose program ignores TERM never ends. Stop only queues it, and
+// returns ErrTimeout at its bound, Poll's timeout, on the real clock
+// (docs/decisions/0037-MADR-honour-contexts-in-backend-fakes-and-stop-commands.md
+// D2-A; Amendment A1, P1).
+func TestStopBoundsAJobThatNeverEnds(t *testing.T) {
+	const timeout = 300 * time.Millisecond
+	f := newFake()
+	f.props["TimeoutStopUSec"] = "infinity"
+	f.onStop = func(p map[string]string) {
+		p["ActiveState"], p["SubState"] = "deactivating", "stop-sigterm"
+	}
+	f.stopBlocks = make(chan struct{})
+	u := testUnit(t, f, Options{Poll: service.PollOptions{Interval: 10 * time.Millisecond, Timeout: timeout}})
+	start := time.Now()
+	done := make(chan error, 1)
+	go func() { done <- u.Stop(context.Background(), "demo") }()
+	var err error
+	select {
+	case err = <-done:
+	case <-time.After(5 * time.Second):
+		close(f.stopBlocks)
+		t.Fatalf("Stop still blocked after 5 s on a stop job that never ends (then: %v)", <-done)
+	}
+	if took := time.Since(start); !errors.Is(err, service.ErrTimeout) || took < timeout || took > 3*time.Second {
+		t.Fatalf("Stop = %v after %s; want ErrTimeout at the %s bound", err, took, timeout)
+	}
+}
+
 // TestParseTimespan: systemctl show's time spans, and what is not one.
 func TestParseTimespan(t *testing.T) {
 	for in, want := range map[string]time.Duration{

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -30,6 +31,18 @@ type fakeSystemd struct {
 	// onReload changes props on daemon-reload, as systemd re-reading the
 	// unit's files does.
 	onReload func(map[string]string)
+	// stopBlocks, when set, holds a stop without --no-block until it is
+	// closed or the call's context ends.
+	stopBlocks chan struct{}
+}
+
+// blocksOnStop is a systemctl stop that waits for its job: one without
+// --no-block.
+func blocksOnStop(args []string) bool {
+	if len(args) > 0 && args[0] == "--user" {
+		args = args[1:]
+	}
+	return len(args) > 0 && args[0] == "stop" && !slices.Contains(args, "--no-block")
 }
 
 func newFake() *fakeSystemd {
@@ -50,6 +63,16 @@ func newFake() *fakeSystemd {
 func (f *fakeSystemd) Run(ctx context.Context, c service.Command) (service.Output, error) {
 	if err := ctx.Err(); err != nil {
 		return service.Output{}, err
+	}
+	if f.stopBlocks != nil && blocksOnStop(c.Args) {
+		// A stop without --no-block waits for its job, as systemctl does
+		// (0037-MADR Amendment A1, P1): until the test releases it, or
+		// until ctx ends, when ExecRunner would kill it.
+		select {
+		case <-f.stopBlocks:
+		case <-ctx.Done():
+			return service.Output{}, ctx.Err()
+		}
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()

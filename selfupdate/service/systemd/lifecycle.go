@@ -87,9 +87,14 @@ func (u *Unit) Stop(ctx context.Context, product string) error {
 	}
 	// Once the stop is issued the unit goes whatever the caller does, so
 	// neither the command nor the wait ends with the caller's context; its
-	// error is returned after (0015-MADR B3).
+	// error is returned after (0015-MADR B3). --no-block only queues the
+	// job, so the wait below, bounded by stopBound, is the stop's whole
+	// bound: a blocking stop waits on a program that ignores TERM under
+	// TimeoutStopSec=infinity for as long as it runs
+	// (docs/decisions/0037-MADR-honour-contexts-in-backend-fakes-and-stop-commands.md
+	// D2-A).
 	sctx := context.WithoutCancel(ctx)
-	out, err := u.systemctlRun(sctx, "stop", "--no-ask-password", "--quiet", "--", unit)
+	out, err := u.systemctlRun(sctx, "stop", "--no-block", "--no-ask-password", "--quiet", "--", unit)
 	if err != nil {
 		return err
 	}

@@ -132,3 +132,26 @@ The owner answered "proceed" to the proposed pair, which approves this plan and 
   | (b) launchd's check removed | FAIL: `Run on a cancelled context: <nil>, calls [["/bin/launchctl" "list"]]; want context.Canceled and none` |
 
 * **`make pre-add-check`** on the two files: "2 file(s) clean (gofmt, golangci-lint, go vet, go test, govulncheck)".
+
+### N3: systemd's stop (2026-10-27)
+
+* **`systemd/lifecycle.go`:** `Stop` runs `systemctl stop --no-block --no-ask-password --quiet -- <unit>`, with a comment citing D2-A. The wait after it is unchanged.
+* **`systemd/fake_test.go`:** `stopBlocks`, when set, holds a stop without `--no-block` until it is closed or the call's context ends, as P1 showed `systemctl` does. `blocksOnStop` tells such a stop apart.
+* **`systemd/stopwait_test.go`, `TestStopBoundsAJobThatNeverEnds`:** `TimeoutStopUSec` `infinity`, a job that stays `deactivating`, and a 300 ms `Poll.Timeout` on the real clock. `Stop` must return `ErrTimeout` between 300 ms and 3 s. The test bounds itself at 5 s, then releases the fake.
+* **`systemd/live_linux_test.go`:** an `ignore-term` mode, which reports ready and ignores TERM, and `TestLiveStopInfinityTimesOut`.
+  * The test runs a `TimeoutStopSec=infinity` unit with a 3 s `Poll.Timeout`. `Stop` must return `ErrTimeout` within 3 to 10 s, with the unit `deactivating`.
+  * Its cleanup kills the unit first, since cleanups run last first, and the shared cleanup's blocking `systemctl stop` would otherwise never end.
+  * Its first run failed on the test itself: `Poll.Settle 10s is not less than Poll.Timeout 3s`. It now sets `Settle: -1`.
+* **Seen failing:**
+
+  | Run | Result |
+  | :--- | :--- |
+  | (c) `plants_37.py N3`: the fake test against HEAD's `lifecycle.go` | FAIL: `Stop still blocked after 5 s on a stop job that never ends (then: … timed out: not ready within 300ms (last: demo.service ActiveState=deactivating SubState=stop-sigterm))` |
+  | `n3live_old.py`: the live test against HEAD's `lifecycle.go`, on the Linux test host | FAIL: `Stop still blocked after 30 s (then: <nil>)`. The test's KILL ended the unit, and so the blocked `systemctl` |
+
+* **Runs:**
+  * `go test ./selfupdate/service/systemd/` here: `ok`.
+  * `-run ^TestLive`, with `SELFUPDATE_REQUIRE_SYSTEMD=1` in user scope, all ten pass on the Linux test host and on the WSL. `TestLiveStopInfinityTimesOut` took 3.64 s and 3.20 s.
+  * No `selfupdate-live-*` unit was left on the Linux test host after any run.
+* **`make pre-add-check`** on the four files: "4 file(s) clean (gofmt, golangci-lint, go vet, go test, govulncheck)".
+* **Found:** 0011-MADR's systemd rules say `Stop` blocks on its job. D2-A supersedes that line, as the MADR's Amendment A2 records.

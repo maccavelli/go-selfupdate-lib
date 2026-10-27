@@ -187,3 +187,15 @@ F2 holds: the blocking command waits as long as the program runs, and killing it
 | `launchctl` killed at 50 ms | `bootout` had already exited 0. The job went 15.1 s later |
 
 F3 holds only within the few tens of milliseconds between launchd taking the request and `launchctl` exiting. A kill before that leaves the job running. `recoverStop` then reads it as running, which is right. D3-A stands for B3's sake, and its bound costs nothing. No job was left loaded.
+
+## Amendment A2 (2026-10-27): D2-A supersedes one line of 0011
+
+[0011-MADR-reference-service-lifecycles.md](0011-MADR-reference-service-lifecycles.md)'s systemd rules say "`Stop` and `Start` block on the job". Its PLAN's step 3 then checks `ActiveState`, "because the client's exit is not the job's result". This MADR's context did not cite that line.
+
+D2-A supersedes it for `Stop` only:
+
+* `Stop` queues its job with `--no-block`, and `waitState` reads the result, as 0011's step 3 already did.
+* `Start` still blocks on its job, bounded by the caller's context.
+* 0011 keeps its text, and this amendment records the change.
+
+Found while executing N3. It changes no decision: it names one that D2-A replaces.

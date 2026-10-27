@@ -45,8 +45,24 @@ func liveMode(mode string) int {
 		return liveService()
 	case "update":
 		return liveUpdate()
+	case "ignore-term":
+		return liveIgnoreTerm()
 	}
 	return 2
+}
+
+// liveIgnoreTerm reports ready, then ignores SIGTERM, as a program that
+// hangs on stop does
+// (docs/decisions/0037-PLAN-honour-contexts-in-backend-fakes-and-stop-commands.md
+// N3).
+func liveIgnoreTerm() int {
+	signal.Ignore(syscall.SIGTERM)
+	if _, err := Ready(); err != nil {
+		return 3
+	}
+	for {
+		time.Sleep(time.Hour)
+	}
 }
 
 // liveService is the unit's process. It reports ready, then waits for
@@ -546,5 +562,49 @@ func TestLiveReplaceBeforeStopHealthFailure(t *testing.T) {
 	}
 	if e.show(t, "ActiveState") != "active" {
 		t.Fatalf("after the rollback the unit is %s", e.show(t, "ActiveState"))
+	}
+}
+
+// TestLiveStopInfinityTimesOut: under TimeoutStopSec=infinity a program
+// that ignores TERM never stops. Stop returns ErrTimeout at Poll's
+// timeout, with the unit still deactivating, where a blocking systemctl
+// stop never returned
+// (docs/decisions/0037-MADR-honour-contexts-in-backend-fakes-and-stop-commands.md
+// D2-A; Amendment A1, P1).
+func TestLiveStopInfinityTimesOut(t *testing.T) {
+	scope := requireLive(t)
+	e := newLiveUnitWith(t, scope, liveUnitOpts{service: "TimeoutStopSec=infinity\n"}, liveModeEnv+"=ignore-term")
+	// Cleanups run last first: this one kills the unit before
+	// newLiveUnitWith's own, whose blocking stop would otherwise never end.
+	t.Cleanup(func() {
+		_ = e.systemctl("kill", "-s", "KILL", e.unit)
+		for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(100 * time.Millisecond) {
+			if s := e.show(t, "ActiveState"); s != "deactivating" && s != "active" {
+				break
+			}
+		}
+		_ = e.systemctl("reset-failed", e.unit)
+	})
+	const timeout = 3 * time.Second
+	u, err := New(Options{Unit: e.unit, Scope: scope, Poll: service.PollOptions{Interval: 100 * time.Millisecond, Timeout: timeout, Settle: -1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	done := make(chan error, 1)
+	go func() { done <- u.Stop(context.Background(), "demo") }()
+	select {
+	case err = <-done:
+	case <-time.After(30 * time.Second):
+		// Killing the unit ends a blocked systemctl stop, so Stop returns.
+		_ = e.systemctl("kill", "-s", "KILL", e.unit)
+		t.Fatalf("Stop still blocked after 30 s (then: %v)", <-done)
+	}
+	took := time.Since(start)
+	if !errors.Is(err, service.ErrTimeout) || took < timeout || took > timeout+7*time.Second {
+		t.Fatalf("Stop = %v after %s; want ErrTimeout at the %s bound", err, took, timeout)
+	}
+	if s := e.show(t, "ActiveState"); s != "deactivating" {
+		t.Fatalf("after Stop the unit is %s, want deactivating: the stop job still running", s)
 	}
 }
