@@ -494,3 +494,37 @@ Files: Q5's `replace.go`, `replace_unix.go`, `replace_windows.go`, `journal.go`,
 
 * **Found:** Q6's first step deletes the two seams no test sets, `osRename` and `evalSymlinks`; `evalSymlinks` is in `selfupdate/target.go`, which is Q7's.
 * **Decision:** the owner, 2026-10-28, chose "Move it to Q7 step 1", with the rest of target resolution. Q6 stays within its files.
+
+### Q7: `selfupdate` seams, the rest, and parallel tests (2026-10-28)
+
+Files: from the list, `selfupdate/target.go`, `github.go`, `credentials.go`, `confirmer.go`, `updater.go`, `version.go`, `checker.go`, `githubupdater.go`, `export_test.go`, `install_hardening_test.go`; `replace.go`, `session.go`, `standalone.go`, `types.go` and `runoptions.go` (Deviation D5); and the test files that used `withTempHome`, `noEnv`, `cacheEnv`, `progressRun`, `ttyPipe`, `SetRunningPlatform` or the seams they set. In all, 80 of the package's 88 test files changed, most for the `tempTarget` rename and step 7's `t.Parallel()`; `export_test.go` and `install_hardening_test.go` are among them.
+
+1. **Target resolution.** `osExecutable` and `userHomeDir` are `fsOps` fields, the installer's effects, and `resolveTarget`, `rawExecutablePath`, `allowedRoots` and `revalidateTarget` are `*fsOps` methods, reached through `StandaloneInstaller.ops()` and `beginSession`. `evalSymlinks` is deleted; its two callers call `filepath.EvalSymlinks` (Deviation D4). In the tests, `withTempHome` is `tempTarget`, which makes the directory and touches no state, and the 89 policies that named its target are `targetPolicy(exe)` or `specialPolicy(exe)`, which allow that directory as a root. The tests about the home root itself (`TestResolveTarget…`, `TestHomeUnavailableRoot`) set `userHomeDir` on their own `fsOps` (`homeFS`). On Windows a temporary directory is under the real home, so only those tests may rely on a home of their own; they do. `TestCheckerNeedsNoInstaller` loses its two seam lines: a Checker resolves no target.
+2. **`timeNow` deleted.** `clockNow`'s default, `GitHubSource.now`'s and `parseRateLimit`'s are `time.Now`. The check-cache tests set the Checker's `clock` (or pass `CheckerConfig.Clock`); `progressRun` and `progressUpdater` pass `Config.Clock`. An `env.src.now` line first added to `TestGitHubSecondaryRateLimitWithoutHeaders` was removed again: that test's limit carries no time, and a plant showed the line had no effect.
+3. **`lookupEnv` deleted.** `NewGitHubSource` calls `gitHubSourceFrom(opts, os.Getenv)`, and `EnvCredential` calls `envCredentialFrom(os.Getenv, …)`. The test helpers that build sources (`credServer.source`, `newGitHubEnv`, `hardeningSource`) pass `lookupIn(env)`, a map, so no test reads the real environment; the 20 `noEnv(t, nil)` calls went with `noEnv`, and the two tests that set variables pass a map.
+4. **`isTerminal` deleted.** `NewTerminalConfirmer` calls `terminalConfirmerFrom(in, out, term.IsTerminal)`; the tests that stood a pipe in for a terminal pass `alwaysTTY`.
+5. **`runningPlatform` deleted.** `Updater` and `Checker` hold `platform`, set by `New` and `NewChecker`, and copied by `Updater.Checker` and `run.checker`; `runningPlatform()` methods fall back to `runtimePlatform()` when it is zero. `validateRequest` and `normalizePlatform` take the platform. `SetRunningPlatform(u, p)` sets it on one Updater; `e2e_github_test.go`, `golden_test.go` and `stream_run_test.go` call it after `New`. A first name for the methods, `running`, collided with the Updater's one-run guard field and was renamed.
+6. **`setSeam` deleted.** No package-level function variable remains in `selfupdate`'s non-test files (a scan of every unexported package variable).
+7. **Parallel.** 402 top-level tests call `t.Parallel()` first. 45 stay sequential: those that call `CheckNoLeak`, `t.Setenv` or `t.Chdir`, directly or through `e2eUpdater`, `e2eUpdaterWithEnvToken` or `newE2E`. Go runs the sequential tests before it releases the parallel ones, so `CheckNoLeak`'s process-wide count sees no parallel test's goroutines.
+8. **Names.** The plan names the unexported constructors `newGitHubSource` and `newTerminalConfirmer`; the repository's revive rule `confusing-naming` refuses a name that differs from an exported one only by case, so they are `gitHubSourceFrom` and `terminalConfirmerFrom`, as `envCredentialFrom`.
+9. Plants, each in a scratch copy:
+
+   | Seam | Plant | Failure |
+   | :--- | :--- | :--- |
+   | `userHomeDir` | `os.UserHomeDir` in `allowedRoots` | `target_test.go:17: … TestResolveTargetHomeRoot…/demo is outside allowed roots` |
+   | `osExecutable` | `os.Executable` | `target_test.go:140: … selfupdate.test is outside allowed roots` |
+   | the Checker's and Updater's `Clock` | `clockNow` ignores it | `checkcache_test.go:70`, `:120`, `:140`, `:376` |
+   | the source's clock | `parseRateLimit(resp, time.Now)` | `github_test.go:307: … reset 0001-01-01T00:00:00Z` |
+   | the token's environment | `os.Getenv` | `github_test.go:137: token = "", want GH_TOKEN`; `credentials_test.go:155` |
+   | the credential's environment | `os.Getenv` | `credentials_test.go:374: … err=selfupdate: no credential` |
+   | the terminal check | `term.IsTerminal` | `confirmer_read_test.go:44: … pass --yes to apply without a TTY …` |
+   | the running platform | `runtimePlatform()` in `execute` | `golden_test.go:121: … cannot apply a linux/amd64 release on darwin/arm64 …`; `e2e_github_test.go:77` |
+
+   The source-clock plant was first run against `TestGitHubSecondaryRateLimitWithoutHeaders`, which never reads that clock, and passed; it fails the two tests that set `src.now`.
+10. **Runs:** after step 1, `go test -v ./selfupdate/` on the Windows test host, 841 passes and 11 skips as before. After step 7, `go test -race -count=3 -shuffle=on ./selfupdate/` on this Mac (66 s), the Linux test host (87 s) and the Windows test host (58 s); the stray-`.git` run of `./selfupdate/... ./buildinfo/ ./internal/...` clean. `make pre-add-check` on the 93 files: `93 file(s) clean`.
+11. **After the renames**: `go test -race -shuffle=on ./selfupdate/` on the Windows test host passed; `make gate`: every step rc=0, `apicheck` "compatible with v1.22.2", `overall=0`.
+
+### Deviation D5 (2026-10-28): Q7's list omits five production files
+
+* **Found:** step 1's target resolution is reached only through the installer and the session, so its lookups touched `replace.go` (the `fsOps` fields), `session.go` (`beginSession`'s re-check) and `standalone.go` (three `resolveTarget` calls). Those changes were made, and each step built and passed, before the omission was seen; the owner was told. Step 5 needs `types.go` (the `Updater` struct) and `runoptions.go` (`run.checker`). Test files that set these seams directly, rather than through the named helpers (`checker_test.go`, `checkcache_outcome_test.go`, `github_test.go`), were taken as within the list's intent.
+* **Decision:** the owner, 2026-10-28, chose "Add all five to Q7". No design change; no MADR change.

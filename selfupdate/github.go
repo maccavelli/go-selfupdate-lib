@@ -27,11 +27,6 @@ const (
 	maxRedirects      = 10
 )
 
-var (
-	lookupEnv = os.Getenv
-	timeNow   = time.Now
-)
-
 // GitHubSource is the canonical GitHub Releases implementation of ReleaseSource.
 // Formatting one with fmt or log/slog prints its repository and API origin,
 // never its token (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D1).
@@ -115,6 +110,12 @@ func inStream(ctx context.Context) bool {
 // the token once. It never mutates the caller's client or URL. The clone's
 // CheckRedirect is the source's own; the caller's is never called.
 func NewGitHubSource(opts GitHubOptions) (*GitHubSource, error) {
+	return gitHubSourceFrom(opts, os.Getenv)
+}
+
+// gitHubSourceFrom is NewGitHubSource with getenv for the environment the
+// token is resolved from; tests give it one of their own.
+func gitHubSourceFrom(opts GitHubOptions, getenv func(string) string) (*GitHubSource, error) {
 	if opts.Client == nil {
 		return nil, errors.New("selfupdate: github client is required; use selfupdate.DefaultHTTPClient()")
 	}
@@ -135,7 +136,7 @@ func NewGitHubSource(opts GitHubOptions) (*GitHubSource, error) {
 		return nil, err
 	}
 	cloned := *opts.Client
-	token, envName := resolveToken(opts.Token)
+	token, envName := resolveToken(opts.Token, getenv)
 	src := &GitHubSource{
 		repo:      opts.Repository,
 		client:    &cloned,
@@ -145,7 +146,7 @@ func NewGitHubSource(opts GitHubOptions) (*GitHubSource, error) {
 		explicit:  opts.Token != "",
 		envName:   envName,
 		limits:    opts.Limits,
-		now:       timeNow,
+		now:       time.Now,
 	}
 	if !isNil(opts.Credentials) {
 		src.provider = opts.Credentials
@@ -181,13 +182,13 @@ func validateUserAgent(ua string) error {
 }
 
 // resolveToken returns the explicit token, else GH_TOKEN, else
-// GITHUB_TOKEN, with the name of the variable it came from.
-func resolveToken(explicit string) (token, envName string) {
+// GITHUB_TOKEN from getenv, with the name of the variable it came from.
+func resolveToken(explicit string, getenv func(string) string) (token, envName string) {
 	if explicit != "" {
 		return explicit, ""
 	}
 	for _, name := range []string{"GH_TOKEN", "GITHUB_TOKEN"} {
-		if v := lookupEnv(name); v != "" {
+		if v := getenv(name); v != "" {
 			return v, name
 		}
 	}
@@ -931,7 +932,7 @@ func rateLimitedForbidden(resp *http.Response, body []byte) bool {
 
 func parseRateLimit(resp *http.Response, now func() time.Time) error {
 	if now == nil {
-		now = timeNow
+		now = time.Now
 	}
 	err := &RateLimitError{StatusCode: resp.StatusCode}
 	if v := strings.TrimSpace(resp.Header.Get("X-RateLimit-Remaining")); v != "" {

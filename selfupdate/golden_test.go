@@ -88,6 +88,7 @@ func goldenCases() []goldenCase {
 // the text and JSON Lines reporter output with testdata/golden byte for
 // byte. go test -run TestGolden -update rewrites the files.
 func TestGolden(t *testing.T) {
+	t.Parallel()
 	for _, c := range goldenCases() {
 		t.Run(c.name, func(t *testing.T) {
 			exe, policy := tempTarget(t)
@@ -114,6 +115,7 @@ func TestGolden(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			selfupdate.SetRunningPlatform(u, goldenPlatform)
 			res, err := u.Run(context.Background(), c.req)
 			if (c.wantErr == nil) != (err == nil) || (c.wantErr != nil && !errors.Is(err, c.wantErr)) {
 				t.Fatalf("err = %v, want %v", err, c.wantErr)

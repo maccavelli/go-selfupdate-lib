@@ -21,7 +21,8 @@ import (
 // (docs/decisions/0017-PLAN-verify-build-provenance-and-close-0015-open-items.md
 // Q1).
 func TestWindowsInterruptedApplyRunningImage(t *testing.T) {
-	home, _ := withTempHome(t)
+	t.Parallel()
+	home, _ := tempTarget(t)
 	src, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -43,7 +44,7 @@ func TestWindowsInterruptedApplyRunningImage(t *testing.T) {
 		_ = proc.Wait()
 	}()
 
-	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}, LockTimeout: 300 * time.Millisecond})
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe), LockTimeout: 300 * time.Millisecond})
 	if err != nil {
 		t.Fatal(err)
 	}

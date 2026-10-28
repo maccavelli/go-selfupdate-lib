@@ -108,6 +108,7 @@ func customManaged(t *testing.T, sess InstallSession, life Lifecycle, rec Reconc
 }
 
 func TestManagedDrivesCustomTwoPhaseSession(t *testing.T) {
+	t.Parallel()
 	log := &[]string{}
 	custom := &customTwoPhase{log: log, dir: t.TempDir()}
 	sess, err := customManaged(t, custom, &orderLife{log: log}, &orderRec{log: log})
@@ -131,6 +132,7 @@ func TestManagedDrivesCustomTwoPhaseSession(t *testing.T) {
 }
 
 func TestManagedRollsBackCustomSession(t *testing.T) {
+	t.Parallel()
 	log := &[]string{}
 	custom := &customTwoPhase{log: log, dir: t.TempDir()}
 	unhealthy := errors.New("unhealthy")
@@ -157,6 +159,7 @@ func TestManagedRollsBackCustomSession(t *testing.T) {
 }
 
 func TestManagedRejectsSingleStepSession(t *testing.T) {
+	t.Parallel()
 	single := &customTwoPhase{log: &[]string{}, dir: t.TempDir()}
 	// Only the InstallSession methods are visible through this value.
 	var plain InstallSession = struct{ InstallSession }{single}
@@ -170,6 +173,7 @@ func TestManagedRejectsSingleStepSession(t *testing.T) {
 }
 
 func TestNewManagedInstallerForRejectsNil(t *testing.T) {
+	t.Parallel()
 	var typedNil *StandaloneInstaller
 	for name, inner := range map[string]Installer{"nil": nil, "typed nil": typedNil} {
 		if _, err := NewManagedInstallerFor(inner, &fakeLife{}, &fakeRec{}); err == nil {
@@ -183,6 +187,7 @@ type ownerFunc func(string) bool
 func (f ownerFunc) Owns(path string) bool { return f(path) }
 
 func TestSessOwnsFailsClosed(t *testing.T) {
+	t.Parallel()
 	plain := pendingSession{}
 	if sessOwns(plain, "/any/path") {
 		t.Fatal("a session that is not a StagingOwner owns a path")
@@ -199,8 +204,8 @@ func TestSessOwnsFailsClosed(t *testing.T) {
 		t.Fatal("sessOwns did not ask the StagingOwner")
 	}
 
-	_, exe := withTempHome(t)
-	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	_, exe := tempTarget(t)
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,6 +240,7 @@ func (u unownedInstaller) Begin(ctx context.Context, t Target) (InstallSession, 
 // notes. A custom session paired with a Transformer must say which staging
 // it owns, or the run stops before Install.
 func TestTransformRequiresStagingOwner(t *testing.T) {
+	t.Parallel()
 	env := newContractEnv(t)
 	_, _, plats := fixtureRelease(t, "demo")
 	sel, err := NewExactAssetSelector(plats)
@@ -262,12 +268,13 @@ func TestTransformRequiresStagingOwner(t *testing.T) {
 }
 
 func TestCommitRejectsForeignState(t *testing.T) {
-	_, exe := withTempHome(t)
+	t.Parallel()
+	_, exe := tempTarget(t)
 	before, err := os.ReadFile(exe)
 	if err != nil {
 		t.Fatal(err)
 	}
-	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -306,8 +313,9 @@ func TestCommitRejectsForeignState(t *testing.T) {
 // TestStandaloneApplyCommit: the standalone session's own two-phase path
 // replaces the target, keeps a backup until Commit, and removes it then.
 func TestStandaloneApplyCommit(t *testing.T) {
-	_, exe := withTempHome(t)
-	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	t.Parallel()
+	_, exe := tempTarget(t)
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -358,6 +366,7 @@ func TestStandaloneApplyCommit(t *testing.T) {
 // with the previous binary in place
 // (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md B7).
 func TestSecondCommitOrRollbackRefused(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		name          string
 		first, second string

@@ -62,9 +62,10 @@ func checkLeftovers(t *testing.T, dir string, removed, kept []string) {
 }
 
 func TestBeginRemovesLeftovers(t *testing.T) {
-	_, exe := withTempHome(t)
+	t.Parallel()
+	_, exe := tempTarget(t)
 	removed, kept := plantLeftovers(t, filepath.Dir(exe))
-	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,9 +87,10 @@ func TestBeginRemovesLeftovers(t *testing.T) {
 }
 
 func TestCleanupPendingRemovesLeftovers(t *testing.T) {
-	_, exe := withTempHome(t)
+	t.Parallel()
+	_, exe := tempTarget(t)
 	removed, kept := plantLeftovers(t, filepath.Dir(exe))
-	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +103,8 @@ func TestCleanupPendingRemovesLeftovers(t *testing.T) {
 // TestLeftoverSymlinkNotFollowed: a symlink with a leftover's name is not a
 // file this package wrote. It is kept, and so is what it points to.
 func TestLeftoverSymlinkNotFollowed(t *testing.T) {
-	home, exe := withTempHome(t)
+	t.Parallel()
+	home, exe := tempTarget(t)
 	outside := filepath.Join(t.TempDir(), "precious")
 	if err := os.WriteFile(outside, []byte("keep"), 0o600); err != nil {
 		t.Fatal(err)
@@ -110,7 +113,7 @@ func TestLeftoverSymlinkNotFollowed(t *testing.T) {
 	if err := os.Symlink(outside, link); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
-	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,9 +133,10 @@ func TestLeftoverSymlinkNotFollowed(t *testing.T) {
 // untouched
 // (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md B1).
 func TestDryRunSweepsNothing(t *testing.T) {
-	_, exe := withTempHome(t)
+	t.Parallel()
+	_, exe := tempTarget(t)
 	removed, kept := plantLeftovers(t, filepath.Dir(exe))
-	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}

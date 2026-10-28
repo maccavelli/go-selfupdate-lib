@@ -53,9 +53,9 @@ func (l *seqRecoveryLife) WaitHealthy(context.Context, string) error {
 
 func seqRecoveryEnv(t *testing.T, life *seqRecoveryLife) (InstallSession, string) {
 	t.Helper()
-	_, exe := withTempHome(t)
+	_, exe := tempTarget(t)
 	life.exe = exe
-	inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,6 +79,7 @@ func seqRecoveryEnv(t *testing.T, life *seqRecoveryLife) (InstallSession, string
 // became healthy, recovery stops it before restoring the old one, then
 // starts the old one (B4).
 func TestManagedStopsBeforeRollback(t *testing.T) {
+	t.Parallel()
 	life := &seqRecoveryLife{healthFails: 1}
 	sess, exe := seqRecoveryEnv(t, life)
 	path := stageNew(t, sess)
@@ -102,6 +103,7 @@ func TestManagedStopsBeforeRollback(t *testing.T) {
 // recovers in the locked directory instead of leaving the new binary live
 // (B7).
 func TestManagedCommitSwapRecovers(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == goosWindows {
 		t.Skip("a directory swap is refused on Windows")
 	}
@@ -140,8 +142,9 @@ func TestManagedCommitSwapRecovers(t *testing.T) {
 // TestManagedRefusesTypedNil: a typed nil Lifecycle or Reconciler is
 // refused at construction, not found by a panic in Install (C5).
 func TestManagedRefusesTypedNil(t *testing.T) {
-	_, exe := withTempHome(t)
-	inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	t.Parallel()
+	_, exe := tempTarget(t)
+	inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,9 +162,10 @@ func TestManagedRefusesTypedNil(t *testing.T) {
 // session, which owns the transformed staging and names the target, and the
 // service is stopped, updated and started (the P4 test gap).
 func TestManagedWithTransformer(t *testing.T) {
-	_, exe := withTempHome(t)
+	t.Parallel()
+	_, exe := tempTarget(t)
 	life := &fakeLife{installed: true, running: true}
-	inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,6 +204,7 @@ func TestManagedWithTransformer(t *testing.T) {
 // undid the replacement
 // (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md B4).
 func TestManagedRecoveryReportsRestoredBinary(t *testing.T) {
+	t.Parallel()
 	check := func(t *testing.T, res InstallResult, err error, target string) {
 		t.Helper()
 		if !errors.Is(err, ErrManagedInstall) || res.Applied {

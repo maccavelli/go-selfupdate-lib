@@ -41,6 +41,7 @@ func streamUpdater(t *testing.T, src selfupdate.ReleaseSource) (*selfupdate.Upda
 	if err != nil {
 		t.Fatal(err)
 	}
+	selfupdate.SetRunningPlatform(u, goldenPlatform)
 	return u, exe
 }
 

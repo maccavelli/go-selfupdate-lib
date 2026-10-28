@@ -8,9 +8,10 @@ import (
 )
 
 func TestInjectedRenameFailure(t *testing.T) {
-	_, exe := withTempHome(t)
+	t.Parallel()
+	_, exe := tempTarget(t)
 
-	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,8 +58,9 @@ func TestInjectedRenameFailure(t *testing.T) {
 }
 
 func TestLockSymlinkRejected(t *testing.T) {
-	home, exe := withTempHome(t)
-	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	t.Parallel()
+	home, exe := tempTarget(t)
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}

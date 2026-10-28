@@ -15,6 +15,7 @@ import (
 // TestMoveFileReplaceHonoursContext: a busy replacement stops retrying when
 // the caller's context ends, well before DefaultLockTimeout (0003-MADR B10).
 func TestMoveFileReplaceHonoursContext(t *testing.T) {
+	t.Parallel()
 	fx := realFS()
 	fx.moveFileExFn = func(*uint16, *uint16, uint32) error { return windows.ERROR_SHARING_VIOLATION }
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
@@ -33,6 +34,7 @@ func TestMoveFileReplaceHonoursContext(t *testing.T) {
 // TestMoveFileReplaceRetriesAccessDenied: a transient ACCESS_DENIED on a
 // running image is retried until it clears (0003-MADR B11).
 func TestMoveFileReplaceRetriesAccessDenied(t *testing.T) {
+	t.Parallel()
 	calls := 0
 	fx := realFS()
 	fx.moveFileExFn = func(*uint16, *uint16, uint32) error {
@@ -48,6 +50,7 @@ func TestMoveFileReplaceRetriesAccessDenied(t *testing.T) {
 }
 
 func TestIsUnsupportedDirSyncAccessDenied(t *testing.T) {
+	t.Parallel()
 	err := &os.PathError{Op: "sync", Path: `.`, Err: windows.ERROR_ACCESS_DENIED}
 	if !isUnsupportedSync(err) {
 		t.Fatal("Windows directory ACCESS_DENIED must be treated as unsupported sync")
@@ -58,6 +61,7 @@ func TestIsUnsupportedDirSyncAccessDenied(t *testing.T) {
 }
 
 func TestBusyRunningImageIncludesAccessDenied(t *testing.T) {
+	t.Parallel()
 	err := &os.PathError{Op: "remove", Path: `old.exe`, Err: windows.ERROR_ACCESS_DENIED}
 	if !isBusyRunningImage(err) {
 		t.Fatal("deleting a running image that returns ACCESS_DENIED must be PendingBackup")

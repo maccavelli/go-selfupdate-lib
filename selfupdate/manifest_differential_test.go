@@ -25,6 +25,7 @@ import (
 // SELFUPDATE_DIFFERENTIAL_N and SELFUPDATE_DIFFERENTIAL_SEED override the
 // case count and the seed, for a longer hunt.
 func TestManifestDifferential(t *testing.T) {
+	t.Parallel()
 	python, err := exec.LookPath("python3")
 	if err != nil {
 		if os.Getenv("SELFUPDATE_REQUIRE_PYTHON") == "1" {

@@ -28,7 +28,7 @@ const packHeader = "PACK:"
 // "archive" holding program.
 func packedRelease(t *testing.T, product string, program []byte) (Release, map[int64][]byte, string) {
 	t.Helper()
-	plat := runningPlatform()
+	plat := runtimePlatform()
 	archive := append([]byte(packHeader), program...)
 	sum := sha256.Sum256(archive)
 	hexsum := hex.EncodeToString(sum[:])
@@ -119,8 +119,8 @@ type packEnv struct {
 func newPackEnv(t *testing.T, program []byte) *packEnv {
 	t.Helper()
 	rel, bodies, name := packedRelease(t, "demo", program)
-	_, exe := withTempHome(t)
-	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	_, exe := tempTarget(t)
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,6 +154,7 @@ func sha(b []byte) string {
 // transform when there is one; the program, not the archive, is installed,
 // and the digests are the archive's and the program's.
 func TestRunEventOrderWithUnpacker(t *testing.T) {
+	t.Parallel()
 	program := []byte("program-bytes")
 	for _, withTransform := range []bool{false, true} {
 		t.Run(fmt.Sprintf("transform=%v", withTransform), func(t *testing.T) {
@@ -198,6 +199,7 @@ func TestRunEventOrderWithUnpacker(t *testing.T) {
 // TestUnpackRequest: the unpacker gets the verified archive and a second,
 // empty staging path, both the session's, with the executable limit.
 func TestUnpackRequest(t *testing.T) {
+	t.Parallel()
 	env := newPackEnv(t, []byte("program-bytes"))
 	if _, err := env.run(t, yesReq()); err != nil {
 		t.Fatal(err)
@@ -210,7 +212,7 @@ func TestUnpackRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.Product != "demo" || r.Platform != runningPlatform() || r.AssetName != env.name ||
+	if r.Product != "demo" || r.Platform != runtimePlatform() || r.AssetName != env.name ||
 		r.Limit != DefaultLimits().Executable || r.Archive == r.Program ||
 		filepath.Dir(r.Archive) != dir || filepath.Dir(r.Program) != dir {
 		t.Fatalf("request %+v", r)
@@ -247,6 +249,7 @@ func assertNoStaging(t *testing.T, dir string) {
 // TestDryRunUnpacks: a dry run unpacks, installs nothing, and leaves no
 // staging.
 func TestDryRunUnpacks(t *testing.T) {
+	t.Parallel()
 	program := []byte("program-bytes")
 	env := newPackEnv(t, program)
 	req := yesReq()
@@ -272,6 +275,7 @@ func TestDryRunUnpacks(t *testing.T) {
 // too large, or not the session's, each fail the run before Install and
 // leave no staging.
 func TestUnpackFailures(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name  string
 		setup func(e *packEnv)
@@ -328,6 +332,7 @@ func (i notOwnerInstaller) Begin(ctx context.Context, t Target) (InstallSession,
 // TestUnpackRequiresStagingOwner: a session that is not a StagingOwner
 // cannot unpack, as it cannot transform (0004-MADR G7).
 func TestUnpackRequiresStagingOwner(t *testing.T) {
+	t.Parallel()
 	env := newContractEnv(t)
 	rel, bodies, name := packedRelease(t, "demo", []byte("program-bytes"))
 	env.src.rel, env.src.bodies = rel, bodies
@@ -355,6 +360,7 @@ func TestUnpackRequiresStagingOwner(t *testing.T) {
 // disagree fail before any asset body is opened, in a check as in an
 // apply.
 func TestPackedSelectionNeedsUnpacker(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		name     string
 		packed   bool
@@ -390,8 +396,9 @@ func TestPackedSelectionNeedsUnpacker(t *testing.T) {
 // TestNewRefusesUnpackerCombinations: New refuses an Unpacker with the
 // exact raw-binary selector or with the image verifier, and a typed nil.
 func TestNewRefusesUnpackerCombinations(t *testing.T) {
+	t.Parallel()
 	env := newPackEnv(t, []byte("program-bytes"))
-	exact, err := NewExactAssetSelector([]Platform{runningPlatform()})
+	exact, err := NewExactAssetSelector([]Platform{runtimePlatform()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -426,6 +433,7 @@ func TestNewRefusesUnpackerCombinations(t *testing.T) {
 // TestEventUnpacking: the new kind keeps every earlier number and has its
 // name.
 func TestEventUnpacking(t *testing.T) {
+	t.Parallel()
 	if EventUnpacking != EventWarning+1 {
 		t.Fatalf("EventUnpacking = %d, want %d", EventUnpacking, EventWarning+1)
 	}
@@ -436,6 +444,7 @@ func TestEventUnpacking(t *testing.T) {
 
 // TestUnpackerFunc adapts a function.
 func TestUnpackerFunc(t *testing.T) {
+	t.Parallel()
 	var got UnpackRequest
 	f := UnpackerFunc(func(_ context.Context, r UnpackRequest) error { got = r; return nil })
 	if err := f.Unpack(context.Background(), UnpackRequest{Product: "demo"}); err != nil || got.Product != "demo" {
@@ -446,6 +455,7 @@ func TestUnpackerFunc(t *testing.T) {
 // TestChainTransformers: in order, on the same request; the first error
 // stops the chain; the coordinator rehashes once after it.
 func TestChainTransformers(t *testing.T) {
+	t.Parallel()
 	var order []string
 	step := func(name string, err error) Transformer {
 		return TransformerFunc(func(_ context.Context, r TransformRequest) error {
@@ -485,6 +495,7 @@ func TestChainTransformers(t *testing.T) {
 // TestRunWithChainedTransformers: two transforms in a chain, through the
 // Updater, install both changes.
 func TestRunWithChainedTransformers(t *testing.T) {
+	t.Parallel()
 	env := newPackEnv(t, []byte("program-bytes"))
 	chain, err := ChainTransformers(growTransformer{extra: []byte("-a")}, growTransformer{extra: []byte("-b")})
 	if err != nil {

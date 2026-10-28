@@ -11,6 +11,7 @@ import (
 // bounded by the context (0025-MADR D5). Each call returns a new client and
 // a new transport, so a caller may adjust one (0031-MADR D1).
 func TestDefaultClientTimeouts(t *testing.T) {
+	t.Parallel()
 	c := DefaultHTTPClient()
 	if c.Timeout != 0 {
 		t.Fatalf("Client.Timeout = %v, want none", c.Timeout)

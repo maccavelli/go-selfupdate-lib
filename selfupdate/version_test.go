@@ -7,6 +7,7 @@ import (
 )
 
 func TestStrictVersionPolicyValidate(t *testing.T) {
+	t.Parallel()
 	p := NewStrictVersionPolicy()
 	tests := []struct {
 		name    string
@@ -54,6 +55,7 @@ func TestStrictVersionPolicyValidate(t *testing.T) {
 }
 
 func TestStrictVersionPolicyCompare(t *testing.T) {
+	t.Parallel()
 	p := NewStrictVersionPolicy()
 	cmp, err := p.Compare("v1.2.3", "v1.2.4")
 	if err != nil {
@@ -85,6 +87,7 @@ func TestStrictVersionPolicyCompare(t *testing.T) {
 }
 
 func TestClassifyOperation(t *testing.T) {
+	t.Parallel()
 	p := NewStrictVersionPolicy()
 	tests := []struct {
 		name       string
@@ -182,34 +185,35 @@ func TestClassifyOperation(t *testing.T) {
 }
 
 func TestValidateRequest(t *testing.T) {
+	t.Parallel()
 	valid := Request{
 		Product:        "prepare-commit-msg",
 		CurrentVersion: "v1.2.0",
 		CurrentBuild:   ReleaseBuild,
 	}
 	t.Run("ok", func(t *testing.T) {
-		if err := validateRequest(valid, NewStrictVersionPolicy()); err != nil {
+		if err := validateRequest(valid, NewStrictVersionPolicy(), runtimePlatform()); err != nil {
 			t.Fatal(err)
 		}
 	})
 	t.Run("unknown build kind", func(t *testing.T) {
 		req := valid
 		req.CurrentBuild = BuildKind(9)
-		if err := validateRequest(req, NewStrictVersionPolicy()); err == nil {
+		if err := validateRequest(req, NewStrictVersionPolicy(), runtimePlatform()); err == nil {
 			t.Fatal("accepted unknown build kind")
 		}
 	})
 	t.Run("zero build kind", func(t *testing.T) {
 		req := valid
 		req.CurrentBuild = BuildUnknown
-		if err := validateRequest(req, NewStrictVersionPolicy()); err == nil {
+		if err := validateRequest(req, NewStrictVersionPolicy(), runtimePlatform()); err == nil {
 			t.Fatal("accepted unknown zero build kind")
 		}
 	})
 	t.Run("partial platform", func(t *testing.T) {
 		req := valid
 		req.Platform.OS = "linux"
-		if err := validateRequest(req, NewStrictVersionPolicy()); err == nil {
+		if err := validateRequest(req, NewStrictVersionPolicy(), runtimePlatform()); err == nil {
 			t.Fatal("accepted partial platform")
 		}
 	})
@@ -217,7 +221,7 @@ func TestValidateRequest(t *testing.T) {
 		req := valid
 		req.CheckOnly = true
 		req.Yes = true
-		if err := validateRequest(req, NewStrictVersionPolicy()); err == nil {
+		if err := validateRequest(req, NewStrictVersionPolicy(), runtimePlatform()); err == nil {
 			t.Fatal("accepted --check --yes")
 		}
 	})
@@ -225,21 +229,21 @@ func TestValidateRequest(t *testing.T) {
 		req := valid
 		req.CheckOnly = true
 		req.Force = true
-		if err := validateRequest(req, NewStrictVersionPolicy()); err == nil {
+		if err := validateRequest(req, NewStrictVersionPolicy(), runtimePlatform()); err == nil {
 			t.Fatal("accepted --check --force")
 		}
 	})
 	t.Run("invalid product", func(t *testing.T) {
 		req := valid
 		req.Product = "../evil"
-		if err := validateRequest(req, NewStrictVersionPolicy()); err == nil {
+		if err := validateRequest(req, NewStrictVersionPolicy(), runtimePlatform()); err == nil {
 			t.Fatal("accepted invalid product")
 		}
 	})
 	t.Run("release current not a tag", func(t *testing.T) {
 		req := valid
 		req.CurrentVersion = "dev"
-		if err := validateRequest(req, NewStrictVersionPolicy()); err == nil {
+		if err := validateRequest(req, NewStrictVersionPolicy(), runtimePlatform()); err == nil {
 			t.Fatal("accepted local identity as release")
 		}
 	})
@@ -247,20 +251,21 @@ func TestValidateRequest(t *testing.T) {
 		req := valid
 		req.CurrentBuild = LocalBuild
 		req.CurrentVersion = "definitely not semver"
-		if err := validateRequest(req, NewStrictVersionPolicy()); err != nil {
+		if err := validateRequest(req, NewStrictVersionPolicy(), runtimePlatform()); err != nil {
 			t.Fatal(err)
 		}
 	})
 	t.Run("invalid exact target", func(t *testing.T) {
 		req := valid
 		req.TargetVersion = "v1.2.3-rc.1"
-		if err := validateRequest(req, NewStrictVersionPolicy()); err == nil {
+		if err := validateRequest(req, NewStrictVersionPolicy(), runtimePlatform()); err == nil {
 			t.Fatal("accepted prerelease target")
 		}
 	})
 }
 
 func TestExitCode(t *testing.T) {
+	t.Parallel()
 	if got := ExitCode(Result{}, nil); got != 0 {
 		t.Fatalf("nil err = %d, want 0", got)
 	}
@@ -280,6 +285,7 @@ func TestExitCode(t *testing.T) {
 }
 
 func TestEnumString(t *testing.T) {
+	t.Parallel()
 	if ReleaseBuild.String() != "release" {
 		t.Fatalf("ReleaseBuild = %q", ReleaseBuild.String())
 	}
@@ -295,6 +301,7 @@ func TestEnumString(t *testing.T) {
 }
 
 func TestDefaultLimits(t *testing.T) {
+	t.Parallel()
 	l := DefaultLimits()
 	if l.ReleaseJSON != 2<<20 || l.ErrorBody != 64<<10 || l.Manifest != 1<<20 || l.Executable != 512<<20 {
 		t.Fatalf("DefaultLimits() = %+v", l)

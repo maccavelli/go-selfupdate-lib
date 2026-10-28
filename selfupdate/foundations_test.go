@@ -50,6 +50,7 @@ func runWith(t *testing.T, versions VersionPolicy, req Request) (Result, error) 
 // TestExportedSentinels: the two outcomes a CLI must explain are exported
 // (0004-MADR G4).
 func TestExportedSentinels(t *testing.T) {
+	t.Parallel()
 	_, err := runWith(t, NewStrictVersionPolicy(), Request{
 		Product: "demo", CurrentVersion: "dev", CurrentBuild: LocalBuild, Yes: true,
 	})
@@ -67,11 +68,12 @@ func TestExportedSentinels(t *testing.T) {
 // TestValidateRequestUsesConfiguredPolicy: request versions are validated
 // with Config.Versions, not a hardcoded strict policy (0004-MADR G2).
 func TestValidateRequestUsesConfiguredPolicy(t *testing.T) {
+	t.Parallel()
 	req := Request{Product: "demo", CurrentVersion: "v1.0.0", CurrentBuild: ReleaseBuild, TargetVersion: "v1.2.3-rc.1"}
-	if err := validateRequest(req, prereleasePolicy{}); err != nil {
+	if err := validateRequest(req, prereleasePolicy{}, runtimePlatform()); err != nil {
 		t.Fatalf("configured policy accepts the tag, yet: %v", err)
 	}
-	if err := validateRequest(req, NewStrictVersionPolicy()); err == nil {
+	if err := validateRequest(req, NewStrictVersionPolicy(), runtimePlatform()); err == nil {
 		t.Fatal("the strict policy accepted a prerelease tag")
 	}
 	_, err := runWith(t, prereleasePolicy{}, req)
@@ -83,6 +85,7 @@ func TestValidateRequestUsesConfiguredPolicy(t *testing.T) {
 // TestParseSHA256SUMSExported: the exported parser gives each parity
 // fixture's recorded verdict (its expect file).
 func TestParseSHA256SUMSExported(t *testing.T) {
+	t.Parallel()
 	dirs, err := os.ReadDir(filepath.Join("testdata", "manifest-parity"))
 	if err != nil {
 		t.Fatal(err)
@@ -108,6 +111,7 @@ func TestParseSHA256SUMSExported(t *testing.T) {
 }
 
 func TestExactAssetName(t *testing.T) {
+	t.Parallel()
 	for p, want := range map[Platform]string{
 		{OS: "linux", Arch: "amd64"}:   "demo-linux-amd64",
 		{OS: "windows", Arch: "arm64"}: "demo-windows-arm64.exe",
@@ -124,6 +128,7 @@ func TestExactAssetName(t *testing.T) {
 // TestMultiReporter: order, every reporter called after a failure, errors
 // joined, nil and typed-nil entries dropped.
 func TestMultiReporter(t *testing.T) {
+	t.Parallel()
 	var order []string
 	first := errors.New("first")
 	third := errors.New("third")
@@ -152,6 +157,7 @@ func TestMultiReporter(t *testing.T) {
 
 // TestFuncAdapters: each adapter forwards its arguments and its result.
 func TestFuncAdapters(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	sentinel := errors.New("sentinel")
 	var gotEv Event
@@ -183,6 +189,7 @@ func TestFuncAdapters(t *testing.T) {
 }
 
 func TestNonInteractiveConfirmer(t *testing.T) {
+	t.Parallel()
 	ok, err := NonInteractiveConfirmer().Confirm(context.Background(), upgradePrompt)
 	if ok || !errors.Is(err, ErrConfirmationRequired) {
 		t.Fatalf("ok=%v err=%v", ok, err)

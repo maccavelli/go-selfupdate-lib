@@ -100,6 +100,7 @@ func checkOutcome(t *testing.T, row checkRow, err error) {
 
 // TestCheckerAvailability: one row per outcome the query API reports.
 func TestCheckerAvailability(t *testing.T) {
+	t.Parallel()
 	for _, row := range checkRows() {
 		t.Run(row.name, func(t *testing.T) {
 			c, _, _ := checkerFor(t, row)
@@ -125,6 +126,7 @@ func TestCheckerAvailability(t *testing.T) {
 // TestCheckerAgreesWithRunCheck: Run with CheckOnly and Check reach the same
 // selection and the same error class for every row (0004-MADR G3).
 func TestCheckerAgreesWithRunCheck(t *testing.T) {
+	t.Parallel()
 	for _, row := range checkRows() {
 		t.Run(row.name, func(t *testing.T) {
 			c, src, sel := checkerFor(t, row)
@@ -166,10 +168,9 @@ func TestCheckerAgreesWithRunCheck(t *testing.T) {
 }
 
 // TestCheckerNeedsNoInstaller: a Checker is built from discovery parts
-// alone, and works where no target could be resolved.
+// alone, with no installer, so it never resolves a target.
 func TestCheckerNeedsNoInstaller(t *testing.T) {
-	setSeam(t, &userHomeDir, func() (string, error) { return "", errors.New("no home") })
-	setSeam(t, &osExecutable, func() (string, error) { return "", errors.New("no executable") })
+	t.Parallel()
 	c, _, _ := checkerFor(t, checkRows()[0])
 	got, err := c.Check(context.Background(), checkRows()[0].req)
 	if err != nil || !got.Available {
@@ -187,6 +188,7 @@ func TestCheckerNeedsNoInstaller(t *testing.T) {
 
 // TestCheckerDownloadsNothing: a check never opens an asset body.
 func TestCheckerDownloadsNothing(t *testing.T) {
+	t.Parallel()
 	row := checkRows()[0]
 	c, src, _ := checkerFor(t, row)
 	if _, err := c.Check(context.Background(), row.req); err != nil {
@@ -201,6 +203,7 @@ func TestCheckerDownloadsNothing(t *testing.T) {
 
 // TestUpdaterChecker: the Updater's Checker uses the Updater's own parts.
 func TestUpdaterChecker(t *testing.T) {
+	t.Parallel()
 	env := newContractEnv(t)
 	u := env.build(t)
 	got, err := u.Checker().Check(context.Background(), CheckRequest{Product: "demo", CurrentVersion: "v1.0.0", CurrentBuild: ReleaseBuild})
@@ -218,6 +221,7 @@ func TestUpdaterChecker(t *testing.T) {
 // would refuse to install
 // (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md C4).
 func TestCheckerAgreesOnUnpacker(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		edit func(*packEnv)

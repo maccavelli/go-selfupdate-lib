@@ -9,6 +9,7 @@ import (
 // Request.Channel validation.
 
 func TestValidateRequestChannel(t *testing.T) {
+	t.Parallel()
 	channels, err := NewSemverPolicy(SemverOptions{AllowPrerelease: true, Channels: []string{"rc", "beta", "alpha"}})
 	if err != nil {
 		t.Fatal(err)
@@ -36,7 +37,7 @@ func TestValidateRequestChannel(t *testing.T) {
 		// D3: a plain policy decides for itself (0004-MADR G2).
 		{"a plain custom policy pins a prerelease", prereleasePolicy{}, req("", "v1.1.0-rc.1", "v1.0.0"), ""},
 	} {
-		err := validateRequest(c.req, c.policy)
+		err := validateRequest(c.req, c.policy, runtimePlatform())
 		switch {
 		case c.want == "" && err != nil:
 			t.Errorf("%s: %v", c.name, err)
@@ -47,6 +48,7 @@ func TestValidateRequestChannel(t *testing.T) {
 }
 
 func TestCheckerPrepareKeepsChannel(t *testing.T) {
+	t.Parallel()
 	policy, err := NewSemverPolicy(SemverOptions{AllowPrerelease: true, Channels: []string{"rc"}})
 	if err != nil {
 		t.Fatal(err)

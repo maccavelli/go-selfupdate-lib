@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -177,18 +178,25 @@ func (c chainCredentials) Credential(ctx context.Context, req CredentialRequest)
 type envCredential struct {
 	header string
 	names  []string
+	getenv func(string) string
 }
 
 // EnvCredential returns the first non-empty environment variable among
 // names as a credential for header, with Source "env:<NAME>". With none
 // set it returns ErrNoCredential.
 func EnvCredential(header string, names ...string) CredentialProvider {
-	return envCredential{header: header, names: append([]string(nil), names...)}
+	return envCredentialFrom(os.Getenv, header, names...)
+}
+
+// envCredentialFrom is EnvCredential reading getenv; tests give it one of
+// their own.
+func envCredentialFrom(getenv func(string) string, header string, names ...string) CredentialProvider {
+	return envCredential{header: header, names: append([]string(nil), names...), getenv: getenv}
 }
 
 func (e envCredential) Credential(context.Context, CredentialRequest) (Credential, error) {
 	for _, name := range e.names {
-		if v := lookupEnv(name); v != "" {
+		if v := e.getenv(name); v != "" {
 			return Credential{Header: e.header, Value: []byte(v), Source: "env:" + name}, nil
 		}
 	}

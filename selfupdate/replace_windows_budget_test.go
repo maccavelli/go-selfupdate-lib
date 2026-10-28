@@ -15,6 +15,7 @@ import (
 // TestMoveFileReplaceReadOnlyFailsFast: access denied on a read-only
 // destination never clears by waiting, so it is not retried (0004-MADR R4).
 func TestMoveFileReplaceReadOnlyFailsFast(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	from := filepath.Join(dir, "from")
 	to := filepath.Join(dir, "to")
@@ -46,6 +47,7 @@ func TestMoveFileReplaceReadOnlyFailsFast(t *testing.T) {
 // TestMoveFileReplaceHonoursRetryBudget: the busy-image retry stops at the
 // session's lock timeout, not DefaultLockTimeout (0004-MADR R4).
 func TestMoveFileReplaceHonoursRetryBudget(t *testing.T) {
+	t.Parallel()
 	calls := 0
 	fx := realFS()
 	fx.moveFileExFn = func(*uint16, *uint16, uint32) error {

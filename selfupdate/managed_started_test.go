@@ -14,6 +14,7 @@ import (
 // document.
 
 func TestManagedServiceStarted(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		life Lifecycle
@@ -34,9 +35,10 @@ func TestManagedServiceStarted(t *testing.T) {
 // TestRunReportsServiceStarted: Run copies ServiceStarted into Result, and
 // the document carries it.
 func TestRunReportsServiceStarted(t *testing.T) {
+	t.Parallel()
 	for _, enabled := range []bool{false, true} {
-		_, exe := withTempHome(t)
-		inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+		_, exe := tempTarget(t)
+		inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -78,8 +80,9 @@ func TestRunReportsServiceStarted(t *testing.T) {
 // health check is rolled back, and the result says so, as the event does
 // (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md G3).
 func TestRunReportsRolledBack(t *testing.T) {
-	_, exe := withTempHome(t)
-	inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	t.Parallel()
+	_, exe := tempTarget(t)
+	inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,8 +124,9 @@ func TestRunReportsRolledBack(t *testing.T) {
 // (docs/decisions/0020-MADR-precheck-gofmt-errors-and-replace-before-stop.md
 // 4B).
 func TestRunReportsReplacedBeforeStop(t *testing.T) {
-	_, exe := withTempHome(t)
-	inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	t.Parallel()
+	_, exe := tempTarget(t)
+	inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,8 +173,9 @@ func (warnRec) Restore(context.Context, string, ReconcileResult) error { return 
 // complete, listed in Result.Warnings, and no error
 // (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md G4).
 func TestRunReportsReconcileWarnings(t *testing.T) {
-	_, exe := withTempHome(t)
-	inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	t.Parallel()
+	_, exe := tempTarget(t)
+	inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}

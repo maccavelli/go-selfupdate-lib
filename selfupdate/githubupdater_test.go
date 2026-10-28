@@ -15,6 +15,7 @@ import (
 // D5, Amendment A1).
 
 func TestNewGitHubUpdaterRefuses(t *testing.T) {
+	t.Parallel()
 	ok := selfupdate.GitHubUpdaterOptions{
 		Repository: selfupdate.Repository{Owner: "o", Name: "r"},
 		Product:    "demo",
@@ -59,6 +60,7 @@ func (a *agentRecorder) RoundTrip(r *http.Request) (*http.Response, error) {
 // TestNewGitHubUpdaterChecks: the composed Updater finds a newer release
 // for the running platform, and sends UserAgent(product, version).
 func TestNewGitHubUpdaterChecks(t *testing.T) {
+	t.Parallel()
 	running := []selfupdate.Platform{{OS: runtime.GOOS, Arch: runtime.GOARCH}}
 	body := func(tag string) func(selfupdate.Platform) []byte {
 		return func(selfupdate.Platform) []byte { return []byte("binary " + tag) }

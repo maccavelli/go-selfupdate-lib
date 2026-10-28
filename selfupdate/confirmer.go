@@ -12,8 +12,6 @@ import (
 	"golang.org/x/term"
 )
 
-var isTerminal = term.IsTerminal
-
 // terminalConfirmer is the line confirmer behind both NewTerminalConfirmer
 // and NewPromptConfirmer; allow decides, at each Confirm, whether it may
 // prompt at all.
@@ -41,6 +39,12 @@ type lineResult struct {
 // answer is a decline. A cancelled Confirm returns the context error; a line
 // typed afterwards answers the next Confirm on the same confirmer.
 func NewTerminalConfirmer(in *os.File, out io.Writer) Confirmer {
+	return terminalConfirmerFrom(in, out, term.IsTerminal)
+}
+
+// terminalConfirmerFrom is NewTerminalConfirmer with isTerminal deciding
+// whether in is a terminal; tests give it one of their own.
+func terminalConfirmerFrom(in *os.File, out io.Writer, isTerminal func(fd int) bool) Confirmer {
 	c := &terminalConfirmer{}
 	// A nil pointer behind the interface is nil (0015-MADR C7).
 	if !isNil(out) {

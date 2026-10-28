@@ -97,6 +97,7 @@ func channelCheck(t *testing.T, src selfupdate.ReleaseSource, current, channel, 
 }
 
 func TestChannelDiscovery(t *testing.T) {
+	t.Parallel()
 	mutable := withFlags(channelRelease("v1.3.0-rc.1"), func(s *selfupdatetest.ReleaseSpec) { s.Immutable = false })
 	malformed := func(tag string) selfupdatetest.ReleaseSpec {
 		return withFlags(channelRelease(tag), func(s *selfupdatetest.ReleaseSpec) {
@@ -205,6 +206,7 @@ func TestChannelDiscovery(t *testing.T) {
 }
 
 func TestChannelSourceCalls(t *testing.T) {
+	t.Parallel()
 	specs := []selfupdatetest.ReleaseSpec{channelRelease("v1.2.0"), channelRelease("v1.3.0-rc.1")}
 	for _, b := range channelBackends {
 		t.Run(b.name, func(t *testing.T) {
@@ -232,6 +234,7 @@ func TestChannelSourceCalls(t *testing.T) {
 type latestOnly struct{ selfupdate.ReleaseSource }
 
 func TestChannelNeedsLister(t *testing.T) {
+	t.Parallel()
 	src := selfupdatetest.NewFakeSource("v1.2.0", channelRelease("v1.2.0"), channelRelease("v1.3.0-rc.1"))
 	_, err := channelCheck(t, latestOnly{src}, "v1.0.0", "rc", "")
 	if err == nil || !strings.Contains(err.Error(), `channel "rc" needs a source that lists releases`) {

@@ -14,6 +14,7 @@ import (
 // That includes the Checker of a nil Updater
 // (docs/decisions/0027-MADR-documentation-pass-after-v1-17-0.md C2).
 func TestZeroValues(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	req := Request{Product: "demo", CurrentVersion: "v1.0.0", CurrentBuild: ReleaseBuild, CheckOnly: true}
 	cr := CheckRequest{Product: "demo", CurrentVersion: "v1.0.0", CurrentBuild: ReleaseBuild}

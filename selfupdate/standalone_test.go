@@ -8,6 +8,7 @@ import (
 )
 
 func TestNewStandaloneInstallerTimeout(t *testing.T) {
+	t.Parallel()
 	if _, err := NewStandaloneInstaller(InstallOptions{LockTimeout: -time.Second}); err == nil {
 		t.Fatal("accepted negative lock timeout")
 	}
@@ -21,8 +22,9 @@ func TestNewStandaloneInstallerTimeout(t *testing.T) {
 }
 
 func TestStandaloneResolveUsesPolicy(t *testing.T) {
-	_, exe := withTempHome(t)
-	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	t.Parallel()
+	_, exe := tempTarget(t)
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}

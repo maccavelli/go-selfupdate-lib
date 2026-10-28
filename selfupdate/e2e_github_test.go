@@ -22,11 +22,10 @@ func releaseBody(tag string) func(selfupdate.Platform) []byte {
 
 // tempTarget writes an old binary in a temporary directory the target
 // policy allows. It is a plain file, not the running binary. The fixtures
-// are built for goldenPlatform, so it is made the running platform: an
-// apply for any other is refused (0010-MADR Q4).
+// are built for goldenPlatform, so each test makes that its Updater's
+// running platform: an apply for any other is refused (0010-MADR Q4).
 func tempTarget(t *testing.T) (string, selfupdate.TargetPolicy) {
 	t.Helper()
-	selfupdate.SetRunningPlatform(t, goldenPlatform)
 	dir, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -39,6 +38,7 @@ func tempTarget(t *testing.T) (string, selfupdate.TargetPolicy) {
 }
 
 func TestE2EGitHubRedirectedDownload(t *testing.T) {
+	t.Parallel()
 	plats := []selfupdate.Platform{goldenPlatform}
 	gh := selfupdatetest.NewGitHubServer(t, "owner", "demo",
 		selfupdatetest.NewRelease("demo", "v1.0.0", plats, releaseBody("v1.0.0")),
@@ -68,6 +68,7 @@ func TestE2EGitHubRedirectedDownload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	selfupdate.SetRunningPlatform(u, goldenPlatform)
 	res, err := u.Run(context.Background(), selfupdate.Request{
 		Product: "demo", CurrentVersion: "v1.0.0", CurrentBuild: selfupdate.ReleaseBuild,
 		Platform: goldenPlatform, Yes: true,
@@ -150,6 +151,7 @@ func e2eUpdaterWithEnvToken(t *testing.T, gh *selfupdatetest.GitHubServer, opts 
 	if err != nil {
 		t.Fatal(err)
 	}
+	selfupdate.SetRunningPlatform(u, goldenPlatform)
 	return u, exe
 }
 
@@ -199,6 +201,7 @@ func TestRunWithCredentialsIsPerRun(t *testing.T) {
 // TestRunWithCredentialsNeedsCredentialedSource: a source that cannot take
 // a per-run provider is refused before any call.
 func TestRunWithCredentialsNeedsCredentialedSource(t *testing.T) {
+	t.Parallel()
 	src := selfupdatetest.NewFakeSource("v1.1.0", goldenRelease())
 	_, policy := tempTarget(t)
 	inst, err := selfupdate.NewStandaloneInstaller(selfupdate.InstallOptions{TargetPolicy: policy})
@@ -217,6 +220,7 @@ func TestRunWithCredentialsNeedsCredentialedSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	selfupdate.SetRunningPlatform(u, goldenPlatform)
 	_, err = u.RunWith(context.Background(), e2eReq(), selfupdate.WithCredentials(staticCredential{"x"}))
 	const want = "selfupdate: WithCredentials: the source does not accept per-run credentials"
 	if err == nil || err.Error() != want {

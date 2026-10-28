@@ -22,6 +22,7 @@ import (
 // TestEventKindValues pins every EventKind's number and name: appending is
 // compatible, renumbering is not.
 func TestEventKindValues(t *testing.T) {
+	t.Parallel()
 	want := []string{"unknown", "resolving-target", "fetching-release", "selected", "downloading-manifest",
 		"downloading-binary", "verified", "transforming", "installing", "complete",
 		"progress", "declined", "failed", "rolled-back"}
@@ -52,7 +53,7 @@ func (s oneByteSource) OpenAsset(ctx context.Context, rel Release, a Asset) (io.
 func progressRun(t *testing.T, interval, step time.Duration, rep *recReporter) (Result, int64, error) {
 	t.Helper()
 	clock := cacheNow
-	setSeam(t, &timeNow, func() time.Time { clock = clock.Add(step); return clock })
+	moving := ClockFunc(func() time.Time { clock = clock.Add(step); return clock })
 	env := newContractEnv(t)
 	rel, _, plats := fixtureRelease(t, "demo")
 	sel, err := NewExactAssetSelector(plats)
@@ -60,7 +61,7 @@ func progressRun(t *testing.T, interval, step time.Duration, rep *recReporter) (
 		t.Fatal(err)
 	}
 	u, err := New(Config{Source: oneByteSource{env.src}, Versions: NewStrictVersionPolicy(), Assets: sel,
-		Installer: env.inst, Reporter: rep, Confirmer: env.conf, Limits: env.lim, ProgressInterval: interval})
+		Installer: env.inst, Reporter: rep, Confirmer: env.conf, Limits: env.lim, ProgressInterval: interval, Clock: moving})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,6 +85,7 @@ func progressEvents(rep *recReporter) []Event {
 // and a final event at the total, all between downloading-binary and
 // verified.
 func TestProgressEvents(t *testing.T) {
+	t.Parallel()
 	rep := &recReporter{}
 	_, size, err := progressRun(t, 100*time.Millisecond, 100*time.Millisecond, rep)
 	if err != nil {
@@ -112,6 +114,7 @@ func TestProgressEvents(t *testing.T) {
 }
 
 func TestProgressDisabledByDefault(t *testing.T) {
+	t.Parallel()
 	rep := &recReporter{}
 	if _, _, err := progressRun(t, 0, time.Hour, rep); err != nil {
 		t.Fatal(err)
@@ -122,6 +125,7 @@ func TestProgressDisabledByDefault(t *testing.T) {
 }
 
 func TestProgressIntervalNegativeRejected(t *testing.T) {
+	t.Parallel()
 	env := newContractEnv(t)
 	_, _, plats := fixtureRelease(t, "demo")
 	sel, _ := NewExactAssetSelector(plats)
@@ -132,6 +136,7 @@ func TestProgressIntervalNegativeRejected(t *testing.T) {
 }
 
 func TestProgressReporterErrorIgnored(t *testing.T) {
+	t.Parallel()
 	rep := &recReporter{errAt: EventProgress}
 	res, _, err := progressRun(t, time.Millisecond, time.Second, rep)
 	if err != nil || !res.Applied {
@@ -140,6 +145,7 @@ func TestProgressReporterErrorIgnored(t *testing.T) {
 }
 
 func TestDeclinedEvent(t *testing.T) {
+	t.Parallel()
 	env := newContractEnv(t)
 	env.conf.err = nil
 	u := env.build(t)
@@ -156,6 +162,7 @@ func TestDeclinedEvent(t *testing.T) {
 }
 
 func TestFailureClass(t *testing.T) {
+	t.Parallel()
 	for err, want := range map[error]string{
 		context.Canceled: "canceled",
 		errors.Join(context.Canceled, ErrIntegrity):  "canceled",
@@ -181,6 +188,7 @@ func TestFailureClass(t *testing.T) {
 // TestFailedEventClasses: a failed run ends with EventFailed and its class;
 // check mode finding an update and an unsafe product name do not.
 func TestFailedEventClasses(t *testing.T) {
+	t.Parallel()
 	env := newContractEnv(t)
 	env.src.rel.Immutable = false
 	u := env.build(t)
@@ -214,6 +222,7 @@ func TestFailedEventClasses(t *testing.T) {
 }
 
 func TestFailedEventReporterErrorIgnored(t *testing.T) {
+	t.Parallel()
 	env := newContractEnv(t)
 	env.src.rel.Immutable = false
 	env.rep.errAt = EventFailed
@@ -244,6 +253,7 @@ func (rolledBackSession) Install(context.Context, InstallRequest) (InstallResult
 }
 
 func TestRolledBackEvent(t *testing.T) {
+	t.Parallel()
 	env := newContractEnv(t)
 	_, _, plats := fixtureRelease(t, "demo")
 	sel, _ := NewExactAssetSelector(plats)
@@ -266,6 +276,7 @@ func TestRolledBackEvent(t *testing.T) {
 // TestInstallersReportRolledBack: the standalone swap rollback and managed
 // recovery both set InstallResult.RolledBack.
 func TestInstallersReportRolledBack(t *testing.T) {
+	t.Parallel()
 	life := &fakeLife{installed: true, running: true, healthErr: errors.New("unhealthy")}
 	_, _, sess, _ := managedEnv(t, life, &fakeRec{})
 	res, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: stageNew(t, sess)}})
@@ -309,6 +320,7 @@ func TestInstallersReportRolledBack(t *testing.T) {
 }
 
 func TestTextReporterSkipsProgress(t *testing.T) {
+	t.Parallel()
 	var b strings.Builder
 	r := NewTextReporter(&b)
 	if err := r.Report(context.Background(), Event{Kind: EventProgress, Product: "demo", Bytes: 5, Total: 9}); err != nil {
@@ -334,6 +346,7 @@ func (w *countingWriter) Write(p []byte) (int, error) {
 }
 
 func TestJSONReporterLines(t *testing.T) {
+	t.Parallel()
 	w := &countingWriter{}
 	r := NewJSONReporter(w)
 	ctx := context.Background()
@@ -362,6 +375,7 @@ func TestJSONReporterLines(t *testing.T) {
 }
 
 func TestResultDocumentJSON(t *testing.T) {
+	t.Parallel()
 	res := Result{Product: "demo", CurrentVersion: "v1.0.0", TargetVersion: "v1.1.0", ReleaseURL: "https://example.invalid/r",
 		AssetName: "demo-linux-amd64", Operation: OperationUpgrade, Applied: true, ReleaseDigest: "aa", InstalledDigest: "bb"}
 	got, err := json.Marshal(res.Document())
@@ -395,6 +409,7 @@ func TestResultDocumentJSON(t *testing.T) {
 // left out of Document unnoticed (0004-PLAN-v1-1-0-core-api.md Step 13,
 // D5).
 func TestResultDocumentCoversEveryField(t *testing.T) {
+	t.Parallel()
 	var res Result
 	rv := reflect.ValueOf(&res).Elem()
 	for i := range rv.NumField() {
@@ -425,6 +440,7 @@ func TestResultDocumentCoversEveryField(t *testing.T) {
 // interface is refused as a nil one is: an error, never a panic
 // (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md C7).
 func TestTypedNilWriters(t *testing.T) {
+	t.Parallel()
 	var w *bytes.Buffer
 	ev := Event{Kind: EventSelected, Product: "demo"}
 	for name, r := range map[string]Reporter{"text": NewTextReporter(w), "json": NewJSONReporter(w)} {

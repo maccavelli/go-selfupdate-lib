@@ -35,11 +35,12 @@ func chmodOrSkip(t *testing.T, path string, mode os.FileMode) {
 // TestSpecialBitTargetRefused: a target with setuid or setgid is not
 // replaced unless the policy allows it.
 func TestSpecialBitTargetRefused(t *testing.T) {
+	t.Parallel()
 	for _, bit := range []os.FileMode{os.ModeSetuid, os.ModeSetgid} {
 		t.Run(bit.String(), func(t *testing.T) {
-			_, exe := withTempHome(t)
+			_, exe := tempTarget(t)
 			chmodOrSkip(t, exe, bit|0o755)
-			inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+			inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -53,9 +54,10 @@ func TestSpecialBitTargetRefused(t *testing.T) {
 
 // TestStickyBitCarriedOver: the sticky bit is kept on the new binary.
 func TestStickyBitCarriedOver(t *testing.T) {
-	_, exe := withTempHome(t)
+	t.Parallel()
+	_, exe := tempTarget(t)
 	chmodOrSkip(t, exe, os.ModeSticky|0o755)
-	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,12 +87,13 @@ func TestStickyBitCarriedOver(t *testing.T) {
 // left privileged at a predictable path; the new binary keeps its bit
 // (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md B5).
 func TestKeepPreviousClearsSpecialBits(t *testing.T) {
+	t.Parallel()
 	for _, bit := range []os.FileMode{os.ModeSetuid, os.ModeSetgid} {
 		t.Run(bit.String(), func(t *testing.T) {
-			_, exe := withTempHome(t)
+			_, exe := tempTarget(t)
 			chmodOrSkip(t, exe, bit|0o755)
 			inst, err := NewStandaloneInstaller(InstallOptions{
-				TargetPolicy: TargetPolicy{ExecutablePath: exe, AllowSpecialModeBits: true},
+				TargetPolicy: specialPolicy(exe),
 				KeepPrevious: true,
 			})
 			if err != nil {
@@ -131,9 +134,10 @@ func TestKeepPreviousClearsSpecialBits(t *testing.T) {
 // failed, the only copy of the previous binary, loses setuid too
 // (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md B5).
 func TestKeptBackupClearsSpecialBits(t *testing.T) {
-	_, exe := withTempHome(t)
+	t.Parallel()
+	_, exe := tempTarget(t)
 	chmodOrSkip(t, exe, os.ModeSetuid|0o755)
-	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe, AllowSpecialModeBits: true}})
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: specialPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}

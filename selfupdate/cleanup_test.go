@@ -6,6 +6,7 @@ import (
 )
 
 func TestCleanupReceiptName(t *testing.T) {
+	t.Parallel()
 	got := cleanupReceiptName("demo")
 	if got != ".demo.selfupdate.cleanup" {
 		t.Fatalf("%q", got)
@@ -19,6 +20,7 @@ func TestCleanupReceiptName(t *testing.T) {
 // TestValidateReceiptBackup: a receipt may name only a backup of its own
 // target, as a bare basename (0003-MADR B6). Portable, so every OS runs it.
 func TestValidateReceiptBackup(t *testing.T) {
+	t.Parallel()
 	target := Target{Dir: filepath.FromSlash("/home/<user>/bin"), Base: "demo.exe", Path: filepath.FromSlash("/home/<user>/bin/demo.exe")}
 	good := []string{".demo.exe.selfupdate-bak-123", ".demo.exe.selfupdate-bak-x"}
 	bad := []string{

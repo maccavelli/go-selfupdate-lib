@@ -15,9 +15,10 @@ import (
 // TestKeptBackups: only regular files named .<base>.selfupdate-kept-<digits>,
 // sorted by name; none is nil; and no lock is taken.
 func TestKeptBackups(t *testing.T) {
-	_, exe := withTempHome(t)
+	t.Parallel()
+	_, exe := tempTarget(t)
 	dir := filepath.Dir(exe)
-	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,6 +91,7 @@ func (p plainInstaller) Begin(ctx context.Context, target Target) (InstallSessio
 // TestManagedKeptBackups: a managed installer lists through its inner
 // installer, and says so when that cannot list.
 func TestManagedKeptBackups(t *testing.T) {
+	t.Parallel()
 	m, _, sess, exe := managedEnv(t, &fakeLife{}, &fakeRec{})
 	if err := sess.Close(); err != nil {
 		t.Fatal(err)

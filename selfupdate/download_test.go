@@ -28,6 +28,7 @@ func (s stubSource) OpenAsset(context.Context, Release, Asset) (io.ReadCloser, e
 }
 
 func TestCopyLimited(t *testing.T) {
+	t.Parallel()
 	payload := []byte("hello")
 	want := shaHex(payload)
 	var buf bytes.Buffer
@@ -41,6 +42,7 @@ func TestCopyLimited(t *testing.T) {
 }
 
 func TestCopyLimitedOverflowAndShort(t *testing.T) {
+	t.Parallel()
 	if _, _, err := copyLimited(strings.NewReader("hello!!"), io.Discard, 5, 100); !errors.Is(err, ErrIntegrity) {
 		t.Fatalf("long body err = %v", err)
 	}
@@ -53,6 +55,7 @@ func TestCopyLimitedOverflowAndShort(t *testing.T) {
 }
 
 func TestDownloadAssetDigestMismatch(t *testing.T) {
+	t.Parallel()
 	payload := []byte("hello")
 	src := stubSource{body: payload}
 	asset := Asset{
@@ -69,6 +72,7 @@ func TestDownloadAssetDigestMismatch(t *testing.T) {
 }
 
 func TestDownloadAssetSuccess(t *testing.T) {
+	t.Parallel()
 	payload := []byte("hello")
 	sum := sha256.Sum256(payload)
 	src := stubSource{body: payload}
@@ -90,6 +94,7 @@ func TestDownloadAssetSuccess(t *testing.T) {
 }
 
 func TestDownloadAssetOverflow(t *testing.T) {
+	t.Parallel()
 	src := stubSource{body: []byte(strings.Repeat("x", 50))}
 	asset := Asset{ID: 1, Name: "demo-linux-amd64", State: "uploaded", Size: 50}
 	_, err := downloadAsset(context.Background(), src, Release{ID: 1}, asset, io.Discard, 16)
@@ -99,6 +104,7 @@ func TestDownloadAssetOverflow(t *testing.T) {
 }
 
 func TestReadBoundedOverflow(t *testing.T) {
+	t.Parallel()
 	_, err := readBounded(strings.NewReader(strings.Repeat("x", 8)), 4)
 	if err == nil {
 		t.Fatal("accepted overflow")

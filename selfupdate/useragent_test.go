@@ -12,6 +12,7 @@ import (
 var uaShape = regexp.MustCompile(`^[^\s/()]+/[^\s/()]+ \([a-z0-9]+/[a-z0-9]+\)$`)
 
 func TestUserAgent(t *testing.T) {
+	t.Parallel()
 	plat := " (" + runtime.GOOS + "/" + runtime.GOARCH + ")"
 	for _, tc := range []struct {
 		product, version, want string

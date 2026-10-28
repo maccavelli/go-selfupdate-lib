@@ -29,6 +29,10 @@ type fsOps struct {
 	writeJournalFn func(*os.Root, Target, pendingJournal) error
 	keptRenameFn   func(*os.Root, string, string) error
 	leftoverRemove func(*os.Root, string) error
+	// osExecutable and userHomeDir locate the target and its default
+	// allowed root.
+	osExecutable func() (string, error)
+	userHomeDir  func() (string, error)
 	// lockOpenHook runs at each stage of openLockFile, and afterLockHook
 	// right after beginSession takes the lock; tests use them to change
 	// the lock or the directory at that moment.
@@ -52,6 +56,8 @@ func realFS() *fsOps {
 		syncRootFn:     syncRoot,
 		keptRenameFn:   (*os.Root).Rename,
 		leftoverRemove: (*os.Root).Remove,
+		osExecutable:   os.Executable,
+		userHomeDir:    os.UserHomeDir,
 		lockOpenHook:   func(string) {},
 		afterLockHook:  func() {},
 	}

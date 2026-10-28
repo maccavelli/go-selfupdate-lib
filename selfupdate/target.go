@@ -8,14 +8,8 @@ import (
 	"strings"
 )
 
-var (
-	osExecutable = os.Executable
-	userHomeDir  = os.UserHomeDir
-	evalSymlinks = filepath.EvalSymlinks
-)
-
-func resolveTarget(policy TargetPolicy) (Target, error) {
-	raw, err := rawExecutablePath(policy.ExecutablePath)
+func (fx *fsOps) resolveTarget(policy TargetPolicy) (Target, error) {
+	raw, err := fx.rawExecutablePath(policy.ExecutablePath)
 	if err != nil {
 		return Target{}, err
 	}
@@ -29,7 +23,7 @@ func resolveTarget(policy TargetPolicy) (Target, error) {
 	if !info.Mode().IsRegular() {
 		return Target{}, fmt.Errorf("selfupdate: target is not a regular file")
 	}
-	resolved, err := evalSymlinks(raw)
+	resolved, err := filepath.EvalSymlinks(raw)
 	if err != nil {
 		return Target{}, fmt.Errorf("selfupdate: resolve target: %w", err)
 	}
@@ -53,7 +47,7 @@ func resolveTarget(policy TargetPolicy) (Target, error) {
 	if dir == resolved || base == "" || base == "." || base == ".." {
 		return Target{}, fmt.Errorf("selfupdate: target path is not a file")
 	}
-	roots, err := allowedRoots(policy.AllowedRoots)
+	roots, err := fx.allowedRoots(policy.AllowedRoots)
 	if err != nil {
 		return Target{}, err
 	}
@@ -73,11 +67,11 @@ func resolveTarget(policy TargetPolicy) (Target, error) {
 	}, nil
 }
 
-func rawExecutablePath(explicit string) (string, error) {
+func (fx *fsOps) rawExecutablePath(explicit string) (string, error) {
 	raw := explicit
 	if raw == "" {
 		var err error
-		raw, err = osExecutable()
+		raw, err = fx.osExecutable()
 		if err != nil {
 			return "", fmt.Errorf("selfupdate: locate executable: %w", err)
 		}
@@ -99,9 +93,9 @@ func rawExecutablePath(explicit string) (string, error) {
 // service account may have no home, or one at "/" or one that does not
 // exist: it is skipped, so a root in TargetPolicy.AllowedRoots can cover
 // the target instead (0010-MADR B2). An extra root must itself be valid.
-func allowedRoots(extra []string) ([]string, error) {
+func (fx *fsOps) allowedRoots(extra []string) ([]string, error) {
 	roots := make([]string, 0, 1+len(extra))
-	if home, err := userHomeDir(); err == nil {
+	if home, err := fx.userHomeDir(); err == nil {
 		if homeRoot, err := canonicalizeRoot(home); err == nil {
 			roots = append(roots, homeRoot)
 		}
@@ -139,7 +133,7 @@ func canonicalizeRoot(path string) (string, error) {
 	if !info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
 		return "", fmt.Errorf("selfupdate: allowed root is not a directory")
 	}
-	resolved, err := evalSymlinks(abs)
+	resolved, err := filepath.EvalSymlinks(abs)
 	if err != nil {
 		return "", fmt.Errorf("selfupdate: resolve allowed root: %w", err)
 	}
@@ -236,8 +230,8 @@ func lockedTarget(target Target) (os.FileInfo, error) {
 	return info, nil
 }
 
-func revalidateTarget(original Target, policy TargetPolicy) error {
-	fresh, err := resolveTarget(policy)
+func (fx *fsOps) revalidateTarget(original Target, policy TargetPolicy) error {
+	fresh, err := fx.resolveTarget(policy)
 	if err != nil {
 		return err
 	}

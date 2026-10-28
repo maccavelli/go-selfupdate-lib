@@ -23,6 +23,7 @@ func uploaded(id int64, name string, size int64) githubAssetJSON {
 // TestGitHubExtraAssetsDoNotPoisonRelease: an unrelated extra asset with a
 // bad state, size or digest does not make the release unusable (A1).
 func TestGitHubExtraAssetsDoNotPoisonRelease(t *testing.T) {
+	t.Parallel()
 	extras := map[string]githubAssetJSON{
 		"zero-size":   uploaded(3, "README.txt", 0),
 		"open-state":  {ID: 3, Name: "install.sh", State: "open", Size: 10},
@@ -53,6 +54,7 @@ func TestGitHubExtraAssetsDoNotPoisonRelease(t *testing.T) {
 
 // TestGitHubByTagRejectsMismatchedTag (A2).
 func TestGitHubByTagRejectsMismatchedTag(t *testing.T) {
+	t.Parallel()
 	body := validReleaseJSON(t, "v0.1.0", uploaded(1, "x", 1))
 	env := newGitHubEnv(t, func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(body) }, "")
 	rel, err := env.src.ByTag(context.Background(), "v1.2.3")
@@ -63,6 +65,7 @@ func TestGitHubByTagRejectsMismatchedTag(t *testing.T) {
 
 // TestGitHubRedirectRequiresHTTPS (A3).
 func TestGitHubRedirectRequiresHTTPS(t *testing.T) {
+	t.Parallel()
 	env := newGitHubEnv(t, func(http.ResponseWriter, *http.Request) {}, "")
 	prev := &http.Request{URL: mustURL(t, "https://api.github.com/repos/o/r/releases/assets/1"), Header: http.Header{}}
 	cases := map[string]bool{
@@ -94,6 +97,7 @@ func mustURL(t *testing.T, raw string) *url.URL {
 
 // TestDecodeJSONRejectsTrailingDelimiters (A6).
 func TestDecodeJSONRejectsTrailingDelimiters(t *testing.T) {
+	t.Parallel()
 	for _, in := range []string{`{"id":1}}`, `{"id":1}]`, `{"id":1}]]]}}`, `{"id":1} x`, `{"id":1}{"id":2}`} {
 		var v map[string]any
 		if err := decodeJSON([]byte(in), &v); err == nil {
@@ -110,6 +114,7 @@ func TestDecodeJSONRejectsTrailingDelimiters(t *testing.T) {
 
 // TestRateLimitRetryAfterOverflow (A7).
 func TestRateLimitRetryAfterOverflow(t *testing.T) {
+	t.Parallel()
 	for _, v := range []string{"9999999999", "9223372037", "92233720368547758070"} {
 		resp := &http.Response{StatusCode: http.StatusTooManyRequests, Header: http.Header{"Retry-After": {v}}}
 		var rl *RateLimitError
@@ -127,6 +132,7 @@ func TestRateLimitRetryAfterOverflow(t *testing.T) {
 // TestGitHubLargeErrorBodyKeepsRateLimit: an error body over the limit is
 // truncated, not fatal, so the status still maps (A8).
 func TestGitHubLargeErrorBodyKeepsRateLimit(t *testing.T) {
+	t.Parallel()
 	big := strings.Repeat("x", 8<<10)
 	env := newGitHubEnv(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Retry-After", "5")
@@ -150,6 +156,7 @@ func TestGitHubLargeErrorBodyKeepsRateLimit(t *testing.T) {
 
 // TestNewGitHubSourceRejectsDotNames (A10).
 func TestNewGitHubSourceRejectsDotNames(t *testing.T) {
+	t.Parallel()
 	for _, repo := range []Repository{{Owner: ".", Name: "r"}, {Owner: "..", Name: "r"}, {Owner: "o", Name: "."}, {Owner: "o", Name: ".."}} {
 		_, err := NewGitHubSource(GitHubOptions{Repository: repo, Client: http.DefaultClient, UserAgent: "demo/v1.0.0", Limits: testGitHubLimits()})
 		if err == nil {
@@ -163,6 +170,7 @@ func TestNewGitHubSourceRejectsDotNames(t *testing.T) {
 
 // TestSanitizeRemovesFormatControls (A11).
 func TestSanitizeRemovesFormatControls(t *testing.T) {
+	t.Parallel()
 	in := "ok\u202egnp.exe\u2066x\u200by\u2028z\u2029w\ufeffv"
 	for name, got := range map[string]string{
 		"diagnostic": sanitizeDiagnostic(in, 1024),
@@ -184,6 +192,7 @@ func TestSanitizeRemovesFormatControls(t *testing.T) {
 // TestGitHubForbiddenRemainingZeroIsRateLimit: GitHub's primary rate-limit
 // shape, 403 with X-RateLimit-Remaining 0 and no Retry-After.
 func TestGitHubForbiddenRemainingZeroIsRateLimit(t *testing.T) {
+	t.Parallel()
 	env := newGitHubEnv(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("X-RateLimit-Remaining", "0")
 		w.Header().Set("X-RateLimit-Reset", "1900000000")
@@ -204,6 +213,7 @@ func TestGitHubForbiddenRemainingZeroIsRateLimit(t *testing.T) {
 // TestGitHubOpenAssetStatuses: non-2xx asset responses are errors, and 429
 // is a RateLimitError.
 func TestGitHubOpenAssetStatuses(t *testing.T) {
+	t.Parallel()
 	rel := Release{ID: 1, Tag: "v1.0.0", Assets: []Asset{{ID: 7, Name: "demo", State: "uploaded", Size: 4}}}
 	for status, rateLimited := range map[int]bool{http.StatusNotFound: false, http.StatusTooManyRequests: true, http.StatusInternalServerError: false} {
 		env := newGitHubEnv(t, func(w http.ResponseWriter, _ *http.Request) {
@@ -226,6 +236,7 @@ func TestGitHubOpenAssetStatuses(t *testing.T) {
 // TestGitHubOpenAssetValidatesAsset: state, size and release membership are
 // checked before any request is sent.
 func TestGitHubOpenAssetValidatesAsset(t *testing.T) {
+	t.Parallel()
 	var requests int
 	env := newGitHubEnv(t, func(w http.ResponseWriter, _ *http.Request) {
 		requests++
@@ -261,6 +272,7 @@ func TestGitHubOpenAssetValidatesAsset(t *testing.T) {
 
 // TestRateLimitErrorText covers RateLimitError.Error and Unwrap.
 func TestRateLimitErrorText(t *testing.T) {
+	t.Parallel()
 	e := &RateLimitError{StatusCode: 429, Remaining: 3, RetryAfter: 2 * time.Second, Reset: time.Unix(1900000000, 0)}
 	got := e.Error()
 	for _, want := range []string{"status 429", "remaining 3", "retry-after 2s", "2030-03-17T17:46:40Z"} {
@@ -281,6 +293,7 @@ func TestRateLimitErrorText(t *testing.T) {
 // both the fetched-release check and the listed-release check
 // (0010-MADR A13: deleting either check survived the suite).
 func TestReleaseIdentityRequired(t *testing.T) {
+	t.Parallel()
 	for name, rel := range map[string]Release{
 		"no id":  {ID: 0, Tag: "v1.0.0", Immutable: true},
 		"no tag": {ID: 7, Tag: "", Immutable: true},
@@ -297,6 +310,7 @@ func TestReleaseIdentityRequired(t *testing.T) {
 // TestRedirectCap: the source's redirect policy stops at maxRedirects
 // (0010-MADR A13: disabling the cap survived the suite).
 func TestRedirectCap(t *testing.T) {
+	t.Parallel()
 	src, err := NewGitHubSource(GitHubOptions{Repository: Repository{Owner: "owner", Name: "demo"},
 		Client: &http.Client{}, UserAgent: "demo/v1.0.0", Limits: DefaultLimits()})
 	if err != nil {
@@ -323,7 +337,7 @@ func TestRedirectCap(t *testing.T) {
 // nor X-RateLimit-Remaining, so CheckCached backs off
 // (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md A4).
 func TestGitHubSecondaryRateLimitWithoutHeaders(t *testing.T) {
-	noEnv(t, nil)
+	t.Parallel()
 	requests := 0
 	env := newGitHubEnv(t, func(w http.ResponseWriter, _ *http.Request) {
 		requests++
@@ -335,13 +349,13 @@ func TestGitHubSecondaryRateLimitWithoutHeaders(t *testing.T) {
 	if !errors.As(err, &rl) || rl.StatusCode != http.StatusForbidden {
 		t.Fatalf("err = %v; isRateLimited=%t", err, errors.Is(err, ErrRateLimited))
 	}
-	setSeam(t, &timeNow, func() time.Time { return cacheNow })
 	plat := Platform{OS: "linux", Arch: "amd64"}
 	sel, err := NewExactAssetSelector([]Platform{plat})
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := NewChecker(CheckerConfig{Source: env.src, Versions: NewStrictVersionPolicy(), Assets: sel, Limits: DefaultLimits()})
+	c, err := NewChecker(CheckerConfig{Source: env.src, Versions: NewStrictVersionPolicy(), Assets: sel, Limits: DefaultLimits(),
+		Clock: ClockFunc(func() time.Time { return cacheNow })})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -361,7 +375,7 @@ func TestGitHubSecondaryRateLimitWithoutHeaders(t *testing.T) {
 // decoded, so the size and digest checks see the published bytes
 // (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md A6).
 func TestOpenAssetKeepsContentEncodedBytes(t *testing.T) {
-	noEnv(t, nil)
+	t.Parallel()
 	var asked string
 	var gz bytes.Buffer
 	zw := gzip.NewWriter(&gz)

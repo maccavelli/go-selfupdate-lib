@@ -22,6 +22,8 @@ type seenRequest struct {
 }
 
 type credServer struct {
+	// env is the environment its sources read: none, unless a test sets it.
+	env          map[string]string
 	api, foreign *httptest.Server
 	mu           sync.Mutex
 	seen         []seenRequest
@@ -79,7 +81,7 @@ func (cs *credServer) source(t *testing.T, edit func(*GitHubOptions)) *GitHubSou
 	if edit != nil {
 		edit(&opts)
 	}
-	src, err := NewGitHubSource(opts)
+	src, err := gitHubSourceFrom(opts, lookupIn(cs.env))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,15 +120,19 @@ func (p *scripted) Credential(_ context.Context, r CredentialRequest) (Credentia
 
 func bearer(v string) Credential { return Credential{Value: []byte(v), Source: "test"} }
 
-func noEnv(t *testing.T, env map[string]string) {
-	t.Helper()
-	setSeam(t, &lookupEnv, func(k string) string { return env[k] })
+// lookupIn is a getenv over env alone: a test reads no real environment,
+// and sets none
+// (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// D3-A).
+func lookupIn(env map[string]string) func(string) string {
+	return func(k string) string { return env[k] }
 }
 
 func TestCredentialOrder(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	cs := newCredServer(t)
-	noEnv(t, map[string]string{"GH_TOKEN": "envtok"})
+	cs.env = map[string]string{"GH_TOKEN": "envtok"}
 	prov := &scripted{values: []Credential{bearer("prov")}}
 
 	explicit := cs.source(t, func(o *GitHubOptions) { o.Token = "explicit"; o.Credentials = prov })
@@ -155,8 +161,8 @@ func TestCredentialOrder(t *testing.T) {
 }
 
 func TestCredentialLazy(t *testing.T) {
+	t.Parallel()
 	cs := newCredServer(t)
-	noEnv(t, nil)
 	prov := &scripted{values: []Credential{bearer("prov")}}
 	src := cs.source(t, func(o *GitHubOptions) { o.Credentials = prov })
 	if prov.calls != 0 {
@@ -173,10 +179,10 @@ func TestCredentialLazy(t *testing.T) {
 }
 
 func TestCredentialFallThrough(t *testing.T) {
+	t.Parallel()
 	cs := newCredServer(t)
-	noEnv(t, nil)
 	src := cs.source(t, func(o *GitHubOptions) {
-		o.Credentials = ChainCredentials(&scripted{err: ErrNoCredential}, nil, EnvCredential("", "UNSET"))
+		o.Credentials = ChainCredentials(&scripted{err: ErrNoCredential}, nil, envCredentialFrom(lookupIn(nil), "", "UNSET"))
 	})
 	if _, err := src.Latest(context.Background()); err != nil {
 		t.Fatal(err)
@@ -197,8 +203,8 @@ func TestCredentialFallThrough(t *testing.T) {
 }
 
 func TestCredentialProviderErrorFailsRequest(t *testing.T) {
+	t.Parallel()
 	cs := newCredServer(t)
-	noEnv(t, nil)
 	boom := errors.New("keychain locked")
 	src := cs.source(t, func(o *GitHubOptions) { o.Credentials = &scripted{err: boom} })
 	if _, err := src.Latest(context.Background()); !errors.Is(err, boom) {
@@ -210,8 +216,8 @@ func TestCredentialProviderErrorFailsRequest(t *testing.T) {
 }
 
 func TestCredentialHeaderModes(t *testing.T) {
+	t.Parallel()
 	cs := newCredServer(t)
-	noEnv(t, nil)
 	custom := cs.source(t, func(o *GitHubOptions) {
 		o.Credentials = &scripted{values: []Credential{{Header: "X-Api-Key", Value: []byte("k1"), Source: "test"}}}
 	})
@@ -224,8 +230,8 @@ func TestCredentialHeaderModes(t *testing.T) {
 }
 
 func TestCredentialInvalidRefused(t *testing.T) {
+	t.Parallel()
 	cs := newCredServer(t)
-	noEnv(t, nil)
 	for _, bad := range []Credential{
 		{Header: "Bad Header", Value: []byte("secret-one"), Source: "t"},
 		{Value: []byte("secret\r\ntwo"), Source: "t"},
@@ -240,7 +246,7 @@ func TestCredentialInvalidRefused(t *testing.T) {
 }
 
 func TestCredentialStrippedCrossOrigin(t *testing.T) {
-	noEnv(t, nil)
+	t.Parallel()
 	for _, cred := range []Credential{bearer("tok"), {Header: "X-Api-Key", Value: []byte("k1"), Source: "t"}} {
 		cs := newCredServer(t)
 		src := cs.source(t, func(o *GitHubOptions) { o.Credentials = &scripted{values: []Credential{cred}} })
@@ -268,8 +274,8 @@ type countingObserver struct{ n atomic.Int32 }
 func (o *countingObserver) Accepted(context.Context, Credential) { o.n.Add(1) }
 
 func TestCredentialAcceptedOnce(t *testing.T) {
+	t.Parallel()
 	cs := newCredServer(t)
-	noEnv(t, nil)
 	obs := &countingObserver{}
 	src := cs.source(t, func(o *GitHubOptions) {
 		o.Credentials = &scripted{values: []Credential{bearer("good")}}
@@ -299,8 +305,8 @@ func TestCredentialAcceptedOnce(t *testing.T) {
 }
 
 func TestCredential401RetryOnce(t *testing.T) {
+	t.Parallel()
 	cs := newCredServer(t)
-	noEnv(t, nil)
 	cs.refuse["Bearer bad"] = true
 	prov := &scripted{values: []Credential{bearer("bad"), bearer("good")}}
 	src := cs.source(t, func(o *GitHubOptions) { o.Credentials = prov })
@@ -340,8 +346,8 @@ func TestCredential401RetryOnce(t *testing.T) {
 }
 
 func TestCredential401SameValueNoRetry(t *testing.T) {
+	t.Parallel()
 	cs := newCredServer(t)
-	noEnv(t, nil)
 	cs.refuse["Bearer bad"] = true
 	src := cs.source(t, func(o *GitHubOptions) { o.Credentials = &scripted{values: []Credential{bearer("bad")}} })
 	if _, err := src.Latest(context.Background()); err == nil {
@@ -361,12 +367,13 @@ func TestCredential401SameValueNoRetry(t *testing.T) {
 }
 
 func TestEnvCredentialSource(t *testing.T) {
-	noEnv(t, map[string]string{"B": "value-b"})
-	got, err := EnvCredential("X-Key", "A", "B").Credential(context.Background(), CredentialRequest{})
+	t.Parallel()
+	env := lookupIn(map[string]string{"B": "value-b"})
+	got, err := envCredentialFrom(env, "X-Key", "A", "B").Credential(context.Background(), CredentialRequest{})
 	if err != nil || got.Source != "env:B" || got.Header != "X-Key" || string(got.Value) != "value-b" {
 		t.Fatalf("got %+v err=%v", got, err)
 	}
-	if _, err := EnvCredential("", "A").Credential(context.Background(), CredentialRequest{}); !errors.Is(err, ErrNoCredential) {
+	if _, err := envCredentialFrom(env, "", "A").Credential(context.Background(), CredentialRequest{}); !errors.Is(err, ErrNoCredential) {
 		t.Fatalf("unset: %v", err)
 	}
 }
@@ -380,8 +387,8 @@ func (p *slowProvider) Credential(context.Context, CredentialRequest) (Credentia
 }
 
 func TestCredentialConcurrent(t *testing.T) {
+	t.Parallel()
 	cs := newCredServer(t)
-	noEnv(t, nil)
 	prov := &slowProvider{}
 	src := cs.source(t, func(o *GitHubOptions) { o.Credentials = prov })
 	var wg sync.WaitGroup
@@ -402,8 +409,8 @@ func TestCredentialConcurrent(t *testing.T) {
 // state, and the receiver is unchanged
 // (0004-PLAN-v1-2-0-interaction-stream.md Step 3).
 func TestGitHubSourceWithCredentials(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
-	noEnv(t, nil)
 	cs := newCredServer(t)
 	src := cs.source(t, nil)
 	// The receiver resolves first, to anonymous: a copy that inherited that
@@ -450,7 +457,7 @@ func TestGitHubSourceWithCredentials(t *testing.T) {
 // TestGitHubSourceWithCredentialsStripsCrossOrigin: the copy's redirect
 // check scrubs the copy's own credential header, not the receiver's.
 func TestGitHubSourceWithCredentialsStripsCrossOrigin(t *testing.T) {
-	noEnv(t, nil)
+	t.Parallel()
 	cs := newCredServer(t)
 	src := cs.source(t, nil)
 	custom := &scripted{values: []Credential{{Header: "X-Api-Key", Value: []byte("k1"), Source: "t"}}}

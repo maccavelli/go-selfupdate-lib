@@ -100,10 +100,11 @@ func sha256Hex(s string) string {
 // interrupted update left is kept, KeptBackups lists it, and the journal
 // is gone.
 func TestInterruptedApplyKeepsBackup(t *testing.T) {
+	t.Parallel()
 	standalone := func(t *testing.T) (*StandaloneInstaller, string) {
 		t.Helper()
-		_, exe := withTempHome(t)
-		inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+		_, exe := tempTarget(t)
+		inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -217,11 +218,12 @@ func checkJournal(t *testing.T, j pendingJournal, product, backup string) {
 // journal names the backup and both digests, with no product; once
 // Install returns, it is gone.
 func TestJournalDuringInstall(t *testing.T) {
-	_, exe := withTempHome(t)
+	t.Parallel()
+	_, exe := tempTarget(t)
 	var seen *pendingJournal
 	var backup string
 	inst, err := NewStandaloneInstaller(InstallOptions{
-		TargetPolicy: TargetPolicy{ExecutablePath: exe},
+		TargetPolicy: targetPolicy(exe),
 		PostInstall: ProberFunc(func(context.Context, ProbeRequest) error {
 			j := readJournalFile(t, exe)
 			seen = &j
@@ -254,6 +256,7 @@ func TestJournalDuringInstall(t *testing.T) {
 // TestJournalDuringApply: after Apply the journal names the product, as a
 // managed install's would; Commit removes it.
 func TestJournalDuringApply(t *testing.T) {
+	t.Parallel()
 	sess, exe := standaloneSession(t)
 	two := sess.(TwoPhaseSession)
 	applied, err := two.Apply(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: stageNew(t, sess)}})
@@ -271,6 +274,7 @@ func TestJournalDuringApply(t *testing.T) {
 // TestJournalWriteFailure: an update whose journal cannot be written fails
 // before the target is replaced, and leaves no backup and no journal.
 func TestJournalWriteFailure(t *testing.T) {
+	t.Parallel()
 	sess, exe := standaloneSession(t)
 	failing := errors.New("injected journal failure")
 	fsOf(t, sess).writeJournalFn = func(*os.Root, Target, pendingJournal) error { return failing }
@@ -290,6 +294,7 @@ func TestJournalWriteFailure(t *testing.T) {
 // TestApplyRefusesPendingJournal: a journal recovery left (here, one it
 // cannot read) blocks the next update, which names it (0017-PLAN N9).
 func TestApplyRefusesPendingJournal(t *testing.T) {
+	t.Parallel()
 	sess, exe := standaloneSession(t)
 	journal := filepath.Join(filepath.Dir(exe), ".demo.selfupdate.pending")
 	if err := os.WriteFile(journal, []byte("{"), 0o600); err != nil {
@@ -390,6 +395,7 @@ func checkRecovery(t *testing.T, exe string, p recoveryPlant, w recoveryWant) {
 // as an interrupted update, or something else, would leave them, then
 // CleanupPending (0017-PLAN Q1 step 2).
 func TestJournalRecoveryRules(t *testing.T) {
+	t.Parallel()
 	const backup = recoveryBackup
 	journalJSON := func(j pendingJournal) string {
 		b, err := json.Marshal(j)
@@ -423,9 +429,9 @@ func TestJournalRecoveryRules(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			_, exe := withTempHome(t)
+			_, exe := tempTarget(t)
 			plantRecovery(t, exe, c.p)
-			inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+			inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -445,9 +451,10 @@ func TestJournalRecoveryRules(t *testing.T) {
 // the backup to it (rule 5). The receipt exists on Windows only, so the
 // keep list is given directly.
 func TestJournalRecoveryReceiptListed(t *testing.T) {
-	_, exe := withTempHome(t)
+	t.Parallel()
+	_, exe := tempTarget(t)
 	dir := filepath.Dir(exe)
-	target, err := resolveTarget(TargetPolicy{ExecutablePath: exe})
+	target, err := realFS().resolveTarget(targetPolicy(exe))
 	if err != nil {
 		t.Fatal(err)
 	}

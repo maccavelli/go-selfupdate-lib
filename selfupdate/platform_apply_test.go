@@ -55,6 +55,7 @@ func platformEnv(t *testing.T, plat Platform) (*contractEnv, *Updater) {
 }
 
 func TestApplyForeignPlatformRefused(t *testing.T) {
+	t.Parallel()
 	foreign := foreignPlatform()
 	env, u := platformEnv(t, foreign)
 	req := applyReq()
@@ -72,6 +73,7 @@ func TestApplyForeignPlatformRefused(t *testing.T) {
 }
 
 func TestCheckAndDryRunForeignPlatform(t *testing.T) {
+	t.Parallel()
 	foreign := foreignPlatform()
 	_, u := platformEnv(t, foreign)
 	check := applyReq()
@@ -92,6 +94,7 @@ func TestCheckAndDryRunForeignPlatform(t *testing.T) {
 // TestApplyRunningPlatformNamed: naming the running platform is the same
 // as leaving it zero.
 func TestApplyRunningPlatformNamed(t *testing.T) {
+	t.Parallel()
 	running := Platform{OS: runtime.GOOS, Arch: runtime.GOARCH}
 	_, u := platformEnv(t, running)
 	req := applyReq()
@@ -107,6 +110,7 @@ func TestApplyRunningPlatformNamed(t *testing.T) {
 // result says so; for the running platform they run
 // (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md C9).
 func TestDryRunForeignPlatformSkipsProbes(t *testing.T) {
+	t.Parallel()
 	for _, foreign := range []bool{true, false} {
 		plat := Platform{OS: runtime.GOOS, Arch: runtime.GOARCH}
 		if foreign {

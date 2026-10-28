@@ -94,6 +94,7 @@ func New(cfg Config) (*Updater, error) {
 		manifestVfy: append([]ManifestVerifier(nil), cfg.ManifestVerifiers...),
 		probes:      append([]Prober(nil), cfg.Probes...),
 		clock:       cfg.Clock,
+		platform:    runtimePlatform(),
 	}, nil
 }
 
@@ -155,14 +156,14 @@ func (u *run) execute(ctx context.Context, req Request) (res Result, err error) 
 	// A failed run still names itself: the product, the running version,
 	// and what was asked (0015-MADR C6).
 	base := Result{Product: req.Product, CurrentVersion: req.CurrentVersion, Checked: req.CheckOnly, DryRun: req.DryRun}
-	if err := validateRequest(req, u.versions); err != nil {
+	if err := validateRequest(req, u.versions, u.runningPlatform()); err != nil {
 		if validateProduct(req.Product) != nil {
 			// An invalid product name is not safe to put in the prefix.
 			return Result{}, err
 		}
 		return base, wrapRun(req, err)
 	}
-	req.Platform = normalizePlatform(req.Platform)
+	req.Platform = normalizePlatform(req.Platform, u.runningPlatform())
 	if err := u.report(ctx, Event{Kind: EventResolvingTarget, Product: req.Product, Current: req.CurrentVersion}); err != nil {
 		return base, wrapRun(req, err)
 	}
@@ -485,7 +486,7 @@ func retainedPath(target Target, p string) string {
 // for another platform: this host cannot run that platform's binary, so
 // the probes are skipped and it reports so (0015-MADR C9).
 func (u *Updater) stagedProbes(ctx context.Context, req Request, rel Release, stagedPath string) (skipped bool, err error) {
-	if req.DryRun && req.Platform != runningPlatform() && len(u.probes) > 0 {
+	if req.DryRun && req.Platform != u.runningPlatform() && len(u.probes) > 0 {
 		return true, nil
 	}
 	return false, u.runProbes(ctx, req, rel, stagedPath)
@@ -695,15 +696,24 @@ func isNil(v any) bool {
 	}
 }
 
-// runningPlatform is the platform this binary runs on. Tests replace it to
-// apply a fixture built for another platform (0010-PLAN-v1-6-0 S4).
-var runningPlatform = func() Platform {
+// runtimePlatform is the platform this binary runs on.
+func runtimePlatform() Platform {
 	return Platform{OS: runtime.GOOS, Arch: runtime.GOARCH}
 }
 
-func normalizePlatform(p Platform) Platform {
+// runningPlatform is the platform u applies for: runtimePlatform, unless a test set
+// another, to apply a fixture built for it (0010-PLAN-v1-6-0 S4).
+func (u *Updater) runningPlatform() Platform {
+	if u.platform != (Platform{}) {
+		return u.platform
+	}
+	return runtimePlatform()
+}
+
+// normalizePlatform is p, or running when p is empty.
+func normalizePlatform(p, running Platform) Platform {
 	if p.OS == "" && p.Arch == "" {
-		return runningPlatform()
+		return running
 	}
 	return p
 }

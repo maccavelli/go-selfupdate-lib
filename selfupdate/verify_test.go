@@ -9,6 +9,7 @@ import (
 )
 
 func TestVerifyIntegrity(t *testing.T) {
+	t.Parallel()
 	err := verifyIntegrity(Verification{
 		SHA256:         testDigest,
 		ManifestSHA256: testDigest,
@@ -39,6 +40,7 @@ func TestVerifyIntegrity(t *testing.T) {
 // caller outside its test and was removed (0010-MADR A15); a mismatch is
 // TestVerifyIntegrity's.
 func TestManifestTestdata(t *testing.T) {
+	t.Parallel()
 	valid, err := os.ReadFile(filepath.Join("testdata", "SHA256SUMS.valid"))
 	if err != nil {
 		t.Fatal(err)
@@ -61,6 +63,7 @@ func TestManifestTestdata(t *testing.T) {
 
 // TestEqualDigestLength: digests of different lengths never match.
 func TestEqualDigestLength(t *testing.T) {
+	t.Parallel()
 	if equalDigest(testDigest, testDigest[:len(testDigest)-1]) {
 		t.Fatal("digests of different lengths matched")
 	}

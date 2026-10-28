@@ -21,6 +21,7 @@ var _ = []func(){isComparable[Result], isComparable[Finished], isComparable[Resu
 // TestLateErrorWarns: each late error is one EventWarning after complete,
 // and the same text in Result.Warnings.
 func TestLateErrorWarns(t *testing.T) {
+	t.Parallel()
 	for name, mutate := range lateErrorCases() {
 		t.Run(name, func(t *testing.T) {
 			env := newContractEnv(t)
@@ -47,6 +48,7 @@ func TestLateErrorWarns(t *testing.T) {
 }
 
 func TestWarningsType(t *testing.T) {
+	t.Parallel()
 	w := NewWarnings("first", "", "two\nlines\x1b", "  ")
 	if got := w.List(); !slices.Equal(got, []string{"first", "two lines?"}) || w.Len() != 2 {
 		t.Fatalf("List = %q, Len = %d", got, w.Len())
@@ -65,6 +67,7 @@ func TestWarningsType(t *testing.T) {
 }
 
 func TestWarningsJSON(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		w    Warnings
 		json string
@@ -97,6 +100,7 @@ func TestWarningsJSON(t *testing.T) {
 // TestDocumentWarnings: the document omits warnings when there are none,
 // and otherwise writes them as an array that reads back.
 func TestDocumentWarnings(t *testing.T) {
+	t.Parallel()
 	res := Result{Product: "demo", CurrentVersion: "v1.0.0", Applied: true}
 	b, err := json.Marshal(res.Document())
 	if err != nil || strings.Contains(string(b), "warnings") || !strings.Contains(string(b), `"schema_version":4`) {

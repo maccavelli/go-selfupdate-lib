@@ -38,11 +38,12 @@ func outcomeRows(t *testing.T) []checkRow {
 // one network call, and each returns the error's class. Once maxAge has
 // passed, the next call checks again.
 func TestCheckCachedDeterministicErrorCached(t *testing.T) {
+	t.Parallel()
 	for _, row := range outcomeRows(t) {
 		t.Run(row.name, func(t *testing.T) {
 			now := cacheNow
-			setSeam(t, &timeNow, func() time.Time { return now })
 			c, src, _ := checkerFor(t, row)
+			c.clock = ClockFunc(func() time.Time { return now })
 			store := &memStore{}
 			for i := range 5 {
 				if _, err := c.CheckCached(context.Background(), row.req, store, time.Hour); !errors.Is(err, row.wantErr) {
@@ -68,6 +69,7 @@ func TestCheckCachedDeterministicErrorCached(t *testing.T) {
 // never saved, and every call checks again. A cancellation or a rate limit
 // is transient even when it also carries a deterministic sentinel.
 func TestCheckCachedTransientErrorNotCached(t *testing.T) {
+	t.Parallel()
 	for _, transient := range []error{
 		errors.New("fixture: connection reset"),
 		context.DeadlineExceeded,
@@ -93,6 +95,7 @@ func TestCheckCachedTransientErrorNotCached(t *testing.T) {
 // nothing is available, and is what a cached call returns, with an error
 // that matches the sentinel.
 func TestCheckCachedOutcomeRecorded(t *testing.T) {
+	t.Parallel()
 	want := map[error]CheckOutcome{
 		ErrLatestOlder:         CheckLatestOlder,
 		ErrMutableRelease:      CheckMutableRelease,
@@ -100,8 +103,8 @@ func TestCheckCachedOutcomeRecorded(t *testing.T) {
 	}
 	for _, row := range outcomeRows(t) {
 		t.Run(row.name, func(t *testing.T) {
-			setSeam(t, &timeNow, func() time.Time { return cacheNow })
 			c, _, _ := checkerFor(t, row)
+			c.clock = ClockFunc(func() time.Time { return cacheNow })
 			store := &memStore{}
 			fresh, err := c.CheckCached(context.Background(), row.req, store, time.Hour)
 			if !errors.Is(err, row.wantErr) || fresh.Outcome != want[row.wantErr] || !fresh.CheckedAt.Equal(cacheNow) ||
@@ -120,6 +123,7 @@ func TestCheckCachedOutcomeRecorded(t *testing.T) {
 // TestCheckOutcomeNames: every outcome has a stable name and its sentinel,
 // and an unknown value has neither.
 func TestCheckOutcomeNames(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		o    CheckOutcome
 		name string
@@ -146,6 +150,7 @@ func TestCheckOutcomeNames(t *testing.T) {
 // TestCheckCachedUnknownOutcomeIsMiss: a custom store's record with an
 // outcome this package does not know is checked again, not trusted.
 func TestCheckCachedUnknownOutcomeIsMiss(t *testing.T) {
+	t.Parallel()
 	c, src, req, key := cacheEnv(t)
 	store := &memStore{rec: CheckRecord{Request: key, Outcome: CheckOutcome(200), CheckedAt: cacheNow.Add(-time.Minute)}}
 	rec, err := c.CheckCached(context.Background(), req, store, time.Hour)
@@ -156,6 +161,7 @@ func TestCheckCachedUnknownOutcomeIsMiss(t *testing.T) {
 
 // TestFileCheckStoreKeepsOutcome: the outcome survives a round trip.
 func TestFileCheckStoreKeepsOutcome(t *testing.T) {
+	t.Parallel()
 	s, path := fileStore(t)
 	rec := sampleRecord()
 	rec.Availability = Availability{Product: "demo", CurrentVersion: "v1.0.0"}
@@ -181,6 +187,7 @@ const schema2CheckRecordJSON = `{"schema_version":2,"product":"demo","current_ve
 // TestFileCheckStoreOlderSchemaIsMiss: a record from before outcomes were
 // kept loads as a miss, never as an error the caller sees.
 func TestFileCheckStoreOlderSchemaIsMiss(t *testing.T) {
+	t.Parallel()
 	s, path := fileStore(t)
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
@@ -204,6 +211,7 @@ func TestFileCheckStoreOlderSchemaIsMiss(t *testing.T) {
 // checks make one request
 // (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md A1).
 func TestCheckCachedNoRelease(t *testing.T) {
+	t.Parallel()
 	var hits atomic.Int32
 	env := newGitHubEnv(t, func(w http.ResponseWriter, r *http.Request) {
 		hits.Add(1)

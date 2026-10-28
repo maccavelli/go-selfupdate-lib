@@ -86,6 +86,7 @@ func (ls *listServer) requests() ([]string, []string) {
 }
 
 func TestGitHubSourceListReleases(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	ls := newListServer(t, 70)
@@ -128,6 +129,7 @@ func TestGitHubSourceListReleases(t *testing.T) {
 }
 
 func TestGitHubSourceListReleasesBounds(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	ls := newListServer(t, 70)
 	ls.tooBig = true

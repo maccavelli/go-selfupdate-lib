@@ -54,8 +54,8 @@ func testVersionProber(t *testing.T) Prober {
 // staged probes.
 func probeRun(t *testing.T, probes ...Prober) (Result, string, error) {
 	t.Helper()
-	_, exe := withTempHome(t)
-	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	_, exe := tempTarget(t)
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,6 +95,7 @@ func TestStagedProbeRunsRealBinary(t *testing.T) {
 // TestProbesRunBeforeInstall: staged probes run before Install, and a
 // failure means Install never runs.
 func TestProbesRunBeforeInstall(t *testing.T) {
+	t.Parallel()
 	env := newContractEnv(t)
 	probe := ProberFunc(func(context.Context, ProbeRequest) error {
 		*env.log = append(*env.log, "Probe")
@@ -125,8 +126,8 @@ func TestProbesRunBeforeInstall(t *testing.T) {
 
 func postInstallSession(t *testing.T, probe Prober) (InstallSession, string) {
 	t.Helper()
-	_, exe := withTempHome(t)
-	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}, PostInstall: probe})
+	_, exe := tempTarget(t)
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe), PostInstall: probe})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,6 +144,7 @@ func postInstallSession(t *testing.T, probe Prober) (InstallSession, string) {
 }
 
 func TestPostInstallRollback(t *testing.T) {
+	t.Parallel()
 	sess, exe := postInstallSession(t, ProberFunc(func(context.Context, ProbeRequest) error { return errors.New("crashes") }))
 	res, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: stageNew(t, sess)}})
 	if err == nil || res.Applied || !res.RolledBack || !strings.Contains(err.Error(), "failed its probe") {
@@ -157,6 +159,7 @@ func TestPostInstallRollback(t *testing.T) {
 }
 
 func TestPostInstallRollbackFailureReportsBackup(t *testing.T) {
+	t.Parallel()
 	sess, _ := postInstallSession(t, ProberFunc(func(context.Context, ProbeRequest) error { return errors.New("crashes") }))
 	path := stageNew(t, sess)
 	failRestore(t, fsOf(t, sess))
@@ -170,8 +173,9 @@ func TestPostInstallRollbackFailureReportsBackup(t *testing.T) {
 }
 
 func TestPostInstallManaged(t *testing.T) {
-	_, exe := withTempHome(t)
-	inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe},
+	t.Parallel()
+	_, exe := tempTarget(t)
+	inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe),
 		PostInstall: ProberFunc(func(context.Context, ProbeRequest) error { return errors.New("crashes") })})
 	if err != nil {
 		t.Fatal(err)
@@ -248,9 +252,10 @@ func TestVersionProberTimeout(t *testing.T) {
 // TestProbeRequestFields: both probes see the product, the tag, their phase
 // and the path of the copy they run.
 func TestProbeRequestFields(t *testing.T) {
+	t.Parallel()
 	var staged, installed ProbeRequest
-	_, exe := withTempHome(t)
-	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe},
+	_, exe := tempTarget(t)
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe),
 		PostInstall: ProberFunc(func(_ context.Context, r ProbeRequest) error { installed = r; return nil })})
 	if err != nil {
 		t.Fatal(err)
@@ -290,6 +295,7 @@ func TestProbeRequestFields(t *testing.T) {
 }
 
 func TestNewVersionProberArguments(t *testing.T) {
+	t.Parallel()
 	if _, err := NewVersionProber(nil, nil, time.Second); err == nil {
 		t.Error("no arguments accepted")
 	}
@@ -340,6 +346,7 @@ func TestVersionProberHonoursRunContext(t *testing.T) {
 // timeout still bounds it
 // (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D12).
 func TestVersionProberWithRun(t *testing.T) {
+	t.Parallel()
 	printing := func(text string, gotPath *string, gotArgs *[]string) func(context.Context, string, []string, io.Writer) error {
 		return func(_ context.Context, path string, args []string, stdout io.Writer) error {
 			*gotPath, *gotArgs = path, args

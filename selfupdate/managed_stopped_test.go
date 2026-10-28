@@ -55,8 +55,8 @@ func (l *seqEnabledLife) Enabled(context.Context, string) (bool, error) {
 // installWith runs one managed install of "new-bytes" with life.
 func installWith(t *testing.T, life Lifecycle, rec *fakeRec) (InstallResult, string, error) {
 	t.Helper()
-	_, exe := withTempHome(t)
-	inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	_, exe := tempTarget(t)
+	inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,6 +78,7 @@ func installWith(t *testing.T, life Lifecycle, rec *fakeRec) (InstallResult, str
 }
 
 func TestManagedStartRule(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		life func() (Lifecycle, *seqLife)
@@ -124,6 +125,7 @@ func TestManagedStartRule(t *testing.T) {
 // TestManagedEnabledErrorReplacesNothing: a stopped service whose start
 // configuration cannot be read fails the install before anything changes.
 func TestManagedEnabledErrorReplacesNothing(t *testing.T) {
+	t.Parallel()
 	life := &seqEnabledLife{enabledErr: errors.New("fixture: unit unreadable")}
 	res, got, err := installWith(t, life, &fakeRec{})
 	if !errors.Is(err, ErrManagedInstall) || res.Applied || got != "old-bytes" || len(life.log) != 0 {
@@ -151,6 +153,7 @@ func (r *swapRec) Reconcile(ctx context.Context, product, path string) (Reconcil
 // stopped or started; one it started is stopped, and started on the old
 // binary.
 func TestManagedCommitRefusedStartRule(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name    string
 		enabled bool
@@ -160,7 +163,7 @@ func TestManagedCommitRefusedStartRule(t *testing.T) {
 		{"stopped, enabled", true, []string{"start", "health", "stop", "start", "health"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, exe := withTempHome(t)
+			_, exe := tempTarget(t)
 			dir := filepath.Dir(exe)
 			rec := &swapRec{dir: dir, moved: dir + ".moved"}
 			t.Cleanup(func() {
@@ -169,7 +172,7 @@ func TestManagedCommitRefusedStartRule(t *testing.T) {
 					_ = os.Rename(rec.moved, dir)
 				}
 			})
-			inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+			inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -207,6 +210,7 @@ func TestManagedCommitRefusedStartRule(t *testing.T) {
 // TestManagedRecoveryRestartsOnlyWhatRan: recovery starts the old binary
 // again only when the service was running, or this install started it.
 func TestManagedRecoveryRestartsOnlyWhatRan(t *testing.T) {
+	t.Parallel()
 	unhealthy := errors.New("fixture: unhealthy")
 	for _, tc := range []struct {
 		name string

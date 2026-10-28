@@ -42,11 +42,11 @@ func (m *memStore) Save(_ context.Context, r CheckRecord) error {
 // default upgrade request.
 func cacheEnv(t *testing.T) (*Checker, *scriptSource, CheckRequest, CheckRequest) {
 	t.Helper()
-	setSeam(t, &timeNow, func() time.Time { return cacheNow })
 	c, src, _ := checkerFor(t, checkRows()[0])
+	c.clock = ClockFunc(func() time.Time { return cacheNow })
 	req := checkRows()[0].req
 	key := req
-	key.Platform = normalizePlatform(Platform{})
+	key.Platform = normalizePlatform(Platform{}, runtimePlatform())
 	return c, src, req, key
 }
 
@@ -61,6 +61,7 @@ func networkCalls(src *scriptSource) int {
 }
 
 func TestCheckCachedFreshHit(t *testing.T) {
+	t.Parallel()
 	c, src, req, key := cacheEnv(t)
 	store := &memStore{rec: CheckRecord{Request: key, Availability: Availability{Available: true, TargetVersion: "v9.9.9"},
 		CheckedAt: cacheNow.Add(-time.Minute)}}
@@ -71,6 +72,7 @@ func TestCheckCachedFreshHit(t *testing.T) {
 }
 
 func TestCheckCachedStaleRefresh(t *testing.T) {
+	t.Parallel()
 	c, src, req, key := cacheEnv(t)
 	store := &memStore{rec: CheckRecord{Request: key, CheckedAt: cacheNow.Add(-2 * time.Hour)}}
 	rec, err := c.CheckCached(context.Background(), req, store, time.Hour)
@@ -83,6 +85,7 @@ func TestCheckCachedStaleRefresh(t *testing.T) {
 }
 
 func TestCheckCachedKeyChange(t *testing.T) {
+	t.Parallel()
 	c, src, req, key := cacheEnv(t)
 	key.CurrentVersion = "v0.9.0"
 	store := &memStore{rec: CheckRecord{Request: key, CheckedAt: cacheNow.Add(-time.Minute)}}
@@ -92,6 +95,7 @@ func TestCheckCachedKeyChange(t *testing.T) {
 }
 
 func TestCheckCachedClockSkew(t *testing.T) {
+	t.Parallel()
 	c, src, req, key := cacheEnv(t)
 	store := &memStore{rec: CheckRecord{Request: key, CheckedAt: cacheNow.Add(time.Hour)}}
 	if _, err := c.CheckCached(context.Background(), req, store, 2*time.Hour); err != nil || networkCalls(src) != 1 {
@@ -109,6 +113,7 @@ func rateLimited(t *testing.T, rl *RateLimitError) (CheckRecord, *memStore, erro
 }
 
 func TestCheckCachedRateLimitReset(t *testing.T) {
+	t.Parallel()
 	rec, store, err := rateLimited(t, &RateLimitError{StatusCode: 403, Reset: cacheNow.Add(10 * time.Minute)})
 	var rl *RateLimitError
 	if !errors.As(err, &rl) || !rec.NotBefore.Equal(cacheNow.Add(10*time.Minute)) || len(store.saves) != 1 {
@@ -117,6 +122,7 @@ func TestCheckCachedRateLimitReset(t *testing.T) {
 }
 
 func TestCheckCachedRateLimitRetryAfter(t *testing.T) {
+	t.Parallel()
 	rec, _, _ := rateLimited(t, &RateLimitError{StatusCode: 429, RetryAfter: 30 * time.Second})
 	if !rec.NotBefore.Equal(cacheNow.Add(30 * time.Second)) {
 		t.Fatalf("NotBefore = %v", rec.NotBefore)
@@ -128,6 +134,7 @@ func TestCheckCachedRateLimitRetryAfter(t *testing.T) {
 }
 
 func TestCheckCachedRateLimitDefaultMinute(t *testing.T) {
+	t.Parallel()
 	rec, _, _ := rateLimited(t, &RateLimitError{StatusCode: 403})
 	if !rec.NotBefore.Equal(cacheNow.Add(time.Minute)) {
 		t.Fatalf("NotBefore = %v, want one minute ahead", rec.NotBefore)
@@ -135,6 +142,7 @@ func TestCheckCachedRateLimitDefaultMinute(t *testing.T) {
 }
 
 func TestCheckCachedDeferredNoNetwork(t *testing.T) {
+	t.Parallel()
 	c, src, req, key := cacheEnv(t)
 	prior := CheckRecord{Request: key, Availability: Availability{Available: true}, CheckedAt: cacheNow.Add(-3 * time.Hour),
 		NotBefore: cacheNow.Add(5 * time.Minute)}
@@ -146,6 +154,7 @@ func TestCheckCachedDeferredNoNetwork(t *testing.T) {
 }
 
 func TestCheckCachedSaveError(t *testing.T) {
+	t.Parallel()
 	c, _, req, _ := cacheEnv(t)
 	store := &memStore{loadErr: ErrNoCheckRecord, saveErr: errors.New("disk full")}
 	rec, err := c.CheckCached(context.Background(), req, store, time.Hour)
@@ -155,6 +164,7 @@ func TestCheckCachedSaveError(t *testing.T) {
 }
 
 func TestCheckCachedArguments(t *testing.T) {
+	t.Parallel()
 	c, _, req, _ := cacheEnv(t)
 	if _, err := c.CheckCached(context.Background(), req, nil, time.Hour); err == nil {
 		t.Fatal("nil store accepted")
@@ -192,6 +202,7 @@ func fileStore(t *testing.T) (CheckStore, string) {
 }
 
 func TestFileCheckStoreRoundTrip(t *testing.T) {
+	t.Parallel()
 	s, path := fileStore(t)
 	ctx := context.Background()
 	if _, err := s.Load(ctx); !errors.Is(err, ErrNoCheckRecord) {
@@ -222,6 +233,7 @@ func TestFileCheckStoreRoundTrip(t *testing.T) {
 }
 
 func TestFileCheckStoreCorruptIsMiss(t *testing.T) {
+	t.Parallel()
 	s, path := fileStore(t)
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
@@ -237,6 +249,7 @@ func TestFileCheckStoreCorruptIsMiss(t *testing.T) {
 }
 
 func TestFileCheckStoreSchemaMismatch(t *testing.T) {
+	t.Parallel()
 	s, path := fileStore(t)
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
@@ -252,6 +265,7 @@ func TestFileCheckStoreSchemaMismatch(t *testing.T) {
 }
 
 func TestFileCheckStoreMode(t *testing.T) {
+	t.Parallel()
 	s, path := fileStore(t)
 	if err := s.Save(context.Background(), sampleRecord()); err != nil {
 		t.Fatal(err)
@@ -266,6 +280,7 @@ func TestFileCheckStoreMode(t *testing.T) {
 }
 
 func TestFileCheckStoreReplaces(t *testing.T) {
+	t.Parallel()
 	s, _ := fileStore(t)
 	ctx := context.Background()
 	first := sampleRecord()
@@ -283,6 +298,7 @@ func TestFileCheckStoreReplaces(t *testing.T) {
 }
 
 func TestNewFileCheckStoreNeedsAbsolutePath(t *testing.T) {
+	t.Parallel()
 	for _, p := range []string{"", "relative/check.json"} {
 		if _, err := NewFileCheckStore(p); err == nil {
 			t.Errorf("%q accepted", p)
@@ -300,6 +316,7 @@ const schema1CheckRecordJSON = `{"schema_version":1,"product":"demo","current_ve
 	`"asset_name":"demo-linux-amd64","checked_at":"2026-09-30T12:00:00Z","not_before":""}` + "\n"
 
 func TestFileCheckStoreKeepsChannel(t *testing.T) {
+	t.Parallel()
 	s, _ := fileStore(t)
 	rec := sampleRecord()
 	rec.Request.Channel = "rc"
@@ -315,16 +332,17 @@ func TestFileCheckStoreKeepsChannel(t *testing.T) {
 // TestCheckCachedChannelIsolation: an answer saved for one channel is never
 // served for another.
 func TestCheckCachedChannelIsolation(t *testing.T) {
-	setSeam(t, &timeNow, func() time.Time { return cacheNow })
+	t.Parallel()
 	policy, err := NewSemverPolicy(SemverOptions{AllowPrerelease: true, Channels: []string{"rc", "beta"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, c := range []struct{ saved, asked string }{{"rc", ""}, {"", "rc"}, {"rc", "beta"}} {
 		ch, src, _ := checkerFor(t, checkRow{policy: policy})
+		ch.clock = ClockFunc(func() time.Time { return cacheNow })
 		req := checkRows()[0].req
 		key := req
-		key.Platform = normalizePlatform(Platform{})
+		key.Platform = normalizePlatform(Platform{}, runtimePlatform())
 		key.Channel = c.saved
 		store := &memStore{rec: CheckRecord{Request: key, Availability: Availability{Available: true, TargetVersion: "v9.9.9"},
 			CheckedAt: cacheNow.Add(-time.Minute)}}
@@ -337,14 +355,13 @@ func TestCheckCachedChannelIsolation(t *testing.T) {
 }
 
 // TestCheckCachedUsesConfigClock: CheckerConfig.Clock, and an Updater's
-// Clock through Updater.Checker, decide a record's age with no seam on the
-// package clock (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D12,
+// Clock through Updater.Checker, decide a record's age (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D12,
 // Amendment A4).
 func TestCheckCachedUsesConfigClock(t *testing.T) {
+	t.Parallel()
 	base, src, req, key := cacheEnv(t)
-	// The package clock is far from cacheNow, so only Clock can make the
+	// The real clock is far from cacheNow, so only Clock can make the
 	// record fresh.
-	setSeam(t, &timeNow, func() time.Time { return cacheNow.Add(24 * time.Hour) })
 	fixed := ClockFunc(func() time.Time { return cacheNow })
 	fromConfig, err := NewChecker(CheckerConfig{Source: base.source, Versions: base.versions, Assets: base.assets, Limits: base.limits, Clock: fixed})
 	if err != nil {

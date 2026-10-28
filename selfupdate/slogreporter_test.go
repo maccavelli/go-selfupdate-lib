@@ -13,6 +13,7 @@ import (
 // D12).
 
 func TestSlogReporterLevelsAndAttrs(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	r := NewSlogReporter(slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	for _, ev := range []Event{
@@ -66,6 +67,7 @@ func TestSlogReporterLevelsAndAttrs(t *testing.T) {
 }
 
 func TestSlogReporterNilLogger(t *testing.T) {
+	t.Parallel()
 	if err := NewSlogReporter(nil).Report(context.Background(), Event{Kind: EventComplete}); err == nil {
 		t.Fatal("a nil logger reported nothing")
 	}

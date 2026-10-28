@@ -46,8 +46,9 @@ func failRestore(t *testing.T, fx *fsOps) {
 // the error, so the only copy of the previous binary is not lost
 // (0004-MADR R1).
 func TestRunReportsKeptBackup(t *testing.T) {
-	_, exe := withTempHome(t)
-	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	t.Parallel()
+	_, exe := tempTarget(t)
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,6 +87,7 @@ func TestRunReportsKeptBackup(t *testing.T) {
 // TestManagedReportsKeptBackup: the managed installer reports the backup
 // when recovery cannot restore it (0004-MADR R1).
 func TestManagedReportsKeptBackup(t *testing.T) {
+	t.Parallel()
 	life := &fakeLife{installed: true, running: true, healthErr: errors.New("unhealthy")}
 	rec := &fakeRec{}
 	_, _, sess, exe := managedEnv(t, life, rec)
@@ -110,6 +112,7 @@ func TestManagedReportsKeptBackup(t *testing.T) {
 // right after the rename is detected, and the rename is undone in the
 // directory that was locked, through its handle (0004-MADR R3).
 func TestInstallRollsBackWhenDirectoryMovesAfterRename(t *testing.T) {
+	t.Parallel()
 	sess, exe := standaloneSession(t)
 	path := stageNew(t, sess)
 	dir := filepath.Dir(exe)
@@ -165,6 +168,7 @@ func TestInstallRollsBackWhenDirectoryMovesAfterRename(t *testing.T) {
 // directory sync runs even when the caller's context was cancelled during
 // the replacement (0004-MADR R4).
 func TestReplaceRestoreSurvivesCancellation(t *testing.T) {
+	t.Parallel()
 	sess, exe := standaloneSession(t)
 	path := stageNew(t, sess)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -203,10 +207,11 @@ func TestReplaceRestoreSurvivesCancellation(t *testing.T) {
 // is refused before anything in it is read or removed, cleanup receipt
 // included (0004-MADR R5).
 func TestBeginChecksDirectoryBeforeReceipt(t *testing.T) {
-	_, exe := withTempHome(t)
+	t.Parallel()
+	_, exe := tempTarget(t)
 	dir := filepath.Dir(exe)
 	moved := dir + ".moved"
-	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -296,6 +301,7 @@ func dryRunUpdater(t *testing.T, inst Installer) *Updater {
 // or a managed update's
 // (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md B1).
 func TestKeptBackupSurvivesLaterSessions(t *testing.T) {
+	t.Parallel()
 	// keep fails sess's directory sync and then its restore, so the backup
 	// is kept and reported. The failures are sess's alone: a later session
 	// has the real effects.
@@ -322,8 +328,8 @@ func TestKeptBackupSurvivesLaterSessions(t *testing.T) {
 	}
 	standalone := func(t *testing.T) (*StandaloneInstaller, Target, string) {
 		t.Helper()
-		_, exe := withTempHome(t)
-		inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+		_, exe := tempTarget(t)
+		inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 		if err != nil {
 			t.Fatal(err)
 		}

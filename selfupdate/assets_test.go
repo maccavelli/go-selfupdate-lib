@@ -18,6 +18,7 @@ func testPlatforms() []Platform {
 }
 
 func TestNewExactAssetSelector(t *testing.T) {
+	t.Parallel()
 	if _, err := NewExactAssetSelector(nil); err == nil {
 		t.Fatal("accepted empty platform list")
 	}
@@ -44,6 +45,7 @@ func TestNewExactAssetSelector(t *testing.T) {
 }
 
 func TestExactAssetNameWindowsExtension(t *testing.T) {
+	t.Parallel()
 	if got := ExactAssetName("demo", Platform{OS: "linux", Arch: "amd64"}); got != "demo-linux-amd64" {
 		t.Fatalf("linux = %q", got)
 	}
@@ -59,6 +61,7 @@ func TestExactAssetNameWindowsExtension(t *testing.T) {
 }
 
 func TestExactAssetSelectorSelect(t *testing.T) {
+	t.Parallel()
 	sel, err := NewExactAssetSelector(testPlatforms())
 	if err != nil {
 		t.Fatal(err)

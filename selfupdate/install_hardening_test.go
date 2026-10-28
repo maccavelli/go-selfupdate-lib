@@ -17,8 +17,8 @@ import (
 // returns it with the target path.
 func standaloneSession(t *testing.T) (InstallSession, string) {
 	t.Helper()
-	_, exe := withTempHome(t)
-	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	_, exe := tempTarget(t)
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,17 +58,6 @@ func fsFor(inst *StandaloneInstaller) *fsOps {
 	return inst.fs
 }
 
-// setSeam replaces a package-level seam for one test and restores it at
-// cleanup. Every test that swaps a seam goes through it. Seams are package
-// state, so no test in this package calls t.Parallel: two tests swapping
-// the same seam at once would see each other's values.
-func setSeam[T any](t *testing.T, seam *T, v T) {
-	t.Helper()
-	prev := *seam
-	*seam = v
-	t.Cleanup(func() { *seam = prev })
-}
-
 func readString(t *testing.T, path string) string {
 	t.Helper()
 	b, err := os.ReadFile(path)
@@ -97,6 +86,7 @@ func stagingLeft(t *testing.T, dir, base string) []string {
 // the restore both fail, both errors are returned and the live backup is
 // reported (B1).
 func TestInstallSyncAndRollbackFailureReported(t *testing.T) {
+	t.Parallel()
 	sess, exe := standaloneSession(t)
 	path := stageNew(t, sess)
 	syncErr := errors.New("injected dir sync failure")
@@ -130,6 +120,7 @@ func TestInstallSyncAndRollbackFailureReported(t *testing.T) {
 // TestManagedApplyFailureRetriesRollback: the managed path receives the
 // live backup and restores it during recovery (B1).
 func TestManagedApplyFailureRetriesRollback(t *testing.T) {
+	t.Parallel()
 	life := &fakeLife{installed: true, running: true}
 	_, _, sess, exe := managedEnv(t, life, &fakeRec{})
 	path := stageNew(t, sess)
@@ -167,6 +158,7 @@ func TestManagedApplyFailureRetriesRollback(t *testing.T) {
 // TestManagedRecoveryIgnoresCancelledContext: recovery runs on a live
 // context even when the caller's was cancelled (B2).
 func TestManagedRecoveryIgnoresCancelledContext(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	life := &fakeLife{installed: true, running: true, healthErr: context.Canceled, onHealth: cancel}
@@ -190,6 +182,7 @@ func TestManagedRecoveryIgnoresCancelledContext(t *testing.T) {
 // TestBackupCopyFallbackPreservesMode: a copied backup keeps the
 // executable's mode, so a rollback restores a runnable binary (B3).
 func TestBackupCopyFallbackPreservesMode(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == goosWindows {
 		t.Skip("POSIX permission bits: Windows keeps only a read-only flag")
 	}
@@ -218,6 +211,7 @@ func TestBackupCopyFallbackPreservesMode(t *testing.T) {
 
 // TestInstallFailureBeforeRenameRemovesStagingOnClose (B4).
 func TestInstallFailureBeforeRenameRemovesStagingOnClose(t *testing.T) {
+	t.Parallel()
 	sess, exe := standaloneSession(t)
 	path := stageNew(t, sess)
 	fsOf(t, sess).replacePath = func(context.Context, string, string) error { return errors.New("injected rename failure") }
@@ -248,13 +242,14 @@ func symlinkOrSkip(t *testing.T, oldname, newname string) {
 // TestLockRejectsRelativeSymlink: a lock name that is a relative symlink
 // inside the directory is refused, not followed (B5).
 func TestLockRejectsRelativeSymlink(t *testing.T) {
-	home, exe := withTempHome(t)
+	t.Parallel()
+	home, exe := tempTarget(t)
 	victim := filepath.Join(home, "victim")
 	if err := os.WriteFile(victim, []byte("v"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	symlinkOrSkip(t, "victim", filepath.Join(home, lockBasename("demo")))
-	inst, _ := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	inst, _ := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	target, err := inst.ResolveTarget(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -268,9 +263,10 @@ func TestLockRejectsRelativeSymlink(t *testing.T) {
 // TestLockRejectsDanglingRelativeSymlink: a dangling relative symlink does
 // not make Begin create the file it points at (B5).
 func TestLockRejectsDanglingRelativeSymlink(t *testing.T) {
-	home, exe := withTempHome(t)
+	t.Parallel()
+	home, exe := tempTarget(t)
 	symlinkOrSkip(t, "created-by-lock", filepath.Join(home, lockBasename("demo")))
-	inst, _ := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	inst, _ := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	target, err := inst.ResolveTarget(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -287,6 +283,7 @@ func TestLockRejectsDanglingRelativeSymlink(t *testing.T) {
 // TestInstallDetectsSwappedDirectory: a directory swapped in after Begin is
 // refused with ErrConcurrentUpdate (B10).
 func TestInstallDetectsSwappedDirectory(t *testing.T) {
+	t.Parallel()
 	sess, exe := standaloneSession(t)
 	path := stageNew(t, sess)
 	dir := filepath.Dir(exe)
@@ -321,6 +318,7 @@ func TestInstallDetectsSwappedDirectory(t *testing.T) {
 // TestStagingRejectsPlantedSymlink: a symlink swapped in at the staging
 // path is refused, and the target is untouched.
 func TestStagingRejectsPlantedSymlink(t *testing.T) {
+	t.Parallel()
 	sess, exe := standaloneSession(t)
 	path := stageNew(t, sess)
 	other := filepath.Join(filepath.Dir(exe), "planted")
@@ -342,6 +340,7 @@ func TestStagingRejectsPlantedSymlink(t *testing.T) {
 // TestInstallInjectedFailures: each injected failure is reported and leaves
 // the target as the case requires.
 func TestInstallInjectedFailures(t *testing.T) {
+	t.Parallel()
 	failing := errors.New("injected")
 	cases := []struct {
 		name       string
@@ -385,6 +384,7 @@ func TestInstallInjectedFailures(t *testing.T) {
 // TestInstallPermissionDenied: an unwritable directory fails at staging and
 // leaves the target intact.
 func TestInstallPermissionDenied(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == goosWindows {
 		t.Skip("POSIX directory permissions")
 	}
@@ -408,6 +408,7 @@ func TestInstallPermissionDenied(t *testing.T) {
 
 // TestInstallCancelledBeforeAndAfterStaging.
 func TestInstallCancelledBeforeAndAfterStaging(t *testing.T) {
+	t.Parallel()
 	sess, exe := standaloneSession(t)
 	cancelled, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -435,12 +436,13 @@ func TestInstallCancelledBeforeAndAfterStaging(t *testing.T) {
 // TestRunBadBodyLeavesNoStaging: a body shorter or longer than its declared
 // size fails the run and leaves no staging file.
 func TestRunBadBodyLeavesNoStaging(t *testing.T) {
+	t.Parallel()
 	for name, body := range map[string][]byte{"short": []byte("hello"), "long": []byte("hello-bin-and-more")} {
 		t.Run(name, func(t *testing.T) {
 			rel, bodies, plats := fixtureRelease(t, "demo")
 			bodies[2] = body
-			_, exe := withTempHome(t)
-			inst, _ := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+			_, exe := tempTarget(t)
+			inst, _ := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 			sel, _ := NewExactAssetSelector(plats)
 			u, err := New(Config{
 				Source: &scriptSource{rel: rel, bodies: bodies}, Versions: NewStrictVersionPolicy(), Assets: sel,
@@ -465,6 +467,7 @@ func TestRunBadBodyLeavesNoStaging(t *testing.T) {
 // TestManagedFailureMatrix: stop, start, probe and restart failures are
 // each reported, recovery runs, and the old binary is back.
 func TestManagedFailureMatrix(t *testing.T) {
+	t.Parallel()
 	boom := errors.New("injected")
 	cases := []struct {
 		name       string
@@ -503,6 +506,7 @@ func TestManagedFailureMatrix(t *testing.T) {
 // in the locked directory renamed the backup back and only its sync failed
 // (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md B4).
 func TestInstallReportsRestoreAfterSyncFailure(t *testing.T) {
+	t.Parallel()
 	check := func(t *testing.T, res InstallResult, err error, target string) {
 		t.Helper()
 		if err == nil || res.Applied {
@@ -565,6 +569,7 @@ func TestInstallReportsRestoreAfterSyncFailure(t *testing.T) {
 // symlink's mode never reaches the new binary
 // (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md B2).
 func TestInstallRefusesTargetReplacedAfterBegin(t *testing.T) {
+	t.Parallel()
 	check := func(t *testing.T, sess InstallSession, path string) {
 		t.Helper()
 		res, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: path}})

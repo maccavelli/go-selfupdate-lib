@@ -13,6 +13,7 @@ import (
 // runs the same fixtures (0003-MADR D1). A manifest the gate accepts but the
 // client refuses would become an immutable release nobody can install.
 func TestManifestParityFixtures(t *testing.T) {
+	t.Parallel()
 	dir := filepath.Join("testdata", "manifest-parity")
 	cases, err := os.ReadDir(dir)
 	if err != nil {

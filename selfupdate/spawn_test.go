@@ -38,6 +38,7 @@ var spawnAllowlist = map[string]string{}
 // D7). os.StartProcess and syscall.StartProcess are banned too: they are
 // the bypass one layer down.
 func TestNoDirectProcessStart(t *testing.T) {
+	t.Parallel()
 	var found []string
 	read := 0
 	err := filepath.WalkDir(".", func(path string, d fs.DirEntry, err error) error {
@@ -143,6 +144,7 @@ func directCalls(path string) ([]string, error) {
 // operands are compared as interfaces, for identity: a wrapper around
 // winproc's value would satisfy errors.Is one way and still not be it.
 func TestErrBatchFileIsWinproc(t *testing.T) {
+	t.Parallel()
 	if any(ErrBatchFile) != any(winproc.ErrBatchFile) {
 		t.Fatalf("selfupdate.ErrBatchFile %q is not winproc.ErrBatchFile %q", ErrBatchFile, winproc.ErrBatchFile)
 	}
@@ -190,6 +192,7 @@ var chainWant = []chainFunc{
 // chain past that boundary, at the entry points a program calls
 // (0022-MADR Amendment A2).
 func TestBatchErrorChain(t *testing.T) {
+	t.Parallel()
 	w := chainWalk{
 		fset: token.NewFileSet(),
 		sources: map[chainFunc]bool{
@@ -533,6 +536,7 @@ func chainInLiteral(stack []ast.Node) bool {
 // wrapped, as winproc's callers do, and must have run (0022-MADR
 // Amendment A2, D5-A).
 func TestBatchErrorReachesCallers(t *testing.T) {
+	t.Parallel()
 	refused := fmt.Errorf("fake: %w", ErrBatchFile)
 	is := func(t *testing.T, ran bool, err error) {
 		t.Helper()
@@ -555,8 +559,8 @@ func TestBatchErrorReachesCallers(t *testing.T) {
 	})
 	t.Run("manifest verifier", func(t *testing.T) {
 		ran := false
-		_, exe := withTempHome(t)
-		inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+		_, exe := tempTarget(t)
+		inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -581,8 +585,8 @@ func TestBatchErrorReachesCallers(t *testing.T) {
 		is(t, ran, err)
 	})
 	t.Run("managed reconcile", func(t *testing.T) {
-		_, exe := withTempHome(t)
-		inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+		_, exe := tempTarget(t)
+		inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -40,6 +40,7 @@ func manifestUpdater(t *testing.T, env *contractEnv, mv ...ManifestVerifier) *Up
 // TestManifestVerifierOrder: manifest verifiers run after the manifest is
 // fetched and before any binary byte is.
 func TestManifestVerifierOrder(t *testing.T) {
+	t.Parallel()
 	env := newContractEnv(t)
 	var seen []string
 	mv := ManifestVerifierFunc(func(context.Context, ManifestVerification) error {
@@ -72,8 +73,9 @@ func TestManifestVerifierOrder(t *testing.T) {
 // TestManifestVerifierFailureIntegrity: a failure matches ErrIntegrity and
 // leaves the target and its directory as they were.
 func TestManifestVerifierFailureIntegrity(t *testing.T) {
-	_, exe := withTempHome(t)
-	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	t.Parallel()
+	_, exe := tempTarget(t)
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,6 +111,7 @@ func TestManifestVerifierFailureIntegrity(t *testing.T) {
 // TestManifestVerifierReadsSibling: manifest and binary verifiers can both
 // open another release asset, such as a detached signature.
 func TestManifestVerifierReadsSibling(t *testing.T) {
+	t.Parallel()
 	env := newContractEnv(t)
 	withSibling(env, "SHA256SUMS.note", []byte("note-bytes"))
 	var fromManifest, fromBinary string
@@ -146,6 +149,7 @@ func TestManifestVerifierReadsSibling(t *testing.T) {
 // TestOpenAssetEnforcesSize: bodies must match their advertised size and
 // digest; names must exist exactly once; the limit applies.
 func TestOpenAssetEnforcesSize(t *testing.T) {
+	t.Parallel()
 	env := newContractEnv(t)
 	u := env.build(t)
 	body := []byte("0123456789")
@@ -196,6 +200,7 @@ func TestOpenAssetEnforcesSize(t *testing.T) {
 }
 
 func TestNewNilManifestVerifier(t *testing.T) {
+	t.Parallel()
 	env := newContractEnv(t)
 	_, _, plats := fixtureRelease(t, "demo")
 	sel, _ := NewExactAssetSelector(plats)
@@ -213,6 +218,7 @@ func TestNewNilManifestVerifier(t *testing.T) {
 // match its digest, and a matching body still reads clean
 // (0010-MADR A1).
 func TestOpenAssetChecksDigestAtSize(t *testing.T) {
+	t.Parallel()
 	env := newContractEnv(t)
 	u := env.build(t)
 	body := []byte("0123456789")
@@ -272,6 +278,7 @@ func TestOpenAssetChecksDigestAtSize(t *testing.T) {
 // ErrIntegrity failure, as a manifest verifier's is, and EventFailed says so
 // (0010-MADR A8).
 func TestVerifierFailureIsIntegrity(t *testing.T) {
+	t.Parallel()
 	env := newContractEnv(t)
 	u := env.build(t)
 	u.verifiers = []Verifier{VerifierFunc(func(context.Context, Verification) error {

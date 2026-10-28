@@ -10,10 +10,16 @@ import (
 
 var upgradePrompt = Prompt{Product: "demo", Current: "v1.0.0", Target: "v1.1.0", Operation: OperationUpgrade}
 
-// ttyPipe is a pipe the confirmer treats as a terminal.
+// ttyPipe is a pipe, which a confirmer given alwaysTTY treats as a
+// terminal.
+// alwaysTTY is a terminal check that says yes: a test's pipe stands in for
+// a terminal without changing any package state
+// (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// D3-A).
+func alwaysTTY(int) bool { return true }
+
 func ttyPipe(t *testing.T) (r, w *os.File) {
 	t.Helper()
-	setSeam(t, &isTerminal, func(int) bool { return true })
 	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
@@ -33,7 +39,7 @@ func TestConfirmLeavesHostInput(t *testing.T) {
 	if _, err := io.WriteString(w, "y\nhost-command\n"); err != nil {
 		t.Fatal(err)
 	}
-	ok, err := NewTerminalConfirmer(r, io.Discard).Confirm(context.Background(), upgradePrompt)
+	ok, err := terminalConfirmerFrom(r, io.Discard, alwaysTTY).Confirm(context.Background(), upgradePrompt)
 	if err != nil || !ok {
 		t.Fatalf("ok=%v err=%v", ok, err)
 	}
@@ -62,7 +68,7 @@ func TestConfirmersShareInput(t *testing.T) {
 	if _, err := io.WriteString(w, "n\n"); err != nil {
 		t.Fatal(err)
 	}
-	if ok, err := NewTerminalConfirmer(r, io.Discard).Confirm(context.Background(), upgradePrompt); err != nil || ok {
+	if ok, err := terminalConfirmerFrom(r, io.Discard, alwaysTTY).Confirm(context.Background(), upgradePrompt); err != nil || ok {
 		t.Fatalf("first: ok=%v err=%v", ok, err)
 	}
 	// Not an ordering handshake: the pause only gives a reader wrongly left
@@ -74,7 +80,7 @@ func TestConfirmersShareInput(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	ok, err := NewTerminalConfirmer(r, io.Discard).Confirm(ctx, upgradePrompt)
+	ok, err := terminalConfirmerFrom(r, io.Discard, alwaysTTY).Confirm(ctx, upgradePrompt)
 	if err != nil || !ok {
 		t.Fatalf("second: ok=%v err=%v, want its own \"y\"", ok, err)
 	}
@@ -90,7 +96,7 @@ func TestConfirmLeaksNoReader(t *testing.T) {
 	if _, err := io.WriteString(w, "y\n"); err != nil {
 		t.Fatal(err)
 	}
-	if ok, err := NewTerminalConfirmer(r, io.Discard).Confirm(context.Background(), upgradePrompt); err != nil || !ok {
+	if ok, err := terminalConfirmerFrom(r, io.Discard, alwaysTTY).Confirm(context.Background(), upgradePrompt); err != nil || !ok {
 		t.Fatalf("ok=%v err=%v", ok, err)
 	}
 }

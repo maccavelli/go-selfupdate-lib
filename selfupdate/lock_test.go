@@ -9,9 +9,10 @@ import (
 )
 
 func TestLockConcurrentAndStaleUnlocked(t *testing.T) {
-	home, exe := withTempHome(t)
+	t.Parallel()
+	home, exe := tempTarget(t)
 	inst, err := NewStandaloneInstaller(InstallOptions{
-		TargetPolicy: TargetPolicy{ExecutablePath: exe},
+		TargetPolicy: targetPolicy(exe),
 		LockTimeout:  50 * time.Millisecond,
 	})
 	if err != nil {
@@ -46,8 +47,9 @@ func TestLockConcurrentAndStaleUnlocked(t *testing.T) {
 }
 
 func TestBeginRejectsChangedTarget(t *testing.T) {
-	_, exe := withTempHome(t)
-	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	t.Parallel()
+	_, exe := tempTarget(t)
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}

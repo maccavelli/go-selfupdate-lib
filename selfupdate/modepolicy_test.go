@@ -12,6 +12,7 @@ import (
 // the parts that need the v1.6.0 API or internal seams.
 
 func TestStagingMode(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		old   os.FileMode
 		allow bool
@@ -32,6 +33,7 @@ func TestStagingMode(t *testing.T) {
 // TestIsLeftover: only the names CreateStaging and randomSibling make for
 // this target match.
 func TestIsLeftover(t *testing.T) {
+	t.Parallel()
 	for name, want := range map[string]bool{
 		".demo.selfupdate-1" + stagingSuffix():  true,
 		".demo.selfupdate-bak-42":               true,
@@ -68,6 +70,7 @@ func TestIsLeftover(t *testing.T) {
 // TestRemoveLeftoversKeepsListed: a backup a receipt lists is kept, and an
 // unreadable receipt keeps every backup.
 func TestRemoveLeftoversKeepsListed(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	listed, other, staging := ".demo.selfupdate-bak-1", ".demo.selfupdate-bak-2", ".demo.selfupdate-3"+stagingSuffix()
 	// The receipt's temporary file is no backup: it goes even when the
@@ -106,12 +109,13 @@ func TestRemoveLeftoversKeepsListed(t *testing.T) {
 // TestLeftoverRemovalFailureIgnored: a leftover that cannot be removed
 // does not fail the session.
 func TestLeftoverRemovalFailureIgnored(t *testing.T) {
-	_, exe := withTempHome(t)
+	t.Parallel()
+	_, exe := tempTarget(t)
 	left := filepath.Join(filepath.Dir(exe), ".demo.selfupdate-bak-9")
 	if err := os.WriteFile(left, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}

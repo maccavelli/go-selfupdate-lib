@@ -9,6 +9,7 @@ import (
 )
 
 func TestTextReporterSanitizesControls(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	r := NewTextReporter(&buf)
 	err := r.Report(context.Background(), Event{
@@ -32,6 +33,7 @@ func TestTextReporterSanitizesControls(t *testing.T) {
 }
 
 func TestTextReporterWriteError(t *testing.T) {
+	t.Parallel()
 	r := NewTextReporter(failWriter{})
 	if err := r.Report(context.Background(), Event{Kind: EventInstalling}); err == nil {
 		t.Fatal("expected write error")

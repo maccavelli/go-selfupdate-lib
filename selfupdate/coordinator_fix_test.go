@@ -48,6 +48,7 @@ func (g growTransformer) Transform(_ context.Context, r TransformRequest) error 
 // TestInstallRequestCarriesTransformedSize: StagedArtifact.Size is the
 // staged length after the transform, as its doc says (0004-MADR G8).
 func TestInstallRequestCarriesTransformedSize(t *testing.T) {
+	t.Parallel()
 	env := newContractEnv(t)
 	env.xf = growTransformer{extra: []byte("-signed")}
 	var got InstallRequest
@@ -69,7 +70,7 @@ func TestInstallRequestCarriesTransformedSize(t *testing.T) {
 	if _, err := u.Run(context.Background(), req); err != nil {
 		t.Fatal(err)
 	}
-	selected, err := sel.Select(rel, "demo", normalizePlatform(Platform{}))
+	selected, err := sel.Select(rel, "demo", normalizePlatform(Platform{}, runtimePlatform()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,6 +84,7 @@ func TestInstallRequestCarriesTransformedSize(t *testing.T) {
 // TestAssetStructureRefusesDotNames: "." and ".." are not file names
 // (0004-MADR R9).
 func TestAssetStructureRefusesDotNames(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{".", ".."} {
 		if err := validateAssetStructure(Asset{ID: 1, Name: name}); err == nil {
 			t.Errorf("asset name %q accepted", name)

@@ -43,6 +43,7 @@ func terminalKinds(kinds []EventKind) (complete, failed int) {
 }
 
 func TestLateErrorIsNotAFailure(t *testing.T) {
+	t.Parallel()
 	for name, mutate := range lateErrorCases() {
 		t.Run(name, func(t *testing.T) {
 			env := newContractEnv(t)
@@ -69,6 +70,7 @@ func TestLateErrorIsNotAFailure(t *testing.T) {
 // (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md C5,
 // owner answer Q2).
 func TestRunEndsAtSelected(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		name    string
 		current string
@@ -104,6 +106,7 @@ func TestRunEndsAtSelected(t *testing.T) {
 // TestDryRunCompleteDetail: a dry run's EventComplete says so in its own
 // Detail (C11).
 func TestDryRunCompleteDetail(t *testing.T) {
+	t.Parallel()
 	env := newContractEnv(t)
 	req := applyReq()
 	req.DryRun = true

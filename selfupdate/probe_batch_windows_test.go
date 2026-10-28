@@ -16,6 +16,7 @@ import (
 // TestVersionProberRefusesBatchFile: the version prober refuses a .cmd
 // target before running it (0021-MADR D8).
 func TestVersionProberRefusesBatchFile(t *testing.T) {
+	t.Parallel()
 	shim := filepath.Join(t.TempDir(), "shim.cmd")
 	if err := os.WriteFile(shim, []byte("@echo off\r\n"), 0o600); err != nil {
 		t.Fatal(err)

@@ -42,6 +42,7 @@ func (i sameBaseInstaller) Begin(ctx context.Context, t Target) (InstallSession,
 // StagingOwner fails closed with a Transformer even when its staging has
 // the target's basename (0010-MADR C6, 0004-MADR G7).
 func TestTransformSameBasenameRequiresStagingOwner(t *testing.T) {
+	t.Parallel()
 	env := newContractEnv(t)
 	_, _, plats := fixtureRelease(t, "demo")
 	sel, err := NewExactAssetSelector(plats)

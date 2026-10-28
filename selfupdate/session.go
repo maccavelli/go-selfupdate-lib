@@ -613,7 +613,7 @@ func (fx *fsOps) beginSession(ctx context.Context, policy TargetPolicy, original
 		keep, sweepBackups = fx.recoverJournal(original, root, keep, sweepBackups)
 		fx.removeLeftovers(original, root, keep, sweepBackups)
 	}
-	if err := revalidateTarget(original, policy); err != nil {
+	if err := fx.revalidateTarget(original, policy); err != nil {
 		return nil, errors.Join(err, lock.release(), root.Close())
 	}
 	return &installSession{

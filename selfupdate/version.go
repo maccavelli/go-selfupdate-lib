@@ -164,7 +164,7 @@ func validateProduct(product string) error {
 
 // validateRequest checks a request's shape, and validates its versions with
 // the configured policy rather than a hardcoded strict one (0004-MADR G2).
-func validateRequest(req Request, versions VersionPolicy) error {
+func validateRequest(req Request, versions VersionPolicy, running Platform) error {
 	if err := validateProduct(req.Product); err != nil {
 		return err
 	}
@@ -189,7 +189,7 @@ func validateRequest(req Request, versions VersionPolicy) error {
 	// running platform. A check or a dry run may ask about another one
 	// (0010-MADR Q4).
 	if !req.CheckOnly && !req.DryRun && req.Platform != (Platform{}) {
-		if running := runningPlatform(); req.Platform != running {
+		if req.Platform != running {
 			return fmt.Errorf("selfupdate: cannot apply a %s/%s release on %s/%s: %w",
 				sanitizeText(req.Platform.OS), sanitizeText(req.Platform.Arch), running.OS, running.Arch, ErrUnsupportedPlatform)
 		}

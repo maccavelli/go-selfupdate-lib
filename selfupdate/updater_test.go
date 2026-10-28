@@ -172,6 +172,7 @@ func (*nilPtrTransformer) Transform(context.Context, TransformRequest) error { r
 // required seam nil or typed-nil, a nil or typed-nil verifier, a typed-nil
 // transformer, and invalid limits.
 func TestNewRejectsNilCollaborators(t *testing.T) {
+	t.Parallel()
 	rel, bodies, plats := fixtureRelease(t, "demo")
 	sel, err := NewExactAssetSelector(plats)
 	if err != nil {
@@ -220,10 +221,11 @@ func TestNewRejectsNilCollaborators(t *testing.T) {
 }
 
 func TestRunCheckAndApply(t *testing.T) {
+	t.Parallel()
 	rel, bodies, plats := fixtureRelease(t, "demo")
 	src := &scriptSource{rel: rel, bodies: bodies}
-	_, exe := withTempHome(t)
-	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	_, exe := tempTarget(t)
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -265,10 +267,11 @@ func TestRunCheckAndApply(t *testing.T) {
 }
 
 func TestRunDeclineAndNone(t *testing.T) {
+	t.Parallel()
 	rel, bodies, plats := fixtureRelease(t, "demo")
 	src := &scriptSource{rel: rel, bodies: bodies}
-	_, exe := withTempHome(t)
-	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	_, exe := tempTarget(t)
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -297,12 +300,13 @@ func TestRunDeclineAndNone(t *testing.T) {
 // handshake (no sleep), then asserts the overlapping Run is rejected without
 // invoking any collaborator (0003-MADR C13).
 func TestOverlappingRun(t *testing.T) {
+	t.Parallel()
 	block := make(chan struct{})
 	entered := make(chan struct{})
 	rel, bodies, plats := fixtureRelease(t, "demo")
 	src := &scriptSource{rel: rel, bodies: bodies, block: block, entered: entered}
-	_, exe := withTempHome(t)
-	inst, _ := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	_, exe := tempTarget(t)
+	inst, _ := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	sel, _ := NewExactAssetSelector(plats)
 	rep := &recReporter{}
 	conf := &recConfirmer{ok: true}
@@ -354,11 +358,12 @@ func TestOverlappingRun(t *testing.T) {
 }
 
 func TestReporterFailureBeforeInstall(t *testing.T) {
+	t.Parallel()
 	rel, bodies, plats := fixtureRelease(t, "demo")
 	src := &scriptSource{rel: rel, bodies: bodies}
-	_, exe := withTempHome(t)
+	_, exe := tempTarget(t)
 	orig, _ := os.ReadFile(exe)
-	inst, _ := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	inst, _ := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	sel, _ := NewExactAssetSelector(plats)
 	rep := &recReporter{errAt: EventInstalling}
 	u, err := New(Config{
@@ -379,10 +384,11 @@ func TestReporterFailureBeforeInstall(t *testing.T) {
 }
 
 func TestVerifierClosesDescriptor(t *testing.T) {
+	t.Parallel()
 	rel, bodies, plats := fixtureRelease(t, "demo")
 	src := &scriptSource{rel: rel, bodies: bodies}
-	_, exe := withTempHome(t)
-	inst, _ := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	_, exe := tempTarget(t)
+	inst, _ := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	sel, _ := NewExactAssetSelector(plats)
 	v := &recVerifier{}
 	u, err := New(Config{
@@ -402,10 +408,11 @@ func TestVerifierClosesDescriptor(t *testing.T) {
 }
 
 func TestTransformerRejectsSymlink(t *testing.T) {
+	t.Parallel()
 	rel, bodies, plats := fixtureRelease(t, "demo")
 	src := &scriptSource{rel: rel, bodies: bodies}
-	_, exe := withTempHome(t)
-	inst, _ := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	_, exe := tempTarget(t)
+	inst, _ := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	sel, _ := NewExactAssetSelector(plats)
 	xf := transformerFunc(func(_ context.Context, req TransformRequest) error {
 		dir := filepath.Dir(req.Path)
@@ -432,6 +439,7 @@ func TestTransformerRejectsSymlink(t *testing.T) {
 }
 
 func TestPendingBackupEvent(t *testing.T) {
+	t.Parallel()
 	rel, bodies, plats := fixtureRelease(t, "demo")
 	src := &scriptSource{rel: rel, bodies: bodies}
 	inst := pendingInstaller{}
@@ -491,10 +499,11 @@ func containsKind(kinds []EventKind, want EventKind) bool {
 }
 
 func TestStateMachineStopsAfterFailure(t *testing.T) {
+	t.Parallel()
 	rel, bodies, plats := fixtureRelease(t, "demo")
 	src := &scriptSource{rel: rel, bodies: bodies, err: errors.New("fetch failed")}
-	_, exe := withTempHome(t)
-	inst, _ := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	_, exe := tempTarget(t)
+	inst, _ := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	sel, _ := NewExactAssetSelector(plats)
 	rep := &recReporter{}
 	conf := &recConfirmer{ok: true}

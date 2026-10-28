@@ -80,6 +80,7 @@ func verifyImage(t *testing.T, p Platform, path string) error {
 }
 
 func TestImageVerifier(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module fixture\n\ngo 1.26.10\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -174,6 +175,7 @@ func checkImageFile(t *testing.T, p Platform, path string) (err error) {
 // no image check is ErrUnsupportedPlatform, and a zero platform is the
 // running one.
 func TestCheckImageUnsupportedPlatform(t *testing.T) {
+	t.Parallel()
 	for _, p := range []Platform{{OS: "plan9", Arch: "amd64"}, {OS: "linux", Arch: "riscv64"}} {
 		if err := CheckImage(strings.NewReader("x"), p); !errors.Is(err, ErrUnsupportedPlatform) {
 			t.Errorf("%v: %v", p, err)
@@ -189,6 +191,7 @@ func TestCheckImageUnsupportedPlatform(t *testing.T) {
 }
 
 func TestImageVerifierUnsupportedPlatform(t *testing.T) {
+	t.Parallel()
 	for _, p := range []Platform{{OS: "plan9", Arch: "amd64"}, {OS: "linux", Arch: "riscv64"}} {
 		if _, err := NewImageVerifier(p); !errors.Is(err, ErrUnsupportedPlatform) {
 			t.Errorf("%v: %v", p, err)

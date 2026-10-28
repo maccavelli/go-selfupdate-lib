@@ -175,6 +175,7 @@ func calls(log []string) []string {
 // call and asserts that no later call happens, except the session Close
 // that Begin's safety net always runs (0003-MADR C13).
 func TestRunCallOrderFailureBoundaries(t *testing.T) {
+	t.Parallel()
 	order := []string{"ResolveTarget", "Latest", "Confirm", "Begin", "OpenAsset:3", "CreateStaging", "OpenAsset:2", "Verify", "Transform", "Install"}
 	for i, boundary := range order {
 		t.Run(boundary, func(t *testing.T) {
@@ -222,6 +223,7 @@ func TestRunCallOrderFailureBoundaries(t *testing.T) {
 // TestRunOperationsMatrix exercises every Operation through Run
 // (0003-MADR C13).
 func TestRunOperationsMatrix(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name    string
 		req     func() Request
@@ -273,6 +275,7 @@ func TestRunOperationsMatrix(t *testing.T) {
 // TestRunRejectsTagMismatch: an exact --version must return that tag
 // (0003-MADR C1).
 func TestRunRejectsTagMismatch(t *testing.T) {
+	t.Parallel()
 	env := newContractEnv(t)
 	env.src.rel.Tag = "v1.1.0"
 	u := env.build(t)
@@ -294,6 +297,7 @@ func TestRunRejectsTagMismatch(t *testing.T) {
 // validated by the Updater, each against its own limit, before check mode
 // reports (0003-MADR A1 and A5).
 func TestRunValidatesSelectedAssets(t *testing.T) {
+	t.Parallel()
 	cases := map[string]func(*contractEnv){
 		"binary not uploaded": func(e *contractEnv) { e.src.rel.Assets[0].State = "open" },
 		"binary zero size":    func(e *contractEnv) { e.src.rel.Assets[0].Size = 0 },
@@ -325,6 +329,7 @@ func TestRunValidatesSelectedAssets(t *testing.T) {
 // TestRunEscapesUntrustedTag: a control-character tag never reaches error
 // text raw (0003-MADR C4).
 func TestRunEscapesUntrustedTag(t *testing.T) {
+	t.Parallel()
 	for _, mutable := range []bool{true, false} {
 		env := newContractEnv(t)
 		env.src.rel.Tag = "\x1b]0;x\x07v9.9.9\n::error::x"
@@ -344,6 +349,7 @@ func TestRunEscapesUntrustedTag(t *testing.T) {
 // TestRunRejectsManifestBeforeStaging: a manifest without the entry fails
 // before any staging or binary download (0003-MADR C9).
 func TestRunRejectsManifestBeforeStaging(t *testing.T) {
+	t.Parallel()
 	env := newContractEnv(t)
 	env.src.bodies[3] = []byte(strings.Repeat("0", 64) + "  some-other-asset\n")
 	env.src.rel.Assets[1].Size = int64(len(env.src.bodies[3]))
@@ -363,10 +369,11 @@ func TestRunRejectsManifestBeforeStaging(t *testing.T) {
 // transformed staging is rehashed (0003-MADR C8; covers hashFile, sessOwns
 // and hashAndValidateStaging).
 func TestRunEventOrderWithTransformer(t *testing.T) {
+	t.Parallel()
 	rel, bodies, plats := fixtureRelease(t, "demo")
 	src := &scriptSource{rel: rel, bodies: bodies}
-	_, exe := withTempHome(t)
-	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	_, exe := tempTarget(t)
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -413,10 +420,11 @@ func TestRunEventOrderWithTransformer(t *testing.T) {
 // TestRunTransformerSizeLimit: a transform that grows staging past the
 // executable limit is refused.
 func TestRunTransformerSizeLimit(t *testing.T) {
+	t.Parallel()
 	rel, bodies, plats := fixtureRelease(t, "demo")
 	src := &scriptSource{rel: rel, bodies: bodies}
-	_, exe := withTempHome(t)
-	inst, _ := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	_, exe := tempTarget(t)
+	inst, _ := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	sel, _ := NewExactAssetSelector(plats)
 	lim := DefaultLimits()
 	lim.Executable = 64
@@ -439,6 +447,7 @@ func TestRunTransformerSizeLimit(t *testing.T) {
 // TestRunInstallerNoCommitIsError: Applied false with a nil error is a
 // failure, not success (0003-MADR C2).
 func TestRunInstallerNoCommitIsError(t *testing.T) {
+	t.Parallel()
 	env := newContractEnv(t)
 	env.inst.applied = false
 	u := env.build(t)
@@ -456,6 +465,7 @@ func TestRunInstallerNoCommitIsError(t *testing.T) {
 // TestRunCompleteAfterClose: the session is closed before EventComplete
 // (0003-MADR C14).
 func TestRunCompleteAfterClose(t *testing.T) {
+	t.Parallel()
 	env := newContractEnv(t)
 	u := env.build(t)
 	req := applyReq()
@@ -478,6 +488,7 @@ func TestRunCompleteAfterClose(t *testing.T) {
 // TestRunCloseErrorJoinedAfterCommit, which expected the error: the owner's
 // answer to 0010-MADR Q3 reversed that.
 func TestRunCloseErrorIsAWarning(t *testing.T) {
+	t.Parallel()
 	env := newContractEnv(t)
 	env.inst.closeErr = errors.New("unlock failed")
 	u := env.build(t)
@@ -492,6 +503,7 @@ func TestRunCloseErrorIsAWarning(t *testing.T) {
 // TestRunErrorsNameProduct: every error return is prefixed with the product
 // and keeps errors.Is (0003-MADR C10).
 func TestRunErrorsNameProduct(t *testing.T) {
+	t.Parallel()
 	sentinel := errors.New("report failed")
 	cases := map[string]func(*contractEnv, *Request){
 		"invalid request": func(_ *contractEnv, r *Request) { r.CurrentVersion = "1.0" },
@@ -543,6 +555,7 @@ func TestRunErrorsNameProduct(t *testing.T) {
 // TestRunLocalBuildCheckHintsForce: check mode on a local build says apply
 // needs --force (0003-MADR C5).
 func TestRunLocalBuildCheckHintsForce(t *testing.T) {
+	t.Parallel()
 	env := newContractEnv(t)
 	u := env.build(t)
 	req := applyReq()
@@ -562,6 +575,7 @@ func TestRunLocalBuildCheckHintsForce(t *testing.T) {
 // TestRunPendingBackupDetail: the pending-backup detail names the retained
 // path, not only its basename (0003-MADR C12).
 func TestRunPendingBackupDetail(t *testing.T) {
+	t.Parallel()
 	env := newContractEnv(t)
 	env.inst.pending = ".demo.selfupdate-bak-1"
 	u := env.build(t)
@@ -587,6 +601,7 @@ func TestRunPendingBackupDetail(t *testing.T) {
 // absolute path; the detail uses it as is, not joined onto the directory
 // again (0003-PLAN deviation D2).
 func TestRunPendingBackupAbsolutePath(t *testing.T) {
+	t.Parallel()
 	env := newContractEnv(t)
 	abs := filepath.Join(env.inst.dir, ".demo.selfupdate-bak-2")
 	env.inst.pending = abs
@@ -612,6 +627,7 @@ func TestRunPendingBackupAbsolutePath(t *testing.T) {
 // dry run), as the events and an early failure do
 // (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md C6).
 func TestDiscoveryFailureResultNamesRun(t *testing.T) {
+	t.Parallel()
 	for _, req := range []Request{
 		{Product: "demo", CurrentVersion: "v1.0.0", CurrentBuild: ReleaseBuild, CheckOnly: true},
 		{Product: "demo", CurrentVersion: "v1.0.0", CurrentBuild: ReleaseBuild, DryRun: true},

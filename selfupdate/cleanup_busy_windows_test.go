@@ -74,6 +74,7 @@ func receiptBackups(t *testing.T, target Target) []string {
 // still holds keeps its receipt, and does not fail the session; once
 // released, the next session removes both (B5).
 func TestWindowsBusyPendingBackupKept(t *testing.T) {
+	t.Parallel()
 	name := ".demo.selfupdate-bak-busy"
 	target, root := receiptEnv(t, name, cleanupReceipt{Version: 1, Backup: name, Digest: oldBytesDigest(t)}, true)
 	release := holdBusy(t, filepath.Join(target.Dir, name))
@@ -97,6 +98,7 @@ func TestWindowsBusyPendingBackupKept(t *testing.T) {
 // TestWindowsReceiptKeepsOnlyBusy: of two pending backups, the free one is
 // removed and the busy one stays listed (amendment A1).
 func TestWindowsReceiptKeepsOnlyBusy(t *testing.T) {
+	t.Parallel()
 	busy, free := ".demo.selfupdate-bak-busy", ".demo.selfupdate-bak-free"
 	target, root := receiptEnv(t, busy, cleanupReceipt{Version: 1, Backup: busy, Digest: oldBytesDigest(t)}, true)
 	if err := os.WriteFile(filepath.Join(target.Dir, free), []byte("old-bytes"), 0o600); err != nil {
@@ -123,6 +125,7 @@ func TestWindowsReceiptKeepsOnlyBusy(t *testing.T) {
 // while an earlier receipt is still pending, adds its backup to the list
 // instead of failing on the existing receipt (amendment A1).
 func TestWindowsCommitAddsToPendingReceipt(t *testing.T) {
+	t.Parallel()
 	first := ".demo.selfupdate-bak-first"
 	target, _ := receiptEnv(t, first, cleanupReceipt{Version: 1, Backup: first, Digest: oldBytesDigest(t)}, true)
 	second := filepath.Join(target.Dir, ".demo.selfupdate-bak-second")
@@ -146,9 +149,10 @@ func TestWindowsCommitAddsToPendingReceipt(t *testing.T) {
 // running image holds puts the new backup on the receipt, and the commit
 // stands (B6).
 func TestWindowsKeepPreviousBusy(t *testing.T) {
-	_, exe := withTempHome(t)
+	t.Parallel()
+	_, exe := tempTarget(t)
 	inst, err := NewStandaloneInstaller(InstallOptions{
-		TargetPolicy: TargetPolicy{ExecutablePath: exe}, KeepPrevious: true, LockTimeout: 300 * time.Millisecond,
+		TargetPolicy: targetPolicy(exe), KeepPrevious: true, LockTimeout: 300 * time.Millisecond,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -190,7 +194,8 @@ func TestWindowsKeepPreviousBusy(t *testing.T) {
 // backup and the receipt and leaves the .previous (B6, with a running
 // image rather than a held handle).
 func TestWindowsKeepPreviousRunningPrevious(t *testing.T) {
-	home, _ := withTempHome(t)
+	t.Parallel()
+	home, _ := tempTarget(t)
 	src, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -218,7 +223,7 @@ func TestWindowsKeepPreviousRunningPrevious(t *testing.T) {
 	defer stop()
 
 	inst, err := NewStandaloneInstaller(InstallOptions{
-		TargetPolicy: TargetPolicy{ExecutablePath: exe}, KeepPrevious: true, LockTimeout: 300 * time.Millisecond,
+		TargetPolicy: targetPolicy(exe), KeepPrevious: true, LockTimeout: 300 * time.Millisecond,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -291,6 +296,7 @@ func TestWindowsKeepPreviousRunningPrevious(t *testing.T) {
 // the receipt that cannot replace the old one stops when the context ends,
 // instead of retrying for DefaultLockTimeout.
 func TestWindowsReceiptRewriteHonoursContext(t *testing.T) {
+	t.Parallel()
 	busy, free := ".demo.selfupdate-bak-busy", ".demo.selfupdate-bak-free"
 	target, root := receiptEnv(t, busy, cleanupReceipt{Version: 1, Backup: busy, Digest: oldBytesDigest(t)}, true)
 	if err := os.WriteFile(filepath.Join(target.Dir, free), []byte("old-bytes"), 0o600); err != nil {
@@ -319,8 +325,8 @@ func TestWindowsReceiptRewriteHonoursContext(t *testing.T) {
 // lockTimeout, closed when t ends.
 func lockedSession(t *testing.T, lockTimeout time.Duration) (*installSession, Target) {
 	t.Helper()
-	_, exe := withTempHome(t)
-	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}, LockTimeout: lockTimeout})
+	_, exe := tempTarget(t)
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe), LockTimeout: lockTimeout})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -352,6 +358,7 @@ func busyBackup(t *testing.T, target Target, name string) string {
 // after the binary is replaced, so a cancelled context does not stop its
 // retries: a receipt held for a moment is still replaced.
 func TestWindowsCommitReceiptNotCancelled(t *testing.T) {
+	t.Parallel()
 	sess, target := lockedSession(t, 5*time.Second)
 	first := busyBackup(t, target, ".demo.selfupdate-bak-first")
 	if err := realFS().writeCleanupReceipt(context.Background(), target, applyResult{backup: first, oldDigest: oldBytesDigest(t)}); err != nil {
@@ -383,6 +390,7 @@ func TestWindowsCommitReceiptNotCancelled(t *testing.T) {
 // cannot replace is given up after the session's LockTimeout, not
 // DefaultLockTimeout.
 func TestWindowsCommitReceiptBoundedByLockTimeout(t *testing.T) {
+	t.Parallel()
 	sess, target := lockedSession(t, 200*time.Millisecond)
 	first := busyBackup(t, target, ".demo.selfupdate-bak-first")
 	if err := realFS().writeCleanupReceipt(context.Background(), target, applyResult{backup: first, oldDigest: oldBytesDigest(t)}); err != nil {

@@ -15,8 +15,8 @@ import (
 // lifecycleRun runs the test binary's release over a temporary target.
 func lifecycleRun(t *testing.T, opts InstallOptions, req Request, conf Confirmer, probes ...Prober) (Result, *recReporter, string, error) {
 	t.Helper()
-	_, exe := withTempHome(t)
-	opts.TargetPolicy = TargetPolicy{ExecutablePath: exe}
+	_, exe := tempTarget(t)
+	opts.TargetPolicy = targetPolicy(exe)
 	inst, err := NewStandaloneInstaller(opts)
 	if err != nil {
 		t.Fatal(err)
@@ -50,6 +50,7 @@ func updateFiles(t *testing.T, dir string) []string {
 }
 
 func TestDryRunLeavesTargetUntouched(t *testing.T) {
+	t.Parallel()
 	var probed []ProbePhase
 	probe := ProberFunc(func(_ context.Context, r ProbeRequest) error {
 		probed = append(probed, r.Phase)
@@ -84,6 +85,7 @@ func TestDryRunLeavesTargetUntouched(t *testing.T) {
 }
 
 func TestDryRunNeedsNoConfirmation(t *testing.T) {
+	t.Parallel()
 	conf := &recConfirmer{ok: false}
 	req := applyReq()
 	req.DryRun = true
@@ -97,6 +99,7 @@ func TestDryRunNeedsNoConfirmation(t *testing.T) {
 }
 
 func TestDryRunEchoedWhenUpToDate(t *testing.T) {
+	t.Parallel()
 	req := applyReq()
 	req.CurrentVersion = "v1.1.0"
 	req.DryRun = true
@@ -110,10 +113,11 @@ func TestDryRunEchoedWhenUpToDate(t *testing.T) {
 }
 
 func TestCheckAndDryRunRejected(t *testing.T) {
+	t.Parallel()
 	req := applyReq()
 	req.CheckOnly = true
 	req.DryRun = true
-	err := validateRequest(req, NewStrictVersionPolicy())
+	err := validateRequest(req, NewStrictVersionPolicy(), runtimePlatform())
 	if err == nil || err.Error() != "selfupdate: --check and --dry-run are contradictory" {
 		t.Fatalf("err = %v", err)
 	}
@@ -121,8 +125,8 @@ func TestCheckAndDryRunRejected(t *testing.T) {
 
 func keepPreviousSession(t *testing.T) (InstallSession, string) {
 	t.Helper()
-	_, exe := withTempHome(t)
-	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}, KeepPrevious: true})
+	_, exe := tempTarget(t)
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe), KeepPrevious: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,6 +143,7 @@ func keepPreviousSession(t *testing.T) (InstallSession, string) {
 }
 
 func TestKeepPrevious(t *testing.T) {
+	t.Parallel()
 	sess, exe := keepPreviousSession(t)
 	previous := filepath.Join(filepath.Dir(exe), ".demo.previous")
 	if err := os.WriteFile(previous, []byte("older"), 0o600); err != nil {
@@ -179,6 +184,7 @@ func TestKeepPrevious(t *testing.T) {
 }
 
 func TestKeepPreviousOffRemovesBackup(t *testing.T) {
+	t.Parallel()
 	sess, exe := postInstallSession(t, nil)
 	res, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: stageNew(t, sess)}})
 	if err != nil {
@@ -193,8 +199,9 @@ func TestKeepPreviousOffRemovesBackup(t *testing.T) {
 }
 
 func TestKeepPreviousManaged(t *testing.T) {
-	_, exe := withTempHome(t)
-	inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}, KeepPrevious: true})
+	t.Parallel()
+	_, exe := tempTarget(t)
+	inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe), KeepPrevious: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +233,7 @@ func TestKeepPreviousManaged(t *testing.T) {
 
 func cleanupInstaller(t *testing.T, exe string) *StandaloneInstaller {
 	t.Helper()
-	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}, LockTimeout: 200 * time.Millisecond})
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe), LockTimeout: 200 * time.Millisecond})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,8 +241,9 @@ func cleanupInstaller(t *testing.T, exe string) *StandaloneInstaller {
 }
 
 func TestCleanupPendingProcessesReceipt(t *testing.T) {
-	_, exe := withTempHome(t)
-	target, err := resolveTarget(TargetPolicy{ExecutablePath: exe})
+	t.Parallel()
+	_, exe := tempTarget(t)
+	target, err := realFS().resolveTarget(targetPolicy(exe))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,7 +262,8 @@ func TestCleanupPendingProcessesReceipt(t *testing.T) {
 }
 
 func TestCleanupPendingLocked(t *testing.T) {
-	_, exe := withTempHome(t)
+	t.Parallel()
+	_, exe := tempTarget(t)
 	inst := cleanupInstaller(t, exe)
 	target, err := inst.ResolveTarget(context.Background())
 	if err != nil {

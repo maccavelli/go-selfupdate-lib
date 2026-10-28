@@ -168,5 +168,5 @@ func (u *Updater) execRun(ctx context.Context, req Request, r *run) (Result, err
 // against the run's Unpacker (0015-MADR C4).
 func (u *run) checker() *Checker {
 	return &Checker{source: u.source, versions: u.versions, assets: u.assets, limits: u.limits,
-		unpacker: u.unpacker, fromUpdater: true, clock: u.clock}
+		unpacker: u.unpacker, fromUpdater: true, clock: u.clock, platform: u.runningPlatform()}
 }

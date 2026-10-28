@@ -42,15 +42,24 @@ type Checker struct {
 	unpacker    Unpacker
 	fromUpdater bool
 	clock       Clock
+	// platform is the running platform, as Updater.runningPlatform reads it.
+	platform Platform
 }
 
-// clockNow is c's time, or the package clock when c is nil. It reads
-// timeNow at the call, so the tests' seam on it still holds.
+// runningPlatform is the platform c checks an apply against.
+func (c *Checker) runningPlatform() Platform {
+	if c.platform != (Platform{}) {
+		return c.platform
+	}
+	return runtimePlatform()
+}
+
+// clockNow is c's time, or time.Now when c is nil.
 func clockNow(c Clock) time.Time {
 	if c != nil {
 		return c.Now()
 	}
-	return timeNow()
+	return time.Now()
 }
 
 // CheckRequest is one availability question.
@@ -115,7 +124,8 @@ func NewChecker(cfg CheckerConfig) (*Checker, error) {
 	if cfg.Clock != nil && isNil(cfg.Clock) {
 		return nil, fmt.Errorf("selfupdate: clock is a typed nil")
 	}
-	return &Checker{source: cfg.Source, versions: cfg.Versions, assets: cfg.Assets, limits: cfg.Limits, clock: cfg.Clock}, nil
+	return &Checker{source: cfg.Source, versions: cfg.Versions, assets: cfg.Assets, limits: cfg.Limits, clock: cfg.Clock,
+		platform: runtimePlatform()}, nil
 }
 
 // Checker returns a Checker that shares the Updater's source, version
@@ -127,7 +137,7 @@ func (u *Updater) Checker() *Checker {
 		return &Checker{}
 	}
 	return &Checker{source: u.source, versions: u.versions, assets: u.assets, limits: u.limits,
-		unpacker: u.unpacker, fromUpdater: true, clock: u.clock}
+		unpacker: u.unpacker, fromUpdater: true, clock: u.clock, platform: u.runningPlatform()}
 }
 
 // Check reports whether an update is available. Unlike Run with CheckOnly,
@@ -169,14 +179,14 @@ func (c *Checker) prepare(cr CheckRequest) (Request, error) {
 		CheckOnly:      true,
 		Channel:        cr.Channel,
 	}
-	if err := validateRequest(req, c.versions); err != nil {
+	if err := validateRequest(req, c.versions, c.runningPlatform()); err != nil {
 		if validateProduct(req.Product) != nil {
 			// An invalid product name is not safe to put in the prefix.
 			return Request{}, err
 		}
 		return Request{}, wrapRun(req, err)
 	}
-	req.Platform = normalizePlatform(req.Platform)
+	req.Platform = normalizePlatform(req.Platform, c.runningPlatform())
 	return req, nil
 }
 

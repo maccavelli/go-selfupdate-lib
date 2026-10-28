@@ -9,6 +9,7 @@ import (
 const testDigest = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
 
 func TestParseSHA256SUMS(t *testing.T) {
+	t.Parallel()
 	t.Run("gnu text and binary", func(t *testing.T) {
 		body := testDigest + "  demo-linux-amd64\n" +
 			strings.ToUpper(testDigest) + " *demo-windows-amd64.exe\n"
@@ -105,6 +106,7 @@ func TestParseSHA256SUMS(t *testing.T) {
 }
 
 func TestParseGitHubDigest(t *testing.T) {
+	t.Parallel()
 	got, err := parseGitHubDigest("sha256:" + strings.ToUpper(testDigest))
 	if err != nil {
 		t.Fatal(err)
@@ -124,6 +126,7 @@ func TestParseGitHubDigest(t *testing.T) {
 // strips a drive volume on Windows only, so it used to refuse "a:b" there and
 // accept it elsewhere (0010-MADR A12).
 func TestChecksumNameRefusesColon(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"a:b", "C:x", "x:"} {
 		if err := validateChecksumName(name); !errors.Is(err, ErrIntegrity) {
 			t.Errorf("%q: err = %v, want ErrIntegrity", name, err)
@@ -141,6 +144,7 @@ func TestChecksumNameRefusesColon(t *testing.T) {
 // one space before its name is a byte shorter than the canonical one
 // (0015-MADR amendment A2, A10).
 func TestChecksumNameFitsTheLine(t *testing.T) {
+	t.Parallel()
 	fits := strings.Repeat("n", 4029)
 	for _, body := range []string{testDigest + " " + fits + "\n", testDigest + "  " + fits + "\n"} {
 		got, err := ParseSHA256SUMS([]byte(body))

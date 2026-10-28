@@ -59,6 +59,7 @@ func swapAfterFirstReplace(t *testing.T, fx *fsOps, dir string, readOnly bool) (
 // when written to and when copied into, so a version printed past the cap
 // is not found (B1).
 func TestProbeOutputCapped(t *testing.T) {
+	t.Parallel()
 	pr, pw, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
@@ -103,6 +104,7 @@ func TestProbeOutputCapped(t *testing.T) {
 // skipped, so an AllowedRoots entry that covers the target is enough; with
 // no root left, resolution fails (B2).
 func TestHomeUnavailableRoot(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	exe := filepath.Join(root, "demo")
 	if err := os.WriteFile(exe, []byte("old-bytes"), 0o755); err != nil { //nolint:gosec // an executable fixture
@@ -114,11 +116,12 @@ func TestHomeUnavailableRoot(t *testing.T) {
 		"missing": func() (string, error) { return filepath.Join(root, "no-such-home"), nil },
 	} {
 		t.Run(name, func(t *testing.T) {
-			setSeam(t, &userHomeDir, home)
-			if _, err := resolveTarget(TargetPolicy{ExecutablePath: exe, AllowedRoots: []string{root}}); err != nil {
+			fx := realFS()
+			fx.userHomeDir = home
+			if _, err := fx.resolveTarget(TargetPolicy{ExecutablePath: exe, AllowedRoots: []string{root}}); err != nil {
 				t.Fatalf("refused although AllowedRoots covers the target: %v", err)
 			}
-			if _, err := resolveTarget(TargetPolicy{ExecutablePath: exe}); err == nil {
+			if _, err := fx.resolveTarget(TargetPolicy{ExecutablePath: exe}); err == nil {
 				t.Fatal("resolved with no usable root")
 			}
 		})
@@ -128,8 +131,9 @@ func TestHomeUnavailableRoot(t *testing.T) {
 // TestApplyUndoesSwap: a directory swapped during Apply is detected after
 // the rename, and the replacement is undone in the locked directory (B7).
 func TestApplyUndoesSwap(t *testing.T) {
-	_, exe := withTempHome(t)
-	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	t.Parallel()
+	_, exe := tempTarget(t)
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,8 +163,9 @@ func TestApplyUndoesSwap(t *testing.T) {
 // TestRunReportsUnrestoredBackup: when the undo after a swap fails, Run
 // reports the backup, the only copy of the previous binary (B8).
 func TestRunReportsUnrestoredBackup(t *testing.T) {
-	_, exe := withTempHome(t)
-	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	t.Parallel()
+	_, exe := tempTarget(t)
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,9 +196,10 @@ func TestRunReportsUnrestoredBackup(t *testing.T) {
 // backup back but the directory sync fails, the result says rolled back and
 // names no backup that no longer exists (B9).
 func TestProbeRollbackSyncFailure(t *testing.T) {
-	_, exe := withTempHome(t)
+	t.Parallel()
+	_, exe := tempTarget(t)
 	inst, err := NewStandaloneInstaller(InstallOptions{
-		TargetPolicy: TargetPolicy{ExecutablePath: exe},
+		TargetPolicy: targetPolicy(exe),
 		PostInstall:  ProberFunc(func(context.Context, ProbeRequest) error { return errors.New("crashes on start") }),
 	})
 	if err != nil {
@@ -233,8 +239,9 @@ func TestProbeRollbackSyncFailure(t *testing.T) {
 // lock, Commit and Rollback refuse, so they never touch a target another
 // session holds (B10).
 func TestClosedSessionRefusesCommitAndRollback(t *testing.T) {
-	_, exe := withTempHome(t)
-	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	t.Parallel()
+	_, exe := tempTarget(t)
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}

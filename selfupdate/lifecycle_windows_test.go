@@ -71,7 +71,8 @@ func (h *helperService) WaitHealthy(context.Context, string) error {
 // (docs/decisions/0020-MADR-precheck-gofmt-errors-and-replace-before-stop.md
 // 4B).
 func TestReplaceBeforeStopRunningImage(t *testing.T) {
-	home, _ := withTempHome(t)
+	t.Parallel()
+	home, _ := tempTarget(t)
 	src, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -95,7 +96,7 @@ func TestReplaceBeforeStopRunningImage(t *testing.T) {
 		}
 	}()
 
-	inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +144,8 @@ func TestReplaceBeforeStopRunningImage(t *testing.T) {
 // so no cleanup receipt is needed (0004-PLAN-v1-1-0-core-api.md Step 10
 // rule 3).
 func TestKeepPreviousRunningImage(t *testing.T) {
-	home, _ := withTempHome(t)
+	t.Parallel()
+	home, _ := tempTarget(t)
 	src, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -172,7 +174,7 @@ func TestKeepPreviousRunningImage(t *testing.T) {
 	// first SameFile: load it now, while exe still names the running image.
 	_ = os.SameFile(running, running)
 
-	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}, KeepPrevious: true})
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe), KeepPrevious: true})
 	if err != nil {
 		t.Fatal(err)
 	}

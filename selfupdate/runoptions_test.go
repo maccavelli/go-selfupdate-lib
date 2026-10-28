@@ -17,6 +17,7 @@ func yesReq() Request {
 }
 
 func TestRunWithOverridesReporter(t *testing.T) {
+	t.Parallel()
 	env := newContractEnv(t)
 	u := env.build(t)
 	override := &recReporter{}
@@ -36,6 +37,7 @@ func TestRunWithOverridesReporter(t *testing.T) {
 }
 
 func TestRunWithOverridesConfirmer(t *testing.T) {
+	t.Parallel()
 	env := newContractEnv(t)
 	u := env.build(t)
 	override := &recConfirmer{ok: true}
@@ -53,7 +55,7 @@ func TestRunWithOverridesConfirmer(t *testing.T) {
 func progressUpdater(t *testing.T, interval time.Duration, rep *recReporter) *Updater {
 	t.Helper()
 	clock := cacheNow
-	setSeam(t, &timeNow, func() time.Time { clock = clock.Add(time.Millisecond); return clock })
+	moving := ClockFunc(func() time.Time { clock = clock.Add(time.Millisecond); return clock })
 	env := newContractEnv(t)
 	_, _, plats := fixtureRelease(t, "demo")
 	sel, err := NewExactAssetSelector(plats)
@@ -61,7 +63,7 @@ func progressUpdater(t *testing.T, interval time.Duration, rep *recReporter) *Up
 		t.Fatal(err)
 	}
 	u, err := New(Config{Source: oneByteSource{env.src}, Versions: NewStrictVersionPolicy(), Assets: sel,
-		Installer: env.inst, Reporter: rep, Confirmer: env.conf, Limits: env.lim, ProgressInterval: interval})
+		Installer: env.inst, Reporter: rep, Confirmer: env.conf, Limits: env.lim, ProgressInterval: interval, Clock: moving})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,6 +71,7 @@ func progressUpdater(t *testing.T, interval time.Duration, rep *recReporter) *Up
 }
 
 func TestRunWithProgressInterval(t *testing.T) {
+	t.Parallel()
 	on := &recReporter{}
 	if _, err := progressUpdater(t, 0, on).RunWith(context.Background(), yesReq(), WithProgressInterval(time.Nanosecond)); err != nil {
 		t.Fatal(err)
@@ -86,6 +89,7 @@ func TestRunWithProgressInterval(t *testing.T) {
 }
 
 func TestRunWithLastOptionWins(t *testing.T) {
+	t.Parallel()
 	env := newContractEnv(t)
 	u := env.build(t)
 	first, last := &recReporter{}, &recReporter{}
@@ -98,6 +102,7 @@ func TestRunWithLastOptionWins(t *testing.T) {
 }
 
 func TestRunWithRejectsInvalidOptions(t *testing.T) {
+	t.Parallel()
 	var typedNil *recReporter
 	cases := []struct {
 		name string
@@ -124,6 +129,7 @@ func TestRunWithRejectsInvalidOptions(t *testing.T) {
 }
 
 func TestRunWithSharesRunGuard(t *testing.T) {
+	t.Parallel()
 	env := newContractEnv(t)
 	u := env.build(t)
 	u.running.Store(true)

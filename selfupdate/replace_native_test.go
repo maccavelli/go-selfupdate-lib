@@ -51,7 +51,8 @@ func nativeHelper() {
 }
 
 func TestNativeReplaceRunningCopy(t *testing.T) {
-	home, _ := withTempHome(t)
+	t.Parallel()
+	home, _ := tempTarget(t)
 	src, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -82,7 +83,7 @@ func TestNativeReplaceRunningCopy(t *testing.T) {
 		_ = proc.Wait()
 	}()
 
-	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -928,4 +928,7 @@ type Updater struct {
 	manifestVfy []ManifestVerifier
 	probes      []Prober
 	clock       Clock
+	// platform is the platform it applies for, runtimePlatform from New;
+	// a test sets another (Updater.runningPlatform).
+	platform Platform
 }

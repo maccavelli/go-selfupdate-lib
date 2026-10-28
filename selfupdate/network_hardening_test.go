@@ -33,7 +33,7 @@ func hardeningSource(t *testing.T, api *httptest.Server, edit func(*GitHubOption
 	if edit != nil {
 		edit(&opts)
 	}
-	src, err := NewGitHubSource(opts)
+	src, err := gitHubSourceFrom(opts, lookupIn(nil))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,6 +44,7 @@ func hardeningSource(t *testing.T, api *httptest.Server, edit func(*GitHubOption
 // minute and at most an hour, whatever the headers say, and a stored
 // deferral beyond the cap is a miss (A4).
 func TestNotBeforeClamped(t *testing.T) {
+	t.Parallel()
 	for name, tc := range map[string]struct {
 		rl   *RateLimitError
 		want time.Duration
@@ -81,7 +82,7 @@ func TestNotBeforeClamped(t *testing.T) {
 // TestRedirectErrorHidesQuery: a refused redirect, and a failure on the
 // redirected hop, never echo the signed query of the redirect URL (A5).
 func TestRedirectErrorHidesQuery(t *testing.T) {
-	noEnv(t, nil)
+	t.Parallel()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -130,7 +131,7 @@ func (p *countingProvider) Credential(context.Context, CredentialRequest) (Crede
 // TestForeign401DoesNotRefresh: a 401 from the download origin, which never
 // saw the credential, does not ask the provider again (A6).
 func TestForeign401DoesNotRefresh(t *testing.T) {
-	noEnv(t, nil)
+	t.Parallel()
 	foreign := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "nope", http.StatusUnauthorized)
 	}))
@@ -166,7 +167,7 @@ func (b *blockingProvider) Credential(context.Context, CredentialRequest) (Crede
 // TestCredentialWaitHonoursContext: while one request waits on a blocking
 // provider, another request's context still ends it (A7).
 func TestCredentialWaitHonoursContext(t *testing.T) {
-	noEnv(t, nil)
+	t.Parallel()
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) }))
 	defer api.Close()
 	bp := &blockingProvider{entered: make(chan struct{}), release: make(chan struct{})}
@@ -198,6 +199,7 @@ func TestCredentialWaitHonoursContext(t *testing.T) {
 // TestCredentialRefusesControlBytes: every control byte but HTAB is refused
 // in a credential value, as net/http would refuse it on the wire (A9).
 func TestCredentialRefusesControlBytes(t *testing.T) {
+	t.Parallel()
 	for _, v := range []string{"tok\x01en", "tok\x7fen", "tok\x1ben", "tok\ren", "tok\x00"} {
 		if err := validateCredential(Credential{Value: []byte(v), Source: "test"}); err == nil {
 			t.Errorf("%q accepted", v)
@@ -211,9 +213,9 @@ func TestCredentialRefusesControlBytes(t *testing.T) {
 // TestLoopbackRedirectOnlyFromLoopback: a plain-http loopback hop is
 // allowed only when the API itself is on loopback (A10).
 func TestLoopbackRedirectOnlyFromLoopback(t *testing.T) {
-	noEnv(t, nil)
-	remote, err := NewGitHubSource(GitHubOptions{Repository: Repository{Owner: "o", Name: "r"}, Client: &http.Client{},
-		UserAgent: "demo/v1.0.0", Limits: testGitHubLimits()})
+	t.Parallel()
+	remote, err := gitHubSourceFrom(GitHubOptions{Repository: Repository{Owner: "o", Name: "r"}, Client: &http.Client{},
+		UserAgent: "demo/v1.0.0", Limits: testGitHubLimits()}, lookupIn(nil))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +241,7 @@ func TestLoopbackRedirectOnlyFromLoopback(t *testing.T) {
 // TestByTagRefusesDotSegments: "." and ".." are refused before any request
 // (A11).
 func TestByTagRefusesDotSegments(t *testing.T) {
-	noEnv(t, nil)
+	t.Parallel()
 	var hits int
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits++
@@ -262,7 +264,7 @@ func TestByTagRefusesDotSegments(t *testing.T) {
 // though the source's credential has since moved to another header, does
 // not cross (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md A3).
 func TestRedirectKeepsOnlyFixedHeaders(t *testing.T) {
-	noEnv(t, nil)
+	t.Parallel()
 	api := httptest.NewTLSServer(http.NotFoundHandler())
 	t.Cleanup(api.Close)
 	src := hardeningSource(t, api, nil)

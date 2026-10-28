@@ -41,14 +41,14 @@ func newGitHubEnv(t *testing.T, handler http.HandlerFunc, token string) *gitHubE
 	if err != nil {
 		t.Fatal(err)
 	}
-	src, err := NewGitHubSource(GitHubOptions{
+	src, err := gitHubSourceFrom(GitHubOptions{
 		Repository: Repository{Owner: "maccavelli", Name: "demo"},
 		Client:     srv.Client(),
 		APIBaseURL: base,
 		UserAgent:  "demo/v1.0.0",
 		Token:      token,
 		Limits:     testGitHubLimits(),
-	})
+	}, lookupIn(nil))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,6 +77,7 @@ func validReleaseJSON(t *testing.T, tag string, assets ...githubAssetJSON) []byt
 }
 
 func TestNewGitHubSource(t *testing.T) {
+	t.Parallel()
 	client := &http.Client{Timeout: time.Second}
 	base, _ := url.Parse("https://api.github.com")
 	opts := GitHubOptions{
@@ -121,36 +122,21 @@ func TestNewGitHubSource(t *testing.T) {
 }
 
 func TestGitHubTokenOrder(t *testing.T) {
+	t.Parallel()
 	opts := GitHubOptions{
 		Repository: Repository{Owner: "maccavelli", Name: "demo"},
 		Client:     &http.Client{Timeout: time.Second},
 		UserAgent:  "demo/v1.0.0",
 		Limits:     DefaultLimits(),
 	}
-	setSeam(t, &lookupEnv, func(k string) string {
-		switch k {
-		case "GH_TOKEN":
-			return "gh-from-env"
-		case "GITHUB_TOKEN":
-			return "github-from-env"
-		default:
-			return ""
-		}
-	})
-	src, err := NewGitHubSource(opts)
+	src, err := gitHubSourceFrom(opts, lookupIn(map[string]string{"GH_TOKEN": "gh-from-env", "GITHUB_TOKEN": "github-from-env"}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if src.token != "gh-from-env" {
 		t.Fatalf("token = %q, want GH_TOKEN", src.token)
 	}
-	setSeam(t, &lookupEnv, func(k string) string {
-		if k == "GITHUB_TOKEN" {
-			return "github-from-env"
-		}
-		return ""
-	})
-	src, err = NewGitHubSource(opts)
+	src, err = gitHubSourceFrom(opts, lookupIn(map[string]string{"GITHUB_TOKEN": "github-from-env"}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,6 +155,7 @@ func TestGitHubTokenOrder(t *testing.T) {
 }
 
 func TestGitHubLatestRequiredHeadersAndReuse(t *testing.T) {
+	t.Parallel()
 	var n int
 	var last http.Header
 	body := validReleaseJSON(t, "v1.2.3", githubAssetJSON{
@@ -209,6 +196,7 @@ func TestGitHubLatestRequiredHeadersAndReuse(t *testing.T) {
 }
 
 func TestGitHubByTagAndRejects(t *testing.T) {
+	t.Parallel()
 	env := newGitHubEnv(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/releases/tags/v1.2.3"):
@@ -257,6 +245,7 @@ func TestGitHubByTagAndRejects(t *testing.T) {
 }
 
 func TestGitHubJSONOverflowAndMalformed(t *testing.T) {
+	t.Parallel()
 	env := newGitHubEnv(t, func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.URL.Path, "latest") {
 			_, _ = w.Write([]byte(strings.Repeat("a", 8<<10)))
@@ -273,6 +262,7 @@ func TestGitHubJSONOverflowAndMalformed(t *testing.T) {
 }
 
 func TestGitHubRateLimit(t *testing.T) {
+	t.Parallel()
 	fixed := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
 	env := newGitHubEnv(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Retry-After", "12")
@@ -299,6 +289,7 @@ func TestGitHubRateLimit(t *testing.T) {
 }
 
 func TestGitHubRateLimitHTTPDateAndMalformedHeaders(t *testing.T) {
+	t.Parallel()
 	fixed := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
 	env := newGitHubEnv(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Retry-After", fixed.Add(30*time.Second).Format(http.TimeFormat))
@@ -318,6 +309,7 @@ func TestGitHubRateLimitHTTPDateAndMalformedHeaders(t *testing.T) {
 }
 
 func TestGitHubSanitizedErrorDiagnostics(t *testing.T) {
+	t.Parallel()
 	env := newGitHubEnv(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		_, _ = w.Write([]byte("nope\x1b[31msecret\nmore"))
@@ -332,6 +324,7 @@ func TestGitHubSanitizedErrorDiagnostics(t *testing.T) {
 }
 
 func TestGitHubOpenAssetRedirectTokenPolicy(t *testing.T) {
+	t.Parallel()
 	payload := []byte("hello")
 	var foreignAuth string
 	foreign := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -409,6 +402,7 @@ func TestGitHubOpenAssetRedirectTokenPolicy(t *testing.T) {
 }
 
 func TestGitHubCancellationAndTimeout(t *testing.T) {
+	t.Parallel()
 	started := make(chan struct{})
 	env := newGitHubEnv(t, func(w http.ResponseWriter, r *http.Request) {
 		close(started)
@@ -448,6 +442,7 @@ func TestGitHubCancellationAndTimeout(t *testing.T) {
 }
 
 func TestGitHubIgnoresBrowserDownloadURL(t *testing.T) {
+	t.Parallel()
 	var sawBrowser bool
 	env := newGitHubEnv(t, func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.URL.Path, "browser") {
@@ -487,7 +482,7 @@ func TestGitHubIgnoresBrowserDownloadURL(t *testing.T) {
 // called, and the caller's client is not changed
 // (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md A9).
 func TestNewGitHubSourceReplacesCheckRedirect(t *testing.T) {
-	noEnv(t, nil)
+	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/moved" {
 			w.WriteHeader(http.StatusNotFound)
@@ -504,10 +499,10 @@ func TestNewGitHubSourceReplacesCheckRedirect(t *testing.T) {
 	client := srv.Client()
 	mine := func(*http.Request, []*http.Request) error { called = true; return nil }
 	client.CheckRedirect = mine
-	src, err := NewGitHubSource(GitHubOptions{
+	src, err := gitHubSourceFrom(GitHubOptions{
 		Repository: Repository{Owner: "maccavelli", Name: "demo"}, Client: client, APIBaseURL: base,
 		UserAgent: "demo/v1.0.0", Limits: testGitHubLimits(),
-	})
+	}, lookupIn(nil))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -527,6 +522,7 @@ func TestNewGitHubSourceReplacesCheckRedirect(t *testing.T) {
 // and keeps the status in its message
 // (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md A1).
 func TestLatestNotFoundIsNoRelease(t *testing.T) {
+	t.Parallel()
 	env := newGitHubEnv(t, func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) }, "")
 	ctx := context.Background()
 	for name, get := range map[string]func() (Release, error){
@@ -543,6 +539,7 @@ func TestLatestNotFoundIsNoRelease(t *testing.T) {
 // path, so release and asset requests go under /api/v3
 // (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D11).
 func TestGitHubAPIBasePathPrefix(t *testing.T) {
+	t.Parallel()
 	var mu sync.Mutex
 	var paths []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

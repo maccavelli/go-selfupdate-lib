@@ -37,6 +37,7 @@ func wantErrContaining(t *testing.T, err error, text string) {
 // TestOpenLockFileRetriesAfterCreateRace: a lock created between the Lstat
 // and the exclusive create is examined on the second attempt, not refused.
 func TestOpenLockFileRetriesAfterCreateRace(t *testing.T) {
+	t.Parallel()
 	root, dir := lockRoot(t)
 	path := filepath.Join(dir, lockName)
 	created := false
@@ -70,6 +71,7 @@ func TestOpenLockFileRetriesAfterCreateRace(t *testing.T) {
 // TestOpenLockFileRefusesReplacedLock: a lock replaced between the Lstat and
 // the open is refused (0003-MADR B5).
 func TestOpenLockFileRefusesReplacedLock(t *testing.T) {
+	t.Parallel()
 	root, dir := lockRoot(t)
 	path := filepath.Join(dir, lockName)
 	if err := os.WriteFile(path, nil, 0o600); err != nil {
@@ -99,6 +101,7 @@ func TestOpenLockFileRefusesReplacedLock(t *testing.T) {
 // TestOpenLockFileGivesUpWhenLockKeepsChanging: a lock that appears after
 // every Lstat is refused after the second attempt, not looped on.
 func TestOpenLockFileGivesUpWhenLockKeepsChanging(t *testing.T) {
+	t.Parallel()
 	root, dir := lockRoot(t)
 	path := filepath.Join(dir, lockName)
 	fx := realFS()
@@ -124,6 +127,7 @@ func TestOpenLockFileGivesUpWhenLockKeepsChanging(t *testing.T) {
 // TestOpenLockFileRefusesNonRegularLock: a directory in the lock's place is
 // refused.
 func TestOpenLockFileRefusesNonRegularLock(t *testing.T) {
+	t.Parallel()
 	root, dir := lockRoot(t)
 	if err := os.Mkdir(filepath.Join(dir, lockName), 0o700); err != nil {
 		t.Fatal(err)
@@ -138,6 +142,7 @@ func TestOpenLockFileRefusesNonRegularLock(t *testing.T) {
 // TestManagedCommitRefusesMovedDirectory: the managed commit re-checks the
 // locked directory before it removes the backup (0003-MADR B10).
 func TestManagedCommitRefusesMovedDirectory(t *testing.T) {
+	t.Parallel()
 	life := &fakeLife{installed: true, running: true}
 	_, _, sess, exe := managedEnv(t, life, &fakeRec{})
 	path := stageNew(t, sess)
@@ -188,6 +193,7 @@ func TestManagedCommitRefusesMovedDirectory(t *testing.T) {
 // TestCommitReportsBackupRemovalFailure: a backup that cannot be removed
 // after a healthy replacement is an error on an applied result.
 func TestCommitReportsBackupRemovalFailure(t *testing.T) {
+	t.Parallel()
 	sess, _ := standaloneSession(t)
 	path := stageNew(t, sess)
 	fsOf(t, sess).osRemove = func(string) error { return errors.New("injected remove failure") }
@@ -201,6 +207,7 @@ func TestCommitReportsBackupRemovalFailure(t *testing.T) {
 // TestCommitReportsDirectorySyncFailure: the directory sync after the backup
 // is removed is not ignored.
 func TestCommitReportsDirectorySyncFailure(t *testing.T) {
+	t.Parallel()
 	sess, _ := standaloneSession(t)
 	path := stageNew(t, sess)
 	syncs := 0
@@ -221,6 +228,7 @@ func TestCommitReportsDirectorySyncFailure(t *testing.T) {
 // TestRollbackReplacementFailures: a rollback with no backup, a failed
 // restore, and a failed sync after the restore are each reported.
 func TestRollbackReplacementFailures(t *testing.T) {
+	t.Parallel()
 	sess, exe := standaloneSession(t)
 	target := sess.Target()
 	backup := filepath.Join(filepath.Dir(exe), backupPrefix("demo")+"x")
@@ -248,6 +256,7 @@ func TestRollbackReplacementFailures(t *testing.T) {
 // TestCopyFileFailuresRemoveTheCopy: a backup copy that fails at chmod, sync
 // or close is reported and does not leave a partial file (0003-MADR B3).
 func TestCopyFileFailuresRemoveTheCopy(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	src := filepath.Join(dir, "src")
 	if err := os.WriteFile(src, []byte("bytes"), 0o755); err != nil {
@@ -283,6 +292,7 @@ func TestCopyFileFailuresRemoveTheCopy(t *testing.T) {
 // TestReadTruncated: bodies are cut at the limit, never refused, and a
 // non-positive limit is an error.
 func TestReadTruncated(t *testing.T) {
+	t.Parallel()
 	got, err := readTruncated(strings.NewReader("0123456789"), 4)
 	if err != nil || string(got) != "0123" {
 		t.Fatalf("over the limit: %q, %v", got, err)

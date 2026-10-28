@@ -67,7 +67,7 @@ func NewGitHubUpdater(o GitHubUpdaterOptions) (*Updater, error) {
 	}
 	platforms := o.Platforms
 	if platforms == nil {
-		platforms = []Platform{runningPlatform()}
+		platforms = []Platform{runtimePlatform()}
 	}
 	src, err := NewGitHubSource(GitHubOptions{
 		Repository: o.Repository,

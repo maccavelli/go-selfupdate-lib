@@ -56,6 +56,7 @@ func queued[T any](t *testing.T, ch chan T) T {
 // TestRealRepliesDeliver: a request made as the Stream makes it still gets
 // its first reply, and only that one.
 func TestRealRepliesDeliver(t *testing.T) {
+	t.Parallel()
 	c := &ConfirmNeeded{reply: make(chan confirmReply, 1)}
 	c.Answer(true)
 	c.Cancel(errors.New("too late"))

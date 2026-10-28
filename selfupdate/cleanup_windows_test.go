@@ -15,8 +15,9 @@ import (
 )
 
 func TestWindowsCleanupReceiptRoundTrip(t *testing.T) {
-	_, exe := withTempHome(t)
-	target, err := resolveTarget(TargetPolicy{ExecutablePath: exe})
+	t.Parallel()
+	_, exe := tempTarget(t)
+	target, err := realFS().resolveTarget(targetPolicy(exe))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,8 +46,9 @@ func TestWindowsCleanupReceiptRoundTrip(t *testing.T) {
 }
 
 func TestWindowsCleanupReceiptDigestMismatch(t *testing.T) {
-	_, exe := withTempHome(t)
-	target, err := resolveTarget(TargetPolicy{ExecutablePath: exe})
+	t.Parallel()
+	_, exe := tempTarget(t)
+	target, err := realFS().resolveTarget(targetPolicy(exe))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,8 +77,8 @@ func TestWindowsCleanupReceiptDigestMismatch(t *testing.T) {
 // receiptEnv writes a backup and a receipt for it, and opens the root.
 func receiptEnv(t *testing.T, backupName string, rec cleanupReceipt, writeBackup bool) (Target, *os.Root) {
 	t.Helper()
-	_, exe := withTempHome(t)
-	target, err := resolveTarget(TargetPolicy{ExecutablePath: exe})
+	_, exe := tempTarget(t)
+	target, err := realFS().resolveTarget(targetPolicy(exe))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,6 +111,7 @@ func oldBytesDigest(t *testing.T) string {
 // TestWindowsCleanupReceiptMissingBackup: a receipt whose backup is gone is
 // removed instead of blocking every later update (0003-MADR B7).
 func TestWindowsCleanupReceiptMissingBackup(t *testing.T) {
+	t.Parallel()
 	name := ".demo.selfupdate-bak-gone"
 	target, root := receiptEnv(t, name, cleanupReceipt{Version: 1, Backup: name, Digest: oldBytesDigest(t)}, false)
 	if err := realFS().processCleanupReceipt(context.Background(), target, root); err != nil {
@@ -123,6 +126,7 @@ func TestWindowsCleanupReceiptMissingBackup(t *testing.T) {
 // name anything but a backup of this target, fail closed and are kept
 // (0003-MADR B6).
 func TestWindowsCleanupReceiptMalformed(t *testing.T) {
+	t.Parallel()
 	digest := oldBytesDigest(t)
 	cases := map[string]cleanupReceipt{
 		"version 2":       {Version: 2, Backup: ".demo.selfupdate-bak-1", Digest: digest},
@@ -155,8 +159,8 @@ func TestWindowsCleanupReceiptMalformed(t *testing.T) {
 		})
 	}
 	// Not JSON at all.
-	_, exe := withTempHome(t)
-	target, err := resolveTarget(TargetPolicy{ExecutablePath: exe})
+	_, exe := tempTarget(t)
+	target, err := realFS().resolveTarget(targetPolicy(exe))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,6 +180,7 @@ func TestWindowsCleanupReceiptMalformed(t *testing.T) {
 // TestWindowsCleanupReceiptReparseBackup: a backup that is a symlink is not
 // followed or removed.
 func TestWindowsCleanupReceiptReparseBackup(t *testing.T) {
+	t.Parallel()
 	name := ".demo.selfupdate-bak-link"
 	target, root := receiptEnv(t, name, cleanupReceipt{Version: 1, Backup: name, Digest: oldBytesDigest(t)}, false)
 	victim := filepath.Join(target.Dir, "victim")
@@ -196,8 +201,9 @@ func TestWindowsCleanupReceiptReparseBackup(t *testing.T) {
 // TestWindowsReceiptConsumedByBegin: Begin consumes a valid receipt and its
 // backup before anything else happens.
 func TestWindowsReceiptConsumedByBegin(t *testing.T) {
-	_, exe := withTempHome(t)
-	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	t.Parallel()
+	_, exe := tempTarget(t)
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}

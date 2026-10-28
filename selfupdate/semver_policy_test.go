@@ -21,6 +21,7 @@ func channelPolicy(t *testing.T, channels ...string) ChannelPolicy {
 }
 
 func TestNewSemverPolicyOptions(t *testing.T) {
+	t.Parallel()
 	if _, err := NewSemverPolicy(SemverOptions{}); err != nil {
 		t.Fatalf("the zero options: %v", err)
 	}
@@ -48,6 +49,7 @@ func TestNewSemverPolicyOptions(t *testing.T) {
 }
 
 func TestSemverPolicyDoesNotShareChannels(t *testing.T) {
+	t.Parallel()
 	channels := []string{"rc", "beta"}
 	p, err := NewSemverPolicy(SemverOptions{AllowPrerelease: true, Channels: channels})
 	if err != nil {
@@ -63,6 +65,7 @@ func TestSemverPolicyDoesNotShareChannels(t *testing.T) {
 }
 
 func TestSemverPolicyValidate(t *testing.T) {
+	t.Parallel()
 	p := channelPolicy(t, "rc", "beta", "alpha")
 	stable, err := NewSemverPolicy(SemverOptions{})
 	if err != nil {
@@ -102,6 +105,7 @@ func TestSemverPolicyValidate(t *testing.T) {
 }
 
 func TestSemverPolicyCompare(t *testing.T) {
+	t.Parallel()
 	p := channelPolicy(t, "rc", "beta", "alpha")
 	for _, c := range []struct{ lo, hi string }{
 		{"v1.3.0-rc.2", "v1.3.0-rc.10"},
@@ -123,6 +127,7 @@ func TestSemverPolicyCompare(t *testing.T) {
 }
 
 func TestSemverPolicyChannels(t *testing.T) {
+	t.Parallel()
 	p := channelPolicy(t, "rc", "beta", "alpha")
 	for _, name := range []string{"", "rc", "beta", "alpha"} {
 		if err := p.ValidChannel(name); err != nil {

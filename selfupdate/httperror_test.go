@@ -13,6 +13,7 @@ import (
 // before.
 
 func TestHTTPErrorAs(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	for _, c := range []struct {
 		name      string
@@ -70,6 +71,7 @@ func (r *causeRecorder) Credential(_ context.Context, req CredentialRequest) (Cr
 // TestRefreshCauseIsHTTPError: the provider asked again after a 401 is
 // told why with an *HTTPError, whose text is unchanged.
 func TestRefreshCauseIsHTTPError(t *testing.T) {
+	t.Parallel()
 	rec := &causeRecorder{}
 	env := newGitHubEnv(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
@@ -95,6 +97,7 @@ func TestRefreshCauseIsHTTPError(t *testing.T) {
 }
 
 func TestHTTPErrorText(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		e    *HTTPError
 		want string

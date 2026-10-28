@@ -67,8 +67,8 @@ func (f *fakeRec) Restore(context.Context, string, ReconcileResult) error {
 
 func managedEnv(t *testing.T, life *fakeLife, rec *fakeRec) (*ManagedInstaller, Target, InstallSession, string) {
 	t.Helper()
-	_, exe := withTempHome(t)
-	inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	_, exe := tempTarget(t)
+	inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,6 +107,7 @@ func stageNew(t *testing.T, sess InstallSession) string {
 }
 
 func TestManagedAbsentIsBinaryOnly(t *testing.T) {
+	t.Parallel()
 	life := &fakeLife{}
 	rec := &fakeRec{}
 	_, _, sess, exe := managedEnv(t, life, rec)
@@ -131,6 +132,7 @@ func TestManagedAbsentIsBinaryOnly(t *testing.T) {
 }
 
 func TestManagedRunningStopReconcileStart(t *testing.T) {
+	t.Parallel()
 	life := &fakeLife{installed: true, running: true}
 	rec := &fakeRec{changed: true}
 	_, _, sess, exe := managedEnv(t, life, rec)
@@ -159,6 +161,7 @@ func TestManagedRunningStopReconcileStart(t *testing.T) {
 // TestManagedDownHeals, which started it: the owner's answer to 0010-MADR
 // Q2 reversed that.
 func TestManagedStoppedStaysStopped(t *testing.T) {
+	t.Parallel()
 	life := &fakeLife{installed: true, running: false}
 	rec := &fakeRec{changed: true}
 	_, _, sess, exe := managedEnv(t, life, rec)
@@ -179,6 +182,7 @@ func TestManagedStoppedStaysStopped(t *testing.T) {
 }
 
 func TestManagedHealthFailureRollsBack(t *testing.T) {
+	t.Parallel()
 	life := &fakeLife{installed: true, running: true, healthErr: errors.New("unhealthy")}
 	rec := &fakeRec{changed: true}
 	_, _, sess, exe := managedEnv(t, life, rec)
@@ -204,6 +208,7 @@ func TestManagedHealthFailureRollsBack(t *testing.T) {
 }
 
 func TestManagedReconcileFailureRollsBack(t *testing.T) {
+	t.Parallel()
 	life := &fakeLife{installed: true, running: true}
 	rec := &fakeRec{changed: true, err: errors.New("partial write")}
 	_, _, sess, exe := managedEnv(t, life, rec)
@@ -226,6 +231,7 @@ func TestManagedReconcileFailureRollsBack(t *testing.T) {
 }
 
 func TestManagedRollbackErrorJoined(t *testing.T) {
+	t.Parallel()
 	life := &fakeLife{installed: true, running: true, healthErr: errors.New("unhealthy")}
 	rec := &fakeRec{changed: true, restoreE: errors.New("restore failed")}
 	_, _, sess, _ := managedEnv(t, life, rec)
@@ -254,6 +260,7 @@ func TestManagedRollbackErrorJoined(t *testing.T) {
 // binary was never replaced
 // (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md B3).
 func TestManagedStopFailsAfterStoppingRestarts(t *testing.T) {
+	t.Parallel()
 	stopErr := errors.New("injected: stop wait timed out")
 	life := &fakeLife{installed: true, running: true, stopErr: stopErr, stopTakesEffect: true}
 	_, _, sess, exe := managedEnv(t, life, &fakeRec{})
@@ -273,6 +280,7 @@ func TestManagedStopFailsAfterStoppingRestarts(t *testing.T) {
 // service running, such as one refused from inside the service, ends the
 // update as before: nothing is started (0015-MADR B3).
 func TestManagedStopFailsStillRunning(t *testing.T) {
+	t.Parallel()
 	stopErr := errors.New("injected: refused inside the service")
 	life := &fakeLife{installed: true, running: true, stopErr: stopErr}
 	_, _, sess, exe := managedEnv(t, life, &fakeRec{})
@@ -308,9 +316,10 @@ func (b *blockingStop) Stop(ctx context.Context, product string) error {
 // 200 ms wait only bounds how long the test looks for a Close that
 // returned early; it orders nothing.
 func TestManagedSessionSerializes(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
-	_, exe := withTempHome(t)
-	inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	_, exe := tempTarget(t)
+	inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -358,6 +367,7 @@ func TestManagedSessionSerializes(t *testing.T) {
 // TestManagedSessionTarget: a managed session reports the target its inner
 // session locked (0015-MADR B10).
 func TestManagedSessionTarget(t *testing.T) {
+	t.Parallel()
 	_, target, sess, _ := managedEnv(t, &fakeLife{installed: true}, &fakeRec{})
 	if got := sess.Target(); got.Path != target.Path || got.Dir != target.Dir || got.Base != target.Base {
 		t.Fatalf("Target() = %+v, want %+v", got, target)

@@ -77,11 +77,11 @@ type replaceFirstOpts struct {
 // life's target must be set by the caller through setTarget.
 func replaceFirst(t *testing.T, life Lifecycle, rec Reconciler, o replaceFirstOpts, setTarget func(string)) (InstallResult, string, error) {
 	t.Helper()
-	_, exe := withTempHome(t)
+	_, exe := tempTarget(t)
 	if setTarget != nil {
 		setTarget(exe)
 	}
-	inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}, PostInstall: o.postInstall})
+	inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe), PostInstall: o.postInstall})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,6 +114,7 @@ var early = replaceFirstOpts{opts: ManagedOptions{ReplaceBeforeStop: true}}
 // TestReplaceBeforeStopOrder: with the option, the binary is replaced while
 // the service runs, then the service is stopped, started and checked.
 func TestReplaceBeforeStopOrder(t *testing.T) {
+	t.Parallel()
 	life := &firstLife{running: true}
 	res, got, err := replaceFirst(t, life, &fakeRec{}, early, func(p string) { life.target = p })
 	if err != nil || !res.Applied || !res.ReplacedBeforeStop || got != "new-bytes" {
@@ -130,10 +131,11 @@ func TestReplaceBeforeStopOrder(t *testing.T) {
 // TestManagedDefaultOrderUnchanged: without the option, a running service
 // is stopped before its binary is replaced, and the result says so.
 func TestManagedDefaultOrderUnchanged(t *testing.T) {
+	t.Parallel()
 	life := &firstLife{running: true}
-	_, exe := withTempHome(t)
+	_, exe := tempTarget(t)
 	life.target = exe
-	inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,6 +164,7 @@ func TestManagedDefaultOrderUnchanged(t *testing.T) {
 // TestReplaceBeforeStopStoppedService: a stopped service has nothing to
 // stop, so the order does not apply.
 func TestReplaceBeforeStopStoppedService(t *testing.T) {
+	t.Parallel()
 	life := &enabledFirstLife{}
 	res, got, err := replaceFirst(t, life, &fakeRec{}, early, func(p string) { life.target = p })
 	if err != nil || !res.Applied || res.ReplacedBeforeStop || got != "new-bytes" {
@@ -175,6 +178,7 @@ func TestReplaceBeforeStopStoppedService(t *testing.T) {
 // TestReplaceBeforeStopNotInstalled: with no service, the install is the
 // standalone one.
 func TestReplaceBeforeStopNotInstalled(t *testing.T) {
+	t.Parallel()
 	res, got, err := replaceFirst(t, &fakeLife{}, &fakeRec{}, early, nil)
 	if err != nil || !res.Applied || res.ServiceInstalled || res.ReplacedBeforeStop || got != "new-bytes" {
 		t.Fatalf("res = %+v, err = %v, target %q", res, err, got)
@@ -184,6 +188,7 @@ func TestReplaceBeforeStopNotInstalled(t *testing.T) {
 // TestReplaceBeforeStopProbeFails: a new binary that fails its post-install
 // probe is rolled back under the running service, which is never stopped.
 func TestReplaceBeforeStopProbeFails(t *testing.T) {
+	t.Parallel()
 	life := &firstLife{running: true}
 	o := early
 	o.postInstall = ProberFunc(func(context.Context, ProbeRequest) error { return errors.New("fixture: bad binary") })
@@ -199,6 +204,7 @@ func TestReplaceBeforeStopProbeFails(t *testing.T) {
 // TestReplaceBeforeStopApplyRefused: an Apply refused before its rename
 // replaced nothing, and leaves the running service untouched.
 func TestReplaceBeforeStopApplyRefused(t *testing.T) {
+	t.Parallel()
 	life := &firstLife{running: true}
 	o := early
 	o.before = func(t *testing.T, target string) {
@@ -222,6 +228,7 @@ func TestReplaceBeforeStopApplyRefused(t *testing.T) {
 // TestReplaceBeforeStopStopFailsStillRunning: a stop that fails with the
 // service still up rolls the binary back under it, and starts nothing.
 func TestReplaceBeforeStopStopFailsStillRunning(t *testing.T) {
+	t.Parallel()
 	life := &firstLife{running: true, stopErr: errors.New("fixture: stop refused")}
 	res, got, err := replaceFirst(t, life, &fakeRec{}, early, func(p string) { life.target = p })
 	if !errors.Is(err, ErrManagedInstall) || res.Applied || !res.RolledBack || !res.ReplacedBeforeStop || got != "old-bytes" {
@@ -235,6 +242,7 @@ func TestReplaceBeforeStopStopFailsStillRunning(t *testing.T) {
 // TestReplaceBeforeStopStopFailsWentDown: a stop that fails after the
 // service went down rolls the binary back, then starts the service on it.
 func TestReplaceBeforeStopStopFailsWentDown(t *testing.T) {
+	t.Parallel()
 	life := &firstLife{running: true, stopErr: errors.New("fixture: stop timed out"), stopDown: true}
 	res, got, err := replaceFirst(t, life, &fakeRec{}, early, func(p string) { life.target = p })
 	if !errors.Is(err, ErrManagedInstall) || res.Applied || !res.RolledBack || !res.ReplacedBeforeStop || got != "old-bytes" {
@@ -248,6 +256,7 @@ func TestReplaceBeforeStopStopFailsWentDown(t *testing.T) {
 // TestReplaceBeforeStopReconcileFails: a failed reconcile after the stop
 // rolls back and starts the old binary, as without the option.
 func TestReplaceBeforeStopReconcileFails(t *testing.T) {
+	t.Parallel()
 	life := &firstLife{running: true}
 	res, got, err := replaceFirst(t, life, &fakeRec{err: errors.New("fixture: reconcile")}, early, func(p string) { life.target = p })
 	if !errors.Is(err, ErrManagedInstall) || res.Applied || !res.RolledBack || !res.ReplacedBeforeStop || got != "old-bytes" {
@@ -261,6 +270,7 @@ func TestReplaceBeforeStopReconcileFails(t *testing.T) {
 // TestReplaceBeforeStopHealthFails: an unhealthy new binary is stopped,
 // rolled back, and the old one started and checked.
 func TestReplaceBeforeStopHealthFails(t *testing.T) {
+	t.Parallel()
 	life := &firstLife{running: true, healthErrs: 1}
 	res, got, err := replaceFirst(t, life, &fakeRec{}, early, func(p string) { life.target = p })
 	if !errors.Is(err, ErrManagedInstall) || res.Applied || !res.RolledBack || !res.ReplacedBeforeStop || got != "old-bytes" {
@@ -274,6 +284,7 @@ func TestReplaceBeforeStopHealthFails(t *testing.T) {
 // TestReplaceBeforeStopCommitRefused: a commit refused after the directory
 // was swapped is undone, as without the option.
 func TestReplaceBeforeStopCommitRefused(t *testing.T) {
+	t.Parallel()
 	life := &firstLife{running: true}
 	rec := &swapRec{}
 	res, _, err := replaceFirst(t, life, rec, early, func(p string) {
@@ -304,8 +315,9 @@ func TestReplaceBeforeStopCommitRefused(t *testing.T) {
 // TestNewManagedInstallerWithRefusesNil: the options constructor refuses
 // what NewManagedInstallerFor refuses.
 func TestNewManagedInstallerWithRefusesNil(t *testing.T) {
-	_, exe := withTempHome(t)
-	inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	t.Parallel()
+	_, exe := tempTarget(t)
+	inner, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}

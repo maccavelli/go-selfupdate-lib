@@ -63,6 +63,7 @@ func redactionFixtures(t *testing.T) map[string]any {
 }
 
 func TestSecretsNeverFormat(t *testing.T) {
+	t.Parallel()
 	for name, v := range redactionFixtures(t) {
 		for _, verb := range []string{"%v", "%+v", "%#v", "%s", "%q", "%x", "%X", "%d"} {
 			out := fmt.Sprintf(verb, v)
@@ -113,6 +114,7 @@ func TestSecretsNeverFormat(t *testing.T) {
 // TestCredentialJSONKeepsValue: JSON is how a CredentialObserver saves an
 // accepted credential, so encoding/json still carries Value (D1-A).
 func TestCredentialJSONKeepsValue(t *testing.T) {
+	t.Parallel()
 	out, err := json.Marshal(Credential{Value: []byte("v")})
 	if err != nil {
 		t.Fatal(err)

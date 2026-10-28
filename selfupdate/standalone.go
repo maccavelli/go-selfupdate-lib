@@ -53,7 +53,7 @@ func (s *StandaloneInstaller) ops() *fsOps {
 
 // ResolveTarget implements Installer.
 func (s *StandaloneInstaller) ResolveTarget(context.Context) (Target, error) {
-	return resolveTarget(s.policy)
+	return s.ops().resolveTarget(s.policy)
 }
 
 // Begin implements Installer.
@@ -79,7 +79,7 @@ func (s *StandaloneInstaller) Begin(ctx context.Context, target Target) (Install
 // When another update holds the lock, the error matches
 // ErrConcurrentUpdate. That is benign: retry later.
 func (s *StandaloneInstaller) CleanupPending(ctx context.Context) error {
-	target, err := resolveTarget(s.policy)
+	target, err := s.ops().resolveTarget(s.policy)
 	if err != nil {
 		return err
 	}
@@ -112,7 +112,7 @@ func (s *StandaloneInstaller) KeptBackups(ctx context.Context) ([]KeptBackup, er
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	target, err := resolveTarget(s.policy)
+	target, err := s.ops().resolveTarget(s.policy)
 	if err != nil {
 		return nil, err
 	}

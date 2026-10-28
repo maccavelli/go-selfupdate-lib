@@ -13,6 +13,13 @@ import (
 // Tests for docs/decisions/0010-PLAN-v1-6-0-owner-contracts.md S6 (Q6): the
 // special-bit policy and ownership on Unix.
 
+// specialPolicy is targetPolicy that also allows setuid and setgid.
+func specialPolicy(exe string) TargetPolicy {
+	p := targetPolicy(exe)
+	p.AllowSpecialModeBits = true
+	return p
+}
+
 // unixInstall installs "new-bytes" over exe under policy, with each edit
 // made to the installer's file-system effects first.
 func unixInstall(t *testing.T, exe string, policy TargetPolicy, edits ...func(*fsOps)) (InstallResult, error) {
@@ -42,11 +49,12 @@ func unixInstall(t *testing.T, exe string, policy TargetPolicy, edits ...func(*f
 // TestSpecialBitsAllowed: with the policy, the target is replaced and the
 // new binary keeps the bit.
 func TestSpecialBitsAllowed(t *testing.T) {
+	t.Parallel()
 	for _, bit := range []os.FileMode{os.ModeSetuid, os.ModeSetgid} {
 		t.Run(bit.String(), func(t *testing.T) {
-			_, exe := withTempHome(t)
+			_, exe := tempTarget(t)
 			chmodOrSkip(t, exe, bit|0o755)
-			if _, err := unixInstall(t, exe, TargetPolicy{ExecutablePath: exe, AllowSpecialModeBits: true}); err != nil {
+			if _, err := unixInstall(t, exe, specialPolicy(exe)); err != nil {
 				t.Fatal(err)
 			}
 			info, err := os.Stat(exe)
@@ -64,6 +72,7 @@ func TestSpecialBitsAllowed(t *testing.T) {
 // EPERM, an unprivileged updater's answer, is not an error; any other
 // failure is.
 func TestStagingOwnership(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		name    string
 		err     error
@@ -74,14 +83,14 @@ func TestStagingOwnership(t *testing.T) {
 		{"EIO", syscall.EIO, true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			_, exe := withTempHome(t)
+			_, exe := tempTarget(t)
 			info, err := os.Stat(exe)
 			if err != nil {
 				t.Fatal(err)
 			}
 			st := info.Sys().(*syscall.Stat_t)
 			var gotUID, gotGID int
-			res, err := unixInstall(t, exe, TargetPolicy{ExecutablePath: exe}, func(fx *fsOps) {
+			res, err := unixInstall(t, exe, targetPolicy(exe), func(fx *fsOps) {
 				fx.osLchown = func(_ string, uid, gid int) error {
 					gotUID, gotGID = uid, gid
 					return c.err
@@ -105,18 +114,19 @@ func TestStagingOwnership(t *testing.T) {
 // SELFUPDATE_REQUIRE_ROOT=1, which CI's Linux leg sets under sudo, makes
 // that a failure.
 func TestStagingTakesOwnerAsRoot(t *testing.T) {
+	t.Parallel()
 	if os.Geteuid() != 0 {
 		if os.Getenv("SELFUPDATE_REQUIRE_ROOT") == "1" {
 			t.Fatal("SELFUPDATE_REQUIRE_ROOT=1, and this is not root")
 		}
 		t.Skip("needs root to give a file to another owner")
 	}
-	_, exe := withTempHome(t)
+	_, exe := tempTarget(t)
 	const uid, gid = 4242, 4243
 	if err := os.Lchown(exe, uid, gid); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := unixInstall(t, exe, TargetPolicy{ExecutablePath: exe}); err != nil {
+	if _, err := unixInstall(t, exe, targetPolicy(exe)); err != nil {
 		t.Fatal(err)
 	}
 	info, err := os.Stat(exe)

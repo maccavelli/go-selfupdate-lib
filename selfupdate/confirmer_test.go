@@ -27,12 +27,11 @@ func TestTerminalConfirmerRequiresTTY(t *testing.T) {
 
 func TestTerminalConfirmerYesNo(t *testing.T) {
 	defer checkNoLeak(t)()
-	setSeam(t, &isTerminal, func(int) bool { return true })
 
 	t.Run("yes", func(t *testing.T) {
 		in, out := pipeFile(t, "yes\n")
 		var buf strings.Builder
-		c := NewTerminalConfirmer(in, &buf)
+		c := terminalConfirmerFrom(in, &buf, alwaysTTY)
 		ok, err := c.Confirm(context.Background(), Prompt{Product: "demo", Current: "v1.0.0", Target: "v1.1.0", Operation: OperationUpgrade})
 		if err != nil || !ok {
 			t.Fatalf("ok=%v err=%v", ok, err)
@@ -44,7 +43,7 @@ func TestTerminalConfirmerYesNo(t *testing.T) {
 	})
 	t.Run("no", func(t *testing.T) {
 		in, _ := pipeFile(t, "n\n")
-		c := NewTerminalConfirmer(in, io.Discard)
+		c := terminalConfirmerFrom(in, io.Discard, alwaysTTY)
 		ok, err := c.Confirm(context.Background(), Prompt{Product: "demo", Current: "v1.0.0", Target: "v1.1.0", Operation: OperationUpgrade})
 		if err != nil || ok {
 			t.Fatalf("ok=%v err=%v", ok, err)
@@ -56,9 +55,8 @@ func TestTerminalConfirmerYesNo(t *testing.T) {
 // default "N", not an error (0003-MADR C6).
 func TestTerminalConfirmerEOFDeclines(t *testing.T) {
 	defer checkNoLeak(t)()
-	setSeam(t, &isTerminal, func(int) bool { return true })
 	in, _ := pipeFile(t, "")
-	c := NewTerminalConfirmer(in, io.Discard)
+	c := terminalConfirmerFrom(in, io.Discard, alwaysTTY)
 	ok, err := c.Confirm(context.Background(), Prompt{Product: "demo", Current: "v1.0.0", Target: "v1.1.0", Operation: OperationUpgrade})
 	if err != nil || ok {
 		t.Fatalf("ok=%v err=%v, want a decline", ok, err)
@@ -69,7 +67,6 @@ func TestTerminalConfirmerEOFDeclines(t *testing.T) {
 // the line typed afterwards; the next Confirm receives it (0003-MADR C7).
 func TestTerminalConfirmerCancelKeepsLine(t *testing.T) {
 	defer checkNoLeak(t)()
-	setSeam(t, &isTerminal, func(int) bool { return true })
 	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
@@ -79,7 +76,7 @@ func TestTerminalConfirmerCancelKeepsLine(t *testing.T) {
 		_ = w.Close()
 	})
 	prompted := &signalWriter{ch: make(chan struct{}, 4)}
-	c := NewTerminalConfirmer(r, prompted)
+	c := terminalConfirmerFrom(r, prompted, alwaysTTY)
 	p := Prompt{Product: "demo", Current: "v1.0.0", Target: "v1.1.0", Operation: OperationUpgrade}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

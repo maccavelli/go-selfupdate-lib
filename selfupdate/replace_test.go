@@ -10,8 +10,9 @@ import (
 )
 
 func TestStandaloneReplaceAndRollbackMaterial(t *testing.T) {
-	_, exe := withTempHome(t)
-	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
+	t.Parallel()
+	_, exe := tempTarget(t)
+	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: targetPolicy(exe)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,6 +65,7 @@ func TestStandaloneReplaceAndRollbackMaterial(t *testing.T) {
 // TestChmodStagingCopiesPerm: staging takes the old binary's permissions.
 // The special bits are TestStagingMode's (0010-MADR Q6).
 func TestChmodStagingCopiesPerm(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	old := filepath.Join(dir, "old")
 	if err := os.WriteFile(old, []byte("old"), 0o755); err != nil {
@@ -90,6 +92,7 @@ func TestChmodStagingCopiesPerm(t *testing.T) {
 }
 
 func TestSyncDirectoryOnTempRoot(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	if err := syncDirectory(dir); err != nil {
 		t.Fatal(err)
@@ -97,6 +100,7 @@ func TestSyncDirectoryOnTempRoot(t *testing.T) {
 }
 
 func TestIsUnsupportedSync(t *testing.T) {
+	t.Parallel()
 	if !isUnsupportedSync(syscall.EINVAL) {
 		t.Fatal("EINVAL must be treated as unsupported directory sync")
 	}
