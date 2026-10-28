@@ -366,3 +366,17 @@ The PLAN is [0038-PLAN-pinned-plans-lifecycle-conformance-and-bubble-tests.md](0
 * CVE-2026-32282, `Root.Chmod` on Linux: <https://groups.google.com/g/golang-announce/c/0uYbvbPZRWU>.
 * <https://pkg.go.dev/github.com/creativeprojects/go-selfupdate>, <https://pkg.go.dev/github.com/minio/selfupdate> and <https://pkg.go.dev/github.com/fynelabs/selfupdate>.
 * "Keeping Your Modules Compatible": <https://go.dev/blog/module-compatibility>, for additive change through config structs, new methods and optional interfaces, as 0025-MADR D6 adopted.
+
+## Amendment A1 (2026-10-28): probe P6
+
+**P6, launchd on macOS 26.6.2, on this Mac** (0038-PLAN Q10 step 1), in the user's GUI domain, against a plist path that does not exist and a label never loaded:
+
+| Command | Exit | Output |
+| :--- | :--- | :--- |
+| `launchctl bootstrap gui/<uid> <missing plist>` | 5 | `Bootstrap failed: 5: Input/output error` |
+| `launchctl print gui/<uid>/<never-loaded label>` | 113 | `Could not find service "<label>" in domain for user gui: <uid>` |
+| `launchctl enable gui/<uid>/<never-loaded label>` | 0 | none; `print-disabled` then lists the label as `enabled` |
+
+* A bootstrap of a missing plist exits 5, `EIO`, the code `bootstrap` retries until its bound (`launchd/lifecycle.go`), so F11's fourth bullet holds as stated: `Start` on a missing plist is `ErrTimeout` after the bound, not `ErrNotInstalled`.
+* `enable` of a label launchd has never loaded succeeds, and leaves an override entry for it. `Start` runs `enable` before `bootstrap`, so today a `Start` on a missing plist leaves such an entry too. D2-A's fix, `ErrNotInstalled` before `enable` when the plist is missing, removes both.
+* No fact or decision changes. The probe's own `enable` left one such entry, for `com.example.p6-never-loaded`, on this Mac; launchctl has no command that removes an override, and the plan reports it to the owner rather than editing the root-owned override file.

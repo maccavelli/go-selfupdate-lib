@@ -426,6 +426,31 @@ func TestStartBootstrapHangs(t *testing.T) {
 	})
 }
 
+// TestStartMissingPlist: a Start whose property list is missing is
+// service.ErrNotInstalled at once, and runs no launchctl command: no enable,
+// which would leave an override, and no bootstrap, which launchd refuses
+// with 5 and Start would retry to its bound
+// (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// Amendment A1).
+func TestStartMissingPlist(t *testing.T) {
+	testproc.CheckNoLeak(t)
+	synctest.Test(t, func(t *testing.T) {
+		f := newFake()
+		f.loaded, f.pid = false, 0
+		j := testJob(t, f, Options{Poll: bubblePoll})
+		if err := os.Remove(j.o.Plist); err != nil {
+			t.Fatal(err)
+		}
+		start := time.Now()
+		if err := j.Start(context.Background(), "demo"); !errors.Is(err, service.ErrNotInstalled) {
+			t.Fatalf("Start = %v, want ErrNotInstalled", err)
+		}
+		if v := f.verbs(); len(v) != 0 || time.Since(start) != 0 {
+			t.Fatalf("calls %q after %s; want none, at once", v, time.Since(start))
+		}
+	})
+}
+
 // TestStartLoadedSkipsBootstrap: a job still loaded, such as an on-demand
 // one, is only kickstarted.
 func TestStartLoadedSkipsBootstrap(t *testing.T) {

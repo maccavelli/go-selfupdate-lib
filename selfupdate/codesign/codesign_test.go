@@ -16,13 +16,21 @@ import (
 // U4 step 7, against a fake runner.
 
 // fakeTool records each command and answers with the next scripted output.
+// Like ExecRunner, it refuses a call on an ended context and records
+// nothing
+// (docs/decisions/0037-MADR-honour-contexts-in-backend-fakes-and-stop-commands.md
+// D1-A; docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// F11).
 type fakeTool struct {
 	calls   []service.Command
 	outputs []service.Output
 	err     error
 }
 
-func (f *fakeTool) Run(_ context.Context, c service.Command) (service.Output, error) {
+func (f *fakeTool) Run(ctx context.Context, c service.Command) (service.Output, error) {
+	if err := ctx.Err(); err != nil {
+		return service.Output{}, err
+	}
 	f.calls = append(f.calls, c)
 	if f.err != nil {
 		return service.Output{}, f.err
@@ -327,5 +335,16 @@ func TestBatchErrorReachesCaller(t *testing.T) {
 	err = s.Transform(context.Background(), signReq())
 	if len(f.calls) != 1 || !errors.Is(err, selfupdate.ErrBatchFile) {
 		t.Errorf("signer: runs %d, err %v; want one run and ErrBatchFile", len(f.calls), err)
+	}
+}
+
+// TestFakeHonoursContext: the fake refuses a call on an ended context and
+// records nothing, as ExecRunner does.
+func TestFakeHonoursContext(t *testing.T) {
+	f := &fakeTool{}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := f.Run(ctx, service.Command{Path: "/usr/bin/codesign"}); !errors.Is(err, context.Canceled) || len(f.calls) != 0 {
+		t.Fatalf("Run on a cancelled context: %v, calls %v; want context.Canceled and none", err, f.calls)
 	}
 }

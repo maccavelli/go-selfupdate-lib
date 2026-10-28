@@ -206,7 +206,10 @@ func (s *Service) stopHandle(ctx context.Context, name string, h handle, st stat
 // service.ErrNotInstalled and service.ErrUnsupported;
 // service.ErrUnhealthy when the service stops while starting; and
 // service.ErrTimeout when a pending state hangs, or ctx ends while it
-// waits, wrapping ctx's error.
+// waits, wrapping ctx's error. When ctx has ended before a start is issued,
+// its error is returned, and nothing is started
+// (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// F11).
 func (s *Service) Start(ctx context.Context, product string) error {
 	name, err := s.name(product)
 	if err != nil {
@@ -240,6 +243,9 @@ func (s *Service) startDependents(ctx context.Context, name string) error {
 // startOne starts one service, after waiting out a pending stop, and waits
 // until it leaves START_PENDING. A service already running is left alone.
 func (s *Service) startOne(ctx context.Context, name string) (err error) {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	h, err := s.open(name, accessStart)
 	if err != nil {
 		return err
@@ -251,6 +257,9 @@ func (s *Service) startOne(ctx context.Context, name string) (err error) {
 	}
 	if st.State != stateStopped {
 		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	if err := h.start(); err != nil && !errors.Is(err, errAlreadyRunning) {
 		return mapError("start", name, err)

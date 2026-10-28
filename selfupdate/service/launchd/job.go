@@ -112,6 +112,11 @@ type Options struct {
 // Job manages one launchd job. It is safe for concurrent use; the Updater
 // drives one product's Stop, Start and WaitHealthy in order, and a program
 // that calls them itself must do the same (0025-MADR D4).
+//
+// Installed ignores its context: it reads one file, the property list,
+// and takes none
+// (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// F11).
 type Job struct {
 	o                     Options
 	launchctl, plutil, ps string

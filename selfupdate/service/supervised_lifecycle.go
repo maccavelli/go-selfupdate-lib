@@ -158,11 +158,18 @@ func (s *Supervised) waitDown(ctx context.Context, rec instance, begin time.Time
 // Start implements selfupdate.Lifecycle: a running instance other than the
 // one Stop recorded is left alone; otherwise Up runs, which may start a
 // supervisor first (D5-A). Its errors, such as ErrNoSupervisor, are
-// returned wrapped.
+// returned wrapped. A service the supervisor answers for and reports as
+// not installed is ErrNotInstalled, and Up does not run, as Stop refuses
+// it; with no supervisor to ask, Up runs
+// (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// D2-A, question 5).
 func (s *Supervised) Start(ctx context.Context, _ string) error {
 	st, err := s.state(ctx)
 	if err != nil && !errors.Is(err, ErrNoSupervisor) {
 		return err
+	}
+	if err == nil && !st.Installed {
+		return s.fail("start", ErrNotInstalled)
 	}
 	s.mu.Lock()
 	rec := s.recorded

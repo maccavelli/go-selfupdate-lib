@@ -46,6 +46,30 @@ func TestStopFinishesAfterCancel(t *testing.T) {
 	})
 }
 
+// TestStopOneDeadline: bootout and the wait share the stop's bound. A
+// bootout that takes half of it leaves the wait the other half, so a job
+// that never goes is ErrTimeout at the bound, not at one and a half times
+// it (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// F11).
+func TestStopOneDeadline(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		f := newFake()
+		f.pid = 99999999
+		f.goneAfter = 1 << 30
+		// ExitTimeOut 0 is no kill bound, so the bound is Poll.Timeout's.
+		f.keys["ExitTimeOut"] = "0"
+		f.onBootout = func(*fakeLaunchd) { time.Sleep(service.DefaultPollTimeout / 2) }
+		j := testJob(t, f, Options{Poll: bubblePoll})
+		start := time.Now()
+		if err := j.Stop(context.Background(), "demo"); !errors.Is(err, service.ErrTimeout) {
+			t.Fatalf("Stop = %v, want ErrTimeout", err)
+		}
+		if took := time.Since(start); took != service.DefaultPollTimeout {
+			t.Fatalf("Stop took %s, want its bound, %s", took, service.DefaultPollTimeout)
+		}
+	})
+}
+
 // TestManagedStopTimeoutRestartsJob: the job leaves launchd's list after
 // bootout, but the stop wait times out first. The managed update then
 // finds the job not running and starts it again.

@@ -458,6 +458,14 @@ func TestSupervisedStart(t *testing.T) {
 		if err := s2.Start(ctx, "demo"); err != nil || !slices.Equal(f2.history(), []string{"up"}) {
 			t.Fatalf("the recorded instance: %v, calls %q; want up", err, f2.history())
 		}
+		// A service the supervisor reports as not installed is
+		// ErrNotInstalled, and Up does not run (0038-MADR D2-A, question 5).
+		f4 := newFakeSup()
+		f4.installed, f4.up = false, false
+		s4 := supervisedOver(t, f4, false, 400)
+		if err := s4.Start(ctx, "demo"); !errors.Is(err, ErrNotInstalled) || len(f4.history()) != 0 {
+			t.Fatalf("not installed: Start = %v, calls %q; want ErrNotInstalled and no Up", err, f4.history())
+		}
 		// Up's ErrNoSupervisor is passed on.
 		f3 := newFakeSup()
 		f3.supervised, f3.up = false, false

@@ -430,6 +430,31 @@ func TestStart(t *testing.T) {
 	})
 }
 
+// TestStartHonoursEndedContext: a Start on an ended context returns its
+// error, and neither opens the service nor issues a start
+// (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// F11).
+func TestStartHonoursEndedContext(t *testing.T) {
+	testproc.CheckNoLeak(t)
+	synctest.Test(t, func(t *testing.T) {
+		f := newFake()
+		svc := f.add("demo", 0)
+		svc.st = status{Type: 0x10, State: stateStopped}
+		s := testService(t, f, Options{})
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		if err := s.Start(ctx, "demo"); !errors.Is(err, context.Canceled) {
+			t.Fatalf("Start = %v, want context.Canceled", err)
+		}
+		if v := f.verbs(); len(v) != 0 {
+			t.Fatalf("calls %q; want none on an ended context", v)
+		}
+		if svc.st.State != stateStopped {
+			t.Fatalf("the service is %s; want it left stopped", stateName(svc.st.State))
+		}
+	})
+}
+
 func TestStartStopsWhileStarting(t *testing.T) {
 	testproc.CheckNoLeak(t)
 	synctest.Test(t, func(t *testing.T) {

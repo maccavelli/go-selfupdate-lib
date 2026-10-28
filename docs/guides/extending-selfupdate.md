@@ -656,7 +656,9 @@ for Task Scheduler,
     TERM held `Stop` for as long as the program ran. On systemd and launchd it
     runs to the service manager's own kill bound, the longer of
     `Options.Poll.Timeout` and launchd's `ExitTimeOut` (5 s when unset) or
-    systemd's `TimeoutStopUSec`, plus 30 s. On the SCM and on Task
+    systemd's `TimeoutStopUSec`, plus 30 s. Since `v1.23.0`, launchd's
+    `bootout` and the wait after it share that one bound; before, each
+    had it, so a stop could take twice as long. On the SCM and on Task
     Scheduler it is `Options.Poll.Timeout`. Task Scheduler spends
     `Options.StopGrace`, the wait for a program asked to exit by
     `Options.RequestStop`, inside that timeout, so since `v1.15.2` `New`
@@ -665,6 +667,14 @@ for Task Scheduler,
   - A stop that fails after the service stopped, such as a wait that timed
     out, starts the service again; the update fails with
     `ErrManagedInstall`, and the binary is not replaced.
+  - Since `v1.23.0`, a `Start` on a service that is not installed is
+    `ErrNotInstalled` at once: launchd's when its property list is
+    missing, before it runs `launchctl`, which retried a refused
+    bootstrap to its bound and left an `enable` override behind; and
+    `service.Supervised`'s when the supervisor reports the service not
+    installed, where it ran `Up`. The SCM's `Start` on an ended context
+    starts nothing; it started the service, then reported the context.
+    `servicetest.VerifyLifecycle` checks each of these.
   - `WaitHealthy` requires a new instance (a new systemd `InvocationID`,
     a new process ID) that stays up for `Options.Poll.Settle`, 10 s by
     default, then runs `Options.Probe` if you set one. systemd's restart

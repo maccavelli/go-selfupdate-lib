@@ -18,7 +18,8 @@ import (
 // starts (launchd.plist(5) ThrottleInterval), and the least settle window.
 const throttleInterval = 10 * time.Second
 
-// Installed reports whether the job's property list exists.
+// Installed reports whether the job's property list exists. It ignores its
+// context.
 func (j *Job) Installed(context.Context, string) (bool, error) {
 	if _, err := statFile(j.o.Plist); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -175,7 +176,12 @@ func (j *Job) Stop(ctx context.Context, _ string) error {
 	// took the request leaves the job going
 	// (docs/decisions/0037-MADR-honour-contexts-in-backend-fakes-and-stop-commands.md
 	// D3-A; Amendment A1, P2).
-	bctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), bound)
+	// One deadline, from when bootout is issued, bounds bootout and the
+	// wait together: the bound documented above, not twice it
+	// (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+	// F11).
+	deadline := time.Now().Add(bound)
+	bctx, cancel := context.WithDeadline(context.WithoutCancel(ctx), deadline)
 	out, err := j.launchctlRun(bctx, "bootout", j.target())
 	cancel()
 	if err != nil {
@@ -189,7 +195,9 @@ func (j *Job) Stop(ctx context.Context, _ string) error {
 	default:
 		return launchctlError("bootout", j.target(), out)
 	}
-	return j.waitGone(ctx, s.pid, bound)
+	// PollHealthy reads a zero timeout as its default: the wait keeps at
+	// least one look.
+	return j.waitGone(ctx, s.pid, max(time.Until(deadline), time.Millisecond))
 }
 
 // stopGrace and defaultExitTimeOut make the stop wait's bound. launchd
@@ -258,8 +266,19 @@ func (j *Job) waitGone(ctx context.Context, pid int, bound time.Duration) error 
 // service.ErrNotInstalled and service.ErrUnsupported; and
 // service.ErrTimeout when launchd still refuses to load the job at the
 // bootstrap's bound. errors.As finds the failed command as a
-// *service.CommandError. When ctx ends, its error is returned.
-func (j *Job) Start(ctx context.Context, _ string) error {
+// *service.CommandError. When ctx ends, its error is returned. A missing
+// property list is service.ErrNotInstalled before anything runs:
+// launchctl would refuse its bootstrap with 5, which Start retries to
+// its bound, and its enable would leave an override for a label launchd
+// does not know
+// (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// F11, Amendment A1).
+func (j *Job) Start(ctx context.Context, product string) error {
+	if ok, err := j.Installed(ctx, product); err != nil {
+		return err
+	} else if !ok {
+		return fmt.Errorf("%w: selfupdate: launchd: %s does not exist", service.ErrNotInstalled, j.o.Plist)
+	}
 	s, err := j.probe(ctx)
 	if err != nil {
 		return err
