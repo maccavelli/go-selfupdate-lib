@@ -20,14 +20,14 @@ func lockBasename(base string) string {
 	return "." + base + ".selfupdate.lock"
 }
 
-func acquireLock(ctx context.Context, root *os.Root, base string, timeout time.Duration) (lockHandle, error) {
+func (fx *fsOps) acquireLock(ctx context.Context, root *os.Root, base string, timeout time.Duration) (lockHandle, error) {
 	name := lockBasename(base)
 	deadline := time.Now().Add(timeout)
 	for {
 		if err := ctx.Err(); err != nil {
 			return lockHandle{}, err
 		}
-		h, err := tryAcquireLock(root, name)
+		h, err := fx.tryAcquireLock(root, name)
 		if err == nil {
 			return h, nil
 		}
@@ -51,8 +51,8 @@ func acquireLock(ctx context.Context, root *os.Root, base string, timeout time.D
 // SameFile checks are the defence there.
 const lockOpenFlags = 0
 
-func tryAcquireLock(root *os.Root, name string) (lockHandle, error) {
-	f, err := openLockFile(root, name)
+func (fx *fsOps) tryAcquireLock(root *os.Root, name string) (lockHandle, error) {
+	f, err := fx.openLockFile(root, name)
 	if err != nil {
 		return lockHandle{}, err
 	}

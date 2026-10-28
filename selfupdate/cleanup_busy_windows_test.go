@@ -77,14 +77,14 @@ func TestWindowsBusyPendingBackupKept(t *testing.T) {
 	name := ".demo.selfupdate-bak-busy"
 	target, root := receiptEnv(t, name, cleanupReceipt{Version: 1, Backup: name, Digest: oldBytesDigest(t)}, true)
 	release := holdBusy(t, filepath.Join(target.Dir, name))
-	if err := processCleanupReceipt(context.Background(), target, root); err != nil {
+	if err := realFS().processCleanupReceipt(context.Background(), target, root); err != nil {
 		t.Fatalf("a busy pending backup failed the session: %v", err)
 	}
 	if got := receiptBackups(t, target); len(got) != 1 || got[0] != name {
 		t.Fatalf("receipt lists %v, want the busy backup kept", got)
 	}
 	release()
-	if err := processCleanupReceipt(context.Background(), target, root); err != nil {
+	if err := realFS().processCleanupReceipt(context.Background(), target, root); err != nil {
 		t.Fatalf("after release: %v", err)
 	}
 	for _, p := range []string{cleanupReceiptPath(target), filepath.Join(target.Dir, name)} {
@@ -108,7 +108,7 @@ func TestWindowsReceiptKeepsOnlyBusy(t *testing.T) {
 		t.Fatal(err)
 	}
 	holdBusy(t, filepath.Join(target.Dir, busy))
-	if err := processCleanupReceipt(context.Background(), target, root); err != nil {
+	if err := realFS().processCleanupReceipt(context.Background(), target, root); err != nil {
 		t.Fatalf("process: %v", err)
 	}
 	if got := receiptBackups(t, target); len(got) != 1 || got[0] != busy {
@@ -130,7 +130,7 @@ func TestWindowsCommitAddsToPendingReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 	holdBusy(t, second)
-	pending, err := commitReplacement(context.Background(), target, applyResult{backup: second, oldDigest: oldBytesDigest(t)})
+	pending, err := realFS().commitReplacement(context.Background(), target, applyResult{backup: second, oldDigest: oldBytesDigest(t)})
 	if err != nil {
 		t.Fatalf("commit with a pending receipt: %v", err)
 	}
@@ -306,7 +306,7 @@ func TestWindowsReceiptRewriteHonoursContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	start := time.Now()
-	err := processCleanupReceipt(ctx, target, root)
+	err := realFS().processCleanupReceipt(ctx, target, root)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("err = %v, want context.Canceled", err)
 	}
@@ -354,7 +354,7 @@ func busyBackup(t *testing.T, target Target, name string) string {
 func TestWindowsCommitReceiptNotCancelled(t *testing.T) {
 	sess, target := lockedSession(t, 5*time.Second)
 	first := busyBackup(t, target, ".demo.selfupdate-bak-first")
-	if err := writeCleanupReceipt(context.Background(), target, applyResult{backup: first, oldDigest: oldBytesDigest(t)}); err != nil {
+	if err := realFS().writeCleanupReceipt(context.Background(), target, applyResult{backup: first, oldDigest: oldBytesDigest(t)}); err != nil {
 		t.Fatal(err)
 	}
 	release := holdBusy(t, cleanupReceiptPath(target))
@@ -385,7 +385,7 @@ func TestWindowsCommitReceiptNotCancelled(t *testing.T) {
 func TestWindowsCommitReceiptBoundedByLockTimeout(t *testing.T) {
 	sess, target := lockedSession(t, 200*time.Millisecond)
 	first := busyBackup(t, target, ".demo.selfupdate-bak-first")
-	if err := writeCleanupReceipt(context.Background(), target, applyResult{backup: first, oldDigest: oldBytesDigest(t)}); err != nil {
+	if err := realFS().writeCleanupReceipt(context.Background(), target, applyResult{backup: first, oldDigest: oldBytesDigest(t)}); err != nil {
 		t.Fatal(err)
 	}
 	holdBusy(t, cleanupReceiptPath(target))

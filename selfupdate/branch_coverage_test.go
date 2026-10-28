@@ -48,7 +48,7 @@ func TestOpenLockFileRetriesAfterCreateRace(t *testing.T) {
 			}
 		}
 	})
-	f, err := openLockFile(root, lockName)
+	f, err := realFS().openLockFile(root, lockName)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -87,7 +87,7 @@ func TestOpenLockFileRefusesReplacedLock(t *testing.T) {
 			}
 		}
 	})
-	f, err := openLockFile(root, lockName)
+	f, err := realFS().openLockFile(root, lockName)
 	if err == nil {
 		_ = f.Close()
 	}
@@ -111,7 +111,7 @@ func TestOpenLockFileGivesUpWhenLockKeepsChanging(t *testing.T) {
 			}
 		}
 	})
-	f, err := openLockFile(root, lockName)
+	f, err := realFS().openLockFile(root, lockName)
 	if err == nil {
 		_ = f.Close()
 	}
@@ -125,7 +125,7 @@ func TestOpenLockFileRefusesNonRegularLock(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(dir, lockName), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	f, err := openLockFile(root, lockName)
+	f, err := realFS().openLockFile(root, lockName)
 	if err == nil {
 		_ = f.Close()
 	}
@@ -225,15 +225,15 @@ func TestRollbackReplacementFailures(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	wantErrContaining(t, rollbackReplacement(ctx, target, applyResult{}), "no backup to restore")
+	wantErrContaining(t, realFS().rollbackReplacement(ctx, target, applyResult{}), "no backup to restore")
 
 	t.Run("restore", func(t *testing.T) {
 		setSeam(t, &replacePath, func(context.Context, string, string) error { return errors.New("injected restore failure") })
-		wantErrContaining(t, rollbackReplacement(ctx, target, applyResult{backup: backup}), "restore backup")
+		wantErrContaining(t, realFS().rollbackReplacement(ctx, target, applyResult{backup: backup}), "restore backup")
 	})
 	t.Run("sync", func(t *testing.T) {
 		setSeam(t, &syncDirFn, func(string) error { return errors.New("injected rollback sync failure") })
-		wantErrContaining(t, rollbackReplacement(ctx, target, applyResult{backup: backup}), "injected rollback sync failure")
+		wantErrContaining(t, realFS().rollbackReplacement(ctx, target, applyResult{backup: backup}), "injected rollback sync failure")
 		if got := readString(t, exe); got != "old-bytes" {
 			t.Fatalf("target holds %q; the restore ran before the sync failed", got)
 		}
@@ -264,7 +264,7 @@ func TestCopyFileFailuresRemoveTheCopy(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			inject(t)
 			dst := filepath.Join(dir, "dst-"+name)
-			if err := copyFile(src, dst); !errors.Is(err, injected) {
+			if err := realFS().copyFile(src, dst); !errors.Is(err, injected) {
 				t.Fatalf("err = %v, want the injected %s failure", err, name)
 			}
 			if _, err := os.Lstat(dst); !errors.Is(err, os.ErrNotExist) {

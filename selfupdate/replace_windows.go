@@ -24,19 +24,19 @@ func isUnsupportedDirSync(err error) bool {
 }
 
 func replacePathOS(ctx context.Context, oldpath, newpath string) error {
-	return moveFileReplace(ctx, oldpath, newpath)
+	return realFS().moveFileReplace(ctx, oldpath, newpath)
 }
 
 // replaceTarget replaces target with staging, keeping a backup. When
 // beforeRename is set it runs once the backup exists and before the
 // replace, with the backup's path and the previous binary's digest; its
 // error leaves the target untouched (0017-PLAN N7).
-func replaceTarget(ctx context.Context, target Target, staging string, beforeRename func(backup, oldDigest string) error) (applyResult, error) {
+func (fx *fsOps) replaceTarget(ctx context.Context, target Target, staging string, beforeRename func(backup, oldDigest string) error) (applyResult, error) {
 	info, err := lockedTarget(target)
 	if err != nil {
 		return applyResult{}, err
 	}
-	if err := chmodStaging(staging, target, info); err != nil {
+	if err := fx.chmodStaging(staging, target, info); err != nil {
 		return applyResult{}, fmt.Errorf("selfupdate: chmod staging: %w", err)
 	}
 	oldDigest, err := fileSHA256(target.Path)
@@ -47,7 +47,7 @@ func replaceTarget(ctx context.Context, target Target, staging string, beforeRen
 	if err != nil {
 		return applyResult{}, fmt.Errorf("selfupdate: allocate backup: %w", err)
 	}
-	if err := backupFile(target.Path, backup); err != nil {
+	if err := fx.backupFile(target.Path, backup); err != nil {
 		return applyResult{}, fmt.Errorf("selfupdate: backup target: %w", err)
 	}
 	if beforeRename != nil {
@@ -55,15 +55,15 @@ func replaceTarget(ctx context.Context, target Target, staging string, beforeRen
 			return applyResult{}, joinRemove(fmt.Errorf("selfupdate: write the journal: %w", err), backup)
 		}
 	}
-	if err := replacePath(ctx, staging, target.Path); err != nil {
+	if err := fx.replacePath(ctx, staging, target.Path); err != nil {
 		return applyResult{}, joinRemove(fmt.Errorf("selfupdate: replace target: %w", err), backup)
 	}
-	if err := syncDirFn(target.Dir); err != nil && !isUnsupportedSync(err) {
+	if err := fx.syncDirFn(target.Dir); err != nil && !isUnsupportedSync(err) {
 		syncErr := fmt.Errorf("selfupdate: sync directory: %w", err)
 		// The restore is recovery: the caller's cancellation must not
 		// abandon it with the new binary live. moveFileReplace still bounds
 		// it by the retry budget (0004-MADR R4).
-		if rerr := replacePath(context.WithoutCancel(ctx), backup, target.Path); rerr != nil {
+		if rerr := fx.replacePath(context.WithoutCancel(ctx), backup, target.Path); rerr != nil {
 			// The new binary is live and the backup is kept: report both
 			// (0003-MADR B1).
 			return applyResult{backup: backup, oldDigest: oldDigest, renamed: true},
@@ -87,10 +87,19 @@ func retryBudget(ctx context.Context) time.Duration {
 // moveFileExFn is windows.MoveFileEx, replaceable in tests.
 var moveFileExFn = windows.MoveFileEx
 
+// osFS are fsOps's Windows-only effects.
+type osFS struct {
+	moveFileExFn func(from, to *uint16, flags uint32) error
+}
+
+func realOSFS() osFS {
+	return osFS{moveFileExFn: func(from, to *uint16, flags uint32) error { return moveFileExFn(from, to, flags) }}
+}
+
 // moveFileReplace retries a busy replacement until the retry budget (the
 // session's lock timeout) or the caller's context ends, whichever comes
 // first (0003-MADR B10, B11; 0004-MADR R4).
-func moveFileReplace(ctx context.Context, from, to string) error {
+func (fx *fsOps) moveFileReplace(ctx context.Context, from, to string) error {
 	fromW, err := windows.UTF16PtrFromString(from)
 	if err != nil {
 		return err
@@ -102,7 +111,7 @@ func moveFileReplace(ctx context.Context, from, to string) error {
 	deadline := time.Now().Add(retryBudget(ctx))
 	var last error
 	for {
-		last = moveFileExFn(fromW, toW, windows.MOVEFILE_REPLACE_EXISTING|windows.MOVEFILE_WRITE_THROUGH)
+		last = fx.moveFileExFn(fromW, toW, windows.MOVEFILE_REPLACE_EXISTING|windows.MOVEFILE_WRITE_THROUGH)
 		if last == nil {
 			return nil
 		}
@@ -144,40 +153,40 @@ func isReadOnlyDenial(err error, to *uint16) bool {
 
 // keepAsPending puts result's backup on the cleanup receipt when err is a
 // running image's refusal (0010-MADR B6). ok reports that it applied.
-func keepAsPending(ctx context.Context, target Target, result applyResult, err error) (pending string, ok bool, kerr error) {
+func (fx *fsOps) keepAsPending(ctx context.Context, target Target, result applyResult, err error) (pending string, ok bool, kerr error) {
 	if !isBusyRunningImage(err) {
 		return "", false, nil
 	}
-	if werr := writeCleanupReceipt(ctx, target, result); werr != nil {
+	if werr := fx.writeCleanupReceipt(ctx, target, result); werr != nil {
 		return "", true, errors.Join(fmt.Errorf("selfupdate: keep previous: %w", err), werr)
 	}
-	return result.backup, true, syncDirFn(target.Dir)
+	return result.backup, true, fx.syncDirFn(target.Dir)
 }
 
-func commitReplacement(ctx context.Context, target Target, result applyResult) (pending string, err error) {
+func (fx *fsOps) commitReplacement(ctx context.Context, target Target, result applyResult) (pending string, err error) {
 	if result.backup == "" {
 		return "", nil
 	}
-	if err := osRemove(result.backup); err != nil {
+	if err := fx.osRemove(result.backup); err != nil {
 		if isBusyRunningImage(err) {
-			if werr := writeCleanupReceipt(ctx, target, result); werr != nil {
+			if werr := fx.writeCleanupReceipt(ctx, target, result); werr != nil {
 				return "", errors.Join(fmt.Errorf("selfupdate: remove backup: %w", err), werr)
 			}
 			return result.backup, nil
 		}
 		return "", fmt.Errorf("selfupdate: remove backup: %w", err)
 	}
-	return "", syncDirFn(target.Dir)
+	return "", fx.syncDirFn(target.Dir)
 }
 
-func rollbackReplacement(ctx context.Context, target Target, result applyResult) error {
+func (fx *fsOps) rollbackReplacement(ctx context.Context, target Target, result applyResult) error {
 	if result.backup == "" {
 		return fmt.Errorf("selfupdate: no backup to restore")
 	}
-	if err := replacePath(ctx, result.backup, target.Path); err != nil {
+	if err := fx.replacePath(ctx, result.backup, target.Path); err != nil {
 		return fmt.Errorf("selfupdate: restore backup: %w", err)
 	}
-	if err := syncDirFn(target.Dir); err != nil {
+	if err := fx.syncDirFn(target.Dir); err != nil {
 		return errors.Join(errRestoredUnsynced, err)
 	}
 	return nil

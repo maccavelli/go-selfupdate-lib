@@ -17,6 +17,9 @@ import (
 // are serialized by the target's lock file: a second waits up to
 // LockTimeout, then returns ErrConcurrentUpdate (0025-MADR D4).
 type StandaloneInstaller struct {
+	// fs is the install path's effects; nil is realFS, so a zero
+	// StandaloneInstaller still works (0015-MADR C8).
+	fs           *fsOps
 	policy       TargetPolicy
 	lockTimeout  time.Duration
 	postInstall  Prober
@@ -40,6 +43,14 @@ func NewStandaloneInstaller(opts InstallOptions) (*StandaloneInstaller, error) {
 	return s, nil
 }
 
+// ops is s.fs, or realFS when it is nil.
+func (s *StandaloneInstaller) ops() *fsOps {
+	if s.fs == nil {
+		return realFS()
+	}
+	return s.fs
+}
+
 // ResolveTarget implements Installer.
 func (s *StandaloneInstaller) ResolveTarget(context.Context) (Target, error) {
 	return resolveTarget(s.policy)
@@ -47,7 +58,7 @@ func (s *StandaloneInstaller) ResolveTarget(context.Context) (Target, error) {
 
 // Begin implements Installer.
 func (s *StandaloneInstaller) Begin(ctx context.Context, target Target) (InstallSession, error) {
-	sess, err := beginSession(ctx, s.policy, target, s.lockTimeout)
+	sess, err := s.ops().beginSession(ctx, s.policy, target, s.lockTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +83,7 @@ func (s *StandaloneInstaller) CleanupPending(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	sess, err := beginSession(ctx, s.policy, target, s.lockTimeout)
+	sess, err := s.ops().beginSession(ctx, s.policy, target, s.lockTimeout)
 	if err != nil {
 		return err
 	}

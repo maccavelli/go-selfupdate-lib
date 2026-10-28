@@ -7,7 +7,7 @@ import (
 	"os"
 )
 
-func processCleanupReceipt(_ context.Context, target Target, root *os.Root) error {
+func (fx *fsOps) processCleanupReceipt(_ context.Context, target Target, root *os.Root) error {
 	name := cleanupReceiptName(target.Base)
 	_, err := root.Lstat(name)
 	if err == nil {

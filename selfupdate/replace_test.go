@@ -77,7 +77,7 @@ func TestChmodStagingCopiesPerm(t *testing.T) {
 	if err := os.WriteFile(staging, []byte("new"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := chmodStaging(staging, Target{}, info); err != nil {
+	if err := realFS().chmodStaging(staging, Target{}, info); err != nil {
 		t.Fatal(err)
 	}
 	st, err := os.Stat(staging)

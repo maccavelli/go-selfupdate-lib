@@ -89,12 +89,12 @@ func TestRemoveLeftoversKeepsListed(t *testing.T) {
 	target := Target{Path: filepath.Join(dir, "demo"), Dir: dir, Base: "demo"}
 
 	plant()
-	removeLeftovers(target, root, map[string]bool{listed: true}, true)
+	realFS().removeLeftovers(target, root, map[string]bool{listed: true}, true)
 	if !exists(listed) || exists(other) || exists(staging) {
 		t.Fatalf("listed kept %t, other kept %t, staging kept %t", exists(listed), exists(other), exists(staging))
 	}
 	plant()
-	removeLeftovers(target, root, nil, false)
+	realFS().removeLeftovers(target, root, nil, false)
 	if !exists(listed) || !exists(other) || exists(staging) {
 		t.Fatalf("unreadable receipt: backups kept %t %t, staging kept %t", exists(listed), exists(other), exists(staging))
 	}

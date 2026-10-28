@@ -81,7 +81,7 @@ func allDigits(s string) bool {
 // package wrote, and is left alone, so a symlink is never followed.
 // Removal is best-effort: a leftover is harmless, and must never block an
 // update.
-func removeLeftovers(target Target, root *os.Root, keep map[string]bool, sweepBackups bool) {
+func (fx *fsOps) removeLeftovers(target Target, root *os.Root, keep map[string]bool, sweepBackups bool) {
 	dir, err := root.Open(".")
 	if err != nil {
 		return
@@ -102,6 +102,6 @@ func removeLeftovers(target Target, root *os.Root, keep map[string]bool, sweepBa
 		if err != nil || !info.Mode().IsRegular() {
 			continue
 		}
-		advisory(leftoverRemove(root, name))
+		advisory(fx.leftoverRemove(root, name))
 	}
 }

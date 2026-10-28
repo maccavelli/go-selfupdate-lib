@@ -16,11 +16,11 @@ var lockOpenHook = func(stage string) {}
 // created only with O_EXCL (which never follows), and compared with
 // os.SameFile after opening (0003-MADR B5). lockOpenFlags, set per OS, are
 // ORed into the open flags.
-func openLockFile(root *os.Root, name string) (*os.File, error) {
+func (fx *fsOps) openLockFile(root *os.Root, name string) (*os.File, error) {
 	for range 2 {
-		lockOpenHook("before-lstat")
+		fx.lockOpenHook("before-lstat")
 		pre, err := root.Lstat(name)
-		lockOpenHook("after-lstat")
+		fx.lockOpenHook("after-lstat")
 		if errors.Is(err, os.ErrNotExist) {
 			f, cerr := root.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL|lockOpenFlags, 0o600)
 			if errors.Is(cerr, os.ErrExist) {

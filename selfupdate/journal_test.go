@@ -469,7 +469,7 @@ func TestJournalRecoveryReceiptListed(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = root.Close() }()
-	keep, sweep := recoverJournal(target, root, map[string]bool{backup: true}, true)
+	keep, sweep := realFS().recoverJournal(target, root, map[string]bool{backup: true}, true)
 	if !keep[backup] || !sweep {
 		t.Fatalf("keep %v sweep %v", keep, sweep)
 	}

@@ -430,3 +430,25 @@ Files: `selfupdate/service/systemd/systemd_test.go`, `stopwait_test.go`, `fake_t
 * **Files added to Q4:** `selfupdate/service/launchd/stopwait_test.go`: the three tests move into bubbles with `bubblePoll`; `TestStopWaitFollowsExitTimeOut` keeps its 1 ms poll timeout, which is its subject, with the default interval.
 
 Q4, continued: `make gate`: every step rc=0, `apicheck` "compatible with v1.22.2", `overall=0`.
+
+### Q5: `selfupdate` seams, the scaffold (2026-10-27)
+
+Files: `selfupdate/replace.go`, `replace_unix.go`, `replace_windows.go`, `journal.go`, `leftovers.go`, `lock.go`, `lock_unix.go`, `lock_windows.go`, `session.go`, `standalone.go`, `cleanup_other.go`, `cleanup_windows.go`, from the list; `journal_other.go`, `journal_windows.go`, `cleanup.go` and `close.go` needed no change. Step 4's test files: `branch_coverage_test.go`, `cleanup_busy_windows_test.go`, `cleanup_windows_test.go`, `journal_test.go`, `lifecycle_windows_test.go`, `modepolicy_test.go`, `replace_test.go`, `replace_windows_budget_test.go`, `replace_windows_test.go`.
+
+1. **`fsOps`** in `replace.go`: one function field per filesystem seam, each named for the package variable it replaces (`fileChmod`, `fileSync`, `fileClose`, `osChmod`, `osRemove`, `osLink`, `syncDirFn`, `syncRootFn`, `replacePath`, `writeJournalFn`, `keptRenameFn`, `leftoverRemove`, `lockOpenHook`, `afterLockHook`), and an embedded build-tagged `osFS`: `osLchown` on Unix, `moveFileExFn` on Windows. A field and a method of one type cannot share a name, so the fields keep the variables' names and the methods keep the functions'.
+2. **`realFS()`** returns a new value whose fields call the package variables at call time, so every `setSeam` still works, including one set after a session began. `replacePath` and `writeJournalFn` lose their initializers and are set in an `init`: their defaults reach `realFS` (`replacePathOS` on Windows calls `realFS().moveFileReplace`), whose fields read them, which Go refuses as an initialization cycle in a declaration. The `init` is commented as temporary, until Q6 moves both.
+3. **`StandaloneInstaller.fs`** and `ops()`, which is `realFS()` when `fs` is nil, so a zero `StandaloneInstaller` still works. `beginSession` is an `*fsOps` method, and stores its receiver in the new `installSession.fs`.
+4. **Methods:** `copyFile`, `backupFile`, `chmodStaging`, `chownStaging`, `replaceTarget`, `keepAsPending`, `commitReplacement`, `rollbackReplacement`, `writeJournal`, `removeJournal`, `recoverJournal`, `keepInterrupted`, `removeLeftovers`, `openLockFile`, `acquireLock`, `tryAcquireLock`, `clearSpecialBits`, `beginSession`, `processCleanupReceipt`, and on Windows `moveFileReplace`, `writeCleanupReceipt` and `writeCleanupEntries`. A scratchpad script converted them and rewrote every call inside a converted method or a session method to go through the receiver or `s.fs`, then asserted that no such body still calls a seam or a converted function unqualified. 31 direct calls in nine test files became `realFS().name(…)`.
+5. **No behaviour change:** the test lists and counts match a copy of HEAD: `go test -list` on darwin, 449 tests both; and `-race -v` runs, HEAD and now, 833 passes and 1 skip on this Mac and on the Linux test host, 841 passes and 11 skips on the Windows test host. Cross-target `go build` and `go vet` clean.
+6. **The wiring, seen failing:** each plant breaks one `realFS` field's call through its package variable, in a scratch copy, and the tests that set that seam fail:
+
+   | Plant | Failing tests |
+   | :--- | :--- |
+   | `replacePath` calls `replacePathOS` | `TestRollbackReplacementFailures`, `TestInstallersReportRolledBack`, `TestInjectedRenameFailure` |
+   | `lockOpenHook` does nothing | `TestOpenLockFileRefusesReplacedLock`, `TestOpenLockFileGivesUpWhenLockKeepsChanging` |
+   | `afterLockHook` never runs | `TestBeginChecksDirectoryBeforeReceipt` |
+   | `writeJournalFn` writes the real journal | `TestJournalWriteFailure` |
+   | `syncDirFn` calls `syncDirectory` | `TestCommitReportsDirectorySyncFailure`, `TestRollbackReplacementFailures`, `TestInstallSyncAndRollbackFailureReported`, `TestManagedApplyFailureRetriesRollback` |
+
+7. `make pre-add-check` on the 21 files: `21 file(s) clean`.
+8. **`make gate`**: every step rc=0, `apicheck` "compatible with v1.22.2", `overall=0`.

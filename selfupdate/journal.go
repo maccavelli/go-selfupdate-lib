@@ -47,8 +47,9 @@ func journalTmpPrefix(base string) string {
 }
 
 var (
-	// writeJournalFn is writeJournal, replaced in tests.
-	writeJournalFn = writeJournal
+	// writeJournalFn is fsOps.writeJournal, replaced in tests; init sets
+	// it.
+	writeJournalFn func(*os.Root, Target, pendingJournal) error
 	// keptRenameFn is (*os.Root).Rename for recovery's kept rename,
 	// replaced in tests.
 	keptRenameFn = (*os.Root).Rename
@@ -58,7 +59,7 @@ var (
 // temporary file, synced and renamed over the journal's name, then the
 // directory synced, so the journal is on disk before the target is
 // replaced.
-func writeJournal(root *os.Root, target Target, j pendingJournal) error {
+func (fx *fsOps) writeJournal(root *os.Root, target Target, j pendingJournal) error {
 	data, err := json.Marshal(j)
 	if err != nil {
 		return err
@@ -87,15 +88,15 @@ func writeJournal(root *os.Root, target Target, j pendingJournal) error {
 	if err := root.Rename(tmp, journalName(target.Base)); err != nil {
 		return errors.Join(err, root.Remove(tmp))
 	}
-	return syncRootFn(root)
+	return fx.syncRootFn(root)
 }
 
 // removeJournal removes target's journal through root, if there is one. It
 // is advisory: a journal whose backup is gone is dropped by the next
 // session.
-func removeJournal(root *os.Root, target Target) {
+func (fx *fsOps) removeJournal(root *os.Root, target Target) {
 	if err := root.Remove(journalName(target.Base)); err == nil {
-		advisory(syncRootFn(root))
+		advisory(fx.syncRootFn(root))
 	}
 }
 
@@ -117,7 +118,7 @@ func removeJournal(root *os.Root, target Target) {
 //     renamed to its kept name, or a fresh kept name when that is taken,
 //     and the journal is removed. When the rename fails, the backup is kept
 //     where it is, and the journal stays for the next session.
-func recoverJournal(target Target, root *os.Root, keep map[string]bool, sweep bool) (map[string]bool, bool) {
+func (fx *fsOps) recoverJournal(target Target, root *os.Root, keep map[string]bool, sweep bool) (map[string]bool, bool) {
 	name := journalName(target.Base)
 	info, err := root.Lstat(name)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -133,23 +134,23 @@ func recoverJournal(target Target, root *os.Root, keep map[string]bool, sweep bo
 	binfo, err := root.Lstat(j.Backup)
 	switch {
 	case errors.Is(err, fs.ErrNotExist), err == nil && keep[j.Backup]:
-		removeJournal(root, target)
+		fx.removeJournal(root, target)
 		return keep, sweep
 	case err != nil || !binfo.Mode().IsRegular() || journalReparse(filepath.Join(target.Dir, j.Backup)):
 		return keep, false
 	}
 	if previousStillLive(root, target, binfo, j.OldDigest) {
-		removeJournal(root, target)
+		fx.removeJournal(root, target)
 		return keep, sweep
 	}
-	if !keepInterrupted(root, target, j.Backup) {
+	if !fx.keepInterrupted(root, target, j.Backup) {
 		if keep == nil {
 			keep = map[string]bool{}
 		}
 		keep[j.Backup] = true
 		return keep, sweep
 	}
-	removeJournal(root, target)
+	fx.removeJournal(root, target)
 	return keep, sweep
 }
 
@@ -191,7 +192,7 @@ func previousStillLive(root *os.Root, target Target, backup os.FileInfo, oldDige
 // or to a fresh kept name when that is taken, never over another file, and
 // drops its setuid and setgid bits as retainLocked does. It reports whether
 // the backup now has a kept name.
-func keepInterrupted(root *os.Root, target Target, backup string) bool {
+func (fx *fsOps) keepInterrupted(root *os.Root, target Target, backup string) bool {
 	kept, _ := keptName(target.Base, backup)
 	if _, err := root.Lstat(kept); err == nil {
 		fresh, err := randomSibling(target.Dir, "."+target.Base+".selfupdate-kept-")
@@ -200,11 +201,11 @@ func keepInterrupted(root *os.Root, target Target, backup string) bool {
 		}
 		kept = filepath.Base(fresh)
 	}
-	if err := keptRenameFn(root, backup, kept); err != nil {
+	if err := fx.keptRenameFn(root, backup, kept); err != nil {
 		return false
 	}
-	advisory(syncRootFn(root))
-	advisory(clearSpecialBits(filepath.Join(target.Dir, kept)))
+	advisory(fx.syncRootFn(root))
+	advisory(fx.clearSpecialBits(filepath.Join(target.Dir, kept)))
 	return true
 }
 

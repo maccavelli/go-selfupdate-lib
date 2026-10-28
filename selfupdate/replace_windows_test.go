@@ -19,7 +19,7 @@ func TestMoveFileReplaceHonoursContext(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 	start := time.Now()
-	err := moveFileReplace(ctx, `C:\nonexistent\from`, `C:\nonexistent\to`)
+	err := realFS().moveFileReplace(ctx, `C:\nonexistent\from`, `C:\nonexistent\to`)
 	elapsed := time.Since(start)
 	if !errors.Is(err, context.DeadlineExceeded) || !errors.Is(err, windows.ERROR_SHARING_VIOLATION) {
 		t.Fatalf("err = %v", err)
@@ -40,7 +40,7 @@ func TestMoveFileReplaceRetriesAccessDenied(t *testing.T) {
 		}
 		return nil
 	})
-	if err := moveFileReplace(context.Background(), `C:\x\from`, `C:\x\to`); err != nil || calls != 3 {
+	if err := realFS().moveFileReplace(context.Background(), `C:\x\from`, `C:\x\to`); err != nil || calls != 3 {
 		t.Fatalf("err=%v calls=%d", err, calls)
 	}
 }

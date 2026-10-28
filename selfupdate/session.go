@@ -13,6 +13,9 @@ import (
 )
 
 type installSession struct {
+	// fs is the installer's effects on the file system, which the session
+	// shares.
+	fs       *fsOps
 	target   Target
 	root     *os.Root
 	lock     lockHandle
@@ -215,25 +218,25 @@ func (s *installSession) Install(ctx context.Context, req InstallRequest) (Insta
 func (s *installSession) commitLocked(ctx context.Context, applied applyResult) (pending, previous string, err error) {
 	receiptCtx := withRetryBudget(context.WithoutCancel(ctx), s.lockTimeout)
 	if !s.keepPrevious || applied.backup == "" {
-		pending, err = commitReplacement(receiptCtx, s.target, applied)
+		pending, err = s.fs.commitReplacement(receiptCtx, s.target, applied)
 		return pending, "", err
 	}
 	previous = previousPath(s.target)
-	if err := clearSpecialBits(applied.backup); err != nil {
+	if err := s.fs.clearSpecialBits(applied.backup); err != nil {
 		// A privileged copy must not stay at a predictable path: the
 		// backup goes (0015-MADR B5).
 		return "", "", errors.Join(fmt.Errorf("selfupdate: keep previous: %w", err), os.Remove(applied.backup))
 	}
-	if err := replacePath(withRetryBudget(ctx, s.lockTimeout), applied.backup, previous); err != nil {
+	if err := s.fs.replacePath(withRetryBudget(ctx, s.lockTimeout), applied.backup, previous); err != nil {
 		// A .previous a running image holds cannot be replaced: on Windows
 		// the new backup goes on the cleanup receipt instead, and the
 		// commit stands (0010-MADR B6).
-		if pending, ok, kerr := keepAsPending(receiptCtx, s.target, applied, err); ok {
+		if pending, ok, kerr := s.fs.keepAsPending(receiptCtx, s.target, applied, err); ok {
 			return pending, "", kerr
 		}
 		return "", "", fmt.Errorf("selfupdate: keep previous: %w", err)
 	}
-	return "", previous, syncDirFn(s.target.Dir)
+	return "", previous, s.fs.syncDirFn(s.target.Dir)
 }
 
 // Apply implements TwoPhaseSession: it replaces the target, keeps the
@@ -298,7 +301,7 @@ func (s *installSession) probeInstalled(ctx context.Context, req InstallRequest,
 	}
 	perr = fmt.Errorf("selfupdate: installed binary failed its probe: %w", perr)
 	rctx := withRetryBudget(context.WithoutCancel(ctx), s.lockTimeout)
-	if rerr := rollbackReplacement(rctx, s.target, applied); rerr != nil {
+	if rerr := s.fs.rollbackReplacement(rctx, s.target, applied); rerr != nil {
 		if errors.Is(rerr, errRestoredUnsynced) {
 			// The backup is back in place; only its sync failed. It is
 			// rolled back, and no backup is left to report (0010-MADR B9).
@@ -344,7 +347,7 @@ func (s *installSession) replaceLocked(ctx context.Context, req InstallRequest, 
 		return applyResult{}, fmt.Errorf("selfupdate: hash staging: %w", err)
 	}
 	journal := func(backup, oldDigest string) error {
-		if err := writeJournalFn(s.root, s.target, pendingJournal{
+		if err := s.fs.writeJournalFn(s.root, s.target, pendingJournal{
 			Schema: journalSchema, Backup: filepath.Base(backup), OldDigest: oldDigest,
 			NewDigest: newDigest, Phase: journalApplying, Product: product,
 		}); err != nil {
@@ -353,7 +356,7 @@ func (s *installSession) replaceLocked(ctx context.Context, req InstallRequest, 
 		s.journal = true
 		return nil
 	}
-	applied, err := replaceTarget(withRetryBudget(ctx, s.lockTimeout), s.target, path, journal)
+	applied, err := s.fs.replaceTarget(withRetryBudget(ctx, s.lockTimeout), s.target, path, journal)
 	if applied.renamed {
 		delete(s.staging, path)
 	}
@@ -381,7 +384,7 @@ func (s *installSession) finishJournalLocked() {
 	if !s.journal || s.root == nil {
 		return
 	}
-	removeJournal(s.root, s.target)
+	s.fs.removeJournal(s.root, s.target)
 	s.journal = false
 }
 
@@ -455,7 +458,7 @@ func (s *installSession) Rollback(ctx context.Context, a AppliedReplacement) err
 	if s.checkDir() != nil {
 		err = s.rollbackInRoot(st.applied)
 	} else {
-		err = rollbackReplacement(withRetryBudget(ctx, s.lockTimeout), s.target, st.applied)
+		err = s.fs.rollbackReplacement(withRetryBudget(ctx, s.lockTimeout), s.target, st.applied)
 	}
 	if err == nil || errors.Is(err, errRestoredUnsynced) {
 		st.finished = true
@@ -487,11 +490,11 @@ func (s *installSession) retainLocked(backup string) string {
 	if err := s.root.Rename(filepath.Base(backup), kept); err != nil {
 		return backup
 	}
-	advisory(syncRootFn(s.root))
+	advisory(s.fs.syncRootFn(s.root))
 	path := filepath.Join(filepath.Dir(backup), kept)
 	// The only copy of the previous binary is kept, without setuid or
 	// setgid; a restore must set them again (0015-MADR B5).
-	advisory(clearSpecialBits(path))
+	advisory(s.fs.clearSpecialBits(path))
 	s.finishJournalLocked()
 	return path
 }
@@ -499,7 +502,7 @@ func (s *installSession) retainLocked(backup string) string {
 // clearSpecialBits drops setuid and setgid from a copy of the previous
 // binary, keeping its permissions and the sticky bit, so the copy an
 // update replaced is not left privileged (0015-MADR B5).
-func clearSpecialBits(path string) error {
+func (fx *fsOps) clearSpecialBits(path string) error {
 	info, err := os.Lstat(path)
 	if err != nil {
 		return err
@@ -508,7 +511,7 @@ func clearSpecialBits(path string) error {
 	if mode&(os.ModeSetuid|os.ModeSetgid) == 0 {
 		return nil
 	}
-	return osChmod(path, mode.Perm()|mode&os.ModeSticky)
+	return fx.osChmod(path, mode.Perm()|mode&os.ModeSticky)
 }
 
 // backupOf is a's backup as it is now: a session of this package renames a
@@ -533,7 +536,7 @@ func (s *installSession) rollbackInRoot(applied applyResult) error {
 	if err := s.root.Rename(filepath.Base(applied.backup), s.target.Base); err != nil {
 		return fmt.Errorf("selfupdate: restore backup: %w", err)
 	}
-	if err := syncRootFn(s.root); err != nil {
+	if err := s.fs.syncRootFn(s.root); err != nil {
 		// The rename restored the backup: no backup is left to report
 		// (0015-MADR B4, as rollbackReplacement does since 0010-MADR B9).
 		return errors.Join(errRestoredUnsynced, err)
@@ -569,10 +572,11 @@ func (s *installSession) Close() error {
 }
 
 // afterLockHook runs, when set, right after beginSession takes the lock.
-// Tests use it to change the directory at that moment.
+// Tests use it to change the directory at that moment; fsOps.afterLockHook
+// calls it.
 var afterLockHook func()
 
-func beginSession(ctx context.Context, policy TargetPolicy, original Target, timeout time.Duration) (*installSession, error) {
+func (fx *fsOps) beginSession(ctx context.Context, policy TargetPolicy, original Target, timeout time.Duration) (*installSession, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -580,7 +584,7 @@ func beginSession(ctx context.Context, policy TargetPolicy, original Target, tim
 	if err != nil {
 		return nil, fmt.Errorf("selfupdate: open target directory: %w", err)
 	}
-	lock, err := acquireLock(ctx, root, original.Base, timeout)
+	lock, err := fx.acquireLock(ctx, root, original.Base, timeout)
 	if err != nil {
 		err = joinClose(err, root)
 		if errors.Is(err, ErrConcurrentUpdate) {
@@ -588,9 +592,7 @@ func beginSession(ctx context.Context, policy TargetPolicy, original Target, tim
 		}
 		return nil, fmt.Errorf("selfupdate: acquire lock: %w", err)
 	}
-	if afterLockHook != nil {
-		afterLockHook()
-	}
+	fx.afterLockHook()
 	// The directory opened as root must be the one at the path before
 	// anything is read or removed in it, receipt included (0004-MADR R5).
 	// The handle's identity is what later steps re-check (0004-MADR R3).
@@ -605,7 +607,7 @@ func beginSession(ctx context.Context, policy TargetPolicy, original Target, tim
 	// A dry run changes nothing beside the target, so it neither processes
 	// the receipt nor sweeps (0015-MADR B1).
 	if !isDryRun(ctx) {
-		if err := processCleanupReceipt(withRetryBudget(ctx, timeout), original, root); err != nil {
+		if err := fx.processCleanupReceipt(withRetryBudget(ctx, timeout), original, root); err != nil {
 			return nil, errors.Join(err, lock.release(), root.Close())
 		}
 		// Under the lock, what a crashed update left behind is no one's
@@ -613,13 +615,14 @@ func beginSession(ctx context.Context, policy TargetPolicy, original Target, tim
 		keep, sweepBackups := listedBackups(original)
 		// An interrupted update's backup may be the only copy of the
 		// previous binary: it is kept before the sweep (0017-MADR 3B).
-		keep, sweepBackups = recoverJournal(original, root, keep, sweepBackups)
-		removeLeftovers(original, root, keep, sweepBackups)
+		keep, sweepBackups = fx.recoverJournal(original, root, keep, sweepBackups)
+		fx.removeLeftovers(original, root, keep, sweepBackups)
 	}
 	if err := revalidateTarget(original, policy); err != nil {
 		return nil, errors.Join(err, lock.release(), root.Close())
 	}
 	return &installSession{
+		fs:          fx,
 		target:      original,
 		root:        root,
 		lock:        lock,
