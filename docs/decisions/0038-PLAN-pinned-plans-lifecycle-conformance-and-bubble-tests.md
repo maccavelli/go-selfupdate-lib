@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: in-progress
 date: 2026-10-27
 associated-madr: "0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md"
 ---
@@ -8,7 +8,7 @@ associated-madr: "0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.
 # Implement a pinned update plan, a lifecycle conformance check, and tests on the production clock
 
 Associated MADR: [0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md](0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md)
-(D1-A, D2-A and D3-A, with the owner's answers 1 to 4 of 2026-10-27, and question 5 at this plan's approval).
+(D1-A, D2-A and D3-A, with the owner's answers 1 to 5 of 2026-10-27).
 
 ## Goal
 
@@ -304,4 +304,50 @@ As Q8, for `v1.23.0`, with `make apicheck` against `v1.22.3` reporting additions
 
 ## Execution record
 
-Not started. The owner's approval of this plan, with question 5 answered, starts Q0.
+### Approval (2026-10-27)
+
+The owner, on this plan and the amended MADR: "q5: go with recommendation, proceed". Question 5 is yes (Q10 step 6). The MADR is `accepted` and this plan `in-progress`. A commit still needs the owner's "commit to main" in its turn.
+
+### Q0: records (2026-10-27)
+
+* The proposed pair and its index rows were committed by the owner as `8202473`.
+* On approval: the MADR's status `accepted`, its Decision Outcome names the chosen option and records question 5's answer; this plan `in-progress`; both index rows updated. `make check-records` (88 records, 0 findings), `make docs-check`, `make markdownlint` and `--ids` on the three files exit 0.
+
+### Q1: `service` on the production clock (2026-10-27)
+
+Files: `selfupdate/service/poll.go`, `poll_test.go`, `supervised.go`, `supervised_lifecycle.go`, `supervised_lifecycle_test.go`, `supervised_health_test.go`, as listed. `supervised_test.go` and `supervised_linux_test.go` needed no change: neither sets a clock field.
+
+1. **P1 committed** as `TestSupervisedStopRestoresInBubble`, at `DefaultPollTimeout`, `Down` delayed 0 and 30 s. Seen failing on the `v1.22.0` `supervised_lifecycle.go` in a scratch copy, with its three `s.now()` and one `s.sleep(ctx,` calls rewritten to `time.Now()` and `sleepCtx(ctx,` so that it compiles against the clockless struct:
+
+   ```text
+   --- FAIL: TestSupervisedStopRestoresInBubble (0.00s)
+       supervised_lifecycle_test.go:282: Down for 0s: calls ["down"], want up false; want down, then up with time left
+   ```
+
+2. **`PollHealthy`:** `clock`, `realClock` and `pollClock` deleted; `PollHealthy` reads `time.Now`, `time.Until` and `time.After`. The seven `fakeClock` tests run in bubbles and assert elapsed bubble time; `fakeClock` and `useFakeClock` deleted. One test added, `TestPollHealthyProbeContextEndsAtDeadline`: the probe's context ends at the wait's deadline on the clock the wait measures. Plants, each in a scratch copy:
+
+   | Plant (`poll.go`) | Failure |
+   | :--- | :--- |
+   | settle does not restart on a new instance | `poll_test.go:57: healthy after 2s, want 4s` |
+   | the timeout drops the last probe error | `poll_test.go:100: err = … timed out: not ready within 3s …, want the timeout with the probe error` |
+   | an ended context returns nil | `poll_test.go:138: err = <nil>, want the context's` |
+   | the probe's deadline twice the wait's | `poll_test.go:124: timed out after 6s, want 3s` |
+   | the deadline one interval late | `poll_test.go:71: … after 6s, want a timeout at 5s`; `poll_test.go:103: timed out after 4s, want 3s` |
+
+   The first plant was first written so that it left `stableFor` unused, and the copy did not build; it was rewritten to `stableFor == "\x00"`, and the plant runner now counts a build failure as not caught.
+3. **`fakeSup` moves on observation:** after `Down`, its process exits `downAfter` of bubble time later (a duration, negative for never), checked when `State`, `Up` or the process table is read.
+4. **`Supervised`'s clock:** the `now` and `sleep` fields deleted from the struct and the constructor; `Stop` and `WaitHealthy` call `time.Now` and `sleepCtx`. The `vclock` tests run in bubbles at a 4 s bound and assert exact bubble times (`TestSupervisedStopTimeout` 4 s; `…Kill` 1 s; `…BoundIncludesDown` 3 s and 4 s; `…OutlivesContext` 500 ms); `vclock` deleted. Plants:
+
+   | Plant (`supervised_lifecycle.go`) | Failure |
+   | :--- | :--- |
+   | `killAt` at twice `KillAfter` | `supervised_lifecycle_test.go:357: killed at 2s, want at KillAfter, 1 s` |
+   | the bound counted from after `Down` | `supervised_lifecycle_test.go:306: killed at -2562047h47m16.854775808s, want at once after Down's 3 s …` (never killed) |
+   | the wait on the caller's context (0015-MADR B3) | `supervised_lifecycle_test.go:333: Stop: … timed out: demo still runs 4s …` |
+   | no restore after a timed-out stop | `:243: calls ["down"], want down then up`; `:282: Down for 0s: calls ["down"] …` |
+   | the restart window twice the settle | `supervised_health_test.go:98: restarting longer than the settle window: took 6.1s, want 3.1s` |
+   | a restart after up not a failure | `supervised_health_test.go:98: restarting after it was up: took 3.2s, want 100ms` |
+
+5. **`TestSupervisedStopRestoresOnRealClock` deleted**; step 1's test carries its record citations.
+6. **`healthOver`'s clock removed:** `TestSupervisedWaitHealthy` and `…Probe` run in bubbles, one per case, at a 100 ms interval, a 3 s settle and the default 60 s bound, and each case asserts how long its wait takes. The file's comment records that this replaces 0035-PLAN Deviation D4's stepping clock.
+7. **Runs:** `go test -race -count=3 ./selfupdate/service/` passed on this Mac (59.2 s), the Linux test host (61.4 s) and the Windows test host (87.1 s); `-count=30 -race` of the moved tests passed on this Mac. Cross-target `go vet ./selfupdate/service/...` clean for linux, darwin and windows. `make pre-add-check` on the six files: `6 file(s) clean (gofmt, golangci-lint, go vet, go test, govulncheck)`.
+8. **`make gate`**: every step rc=0, `apicheck` "compatible with v1.22.2", `overall=0`.

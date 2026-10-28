@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-27
 decision-makers: go-selfupdate-lib maintainers
 consulted: "a read of `selfupdate`, `selfupdate/cli`, `selfupdate/service` and its backends on `main` at 08e41cb (v1.22.2 and its pin commit); 0025-MADR-align-with-go-sdk-design-practices.md's scorecard; 0035 and 0037, which found the bugs F3 and F4 cite; the Go 1.27.3 toolchain's `go doc` and `api/go1.*.txt`; the pkg.go.dev pages of three other Go self-update libraries; probe P1, in a scratch clone, on 2026-10-27; after the owner's answers, three read-only surveys of the code against each option, with probes P2 to P5 in scratch clones, on 2026-10-27"
@@ -202,7 +202,7 @@ Evidence tags: **[read]** a code or record read at `08e41cb`; **[docs]** documen
 
 ## Decision Outcome
 
-Proposed, for the owner's decision: **"D1-A, D2-A and D3-A"**, in the order D3, D2, D1.
+Chosen option: **"D1-A, D2-A and D3-A"**, in the order D3, D2, D1, as the owner accepted on 2026-10-27 with the PLAN ("q5: go with recommendation, proceed"), because each closes a gap the facts show with standard library means, additively within v1:
 
 * **D3-A first**, because it changes no exported API and makes the checks D2 runs against fakes fast and deterministic. P1 shows the same bug class caught at the documented default bound, in no wall time, and P3 shows most of the backend tests ready for it. Root-relative replacement closes F8's window, which P2 reproduces, with standard library calls the floor already has. Per-session seams are the larger part. They pay for themselves only if the owner wants `selfupdate`'s tests parallel, which is why D3-B exists.
 * **D2-A second**, because the five defects in F3 were all divergences from a contract that no check could test, P4 shows a check that catches them, and the module's own precedent, `VerifyReleaseSource`, shows the shape. Exporting it lets programs that implement `Lifecycle`, or feed `Supervised`, check themselves. D2-B helps only the library.
@@ -229,9 +229,11 @@ The assessment after those answers settled how each answer is built, in the opti
 * Answer 3 holds, but no live test today arranges a service that ignores a stop for scm, launchd or s6, or a slow stop for systemd or scm, and Task Scheduler cannot arrange one at all. The live labs add those modes, or return `ErrUnsupported` where the manager cannot (D2-A).
 * Answer 4's patch release is `v1.22.3`: bubbles and per-session seams change tests and unexported code only. The F11 fixes change behaviour a program can see, so they ship in `v1.23.0` with D2-A.
 
-One question remains, for the PLAN's approval:
+One question remained, for the PLAN's approval:
 
 5. **D2-A: should `Supervised.Start` return `ErrNotInstalled` for a service its supervisor reports as not installed?** The managed installer never starts a service that `Installed` reports missing, so updates are unaffected; a program that calls `Start` itself sees the error in place of its `Up`'s. The cost: a program whose `Up` installs the service before starting it would need `State` to report it installed first. The proposal is yes, which matches `Stop`; the alternative is to document today's behaviour and have `VerifyLifecycle` accept it.
+
+The owner answered on 2026-10-27, accepting the PLAN: "q5: go with recommendation, proceed". `Supervised.Start` returns `ErrNotInstalled` when the supervisor answers and reports the service not installed, and runs `Up` otherwise.
 
 ### Consequences
 

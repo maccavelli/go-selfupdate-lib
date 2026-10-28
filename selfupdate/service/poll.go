@@ -75,19 +75,6 @@ func (o PollOptions) Validate() error {
 	return nil
 }
 
-// clock is time, replaced in tests.
-type clock interface {
-	Now() time.Time
-	After(time.Duration) <-chan time.Time
-}
-
-type realClock struct{}
-
-func (realClock) Now() time.Time                         { return time.Now() }
-func (realClock) After(d time.Duration) <-chan time.Time { return time.After(d) }
-
-var pollClock clock = realClock{}
-
 // PollHealthy probes a service until it is healthy: Ready, with one
 // Instance other than o.Previous, for o.Settle. A change of Instance during
 // the settle window starts it again. It returns nil when healthy;
@@ -99,7 +86,7 @@ func PollHealthy(ctx context.Context, probe HealthProbe, o PollOptions) error {
 		return errors.New("selfupdate: service: health probe is required")
 	}
 	o = o.withDefaults()
-	deadline := pollClock.Now().Add(o.Timeout)
+	deadline := time.Now().Add(o.Timeout)
 	var (
 		last      Health
 		lastErr   error
@@ -108,13 +95,13 @@ func PollHealthy(ctx context.Context, probe HealthProbe, o PollOptions) error {
 		stable    bool
 	)
 	for {
-		probeCtx, cancel := context.WithTimeout(ctx, max(deadline.Sub(pollClock.Now()), time.Millisecond))
+		probeCtx, cancel := context.WithTimeout(ctx, max(time.Until(deadline), time.Millisecond))
 		h, err := probe(probeCtx)
 		cancel()
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return fmt.Errorf("selfupdate: service: health wait: %w", ctxErr)
 		}
-		now := pollClock.Now()
+		now := time.Now()
 		switch {
 		case err != nil:
 			lastErr, stable = err, false
@@ -137,7 +124,7 @@ func PollHealthy(ctx context.Context, probe HealthProbe, o PollOptions) error {
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("selfupdate: service: health wait: %w", ctx.Err())
-		case <-pollClock.After(min(o.Interval, deadline.Sub(now))):
+		case <-time.After(min(o.Interval, deadline.Sub(now))):
 		}
 	}
 }

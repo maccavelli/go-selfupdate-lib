@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/maccavelli/go-selfupdate-lib/internal/procfs"
@@ -15,7 +16,12 @@ import (
 
 // Tests for WaitHealthy, Reconcile, Restore and Detach
 // (docs/decisions/0035-PLAN-serve-supervisors-through-a-supervised-adapter.md
-// M5), over scripted observations and short real-time polls.
+// M5), over scripted observations. The WaitHealthy tests run in synctest
+// bubbles on the production clock, so the restart window counts bubble
+// time, however slow the runner. That replaces the stepping clock
+// 0035-PLAN-serve-supervisors-through-a-supervised-adapter.md D4 chose
+// (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// D3-A).
 
 // healthProcs adds the instances 101@107 and 102@207 to table().
 func healthProcs() fakeProcs {
@@ -47,38 +53,20 @@ var restarting = SupervisedState{Installed: true, Supervised: true, WantUp: true
 func boolPtr(b bool) *bool { return &b }
 
 // healthOver is a Supervised over seq, after a Stop that recorded 100@7,
-// polling every millisecond with a 30 ms settle window and a 2 s bound.
-// Its clock advances one interval per reading, so the restart window
-// counts readings, however slow the runner
-// (0035-PLAN-serve-supervisors-through-a-supervised-adapter.md D4).
+// polling every 100 ms with a 3 s settle window and the default 60 s
+// bound. Call it inside the bubble.
 func healthOver(t *testing.T, probe HealthProbe, seq ...SupervisedState) *Supervised {
 	t.Helper()
-	const interval = time.Millisecond
-	var mu sync.Mutex
-	var now time.Time
-	read := observations(seq...)
-	state := func(ctx context.Context) (SupervisedState, error) {
-		mu.Lock()
-		now = now.Add(interval)
-		mu.Unlock()
-		return read(ctx)
-	}
 	s := fakeSupervised(t, SupervisedOptions{
-		Name: "demo", State: state, Probe: probe,
-		Poll: PollOptions{Interval: interval, Settle: 30 * time.Millisecond, Timeout: 2 * time.Second},
+		Name: "demo", State: observations(seq...), Probe: probe,
+		Poll: PollOptions{Interval: 100 * time.Millisecond, Settle: 3 * time.Second},
 	}, healthProcs(), 400)
 	s.recorded = instance{pid: 100, start: 7}
-	s.now = func() time.Time {
-		mu.Lock()
-		defer mu.Unlock()
-		return now
-	}
 	return s
 }
 
 func TestSupervisedWaitHealthy(t *testing.T) {
 	testproc.CheckNoLeak(t)
-	ctx := context.Background()
 	readyFalse, readyTrue := upAs(101), upAs(101)
 	readyFalse.Ready, readyTrue.Ready = boolPtr(false), boolPtr(true)
 	failed := upAs(101)
@@ -86,48 +74,54 @@ func TestSupervisedWaitHealthy(t *testing.T) {
 	for name, c := range map[string]struct {
 		seq  []SupervisedState
 		want error
+		// took is how long the wait takes, in bubble time.
+		took time.Duration
 	}{
-		"a new instance settles":                   {[]SupervisedState{upAs(101)}, nil},
-		"ready where the supervisor reports it":    {[]SupervisedState{readyTrue}, nil},
-		"one restart before it comes up":           {[]SupervisedState{restarting, upAs(101)}, nil},
-		"failed":                                   {[]SupervisedState{upAs(101), failed}, ErrUnhealthy},
-		"restarted during the wait":                {[]SupervisedState{upAs(101), upAs(101), upAs(102)}, ErrUnhealthy},
-		"restarting after it was up":               {[]SupervisedState{upAs(101), restarting}, ErrUnhealthy},
-		"several readings of one restart":          {[]SupervisedState{restarting, restarting, restarting, restarting, upAs(101)}, nil},
-		"restarting longer than the settle window": {[]SupervisedState{restarting}, ErrUnhealthy},
-		"not ready, where the supervisor says":     {[]SupervisedState{readyFalse}, ErrTimeout},
-		"only the instance the stop recorded":      {[]SupervisedState{upAs(100)}, ErrTimeout},
+		"a new instance settles":                   {[]SupervisedState{upAs(101)}, nil, 3 * time.Second},
+		"ready where the supervisor reports it":    {[]SupervisedState{readyTrue}, nil, 3 * time.Second},
+		"one restart before it comes up":           {[]SupervisedState{restarting, upAs(101)}, nil, 3100 * time.Millisecond},
+		"failed":                                   {[]SupervisedState{upAs(101), failed}, ErrUnhealthy, 100 * time.Millisecond},
+		"restarted during the wait":                {[]SupervisedState{upAs(101), upAs(101), upAs(102)}, ErrUnhealthy, 200 * time.Millisecond},
+		"restarting after it was up":               {[]SupervisedState{upAs(101), restarting}, ErrUnhealthy, 100 * time.Millisecond},
+		"several readings of one restart":          {[]SupervisedState{restarting, restarting, restarting, restarting, upAs(101)}, nil, 3400 * time.Millisecond},
+		"restarting longer than the settle window": {[]SupervisedState{restarting}, ErrUnhealthy, 3100 * time.Millisecond},
+		"not ready, where the supervisor says":     {[]SupervisedState{readyFalse}, ErrTimeout, DefaultPollTimeout},
+		"only the instance the stop recorded":      {[]SupervisedState{upAs(100)}, ErrTimeout, DefaultPollTimeout},
 	} {
-		s := healthOver(t, nil, c.seq...)
-		if errors.Is(c.want, ErrTimeout) {
-			s.o.Poll.Timeout = 200 * time.Millisecond
-		}
-		err := s.WaitHealthy(ctx, "demo")
-		if c.want == nil && err != nil || c.want != nil && !errors.Is(err, c.want) {
-			t.Errorf("%s: %v, want %v", name, err, c.want)
-		}
+		synctest.Test(t, func(t *testing.T) {
+			start := time.Now()
+			err := healthOver(t, nil, c.seq...).WaitHealthy(context.Background(), "demo")
+			if c.want == nil && err != nil || c.want != nil && !errors.Is(err, c.want) {
+				t.Errorf("%s: %v, want %v", name, err, c.want)
+			}
+			if took := time.Since(start); took != c.took {
+				t.Errorf("%s: took %s, want %s", name, took, c.took)
+			}
+		})
 	}
 }
 
 func TestSupervisedWaitHealthyProbe(t *testing.T) {
 	testproc.CheckNoLeak(t)
-	ctx := context.Background()
-	calls := 0
-	ok := func(context.Context) (Health, error) { calls++; return Health{Ready: true}, nil }
-	if err := healthOver(t, ok, upAs(101)).WaitHealthy(ctx, "demo"); err != nil || calls == 0 {
-		t.Fatalf("a passing application probe: %v, %d calls", err, calls)
-	}
-	bad := func(context.Context) (Health, error) {
-		return Health{Failed: true, Detail: "admin socket refused"}, nil
-	}
-	if err := healthOver(t, bad, upAs(101)).WaitHealthy(ctx, "demo"); !errors.Is(err, ErrUnhealthy) {
-		t.Fatalf("a failing application probe: %v, want ErrUnhealthy", err)
-	}
-	unused := false
-	never := func(context.Context) (Health, error) { unused = true; return Health{Ready: true}, nil }
-	if err := healthOver(t, never, upAs(101), restarting).WaitHealthy(ctx, "demo"); !errors.Is(err, ErrUnhealthy) || unused {
-		t.Fatalf("the application probe ran after a failed wait: %v, %t", err, unused)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		calls := 0
+		ok := func(context.Context) (Health, error) { calls++; return Health{Ready: true}, nil }
+		if err := healthOver(t, ok, upAs(101)).WaitHealthy(ctx, "demo"); err != nil || calls == 0 {
+			t.Fatalf("a passing application probe: %v, %d calls", err, calls)
+		}
+		bad := func(context.Context) (Health, error) {
+			return Health{Failed: true, Detail: "admin socket refused"}, nil
+		}
+		if err := healthOver(t, bad, upAs(101)).WaitHealthy(ctx, "demo"); !errors.Is(err, ErrUnhealthy) {
+			t.Fatalf("a failing application probe: %v, want ErrUnhealthy", err)
+		}
+		unused := false
+		never := func(context.Context) (Health, error) { unused = true; return Health{Ready: true}, nil }
+		if err := healthOver(t, never, upAs(101), restarting).WaitHealthy(ctx, "demo"); !errors.Is(err, ErrUnhealthy) || unused {
+			t.Fatalf("the application probe ran after a failed wait: %v, %t", err, unused)
+		}
+	})
 }
 
 func TestSupervisedReconcile(t *testing.T) {

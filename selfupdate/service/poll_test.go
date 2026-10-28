@@ -5,32 +5,16 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 )
 
-// fakeClock advances only when a wait is asked for, so the tests never
-// sleep.
-type fakeClock struct{ now time.Time }
-
-func (c *fakeClock) Now() time.Time { return c.now }
-
-func (c *fakeClock) After(d time.Duration) <-chan time.Time {
-	c.now = c.now.Add(d)
-	ch := make(chan time.Time, 1)
-	ch <- c.now
-	return ch
-}
-
-func useFakeClock(t *testing.T) *fakeClock {
-	t.Helper()
-	c := &fakeClock{now: time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC)}
-	prev := pollClock
-	pollClock = c
-	t.Cleanup(func() { pollClock = prev })
-	return c
-}
+// The PollHealthy tests run in a synctest bubble, where time.Now, its
+// timers and the probe context's deadline share one fake clock, so they
+// never sleep and measure waits exactly
+// (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md D3-A).
 
 // script returns a probe that gives each observation in turn, then the
 // last one for ever, and counts its calls.
@@ -45,96 +29,129 @@ func script(steps ...Health) (HealthProbe, *int) {
 
 func TestPollHealthySettles(t *testing.T) {
 	testproc.CheckNoLeak(t)
-	c := useFakeClock(t)
-	start := c.now
-	probe, calls := script(Health{}, Health{Ready: true, Instance: "b"})
-	err := PollHealthy(context.Background(), probe, PollOptions{Interval: time.Second, Settle: 3 * time.Second})
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Ready at 1 s; healthy once 3 s have passed with the same instance.
-	if got := c.now.Sub(start); got != 4*time.Second || *calls != 5 {
-		t.Fatalf("healthy after %s and %d probes, want 4s and 5", got, *calls)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		start := time.Now()
+		probe, calls := script(Health{}, Health{Ready: true, Instance: "b"})
+		err := PollHealthy(context.Background(), probe, PollOptions{Interval: time.Second, Settle: 3 * time.Second})
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Ready at 1 s; healthy once 3 s have passed with the same instance.
+		if got := time.Since(start); got != 4*time.Second || *calls != 5 {
+			t.Fatalf("healthy after %s and %d probes, want 4s and 5", got, *calls)
+		}
+	})
 }
 
 func TestPollHealthyInstanceChangeRestartsSettle(t *testing.T) {
 	testproc.CheckNoLeak(t)
-	c := useFakeClock(t)
-	start := c.now
-	probe, _ := script(Health{Ready: true, Instance: "b"}, Health{Ready: true, Instance: "b"},
-		Health{Ready: true, Instance: "c"}, Health{Ready: true, Instance: "c"})
-	if err := PollHealthy(context.Background(), probe, PollOptions{Interval: time.Second, Settle: 2 * time.Second}); err != nil {
-		t.Fatal(err)
-	}
-	// "c" first seen at 2 s: healthy at 4 s, not at 2 s.
-	if got := c.now.Sub(start); got != 4*time.Second {
-		t.Fatalf("healthy after %s, want 4s", got)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		start := time.Now()
+		probe, _ := script(Health{Ready: true, Instance: "b"}, Health{Ready: true, Instance: "b"},
+			Health{Ready: true, Instance: "c"}, Health{Ready: true, Instance: "c"})
+		if err := PollHealthy(context.Background(), probe, PollOptions{Interval: time.Second, Settle: 2 * time.Second}); err != nil {
+			t.Fatal(err)
+		}
+		// "c" first seen at 2 s: healthy at 4 s, not at 2 s.
+		if got := time.Since(start); got != 4*time.Second {
+			t.Fatalf("healthy after %s, want 4s", got)
+		}
+	})
 }
 
 func TestPollHealthyPreviousNeverCounts(t *testing.T) {
 	testproc.CheckNoLeak(t)
-	useFakeClock(t)
 	for _, h := range []Health{{Ready: true, Instance: "old"}, {Ready: true}} {
-		probe, _ := script(h)
-		// No settle window: a counting probe would succeed at once.
-		err := PollHealthy(context.Background(), probe, PollOptions{Interval: time.Second, Timeout: 5 * time.Second, Settle: -1, Previous: "old"})
-		if !errors.Is(err, ErrTimeout) {
-			t.Fatalf("instance %q: err = %v, want a timeout", h.Instance, err)
-		}
+		synctest.Test(t, func(t *testing.T) {
+			start := time.Now()
+			probe, _ := script(h)
+			// No settle window: a counting probe would succeed at once.
+			err := PollHealthy(context.Background(), probe, PollOptions{Interval: time.Second, Timeout: 5 * time.Second, Settle: -1, Previous: "old"})
+			if !errors.Is(err, ErrTimeout) || time.Since(start) != 5*time.Second {
+				t.Fatalf("instance %q: err = %v after %s, want a timeout at 5s", h.Instance, err, time.Since(start))
+			}
+		})
 	}
 }
 
 func TestPollHealthyFailedStopsAtOnce(t *testing.T) {
 	testproc.CheckNoLeak(t)
-	c := useFakeClock(t)
-	start := c.now
-	probe, calls := script(Health{Ready: true, Instance: "b"}, Health{Failed: true, Detail: "ActiveState=failed"})
-	err := PollHealthy(context.Background(), probe, PollOptions{Interval: time.Second})
-	if !errors.Is(err, ErrUnhealthy) || !strings.Contains(err.Error(), "ActiveState=failed") {
-		t.Fatalf("err = %v", err)
-	}
-	if *calls != 2 || c.now.Sub(start) != time.Second {
-		t.Fatalf("%d probes over %s; want 2 over 1s", *calls, c.now.Sub(start))
-	}
+	synctest.Test(t, func(t *testing.T) {
+		start := time.Now()
+		probe, calls := script(Health{Ready: true, Instance: "b"}, Health{Failed: true, Detail: "ActiveState=failed"})
+		err := PollHealthy(context.Background(), probe, PollOptions{Interval: time.Second})
+		if !errors.Is(err, ErrUnhealthy) || !strings.Contains(err.Error(), "ActiveState=failed") {
+			t.Fatalf("err = %v", err)
+		}
+		if took := time.Since(start); *calls != 2 || took != time.Second {
+			t.Fatalf("%d probes over %s; want 2 over 1s", *calls, took)
+		}
+	})
 }
 
 func TestPollHealthyTimeoutReportsLastError(t *testing.T) {
 	testproc.CheckNoLeak(t)
-	useFakeClock(t)
-	probeErr := errors.New("fixture: show failed")
-	probe := func(context.Context) (Health, error) { return Health{}, probeErr }
-	err := PollHealthy(context.Background(), probe, PollOptions{Interval: time.Second, Timeout: 3 * time.Second})
-	if !errors.Is(err, ErrTimeout) || !errors.Is(err, probeErr) {
-		t.Fatalf("err = %v, want the timeout with the probe error", err)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		start := time.Now()
+		probeErr := errors.New("fixture: show failed")
+		probe := func(context.Context) (Health, error) { return Health{}, probeErr }
+		err := PollHealthy(context.Background(), probe, PollOptions{Interval: time.Second, Timeout: 3 * time.Second})
+		if !errors.Is(err, ErrTimeout) || !errors.Is(err, probeErr) {
+			t.Fatalf("err = %v, want the timeout with the probe error", err)
+		}
+		if took := time.Since(start); took != 3*time.Second {
+			t.Fatalf("timed out after %s, want 3s", took)
+		}
+	})
+}
+
+// TestPollHealthyProbeContextEndsAtDeadline: the probe's own context ends
+// at the wait's deadline, on the clock the wait measures, so a probe that
+// blocks cannot hold the wait past its timeout.
+func TestPollHealthyProbeContextEndsAtDeadline(t *testing.T) {
+	testproc.CheckNoLeak(t)
+	synctest.Test(t, func(t *testing.T) {
+		start := time.Now()
+		probe := func(ctx context.Context) (Health, error) {
+			<-ctx.Done()
+			return Health{}, ctx.Err()
+		}
+		err := PollHealthy(context.Background(), probe, PollOptions{Interval: time.Second, Timeout: 3 * time.Second})
+		if !errors.Is(err, ErrTimeout) || !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("err = %v, want the timeout with the probe's deadline", err)
+		}
+		if took := time.Since(start); took != 3*time.Second {
+			t.Fatalf("timed out after %s, want 3s", took)
+		}
+	})
 }
 
 func TestPollHealthyContextEnds(t *testing.T) {
 	testproc.CheckNoLeak(t)
-	useFakeClock(t)
-	ctx, cancel := context.WithCancel(context.Background())
-	probe := func(context.Context) (Health, error) {
-		cancel()
-		return Health{}, nil
-	}
-	if err := PollHealthy(ctx, probe, PollOptions{}); !errors.Is(err, context.Canceled) {
-		t.Fatalf("err = %v, want the context's", err)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		probe := func(context.Context) (Health, error) {
+			cancel()
+			return Health{}, nil
+		}
+		if err := PollHealthy(ctx, probe, PollOptions{}); !errors.Is(err, context.Canceled) {
+			t.Fatalf("err = %v, want the context's", err)
+		}
+	})
 }
 
 func TestPollHealthyNoSettle(t *testing.T) {
 	testproc.CheckNoLeak(t)
-	c := useFakeClock(t)
-	start := c.now
-	probe, calls := script(Health{Ready: true})
-	if err := PollHealthy(context.Background(), probe, PollOptions{Settle: -1}); err != nil {
-		t.Fatal(err)
-	}
-	if *calls != 1 || c.now != start {
-		t.Fatalf("%d probes over %s; want 1 at once", *calls, c.now.Sub(start))
-	}
+	synctest.Test(t, func(t *testing.T) {
+		start := time.Now()
+		probe, calls := script(Health{Ready: true})
+		if err := PollHealthy(context.Background(), probe, PollOptions{Settle: -1}); err != nil {
+			t.Fatal(err)
+		}
+		if took := time.Since(start); *calls != 1 || took != 0 {
+			t.Fatalf("%d probes over %s; want 1 at once", *calls, took)
+		}
+	})
 }
 
 func TestPollHealthyDefaults(t *testing.T) {

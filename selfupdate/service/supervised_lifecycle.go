@@ -89,7 +89,7 @@ func (s *Supervised) Stop(ctx context.Context, _ string) (err error) {
 	timeout := s.o.Poll.withDefaults().Timeout
 	// One bound, from before Down, for Down and the wait
 	// (0035-MADR Amendment A3).
-	begin := s.now()
+	begin := time.Now()
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
 	defer cancel()
 	defer func() { err = errors.Join(err, caller.Err()) }()
@@ -116,9 +116,8 @@ func (s *Supervised) Stop(ctx context.Context, _ string) (err error) {
 	return werr
 }
 
-// waitDown waits, until limit after begin by this Supervised's clock,
-// until State reports the service down and rec has gone, calling Kill
-// once at KillAfter. Its error is ErrTimeout, with the last observation,
+// waitDown waits, until limit after begin, until State reports the
+// service down and rec has gone, calling Kill once at KillAfter. Its error is ErrTimeout, with the last observation,
 // when the clock or ctx's deadline, the same bound, ends it; killErr is
 // Kill's, which Stop reports only when the stop fails.
 func (s *Supervised) waitDown(ctx context.Context, rec instance, begin time.Time, limit time.Duration) (killErr, err error) {
@@ -137,14 +136,14 @@ func (s *Supervised) waitDown(ctx context.Context, rec instance, begin time.Time
 				return killErr, nil
 			}
 		}
-		now := s.now()
+		now := time.Now()
 		if s.o.Kill != nil && !killed && !now.Before(killAt) {
 			killed = true
 			if kerr := s.o.Kill(ctx); kerr != nil {
 				killErr = s.fail("kill", kerr)
 			}
 		}
-		if now.Before(end) && s.sleep(ctx, min(s.o.Poll.withDefaults().Interval, end.Sub(now))) == nil {
+		if now.Before(end) && sleepCtx(ctx, min(s.o.Poll.withDefaults().Interval, end.Sub(now))) == nil {
 			continue
 		}
 		seen := fmt.Sprintf("up=%t pid=%d", last.Up, last.PID)
@@ -222,7 +221,7 @@ func (s *Supervised) WaitHealthy(ctx context.Context, _ string) error {
 			return h, nil
 		}
 		if st.Restarting {
-			now := s.now()
+			now := time.Now()
 			if restartingSince.IsZero() {
 				restartingSince = now
 			}
