@@ -38,7 +38,7 @@ func TestDetach(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := filepath.Join(t.TempDir(), "run")
-	s, _ := testService(t, newFake(), Options{})
+	s := testService(t, newFake(), Options{})
 	det, err := s.Detach(context.Background(), service.HandOff{
 		ID: "abc", Executable: exe, ResultPath: filepath.Join(t.TempDir(), "result"),
 		Env: []string{fakeEnv + "=1", "FAKE_OUT=" + out, "FAKE_SECRET=s3cret"},

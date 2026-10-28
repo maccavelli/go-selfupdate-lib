@@ -326,20 +326,20 @@ func (s *Service) waitPending(ctx context.Context, name string, h handle) (statu
 	if err != nil {
 		return status{}, mapError("query", name, err)
 	}
-	checkpoint, progressAt := st.CheckPoint, s.now()
+	checkpoint, progressAt := st.CheckPoint, time.Now()
 	for pending(st.State) {
 		wait := min(max(time.Duration(st.WaitHint)*time.Millisecond/10, time.Second), 10*time.Second)
-		if err := s.sleep(ctx, wait); err != nil {
+		if err := sleepCtx(ctx, wait); err != nil {
 			return st, fmt.Errorf("%w: %s %s: %w", service.ErrTimeout, name, stateName(st.State), err)
 		}
 		if st, err = h.status(); err != nil {
 			return status{}, mapError("query", name, err)
 		}
 		if st.CheckPoint != checkpoint {
-			checkpoint, progressAt = st.CheckPoint, s.now()
+			checkpoint, progressAt = st.CheckPoint, time.Now()
 			continue
 		}
-		if stall := max(time.Duration(st.WaitHint)*time.Millisecond, stallFloor); pending(st.State) && s.now().Sub(progressAt) > stall {
+		if stall := max(time.Duration(st.WaitHint)*time.Millisecond, stallFloor); pending(st.State) && time.Since(progressAt) > stall {
 			return st, fmt.Errorf("%w: %s hung in %s: checkpoint %d unchanged for %v",
 				service.ErrTimeout, name, stateName(st.State), st.CheckPoint, stall)
 		}

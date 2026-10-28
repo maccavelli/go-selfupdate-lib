@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+	"testing/synctest"
 )
 
 // realParse is the fake SCM with the real command-line split and quoting.
@@ -21,37 +22,39 @@ func (realParse) compose(args []string) string            { return sysManager{}.
 // reads it, and a rewrite quotes the program and keeps every argument
 // (0011-MADR §5).
 func TestReconcileRealCommandLine(t *testing.T) {
-	ctx := context.Background()
-	const exe = `C:\Program Files\Demo\demo.exe`
-	for _, line := range []string{
-		`"C:\Program Files\Demo\demo.exe" run`,
-		`"c:\program files\demo\.\DEMO.EXE"`,
-		`C:\Program Files\Demo\demo.exe run --flag`,
-		`C:\Program Files\Demo\demo.exe`,
-	} {
-		f := newFake()
-		f.add("demo", 1).cfg.BinaryPathName = line
-		s, _ := testService(t, f, Options{})
-		s.m = realParse{f}
-		if res, err := s.Reconcile(ctx, "demo", exe); err != nil || res.Changed {
-			t.Errorf("%s: %+v, %v", line, res, err)
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		const exe = `C:\Program Files\Demo\demo.exe`
+		for _, line := range []string{
+			`"C:\Program Files\Demo\demo.exe" run`,
+			`"c:\program files\demo\.\DEMO.EXE"`,
+			`C:\Program Files\Demo\demo.exe run --flag`,
+			`C:\Program Files\Demo\demo.exe`,
+		} {
+			f := newFake()
+			f.add("demo", 1).cfg.BinaryPathName = line
+			s := testService(t, f, Options{})
+			s.m = realParse{f}
+			if res, err := s.Reconcile(ctx, "demo", exe); err != nil || res.Changed {
+				t.Errorf("%s: %+v, %v", line, res, err)
+			}
 		}
-	}
-	f := newFake()
-	svc := f.add("demo", 1)
-	svc.cfg.BinaryPathName = `"C:\Old\demo.exe" run "a b" "x\"y"`
-	s, _ := testService(t, f, Options{RewritePath: true})
-	s.m = realParse{f}
-	if _, err := s.Reconcile(ctx, "demo", exe); err != nil {
-		t.Fatal(err)
-	}
-	args, err := sysManager{}.decompose(svc.cfg.BinaryPathName)
-	if err != nil || !slices.Equal(args, []string{exe, "run", "a b", `x"y`}) {
-		t.Fatalf("rewrote %s, which splits as %q, %v", svc.cfg.BinaryPathName, args, err)
-	}
-	if svc.cfg.BinaryPathName[0] != '"' {
-		t.Fatalf("the program is not quoted: %s", svc.cfg.BinaryPathName)
-	}
+		f := newFake()
+		svc := f.add("demo", 1)
+		svc.cfg.BinaryPathName = `"C:\Old\demo.exe" run "a b" "x\"y"`
+		s := testService(t, f, Options{RewritePath: true})
+		s.m = realParse{f}
+		if _, err := s.Reconcile(ctx, "demo", exe); err != nil {
+			t.Fatal(err)
+		}
+		args, err := sysManager{}.decompose(svc.cfg.BinaryPathName)
+		if err != nil || !slices.Equal(args, []string{exe, "run", "a b", `x"y`}) {
+			t.Fatalf("rewrote %s, which splits as %q, %v", svc.cfg.BinaryPathName, args, err)
+		}
+		if svc.cfg.BinaryPathName[0] != '"' {
+			t.Fatalf("the program is not quoted: %s", svc.cfg.BinaryPathName)
+		}
+	})
 }
 
 // TestReconcileUnquotedRealFiles: with real files under a directory whose
@@ -59,29 +62,31 @@ func TestReconcileRealCommandLine(t *testing.T) {
 // reads it, and a rewrite keeps the arguments
 // (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md D5).
 func TestReconcileUnquotedRealFiles(t *testing.T) {
-	place := func(name string) string {
-		dir := filepath.Join(t.TempDir(), name)
-		if err := os.Mkdir(dir, 0o700); err != nil {
-			t.Fatal(err)
+	synctest.Test(t, func(t *testing.T) {
+		place := func(name string) string {
+			dir := filepath.Join(t.TempDir(), name)
+			if err := os.Mkdir(dir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			exe := filepath.Join(dir, "demo.exe")
+			if err := os.WriteFile(exe, []byte("x"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			return exe
 		}
-		exe := filepath.Join(dir, "demo.exe")
-		if err := os.WriteFile(exe, []byte("x"), 0o600); err != nil {
-			t.Fatal(err)
+		old, moved := place("Old Place"), place("New Place")
+		f := newFake()
+		svc := f.add("demo", 1)
+		svc.cfg.BinaryPathName = old + " run --flag"
+		s := testService(t, f, Options{RewritePath: true})
+		s.m = realParse{f}
+		res, err := s.Reconcile(context.Background(), "demo", moved)
+		if err != nil || !res.Changed {
+			t.Fatalf("Reconcile = %+v, %v", res, err)
 		}
-		return exe
-	}
-	old, moved := place("Old Place"), place("New Place")
-	f := newFake()
-	svc := f.add("demo", 1)
-	svc.cfg.BinaryPathName = old + " run --flag"
-	s, _ := testService(t, f, Options{RewritePath: true})
-	s.m = realParse{f}
-	res, err := s.Reconcile(context.Background(), "demo", moved)
-	if err != nil || !res.Changed {
-		t.Fatalf("Reconcile = %+v, %v", res, err)
-	}
-	args, err := sysManager{}.decompose(svc.cfg.BinaryPathName)
-	if err != nil || !slices.Equal(args, []string{moved, "run", "--flag"}) {
-		t.Fatalf("rewrote %s, which splits as %q, %v", svc.cfg.BinaryPathName, args, err)
-	}
+		args, err := sysManager{}.decompose(svc.cfg.BinaryPathName)
+		if err != nil || !slices.Equal(args, []string{moved, "run", "--flag"}) {
+			t.Fatalf("rewrote %s, which splits as %q, %v", svc.cfg.BinaryPathName, args, err)
+		}
+	})
 }

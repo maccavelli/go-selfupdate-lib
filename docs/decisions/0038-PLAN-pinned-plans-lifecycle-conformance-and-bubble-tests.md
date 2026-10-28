@@ -351,3 +351,27 @@ Files: `selfupdate/service/poll.go`, `poll_test.go`, `supervised.go`, `supervise
 6. **`healthOver`'s clock removed:** `TestSupervisedWaitHealthy` and `…Probe` run in bubbles, one per case, at a 100 ms interval, a 3 s settle and the default 60 s bound, and each case asserts how long its wait takes. The file's comment records that this replaces 0035-PLAN Deviation D4's stepping clock.
 7. **Runs:** `go test -race -count=3 ./selfupdate/service/` passed on this Mac (59.2 s), the Linux test host (61.4 s) and the Windows test host (87.1 s); `-count=30 -race` of the moved tests passed on this Mac. Cross-target `go vet ./selfupdate/service/...` clean for linux, darwin and windows. `make pre-add-check` on the six files: `6 file(s) clean (gofmt, golangci-lint, go vet, go test, govulncheck)`.
 8. **`make gate`**: every step rc=0, `apicheck` "compatible with v1.22.2", `overall=0`.
+
+### Q2: scm on the production clock (2026-10-27)
+
+Files: `selfupdate/service/scm/service.go`, `lifecycle.go`, `fake_test.go`, `scm_test.go`, `stopwait_test.go`, `detach_test.go`, `unquoted_test.go`, `alias_windows_test.go`, `compose_windows_test.go`, as listed.
+
+1. **The fake moves on observation.** `fakeSCM.tick` is replaced by `observe`: a status read made at a later bubble time than the fake last saw moves every service one entry on, and a control or a start stamps the time, so the first read after it does not. That is one entry per `waitPending` sleep, as the virtual clock gave.
+2. **`virtualClock` deleted; `Service.now` and `sleep` deleted.** `waitPending` calls `time.Now`, `time.Since` and `sleepCtx`. `testService` returns the `*Service` alone, and no longer sets `Poll.Interval` (1 ms) or `Poll.Timeout` (2 s): its services take the defaults. Every test that calls it runs in a bubble (a scratchpad script wrapped 24 bodies, `CheckNoLeak` left outside), except `TestDetach`.
+3. **`TestStopWaits`** passes at the 60 s default bound, and its comment records that the 2 s fixture bound forbade the 5 s wait it asserted (MADR F4). `TestStopStalledCheckpoint` uses the default bound in place of an hour.
+4. **`TestDetach`** stays on the real clock: it starts a real hop and waits for a file the run writes.
+5. **One test added,** `TestStopTimesOutAtBound`: a stop whose checkpoint keeps advancing ends with `ErrTimeout` and `context.DeadlineExceeded` at exactly the 60 s default.
+6. Plants, each in a scratch copy:
+
+   | Plant | Failure |
+   | :--- | :--- |
+   | the wait hint clamped up to 2 s | `scm_test.go:201: waited 10s, want 5s`; `scm_test.go:226: hint 0 ms: slept 2s, want 1s` |
+   | the default stop bound doubled | `stopwait_test.go:62: timed out after 2m0s, want 1m0s` |
+   | the stop wait on the caller's context (0015-MADR B3) | `stopwait_test.go:36: Stop = … timed out: demo STOP_PENDING: context canceled` |
+   | the old 2 s fixture bound (`fake_test.go`) | `scm_test.go:196: … timed out: demo STOP_PENDING: context deadline exceeded` |
+   | the fake moving twice per observation | `scm_test.go:201: waited 3s, want 5s` |
+   | a stall declared at twice its window | `scm_test.go:248: declared the hang after 21s` |
+
+   A first stall plant doubled `stallFloor` itself, which the test reads, so the test moved with it and passed; the plant was moved to the stall comparison, which `waitPending` now writes with `time.Since`.
+7. **Runs:** `go test -race -count=20 ./selfupdate/service/scm/` on this Mac; `go test -race -count=3 -v` on the Windows test host, the Windows-only tests included, 81 passes and the live tests skipped. Cross-target `go vet` clean. `make pre-add-check` on the nine files: `9 file(s) clean`.
+8. **`make gate`**: every step rc=0, `apicheck` "compatible with v1.22.2", `overall=0`.

@@ -1,7 +1,6 @@
 package scm
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"sync"
@@ -19,11 +18,17 @@ type fakeSCM struct {
 	// born are creation times; a missing PID reads as 0, unknown.
 	born    map[uint32]uint64
 	openErr map[string]error
+	// seen is when the fake was last observed or commanded, by the
+	// bubble's clock.
+	seen time.Time
 }
 
 // fakeSvc is one service. A control or a start moves it to the head of
-// its queue at once; each virtual sleep then moves it one entry on
-// (fakeSCM.tick).
+// its queue at once; each status read made at a later time than the
+// fake last saw then moves every service one entry on (fakeSCM.observe).
+// Time is the synctest bubble's, so the tests keep no clock of their own
+// (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// D3-A).
 type fakeSvc struct {
 	st         status
 	queue      []status
@@ -137,6 +142,7 @@ type fakeHandle struct {
 func (h *fakeHandle) status() (status, error) {
 	h.f.mu.Lock()
 	defer h.f.mu.Unlock()
+	h.f.observe()
 	return h.s.st, nil
 }
 
@@ -147,19 +153,23 @@ func (s *fakeSvc) next() {
 	}
 }
 
-// tick is time passing: every service moves one entry on.
-func (f *fakeSCM) tick() {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	for _, s := range f.services {
-		s.next()
+// observe is time passing: a read later than the fake last saw moves
+// every service one entry on. f.mu is held.
+func (f *fakeSCM) observe() {
+	now := time.Now()
+	if !f.seen.IsZero() && now.After(f.seen) {
+		for _, s := range f.services {
+			s.next()
+		}
 	}
+	f.seen = now
 }
 
 func (h *fakeHandle) control(code uint32) (status, error) {
 	h.f.mu.Lock()
 	defer h.f.mu.Unlock()
 	h.f.record("control %s %d", h.name, code)
+	h.f.seen = time.Now()
 	if len(h.s.controlErr) > 0 {
 		err := h.s.controlErr[0]
 		h.s.controlErr = h.s.controlErr[1:]
@@ -183,6 +193,7 @@ func (h *fakeHandle) start() error {
 	h.f.mu.Lock()
 	defer h.f.mu.Unlock()
 	h.f.record("start %s", h.name)
+	h.f.seen = time.Now()
 	if h.s.startErr != nil {
 		// Someone else's start, which the error reports, still moves it.
 		h.s.next()
@@ -228,39 +239,13 @@ func (h *fakeHandle) dependents() ([]string, error) {
 
 func (*fakeHandle) close() error { return nil }
 
-// virtualClock is the Service's now and sleep: a sleep advances it at
-// once, and runs onSleep.
-type virtualClock struct {
-	mu      sync.Mutex
-	t       time.Time
-	onSleep func()
-}
-
-func (c *virtualClock) now() time.Time {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.t
-}
-
-func (c *virtualClock) sleep(ctx context.Context, d time.Duration) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	c.mu.Lock()
-	c.t = c.t.Add(d)
-	c.mu.Unlock()
-	if c.onSleep != nil {
-		c.onSleep()
-	}
-	return nil
-}
-
 // selfPID is the PID the fake process table gives this process.
 const selfPID = 7000
 
-// testService is a Service named "demo" over f, on a virtual clock, with
-// this process at selfPID and no settle window.
-func testService(t *testing.T, f *fakeSCM, o Options) (*Service, *virtualClock) {
+// testService is a Service named "demo" over f, with this process at
+// selfPID and no settle window. A test that stops, starts or waits calls
+// it inside a synctest bubble.
+func testService(t *testing.T, f *fakeSCM, o Options) *Service {
 	t.Helper()
 	if o.Name == "" {
 		o.Name = "demo"
@@ -268,21 +253,13 @@ func testService(t *testing.T, f *fakeSCM, o Options) (*Service, *virtualClock) 
 	if o.Poll.Settle == 0 {
 		o.Poll.Settle = -1
 	}
-	if o.Poll.Interval == 0 {
-		o.Poll.Interval = time.Millisecond
-	}
-	if o.Poll.Timeout == 0 {
-		o.Poll.Timeout = 2 * time.Second
-	}
 	s, err := newService(o, "windows", f)
 	if err != nil {
 		t.Fatal(err)
 	}
-	clock := &virtualClock{t: time.Unix(1_700_000_000, 0), onSleep: f.tick}
-	s.now, s.sleep = clock.now, clock.sleep
 	s.self = func() uint32 { return selfPID }
 	if len(f.procs) == 0 {
 		f.procs = []process{{PID: selfPID, ParentPID: 6000}, {PID: 6000, ParentPID: 4}, {PID: 4}}
 	}
-	return s, clock
+	return s
 }

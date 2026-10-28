@@ -58,11 +58,9 @@ type Options struct {
 // context: each makes a few Service Control Manager calls that take
 // none.
 type Service struct {
-	o     Options
-	m     manager
-	now   func() time.Time
-	sleep func(context.Context, time.Duration) error
-	self  func() uint32
+	o    Options
+	m    manager
+	self func() uint32
 
 	mu       sync.Mutex
 	previous map[string]uint32
@@ -97,7 +95,7 @@ func newService(o Options, goos string, m manager) (*Service, error) {
 		return nil, fmt.Errorf("selfupdate: scm: %w", err)
 	}
 	return &Service{
-		o: o, m: m, now: time.Now, sleep: sleepCtx, self: currentPID,
+		o: o, m: m, self: currentPID,
 		previous: map[string]uint32{}, stoppedDeps: map[string][]string{},
 	}, nil
 }
