@@ -277,9 +277,10 @@ func TestInstallersReportRolledBack(t *testing.T) {
 	path := stageNew(t, standalone)
 	dir := filepath.Dir(exe)
 	moved := dir + ".moved"
-	real := replacePath
+	fx := fsOf(t, standalone)
+	real := fx.replacePath
 	var swapErr error
-	setSeam(t, &replacePath, func(ctx context.Context, oldpath, newpath string) error {
+	fx.replacePath = func(ctx context.Context, oldpath, newpath string) error {
 		if err := real(ctx, oldpath, newpath); err != nil {
 			return err
 		}
@@ -287,7 +288,7 @@ func TestInstallersReportRolledBack(t *testing.T) {
 			return os.Mkdir(dir, 0o755)
 		}
 		return nil
-	})
+	}
 	t.Cleanup(func() {
 		if swapErr == nil {
 			_ = os.RemoveAll(dir)

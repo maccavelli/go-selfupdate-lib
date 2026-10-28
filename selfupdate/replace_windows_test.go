@@ -15,11 +15,12 @@ import (
 // TestMoveFileReplaceHonoursContext: a busy replacement stops retrying when
 // the caller's context ends, well before DefaultLockTimeout (0003-MADR B10).
 func TestMoveFileReplaceHonoursContext(t *testing.T) {
-	setSeam(t, &moveFileExFn, func(*uint16, *uint16, uint32) error { return windows.ERROR_SHARING_VIOLATION })
+	fx := realFS()
+	fx.moveFileExFn = func(*uint16, *uint16, uint32) error { return windows.ERROR_SHARING_VIOLATION }
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 	start := time.Now()
-	err := realFS().moveFileReplace(ctx, `C:\nonexistent\from`, `C:\nonexistent\to`)
+	err := fx.moveFileReplace(ctx, `C:\nonexistent\from`, `C:\nonexistent\to`)
 	elapsed := time.Since(start)
 	if !errors.Is(err, context.DeadlineExceeded) || !errors.Is(err, windows.ERROR_SHARING_VIOLATION) {
 		t.Fatalf("err = %v", err)
@@ -33,14 +34,15 @@ func TestMoveFileReplaceHonoursContext(t *testing.T) {
 // running image is retried until it clears (0003-MADR B11).
 func TestMoveFileReplaceRetriesAccessDenied(t *testing.T) {
 	calls := 0
-	setSeam(t, &moveFileExFn, func(*uint16, *uint16, uint32) error {
+	fx := realFS()
+	fx.moveFileExFn = func(*uint16, *uint16, uint32) error {
 		calls++
 		if calls < 3 {
 			return windows.ERROR_ACCESS_DENIED
 		}
 		return nil
-	})
-	if err := realFS().moveFileReplace(context.Background(), `C:\x\from`, `C:\x\to`); err != nil || calls != 3 {
+	}
+	if err := fx.moveFileReplace(context.Background(), `C:\x\from`, `C:\x\to`); err != nil || calls != 3 {
 		t.Fatalf("err=%v calls=%d", err, calls)
 	}
 }

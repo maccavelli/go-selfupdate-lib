@@ -273,7 +273,7 @@ func TestJournalDuringApply(t *testing.T) {
 func TestJournalWriteFailure(t *testing.T) {
 	sess, exe := standaloneSession(t)
 	failing := errors.New("injected journal failure")
-	setSeam(t, &writeJournalFn, func(*os.Root, Target, pendingJournal) error { return failing })
+	fsOf(t, sess).writeJournalFn = func(*os.Root, Target, pendingJournal) error { return failing }
 	res, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: stageNew(t, sess)}})
 	if !errors.Is(err, failing) || res.Applied {
 		t.Fatalf("Applied=%v err=%v; want the journal failure", res.Applied, err)
@@ -342,7 +342,8 @@ func plantFile(t *testing.T, path, body string, mode os.FileMode) {
 	}
 }
 
-// plantRecovery plants p beside exe.
+// plantRecovery plants p beside exe. Its failRename is the caller's to set,
+// on the installer it runs.
 func plantRecovery(t *testing.T, exe string, p recoveryPlant) {
 	t.Helper()
 	dir := filepath.Dir(exe)
@@ -359,9 +360,6 @@ func plantRecovery(t *testing.T, exe string, p recoveryPlant) {
 	}
 	if p.takenKept {
 		plantFile(t, filepath.Join(dir, ".demo.selfupdate-kept-7"), "old-bytes", 0o755)
-	}
-	if p.failRename {
-		setSeam(t, &keptRenameFn, func(*os.Root, string, string) error { return errors.New("injected rename failure") })
 	}
 }
 
@@ -430,6 +428,9 @@ func TestJournalRecoveryRules(t *testing.T) {
 			inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
 			if err != nil {
 				t.Fatal(err)
+			}
+			if c.p.failRename {
+				fsFor(inst).keptRenameFn = func(*os.Root, string, string) error { return errors.New("injected rename failure") }
 			}
 			if err := inst.CleanupPending(context.Background()); err != nil {
 				t.Fatalf("CleanupPending: %v", err)

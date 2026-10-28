@@ -46,15 +46,6 @@ func journalTmpPrefix(base string) string {
 	return "." + base + ".selfupdate.pending-tmp-"
 }
 
-var (
-	// writeJournalFn is fsOps.writeJournal, replaced in tests; init sets
-	// it.
-	writeJournalFn func(*os.Root, Target, pendingJournal) error
-	// keptRenameFn is (*os.Root).Rename for recovery's kept rename,
-	// replaced in tests.
-	keptRenameFn = (*os.Root).Rename
-)
-
 // writeJournal writes j as target's journal through root: a private
 // temporary file, synced and renamed over the journal's name, then the
 // directory synced, so the journal is on disk before the target is

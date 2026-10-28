@@ -147,8 +147,8 @@ func TestKeptBackupClearsSpecialBits(t *testing.T) {
 	}
 	defer func() { _ = sess.Close() }()
 	staged := stageNew(t, sess)
-	setSeam(t, &syncDirFn, func(string) error { return errors.New("injected directory sync failure") })
-	failRestore(t)
+	fsOf(t, sess).syncDirFn = func(string) error { return errors.New("injected directory sync failure") }
+	failRestore(t, fsOf(t, sess))
 	res, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: staged}})
 	if err == nil || res.Applied || res.Backup == "" {
 		t.Fatalf("Install = %+v, %v; want a kept backup", res, err)

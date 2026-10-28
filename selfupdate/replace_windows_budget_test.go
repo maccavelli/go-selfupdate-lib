@@ -28,12 +28,13 @@ func TestMoveFileReplaceReadOnlyFailsFast(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(to, 0o644) })
 	calls := 0
-	setSeam(t, &moveFileExFn, func(*uint16, *uint16, uint32) error {
+	fx := realFS()
+	fx.moveFileExFn = func(*uint16, *uint16, uint32) error {
 		calls++
 		return windows.ERROR_ACCESS_DENIED
-	})
+	}
 	start := time.Now()
-	err := realFS().moveFileReplace(context.Background(), from, to)
+	err := fx.moveFileReplace(context.Background(), from, to)
 	if err == nil {
 		t.Fatal("want the access-denied error")
 	}
@@ -46,13 +47,14 @@ func TestMoveFileReplaceReadOnlyFailsFast(t *testing.T) {
 // session's lock timeout, not DefaultLockTimeout (0004-MADR R4).
 func TestMoveFileReplaceHonoursRetryBudget(t *testing.T) {
 	calls := 0
-	setSeam(t, &moveFileExFn, func(*uint16, *uint16, uint32) error {
+	fx := realFS()
+	fx.moveFileExFn = func(*uint16, *uint16, uint32) error {
 		calls++
 		return windows.ERROR_ACCESS_DENIED
-	})
+	}
 	ctx := withRetryBudget(context.Background(), 50*time.Millisecond)
 	start := time.Now()
-	err := realFS().moveFileReplace(ctx, `C:\nonexistent\from`, `C:\nonexistent\to`)
+	err := fx.moveFileReplace(ctx, `C:\nonexistent\from`, `C:\nonexistent\to`)
 	elapsed := time.Since(start)
 	if err == nil {
 		t.Fatal("want the access-denied error")

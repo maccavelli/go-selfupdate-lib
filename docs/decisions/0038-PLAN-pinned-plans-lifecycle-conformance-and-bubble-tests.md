@@ -452,3 +452,45 @@ Files: `selfupdate/replace.go`, `replace_unix.go`, `replace_windows.go`, `journa
 
 7. `make pre-add-check` on the 21 files: `21 file(s) clean`.
 8. **`make gate`**: every step rc=0, `apicheck` "compatible with v1.22.2", `overall=0`.
+
+### Q6: `selfupdate` seams, the filesystem (2026-10-28)
+
+Files: Q5's `replace.go`, `replace_unix.go`, `replace_windows.go`, `journal.go`, `leftovers.go`, `lock.go`, `session.go`; and the test files that set a seam: `branch_coverage_test.go`, `events_test.go`, `fs_test.go`, `install_hardening_test.go`, `install_regression_test.go`, `journal_test.go`, `managed_regression_test.go`, `modebits_unix_test.go`, `modepolicy_test.go`, `modepolicy_unix_test.go`, `probe_test.go`, `recovery_test.go`, `replace_windows_budget_test.go`, `replace_windows_test.go`.
+
+1. **Test helpers**, beside `setSeam` in `install_hardening_test.go`: `fsOf(t, sess)`, the effects a session uses (through a managed session to its standalone one), and `fsFor(inst)`, which gives an installer effects of its own. An installer with none hands each session a fresh `realFS()`, so a test that changes one session's effects changes nothing else, and restores nothing.
+2. **One step per seam, in the plan's order**, each built for the three targets, vetted and tested before the next: `osRename` (deleted; `replacePathOS` calls `os.Rename`), `afterLockHook`, `lockOpenHook`, `leftoverRemove`, `keptRenameFn`, `writeJournalFn`, the `fileChmod`/`fileSync`/`fileClose` trio, `osLink`, `osLchown`, `osChmod`, `osRemove`, `syncRootFn`, `syncDirFn`, `replacePath`, `moveFileExFn`. In each, its tests set the field on `fsOf` or `fsFor`, or on a `realFS()` they call directly; `realFS()`'s field became the real function; the package variable was deleted. `evalSymlinks` moved to Q7 (Deviation D4).
+3. **Helpers that set seams took the effects as a parameter:** `failRestore(t, fx)` and `swapAfterFirstReplace(t, fx, dir, readOnly)`; `unixInstall` takes optional edits to its installer's effects; `plantRecovery`'s `failRename` is set by its caller on the installer. `TestKeptBackupSurvivesLaterSessions` no longer puts seams back: its later sessions have their own effects.
+4. **The scaffold's `init` is gone.** `replacePathOS` is an `*fsOps` method on both systems (on Windows it calls the value's own `moveFileReplace`), and `realFS` binds `replacePath` and `writeJournalFn` to the value's own methods, so they see its other fields. No `selfupdate` package variable holds a filesystem seam.
+5. Plants, one per seam, each bypassing the field at the line that consults it, in a scratch copy (`moveFileExFn` on the Windows test host):
+
+   | Seam | Plant | Failure |
+   | :--- | :--- | :--- |
+   | `afterLockHook` | not called | `recovery_test.go:264: Begin accepted a swapped directory` |
+   | `lockOpenHook` | not called after the Lstat | `branch_coverage_test.go:96: err = <nil>, want one containing "lock changed while opening"` |
+   | `leftoverRemove` | `root.Remove` | `modepolicy_test.go:124: CleanupPending = <nil> after 0 removal attempts` |
+   | `keptRenameFn` | `root.Rename` | `journal_test.go:438: journal false (want true), backup false (want true), kept 1 (want 0)` |
+   | `writeJournalFn` | the session's `writeJournal` | `journal_test.go:279: Applied=true err=<nil>; want the journal failure` |
+   | `fileChmod`, `fileSync`, `fileClose` | the `*os.File` methods | `branch_coverage_test.go:274: err = <nil>, want the injected chmod failure` (and sync, close) |
+   | `osLink` | the copy fallback's mode dropped (the copy runs only when the injected link failure is consulted) | `install_hardening_test.go:215: mode after rollback -rw-------, want -rwxr-xr-x` |
+   | `osLchown` | `os.Lchown` | `modepolicy_unix_test.go:91: chown to 0:0, want 503:20` |
+   | `osChmod` | `os.Chmod` | `install_hardening_test.go:372: err = <nil>` |
+   | `osRemove` | `os.Remove` | `branch_coverage_test.go:198: err = <nil>, want one containing "remove backup"` |
+   | `syncRootFn` | `syncRoot` in the rollback | none, then `install_hardening_test.go:557: err = … concurrent update, want the rollback's failed sync reported` after Deviation D3 |
+   | `syncDirFn` | `syncDirectory` after the rename | `install_hardening_test.go:375: applied = true` |
+   | `replacePath` | the session's `replacePathOS` | `fs_test.go:48: expected injected rename failure`; `install_hardening_test.go:372: err = <nil>` |
+   | `moveFileExFn` | `windows.MoveFileEx` | all four `TestMoveFileReplace…` tests, e.g. `replace_windows_test.go:46: err=The system cannot find the path specified. calls=0` |
+
+   The first `osLink` plant left a variable unused and did not build; it was rewritten as above. A scratchpad script stopped twice partway (a line-numbered match that had moved, and an installer line that occurs twice in `fs_test.go`); each was finished by a script matching text, and the step's checks ran after.
+6. **Runs:** `go test -race -v ./selfupdate/`: 833 passes and 1 skip on the Linux test host, as before; 841 passes and 11 skips on the Windows test host, as before. `make pre-add-check` on the 21 files: `21 file(s) clean`.
+7. **`make gate`**: every step rc=0, `apicheck` "compatible with v1.22.2", `overall=0`.
+
+### Deviation D3 (2026-10-28): `syncRootFn`'s only test did not see it
+
+* **Found:** the `syncRootFn` plant was not caught. `TestInstallReportsRestoreAfterSyncFailure`'s "rolled back in the locked directory, unsynced" case fails the rollback's directory sync, but asserted nothing that depends on it: with the rollback's sync bypassing the seam it still passed, on this tree and on HEAD with the package seam (`q6headcheck.py`). The gap predates this plan.
+* **Decision:** the owner, 2026-10-28, chose "Strengthen the subtest": it now requires `errors.Is(err, errRestoredUnsynced)`. Seen passing three times on the code and failing on the plant.
+* **Files:** `install_hardening_test.go`, already in Q6.
+
+### Deviation D4 (2026-10-28): `evalSymlinks` is in a Q7 file
+
+* **Found:** Q6's first step deletes the two seams no test sets, `osRename` and `evalSymlinks`; `evalSymlinks` is in `selfupdate/target.go`, which is Q7's.
+* **Decision:** the owner, 2026-10-28, chose "Move it to Q7 step 1", with the rest of target resolution. Q6 stays within its files.

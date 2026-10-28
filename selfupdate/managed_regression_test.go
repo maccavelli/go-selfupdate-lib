@@ -216,15 +216,16 @@ func TestManagedRecoveryReportsRestoredBinary(t *testing.T) {
 		life := &fakeLife{installed: true, running: true, healthErr: errors.New("unhealthy")}
 		_, _, sess, exe := managedEnv(t, life, &fakeRec{})
 		path := stageNew(t, sess)
-		real := syncDirFn
+		fx := fsOf(t, sess)
+		real := fx.syncDirFn
 		calls := 0
-		setSeam(t, &syncDirFn, func(dir string) error {
+		fx.syncDirFn = func(dir string) error {
 			calls++
 			if calls == 2 {
 				return errors.New("injected sync failure after the restore")
 			}
 			return real(dir)
-		})
+		}
 		res, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: path}})
 		check(t, res, err, exe)
 	})
@@ -232,7 +233,7 @@ func TestManagedRecoveryReportsRestoredBinary(t *testing.T) {
 		life := &fakeLife{installed: true, running: true}
 		_, _, sess, exe := managedEnv(t, life, &fakeRec{})
 		path := stageNew(t, sess)
-		moved := swapAfterFirstReplace(t, filepath.Dir(exe), false)
+		moved := swapAfterFirstReplace(t, fsOf(t, sess), filepath.Dir(exe), false)
 		res, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: path}})
 		check(t, res, err, filepath.Join(moved, filepath.Base(exe)))
 	})

@@ -40,15 +40,16 @@ func TestOpenLockFileRetriesAfterCreateRace(t *testing.T) {
 	root, dir := lockRoot(t)
 	path := filepath.Join(dir, lockName)
 	created := false
-	setSeam(t, &lockOpenHook, func(stage string) {
+	fx := realFS()
+	fx.lockOpenHook = func(stage string) {
 		if stage == "after-lstat" && !created {
 			created = true
 			if err := os.WriteFile(path, nil, 0o600); err != nil {
 				t.Error(err)
 			}
 		}
-	})
-	f, err := realFS().openLockFile(root, lockName)
+	}
+	f, err := fx.openLockFile(root, lockName)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -75,7 +76,8 @@ func TestOpenLockFileRefusesReplacedLock(t *testing.T) {
 		t.Fatal(err)
 	}
 	replaced := false
-	setSeam(t, &lockOpenHook, func(stage string) {
+	fx := realFS()
+	fx.lockOpenHook = func(stage string) {
 		if stage == "after-lstat" && !replaced {
 			replaced = true
 			other := filepath.Join(dir, "other")
@@ -86,8 +88,8 @@ func TestOpenLockFileRefusesReplacedLock(t *testing.T) {
 				t.Error(err)
 			}
 		}
-	})
-	f, err := realFS().openLockFile(root, lockName)
+	}
+	f, err := fx.openLockFile(root, lockName)
 	if err == nil {
 		_ = f.Close()
 	}
@@ -99,7 +101,8 @@ func TestOpenLockFileRefusesReplacedLock(t *testing.T) {
 func TestOpenLockFileGivesUpWhenLockKeepsChanging(t *testing.T) {
 	root, dir := lockRoot(t)
 	path := filepath.Join(dir, lockName)
-	setSeam(t, &lockOpenHook, func(stage string) {
+	fx := realFS()
+	fx.lockOpenHook = func(stage string) {
 		switch stage {
 		case "before-lstat":
 			if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -110,8 +113,8 @@ func TestOpenLockFileGivesUpWhenLockKeepsChanging(t *testing.T) {
 				t.Error(err)
 			}
 		}
-	})
-	f, err := realFS().openLockFile(root, lockName)
+	}
+	f, err := fx.openLockFile(root, lockName)
 	if err == nil {
 		_ = f.Close()
 	}
@@ -187,7 +190,7 @@ func TestManagedCommitRefusesMovedDirectory(t *testing.T) {
 func TestCommitReportsBackupRemovalFailure(t *testing.T) {
 	sess, _ := standaloneSession(t)
 	path := stageNew(t, sess)
-	setSeam(t, &osRemove, func(string) error { return errors.New("injected remove failure") })
+	fsOf(t, sess).osRemove = func(string) error { return errors.New("injected remove failure") }
 	res, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: path}})
 	if !res.Applied {
 		t.Fatalf("Applied=false err=%v; the replacement itself succeeded", err)
@@ -201,13 +204,13 @@ func TestCommitReportsDirectorySyncFailure(t *testing.T) {
 	sess, _ := standaloneSession(t)
 	path := stageNew(t, sess)
 	syncs := 0
-	setSeam(t, &syncDirFn, func(string) error {
+	fsOf(t, sess).syncDirFn = func(string) error {
 		syncs++
 		if syncs == 1 {
 			return nil // the sync inside the replacement
 		}
 		return errors.New("injected commit sync failure")
-	})
+	}
 	res, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: path}})
 	if !res.Applied {
 		t.Fatalf("Applied=false err=%v", err)
@@ -228,12 +231,14 @@ func TestRollbackReplacementFailures(t *testing.T) {
 	wantErrContaining(t, realFS().rollbackReplacement(ctx, target, applyResult{}), "no backup to restore")
 
 	t.Run("restore", func(t *testing.T) {
-		setSeam(t, &replacePath, func(context.Context, string, string) error { return errors.New("injected restore failure") })
-		wantErrContaining(t, realFS().rollbackReplacement(ctx, target, applyResult{backup: backup}), "restore backup")
+		fx := realFS()
+		fx.replacePath = func(context.Context, string, string) error { return errors.New("injected restore failure") }
+		wantErrContaining(t, fx.rollbackReplacement(ctx, target, applyResult{backup: backup}), "restore backup")
 	})
 	t.Run("sync", func(t *testing.T) {
-		setSeam(t, &syncDirFn, func(string) error { return errors.New("injected rollback sync failure") })
-		wantErrContaining(t, realFS().rollbackReplacement(ctx, target, applyResult{backup: backup}), "injected rollback sync failure")
+		fx := realFS()
+		fx.syncDirFn = func(string) error { return errors.New("injected rollback sync failure") }
+		wantErrContaining(t, fx.rollbackReplacement(ctx, target, applyResult{backup: backup}), "injected rollback sync failure")
 		if got := readString(t, exe); got != "old-bytes" {
 			t.Fatalf("target holds %q; the restore ran before the sync failed", got)
 		}
@@ -249,22 +254,23 @@ func TestCopyFileFailuresRemoveTheCopy(t *testing.T) {
 		t.Fatal(err)
 	}
 	injected := errors.New("injected")
-	cases := map[string]func(t *testing.T){
-		"chmod": func(t *testing.T) {
-			setSeam(t, &fileChmod, func(*os.File, os.FileMode) error { return injected })
+	cases := map[string]func(fx *fsOps){
+		"chmod": func(fx *fsOps) {
+			fx.fileChmod = func(*os.File, os.FileMode) error { return injected }
 		},
-		"sync": func(t *testing.T) {
-			setSeam(t, &fileSync, func(*os.File) error { return injected })
+		"sync": func(fx *fsOps) {
+			fx.fileSync = func(*os.File) error { return injected }
 		},
-		"close": func(t *testing.T) {
-			setSeam(t, &fileClose, func(f *os.File) error { return errors.Join(f.Close(), injected) })
+		"close": func(fx *fsOps) {
+			fx.fileClose = func(f *os.File) error { return errors.Join(f.Close(), injected) }
 		},
 	}
 	for name, inject := range cases {
 		t.Run(name, func(t *testing.T) {
-			inject(t)
+			fx := realFS()
+			inject(fx)
 			dst := filepath.Join(dir, "dst-"+name)
-			if err := realFS().copyFile(src, dst); !errors.Is(err, injected) {
+			if err := fx.copyFile(src, dst); !errors.Is(err, injected) {
 				t.Fatalf("err = %v, want the injected %s failure", err, name)
 			}
 			if _, err := os.Lstat(dst); !errors.Is(err, os.ErrNotExist) {

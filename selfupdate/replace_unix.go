@@ -10,18 +10,13 @@ import (
 	"syscall"
 )
 
-var (
-	osRename = os.Rename
-	osLchown = os.Lchown
-)
-
 // osFS are fsOps's Unix-only effects.
 type osFS struct {
 	osLchown func(string, int, int) error
 }
 
 func realOSFS() osFS {
-	return osFS{osLchown: func(name string, uid, gid int) error { return osLchown(name, uid, gid) }}
+	return osFS{osLchown: os.Lchown}
 }
 
 // chownStaging gives staging the replaced binary's owner and group. An
@@ -49,8 +44,8 @@ func isUnsupportedDirSync(error) bool {
 	return false
 }
 
-func replacePathOS(_ context.Context, oldpath, newpath string) error {
-	return osRename(oldpath, newpath)
+func (*fsOps) replacePathOS(_ context.Context, oldpath, newpath string) error {
+	return os.Rename(oldpath, newpath)
 }
 
 // replaceTarget replaces target with staging, keeping a backup. When

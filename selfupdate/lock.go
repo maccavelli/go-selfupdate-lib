@@ -6,10 +6,6 @@ import (
 	"os"
 )
 
-// lockOpenHook runs at each stage of openLockFile. Tests use it to change
-// the lock between the Lstat and the open; it does nothing otherwise.
-var lockOpenHook = func(stage string) {}
-
 // openLockFile opens the lock file name inside root without following a
 // symlink. os.Root follows a final-component symlink that stays inside the
 // root, whatever O_NOFOLLOW says, so the name is checked with Lstat first,

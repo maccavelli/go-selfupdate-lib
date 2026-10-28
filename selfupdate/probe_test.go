@@ -159,7 +159,7 @@ func TestPostInstallRollback(t *testing.T) {
 func TestPostInstallRollbackFailureReportsBackup(t *testing.T) {
 	sess, _ := postInstallSession(t, ProberFunc(func(context.Context, ProbeRequest) error { return errors.New("crashes") }))
 	path := stageNew(t, sess)
-	failRestore(t)
+	failRestore(t, fsOf(t, sess))
 	res, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: path}})
 	if err == nil || res.Applied || res.RolledBack || res.Backup == "" {
 		t.Fatalf("res=%+v err=%v", res, err)

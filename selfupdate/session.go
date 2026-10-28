@@ -571,11 +571,6 @@ func (s *installSession) Close() error {
 	return s.closeErr
 }
 
-// afterLockHook runs, when set, right after beginSession takes the lock.
-// Tests use it to change the directory at that moment; fsOps.afterLockHook
-// calls it.
-var afterLockHook func()
-
 func (fx *fsOps) beginSession(ctx context.Context, policy TargetPolicy, original Target, timeout time.Duration) (*installSession, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err

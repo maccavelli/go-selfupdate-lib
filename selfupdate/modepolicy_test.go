@@ -111,14 +111,14 @@ func TestLeftoverRemovalFailureIgnored(t *testing.T) {
 	if err := os.WriteFile(left, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	tried := 0
-	setSeam(t, &leftoverRemove, func(*os.Root, string) error {
-		tried++
-		return errors.New("fixture: busy")
-	})
 	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
 	if err != nil {
 		t.Fatal(err)
+	}
+	tried := 0
+	fsFor(inst).leftoverRemove = func(*os.Root, string) error {
+		tried++
+		return errors.New("fixture: busy")
 	}
 	if err := inst.CleanupPending(context.Background()); err != nil || tried != 1 {
 		t.Fatalf("CleanupPending = %v after %d removal attempts", err, tried)

@@ -26,19 +26,19 @@ func backupsIn(t *testing.T, dir string) []string {
 	return out
 }
 
-// failRestore lets the first replacement through and fails every later one,
-// so the restore after an injected directory-sync failure fails too.
-func failRestore(t *testing.T) {
+// failRestore lets fx's first replacement through and fails every later
+// one, so the restore after an injected directory-sync failure fails too.
+func failRestore(t *testing.T, fx *fsOps) {
 	t.Helper()
-	real := replacePath
+	real := fx.replacePath
 	calls := 0
-	setSeam(t, &replacePath, func(ctx context.Context, oldpath, newpath string) error {
+	fx.replacePath = func(ctx context.Context, oldpath, newpath string) error {
 		calls++
 		if calls == 1 {
 			return real(ctx, oldpath, newpath)
 		}
 		return errors.New("injected restore failure")
-	})
+	}
 }
 
 // TestRunReportsKeptBackup: when the new binary is live and restoring the
@@ -56,8 +56,9 @@ func TestRunReportsKeptBackup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	setSeam(t, &syncDirFn, func(string) error { return errors.New("injected directory sync failure") })
-	failRestore(t)
+	fx := fsFor(inst)
+	fx.syncDirFn = func(string) error { return errors.New("injected directory sync failure") }
+	failRestore(t, fx)
 	u, err := New(Config{
 		Source: &scriptSource{rel: rel, bodies: bodies}, Versions: NewStrictVersionPolicy(), Assets: sel,
 		Installer: inst, Reporter: &recReporter{}, Confirmer: &recConfirmer{}, Limits: DefaultLimits(),
@@ -89,7 +90,7 @@ func TestManagedReportsKeptBackup(t *testing.T) {
 	rec := &fakeRec{}
 	_, _, sess, exe := managedEnv(t, life, rec)
 	path := stageNew(t, sess)
-	failRestore(t)
+	failRestore(t, fsOf(t, sess))
 	res, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: path}})
 	if !errors.Is(err, ErrManagedInstall) || res.Applied {
 		t.Fatalf("Applied=%v err=%v", res.Applied, err)
@@ -113,9 +114,10 @@ func TestInstallRollsBackWhenDirectoryMovesAfterRename(t *testing.T) {
 	path := stageNew(t, sess)
 	dir := filepath.Dir(exe)
 	moved := dir + ".moved"
-	real := replacePath
+	fx := fsOf(t, sess)
+	real := fx.replacePath
 	var swapErr error
-	setSeam(t, &replacePath, func(ctx context.Context, oldpath, newpath string) error {
+	fx.replacePath = func(ctx context.Context, oldpath, newpath string) error {
 		if err := real(ctx, oldpath, newpath); err != nil {
 			return err
 		}
@@ -125,7 +127,7 @@ func TestInstallRollsBackWhenDirectoryMovesAfterRename(t *testing.T) {
 			return os.Mkdir(dir, 0o755)
 		}
 		return nil
-	})
+	}
 	t.Cleanup(func() {
 		if swapErr == nil {
 			_ = os.RemoveAll(dir)
@@ -167,10 +169,11 @@ func TestReplaceRestoreSurvivesCancellation(t *testing.T) {
 	path := stageNew(t, sess)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	real := replacePath
+	fx := fsOf(t, sess)
+	real := fx.replacePath
 	var restoreCtxErr error
 	calls := 0
-	setSeam(t, &replacePath, func(c context.Context, oldpath, newpath string) error {
+	fx.replacePath = func(c context.Context, oldpath, newpath string) error {
 		calls++
 		if calls == 1 {
 			err := real(c, oldpath, newpath)
@@ -179,8 +182,8 @@ func TestReplaceRestoreSurvivesCancellation(t *testing.T) {
 		}
 		restoreCtxErr = c.Err()
 		return real(c, oldpath, newpath)
-	})
-	setSeam(t, &syncDirFn, func(string) error { return errors.New("injected directory sync failure") })
+	}
+	fx.syncDirFn = func(string) error { return errors.New("injected directory sync failure") }
 	_, err := sess.Install(ctx, InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: path}})
 	if err == nil {
 		t.Fatal("want the injected sync failure")
@@ -219,7 +222,7 @@ func TestBeginChecksDirectoryBeforeReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 	var swapErr error
-	setSeam(t, &afterLockHook, func() {
+	fsFor(inst).afterLockHook = func() {
 		if swapErr = os.Rename(dir, moved); swapErr != nil {
 			// No swap: the placeholder receipt is not a real one, so take it
 			// away before Begin would validate it.
@@ -237,7 +240,7 @@ func TestBeginChecksDirectoryBeforeReceipt(t *testing.T) {
 				t.Error(err)
 			}
 		}
-	})
+	}
 	t.Cleanup(func() {
 		if swapErr == nil {
 			_ = os.RemoveAll(dir)
@@ -293,20 +296,18 @@ func dryRunUpdater(t *testing.T, inst Installer) *Updater {
 // or a managed update's
 // (docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md B1).
 func TestKeptBackupSurvivesLaterSessions(t *testing.T) {
-	realSync, realReplace := syncDirFn, replacePath
-	// keep fails the restore after an injected sync failure, so the backup
-	// is kept and reported; then it puts the real seams back for the later
-	// session.
-	keep := func(t *testing.T, install func() (InstallResult, error)) string {
+	// keep fails sess's directory sync and then its restore, so the backup
+	// is kept and reported. The failures are sess's alone: a later session
+	// has the real effects.
+	keep := func(t *testing.T, sess InstallSession, install func() (InstallResult, error)) string {
 		t.Helper()
-		setSeam(t, &syncDirFn, func(string) error { return errors.New("injected directory sync failure") })
-		failRestore(t)
+		fx := fsOf(t, sess)
+		fx.syncDirFn = func(string) error { return errors.New("injected directory sync failure") }
+		failRestore(t, fx)
 		res, err := install()
 		if err == nil || res.Applied || res.Backup == "" {
 			t.Fatalf("Applied=%v Backup=%q err=%v; want a kept backup", res.Applied, res.Backup, err)
 		}
-		setSeam(t, &syncDirFn, realSync)
-		setSeam(t, &replacePath, realReplace)
 		return res.Backup
 	}
 	survives := func(t *testing.T, backup string) {
@@ -334,7 +335,7 @@ func TestKeptBackupSurvivesLaterSessions(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		backup := keep(t, func() (InstallResult, error) {
+		backup := keep(t, sess, func() (InstallResult, error) {
 			return sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: stageNew(t, sess)}})
 		})
 		if err := sess.Close(); err != nil {
@@ -377,7 +378,7 @@ func TestKeptBackupSurvivesLaterSessions(t *testing.T) {
 	t.Run("Managed", func(t *testing.T) {
 		life := &fakeLife{installed: true, running: true, healthErr: errors.New("unhealthy")}
 		m, _, sess, _ := managedEnv(t, life, &fakeRec{})
-		backup := keep(t, func() (InstallResult, error) {
+		backup := keep(t, sess, func() (InstallResult, error) {
 			return sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: stageNew(t, sess)}})
 		})
 		if err := sess.Close(); err != nil {

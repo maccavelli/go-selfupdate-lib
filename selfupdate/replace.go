@@ -9,35 +9,12 @@ import (
 	"time"
 )
 
-var (
-	fileChmod   = (*os.File).Chmod
-	fileSync    = (*os.File).Sync
-	fileClose   = (*os.File).Close
-	osChmod     = os.Chmod
-	osRemove    = os.Remove
-	osLink      = os.Link
-	syncDirFn   = syncDirectory
-	syncRootFn  = syncRoot
-	replacePath func(context.Context, string, string) error
-)
-
-// replacePath's default reaches realFS on Windows, and writeJournalFn's
-// does everywhere, and realFS's fields read both: an initializer would be
-// an initialization cycle, so they are set here, until Q6 of
-// docs/decisions/0038-PLAN-pinned-plans-lifecycle-conformance-and-bubble-tests.md
-// moves them onto fsOps.
-func init() {
-	replacePath = replacePathOS
-	writeJournalFn = func(root *os.Root, target Target, j pendingJournal) error {
-		return realFS().writeJournal(root, target, j)
-	}
-}
-
 // fsOps are the install path's effects on the file system, as function
 // fields a test replaces on a value of its own: StandaloneInstaller holds
 // one, and each of its sessions shares it
 // (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
-// D3-A). The fields are named for the package variables they replace.
+// D3-A). The fields keep the names of the package variables they
+// replaced, so a test reads as it did.
 type fsOps struct {
 	osFS
 	fileChmod      func(*os.File, os.FileMode) error
@@ -59,33 +36,28 @@ type fsOps struct {
 	afterLockHook func()
 }
 
-// realFS returns the real effects, a new value on each call. Each field
-// calls the package variable it is named for when it runs, so a test that
-// sets that variable reaches every session, whenever it set it
-// (docs/decisions/0038-PLAN-pinned-plans-lifecycle-conformance-and-bubble-tests.md
-// Q5).
+// realFS returns the real effects, a new value on each call, so what one
+// test changes reaches no other. replacePath and writeJournalFn are bound
+// to the value's own methods, so they see its other fields.
 func realFS() *fsOps {
-	return &fsOps{
+	fx := &fsOps{
 		osFS:           realOSFS(),
-		fileChmod:      func(f *os.File, mode os.FileMode) error { return fileChmod(f, mode) },
-		fileSync:       func(f *os.File) error { return fileSync(f) },
-		fileClose:      func(f *os.File) error { return fileClose(f) },
-		osChmod:        func(name string, mode os.FileMode) error { return osChmod(name, mode) },
-		osRemove:       func(name string) error { return osRemove(name) },
-		osLink:         func(oldname, newname string) error { return osLink(oldname, newname) },
-		syncDirFn:      func(dir string) error { return syncDirFn(dir) },
-		syncRootFn:     func(root *os.Root) error { return syncRootFn(root) },
-		replacePath:    func(ctx context.Context, oldpath, newpath string) error { return replacePath(ctx, oldpath, newpath) },
-		writeJournalFn: func(root *os.Root, target Target, j pendingJournal) error { return writeJournalFn(root, target, j) },
-		keptRenameFn:   func(root *os.Root, oldname, newname string) error { return keptRenameFn(root, oldname, newname) },
-		leftoverRemove: func(root *os.Root, name string) error { return leftoverRemove(root, name) },
-		lockOpenHook:   func(stage string) { lockOpenHook(stage) },
-		afterLockHook: func() {
-			if afterLockHook != nil {
-				afterLockHook()
-			}
-		},
+		fileChmod:      (*os.File).Chmod,
+		fileSync:       (*os.File).Sync,
+		fileClose:      (*os.File).Close,
+		osChmod:        os.Chmod,
+		osRemove:       os.Remove,
+		osLink:         os.Link,
+		syncDirFn:      syncDirectory,
+		syncRootFn:     syncRoot,
+		keptRenameFn:   (*os.Root).Rename,
+		leftoverRemove: (*os.Root).Remove,
+		lockOpenHook:   func(string) {},
+		afterLockHook:  func() {},
 	}
+	fx.replacePath = fx.replacePathOS
+	fx.writeJournalFn = fx.writeJournal
+	return fx
 }
 
 func randomSibling(dir, prefix string) (string, error) {

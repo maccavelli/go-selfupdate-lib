@@ -21,15 +21,15 @@ import (
 // first replacePath (the replacement) and puts an empty one in its place.
 // readOnly also makes the moved, locked directory read-only, so a rollback
 // through the root fails while the backup survives.
-func swapAfterFirstReplace(t *testing.T, dir string, readOnly bool) (moved string) {
+func swapAfterFirstReplace(t *testing.T, fx *fsOps, dir string, readOnly bool) (moved string) {
 	t.Helper()
 	if runtime.GOOS == goosWindows {
 		t.Skip("a directory swap is refused on Windows")
 	}
 	moved = dir + ".moved"
-	real := replacePath
+	real := fx.replacePath
 	calls := 0
-	setSeam(t, &replacePath, func(ctx context.Context, oldpath, newpath string) error {
+	fx.replacePath = func(ctx context.Context, oldpath, newpath string) error {
 		calls++
 		if err := real(ctx, oldpath, newpath); err != nil {
 			return err
@@ -46,7 +46,7 @@ func swapAfterFirstReplace(t *testing.T, dir string, readOnly bool) (moved strin
 			return os.Mkdir(dir, 0o755)
 		}
 		return nil
-	})
+	}
 	t.Cleanup(func() {
 		_ = os.Chmod(moved, 0o755)
 		_ = os.RemoveAll(dir)
@@ -143,7 +143,7 @@ func TestApplyUndoesSwap(t *testing.T) {
 	}
 	defer sess.Close()
 	path := stageNew(t, sess)
-	moved := swapAfterFirstReplace(t, filepath.Dir(exe), false)
+	moved := swapAfterFirstReplace(t, fsOf(t, sess), filepath.Dir(exe), false)
 	applied, err := sess.(TwoPhaseSession).Apply(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: path}})
 	if !errors.Is(err, ErrConcurrentUpdate) {
 		t.Fatalf("Apply err = %v, want ErrConcurrentUpdate", err)
@@ -174,7 +174,7 @@ func TestRunReportsUnrestoredBackup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	moved := swapAfterFirstReplace(t, filepath.Dir(exe), true)
+	moved := swapAfterFirstReplace(t, fsFor(inst), filepath.Dir(exe), true)
 	req := applyReq()
 	req.Yes = true
 	res, err := u.Run(context.Background(), req)
@@ -209,13 +209,13 @@ func TestProbeRollbackSyncFailure(t *testing.T) {
 	}
 	defer sess.Close()
 	calls := 0
-	setSeam(t, &syncDirFn, func(dir string) error {
+	fsOf(t, sess).syncDirFn = func(dir string) error {
 		calls++
 		if calls == 2 {
 			return errors.New("injected sync failure after the rollback rename")
 		}
 		return syncDirectory(dir)
-	})
+	}
 	path := stageNew(t, sess)
 	res, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: path}})
 	if err == nil || !strings.Contains(err.Error(), "injected sync failure") {

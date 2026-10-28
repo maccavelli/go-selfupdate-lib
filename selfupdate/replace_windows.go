@@ -23,8 +23,8 @@ func isUnsupportedDirSync(err error) bool {
 	return errors.Is(err, windows.ERROR_ACCESS_DENIED)
 }
 
-func replacePathOS(ctx context.Context, oldpath, newpath string) error {
-	return realFS().moveFileReplace(ctx, oldpath, newpath)
+func (fx *fsOps) replacePathOS(ctx context.Context, oldpath, newpath string) error {
+	return fx.moveFileReplace(ctx, oldpath, newpath)
 }
 
 // replaceTarget replaces target with staging, keeping a backup. When
@@ -84,16 +84,13 @@ func retryBudget(ctx context.Context) time.Duration {
 	return DefaultLockTimeout
 }
 
-// moveFileExFn is windows.MoveFileEx, replaceable in tests.
-var moveFileExFn = windows.MoveFileEx
-
 // osFS are fsOps's Windows-only effects.
 type osFS struct {
 	moveFileExFn func(from, to *uint16, flags uint32) error
 }
 
 func realOSFS() osFS {
-	return osFS{moveFileExFn: func(from, to *uint16, flags uint32) error { return moveFileExFn(from, to, flags) }}
+	return osFS{moveFileExFn: windows.MoveFileEx}
 }
 
 // moveFileReplace retries a busy replacement until the retry budget (the

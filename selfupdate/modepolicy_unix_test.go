@@ -13,12 +13,19 @@ import (
 // Tests for docs/decisions/0010-PLAN-v1-6-0-owner-contracts.md S6 (Q6): the
 // special-bit policy and ownership on Unix.
 
-// unixInstall installs "new-bytes" over exe under policy.
-func unixInstall(t *testing.T, exe string, policy TargetPolicy) (InstallResult, error) {
+// unixInstall installs "new-bytes" over exe under policy, with each edit
+// made to the installer's file-system effects first.
+func unixInstall(t *testing.T, exe string, policy TargetPolicy, edits ...func(*fsOps)) (InstallResult, error) {
 	t.Helper()
 	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: policy})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(edits) > 0 {
+		fx := fsFor(inst)
+		for _, edit := range edits {
+			edit(fx)
+		}
 	}
 	target, err := inst.ResolveTarget(context.Background())
 	if err != nil {
@@ -74,11 +81,12 @@ func TestStagingOwnership(t *testing.T) {
 			}
 			st := info.Sys().(*syscall.Stat_t)
 			var gotUID, gotGID int
-			setSeam(t, &osLchown, func(_ string, uid, gid int) error {
-				gotUID, gotGID = uid, gid
-				return c.err
+			res, err := unixInstall(t, exe, TargetPolicy{ExecutablePath: exe}, func(fx *fsOps) {
+				fx.osLchown = func(_ string, uid, gid int) error {
+					gotUID, gotGID = uid, gid
+					return c.err
+				}
 			})
-			res, err := unixInstall(t, exe, TargetPolicy{ExecutablePath: exe})
 			if gotUID != int(st.Uid) || gotGID != int(st.Gid) {
 				t.Fatalf("chown to %d:%d, want %d:%d", gotUID, gotGID, st.Uid, st.Gid)
 			}

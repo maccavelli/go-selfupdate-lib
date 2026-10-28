@@ -14,9 +14,6 @@ import (
 // keptName first, and is not a leftover (0015-MADR B1); so is the backup an
 // interrupted update's journal names, before the sweep (0017-MADR 3B).
 
-// leftoverRemove is (*os.Root).Remove, replaced in tests.
-var leftoverRemove = (*os.Root).Remove
-
 // isLeftover reports whether name is one this package creates for the
 // target base and removes on success: a staging file, as CreateStaging
 // names it, or a backup, as randomSibling names it. Both end in the

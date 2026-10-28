@@ -9,13 +9,13 @@ import (
 
 func TestInjectedRenameFailure(t *testing.T) {
 	_, exe := withTempHome(t)
-	setSeam(t, &replacePath, func(ctx context.Context, oldpath, newpath string) error {
-		return errors.New("injected rename failure")
-	})
 
 	inst, err := NewStandaloneInstaller(InstallOptions{TargetPolicy: TargetPolicy{ExecutablePath: exe}})
 	if err != nil {
 		t.Fatal(err)
+	}
+	fsFor(inst).replacePath = func(ctx context.Context, oldpath, newpath string) error {
+		return errors.New("injected rename failure")
 	}
 	target, err := inst.ResolveTarget(context.Background())
 	if err != nil {

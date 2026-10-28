@@ -34,6 +34,30 @@ func standaloneSession(t *testing.T) (InstallSession, string) {
 	return sess, exe
 }
 
+// fsOf is the file-system effects sess uses, or the standalone session
+// under a managed one uses; a test that changes them changes that session
+// alone
+// (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// D3-A).
+func fsOf(t *testing.T, sess InstallSession) *fsOps {
+	t.Helper()
+	switch s := sess.(type) {
+	case *installSession:
+		return s.fs
+	case *managedSession:
+		return fsOf(t, s.inner)
+	}
+	t.Fatalf("no file-system effects in a %T", sess)
+	return nil
+}
+
+// fsFor gives inst file-system effects of its own, which every session it
+// begins shares, and returns them for the test to change.
+func fsFor(inst *StandaloneInstaller) *fsOps {
+	inst.fs = realFS()
+	return inst.fs
+}
+
 // setSeam replaces a package-level seam for one test and restores it at
 // cleanup. Every test that swaps a seam goes through it. Seams are package
 // state, so no test in this package calls t.Parallel: two tests swapping
@@ -77,16 +101,17 @@ func TestInstallSyncAndRollbackFailureReported(t *testing.T) {
 	path := stageNew(t, sess)
 	syncErr := errors.New("injected dir sync failure")
 	restoreErr := errors.New("injected restore failure")
-	setSeam(t, &syncDirFn, func(string) error { return syncErr })
-	real := replacePath
+	fsOf(t, sess).syncDirFn = func(string) error { return syncErr }
+	fx := fsOf(t, sess)
+	real := fx.replacePath
 	calls := 0
-	setSeam(t, &replacePath, func(ctx context.Context, oldpath, newpath string) error {
+	fx.replacePath = func(ctx context.Context, oldpath, newpath string) error {
 		calls++
 		if calls == 1 {
 			return real(ctx, oldpath, newpath)
 		}
 		return restoreErr
-	})
+	}
 	res, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: path}})
 	if !errors.Is(err, syncErr) || !errors.Is(err, restoreErr) {
 		t.Fatalf("err = %v, want both the sync and the restore failure", err)
@@ -109,23 +134,24 @@ func TestManagedApplyFailureRetriesRollback(t *testing.T) {
 	_, _, sess, exe := managedEnv(t, life, &fakeRec{})
 	path := stageNew(t, sess)
 	syncCalls := 0
-	realSync := syncDirFn
-	setSeam(t, &syncDirFn, func(dir string) error {
+	fx := fsOf(t, sess)
+	realSync := fx.syncDirFn
+	fx.syncDirFn = func(dir string) error {
 		syncCalls++
 		if syncCalls == 1 {
 			return errors.New("injected dir sync failure")
 		}
 		return realSync(dir)
-	})
-	real := replacePath
+	}
+	real := fx.replacePath
 	calls := 0
-	setSeam(t, &replacePath, func(ctx context.Context, oldpath, newpath string) error {
+	fx.replacePath = func(ctx context.Context, oldpath, newpath string) error {
 		calls++
 		if calls == 2 {
 			return errors.New("injected restore failure")
 		}
 		return real(ctx, oldpath, newpath)
-	})
+	}
 	_, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: path}})
 	if !errors.Is(err, ErrManagedInstall) {
 		t.Fatalf("err = %v", err)
@@ -167,9 +193,9 @@ func TestBackupCopyFallbackPreservesMode(t *testing.T) {
 	if runtime.GOOS == goosWindows {
 		t.Skip("POSIX permission bits: Windows keeps only a read-only flag")
 	}
-	setSeam(t, &osLink, func(string, string) error { return errors.New("injected link failure") })
 	life := &fakeLife{installed: true, running: true, healthErr: errors.New("unhealthy")}
 	_, _, sess, exe := managedEnv(t, life, &fakeRec{})
+	fsOf(t, sess).osLink = func(string, string) error { return errors.New("injected link failure") }
 	before, err := os.Stat(exe)
 	if err != nil {
 		t.Fatal(err)
@@ -194,7 +220,7 @@ func TestBackupCopyFallbackPreservesMode(t *testing.T) {
 func TestInstallFailureBeforeRenameRemovesStagingOnClose(t *testing.T) {
 	sess, exe := standaloneSession(t)
 	path := stageNew(t, sess)
-	setSeam(t, &replacePath, func(context.Context, string, string) error { return errors.New("injected rename failure") })
+	fsOf(t, sess).replacePath = func(context.Context, string, string) error { return errors.New("injected rename failure") }
 	if _, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: path}}); err == nil {
 		t.Fatal("expected the rename failure")
 	}
@@ -319,28 +345,28 @@ func TestInstallInjectedFailures(t *testing.T) {
 	failing := errors.New("injected")
 	cases := []struct {
 		name       string
-		inject     func(t *testing.T)
+		inject     func(t *testing.T, fx *fsOps)
 		wantTarget string
 		wantApply  bool
 	}{
-		{"chmod", func(t *testing.T) {
-			setSeam(t, &osChmod, func(string, os.FileMode) error { return failing })
+		{"chmod", func(t *testing.T, fx *fsOps) {
+			fx.osChmod = func(string, os.FileMode) error { return failing }
 		}, "old-bytes", false},
-		{"rename", func(t *testing.T) {
-			setSeam(t, &replacePath, func(context.Context, string, string) error { return failing })
+		{"rename", func(t *testing.T, fx *fsOps) {
+			fx.replacePath = func(context.Context, string, string) error { return failing }
 		}, "old-bytes", false},
-		{"dir sync, restored", func(t *testing.T) {
-			setSeam(t, &syncDirFn, func(string) error { return failing })
+		{"dir sync, restored", func(t *testing.T, fx *fsOps) {
+			fx.syncDirFn = func(string) error { return failing }
 		}, "old-bytes", false},
-		{"commit remove backup", func(t *testing.T) {
-			setSeam(t, &osRemove, func(string) error { return failing })
+		{"commit remove backup", func(t *testing.T, fx *fsOps) {
+			fx.osRemove = func(string) error { return failing }
 		}, "new-bytes", true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			sess, exe := standaloneSession(t)
 			path := stageNew(t, sess)
-			tc.inject(t)
+			tc.inject(t, fsOf(t, sess))
 			res, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: path}})
 			if !errors.Is(err, failing) {
 				t.Fatalf("err = %v", err)
@@ -492,36 +518,44 @@ func TestInstallReportsRestoreAfterSyncFailure(t *testing.T) {
 	t.Run("restored after a failed sync", func(t *testing.T) {
 		sess, exe := standaloneSession(t)
 		path := stageNew(t, sess)
-		real := syncDirFn
+		fx := fsOf(t, sess)
+		real := fx.syncDirFn
 		calls := 0
-		setSeam(t, &syncDirFn, func(dir string) error {
+		fx.syncDirFn = func(dir string) error {
 			calls++
 			if calls == 1 {
 				return errors.New("injected dir sync failure")
 			}
 			return real(dir)
-		})
+		}
 		res, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: path}})
 		check(t, res, err, exe)
 	})
 	t.Run("rolled back in the locked directory, unsynced", func(t *testing.T) {
 		sess, exe := standaloneSession(t)
 		path := stageNew(t, sess)
-		moved := swapAfterFirstReplace(t, filepath.Dir(exe), false)
+		moved := swapAfterFirstReplace(t, fsOf(t, sess), filepath.Dir(exe), false)
 		// The first root sync is the journal's, before the rename
 		// (docs/decisions/0017-PLAN-verify-build-provenance-and-close-0015-open-items.md
 		// Q1); the rollback's, after it, fails.
-		real := syncRootFn
+		fx := fsOf(t, sess)
+		real := fx.syncRootFn
 		rootSyncs := 0
-		setSeam(t, &syncRootFn, func(r *os.Root) error {
+		fx.syncRootFn = func(r *os.Root) error {
 			rootSyncs++
 			if rootSyncs == 1 {
 				return real(r)
 			}
 			return errors.New("injected root sync failure")
-		})
+		}
 		res, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: path}})
 		check(t, res, err, filepath.Join(moved, filepath.Base(exe)))
+		// The rollback's own sync failed, and says so
+		// (docs/decisions/0038-PLAN-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+		// Deviation D3).
+		if !errors.Is(err, errRestoredUnsynced) {
+			t.Fatalf("err = %v, want the rollback's failed sync reported", err)
+		}
 	})
 }
 
