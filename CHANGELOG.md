@@ -8,6 +8,27 @@ listed in the
 [migration guide](docs/guides/migrating-from-mcplib-selfupdate.md), one
 section per release, and each entry links its section and its records.
 
+## v1.22.3 - 2026-10-28
+
+### Changed
+
+- The module's own tests only. No exported identifier and no behaviour a
+  program can see changes: `make apicheck` reports `v1.22.3` compatible
+  with `v1.22.2`.
+  - The `service` package and its four backends drop their test clocks.
+    Their timing tests run in `testing/synctest` bubbles on the clock
+    production uses, at the documented default bounds, and take no wall
+    time.
+  - `selfupdate`'s test seams are no longer package variables: the
+    install path's file-system effects belong to the installer and its
+    sessions, and the clock, the environment, the terminal check and the
+    running platform are given to the values that read them. Most of the
+    package's tests now run in parallel.
+
+See [the guide](docs/guides/migrating-from-mcplib-selfupdate.md#from-v1222-to-v1223),
+[0038-MADR](docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md) D3-A and
+[0038-PLAN](docs/decisions/0038-PLAN-pinned-plans-lifecycle-conformance-and-bubble-tests.md) Q1 to Q7.
+
 ## v1.22.2 - 2026-10-27
 
 ### Fixed

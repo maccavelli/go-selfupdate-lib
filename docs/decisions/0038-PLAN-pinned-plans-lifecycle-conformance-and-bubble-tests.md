@@ -528,3 +528,7 @@ Files: from the list, `selfupdate/target.go`, `github.go`, `credentials.go`, `co
 
 * **Found:** step 1's target resolution is reached only through the installer and the session, so its lookups touched `replace.go` (the `fsOps` fields), `session.go` (`beginSession`'s re-check) and `standalone.go` (three `resolveTarget` calls). Those changes were made, and each step built and passed, before the omission was seen; the owner was told. Step 5 needs `types.go` (the `Updater` struct) and `runoptions.go` (`run.checker`). Test files that set these seams directly, rather than through the named helpers (`checker_test.go`, `checkcache_outcome_test.go`, `github_test.go`), were taken as within the list's intent.
 * **Decision:** the owner, 2026-10-28, chose "Add all five to Q7". No design change; no MADR change.
+
+### Q8: `v1.22.3` (2026-10-28)
+
+1. **The pre-tag change:** a `## v1.22.3` entry in `CHANGELOG.md` (Changed: the module's own tests only; no exported identifier and no behaviour a program can see), and a "From v1.22.2 to v1.22.3" section in the migration guide's §22, before its Check. The version pins move in the pin commit after the tag, as `v1.22.2`'s did. `make gate`: every step rc=0, `apicheck` "compatible with v1.22.2", `overall=0`; `make markdownlint`, `make docs-check` (846 links, 0 broken), `make check-records` (88 records, 0 findings) and `--ids` on the two files exit 0. The pre-push disclosure guard over the eight unpushed commits, `8202473` to `0e8536b`, exits 0 with no finding.

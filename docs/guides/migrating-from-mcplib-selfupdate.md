@@ -1725,6 +1725,17 @@ Adopting it:
 - **A test that matched Task Scheduler's timeout text** should test
   `errors.Is(err, service.ErrTimeout)`.
 
+### From v1.22.2 to v1.22.3
+
+`v1.22.3` changes no exported API and no behaviour: `make apicheck`
+reports it compatible with `v1.22.2`, and there is nothing to adopt. It
+changes how the module tests itself: the service backends' timing tests
+run in `testing/synctest` bubbles on the production clock, and
+`selfupdate`'s test seams are no longer package state, so most of its
+tests run in parallel. What changed, and why, is in
+[0038-MADR](../decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md)
+D3-A.
+
 ### Check
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
