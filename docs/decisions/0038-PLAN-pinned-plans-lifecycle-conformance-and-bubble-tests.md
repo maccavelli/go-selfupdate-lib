@@ -375,3 +375,31 @@ Files: `selfupdate/service/scm/service.go`, `lifecycle.go`, `fake_test.go`, `scm
    A first stall plant doubled `stallFloor` itself, which the test reads, so the test moved with it and passed; the plant was moved to the stall comparison, which `waitPending` now writes with `time.Since`.
 7. **Runs:** `go test -race -count=20 ./selfupdate/service/scm/` on this Mac; `go test -race -count=3 -v` on the Windows test host, the Windows-only tests included, 81 passes and the live tests skipped. Cross-target `go vet` clean. `make pre-add-check` on the nine files: `9 file(s) clean`.
 8. **`make gate`**: every step rc=0, `apicheck` "compatible with v1.22.2", `overall=0`.
+
+### Q3: Task Scheduler on the production clock (2026-10-27)
+
+Files: `selfupdate/service/taskscheduler/task.go`, `lifecycle.go`, `fake_test.go`, `lifecycle_test.go`, `enable_test.go`, `handoff_test.go`, `reconcile_test.go`, `register_test.go`, `status_test.go`, `detach_test.go`, as listed, and `handoff.go` (Deviation D1).
+
+1. **The fake moves on observation.** `fakeSched.tick` is replaced by `observe`, called by the reads a wait makes (`running`, `state`, `instances`, `lastRun`): a read later than the fake last saw counts down each task asked to exit. A run or a stop stamps the time. `exitIn` negative means never, which replaces `1<<30`. The fake's own `now` is gone; a run's time is the bubble's.
+2. **`virtualClock` deleted; `Task.now` and `sleep` deleted.** `waitGone` and the one-shot handoff's wait call `time.Now` and `sleepCtx`. `testTask` returns the `*Task` alone and no longer shortens `Poll.Interval` (1 ms) or `Poll.Timeout` (2 s). Every test that calls `testTask` or `oneShotTask` runs in a bubble: 49 bodies, wrapped by a scratchpad script that leaves the lines of a multi-line raw string as they were (the raw strings of every edited file were compared before and after: identical). `TestDetachOneShotRefusesBatchFile`, in `handoff_windows_test.go`, was wrapped and then restored: it refuses before any wait, and the file is not in this phase's list.
+3. **`TestStopTimeoutOnRealClock` is `TestStopTimeoutAtDefaultBound`:** the default `Poll.Timeout`, a 1 s grace, and an exact 60 s assertion.
+4. **`TestDetachOneShotFailures`** uses the default bound, and its never-starts case asserts that the wait gives up at exactly 60 s.
+5. Plants, each in a scratch copy:
+
+   | Plant | Failure |
+   | :--- | :--- |
+   | the final wait not bounded by the stop's deadline (the grace outside the bound) | `lifecycle_test.go:232: timed out after 1m1s, want 1m0s` |
+   | a timeout without the still-running error (0037-MADR D5-A) | `lifecycle_test.go:229: Stop = <nil>, want ErrTimeout saying the task still runs` |
+   | the one-shot handoff waiting twice the bound | `handoff_test.go:171: never starts: gave up after 2m0s, want 1m0s` |
+   | the grace skipped | `lifecycle_test.go:179: calls ["enable false" "stop"], want ["enable false"] …` |
+   | the fake's countdown never running | `lifecycle_test.go:179: calls ["enable false" "stop"], want ["enable false"] …` |
+
+6. **Runs:** `go test -race -count=20 ./selfupdate/service/taskscheduler/` on this Mac; no test of the package or of scm takes 0.1 s or more (`go test -json`). `go test -race -count=3 -v` on the Windows test host, the COM tests included: 216 passes, the live tests skipped. Cross-target `go vet` clean. `make pre-add-check` on the twelve files then changed, `handoff_windows_test.go` among them before its restore: `12 file(s) clean`.
+
+### Deviation D1 (2026-10-27): `handoff.go` calls the deleted `Task.sleep`
+
+* **Found:** Q3 step 2 deletes `Task.sleep`, and `handoff.go:140`, the one-shot handoff's start wait, called it. The file is not in Q3's list.
+* **Decision:** the owner, 2026-10-27, chose "Add handoff.go to Q3": the change is the mechanical consequence of the step, and behaviour is unchanged, since `sleepCtx` was the field's only production value. `TestDetachOneShotFailures` covers the line (Q3 step 4 and its plant). No MADR change: no decision or fact moves.
+* **Files added to Q3:** `selfupdate/service/taskscheduler/handoff.go`, one line: `t.sleep(ctx, t.interval())` becomes `sleepCtx(ctx, t.interval())`.
+
+Q3, continued: `go test -race -count=3` of the package passed again after the restore, and `make gate`: every step rc=0, `apicheck` "compatible with v1.22.2", `overall=0`.

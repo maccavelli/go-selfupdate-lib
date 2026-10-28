@@ -137,7 +137,7 @@ func (t *Task) startOneShot(ctx context.Context, name, path string) (err error) 
 		if len(pids) > 0 || last.Result != hasNotRun {
 			return nil
 		}
-		if err := t.sleep(ctx, t.interval()); err != nil {
+		if err := sleepCtx(ctx, t.interval()); err != nil {
 			return fmt.Errorf("%w: selfupdate: taskscheduler: %s did not start: %w", service.ErrTimeout, path, err)
 		}
 	}

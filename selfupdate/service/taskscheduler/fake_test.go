@@ -1,7 +1,6 @@
 package taskscheduler
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"sync"
@@ -22,7 +21,9 @@ type fakeSched struct {
 	alive   map[uint32]bool
 	openErr error
 	nextPID uint32
-	now     func() time.Time
+	// seen is when the fake was last observed or commanded, by the
+	// bubble's clock.
+	seen time.Time
 	// folders are the task folders that exist; `\` always does.
 	folders map[string]bool
 	// fail makes a call that changes something return its error, by verb:
@@ -46,9 +47,10 @@ type fakeTask struct {
 	last     lastRun
 	def      string
 	// exitIn, when positive, ends the running instance after that many
-	// virtual sleeps, as a program that was asked to exit does.
+	// observations, each at a later time than the last (fakeSched.observe),
+	// as a program that was asked to exit does; negative never ends it.
 	exitIn int
-	// stopKeeps makes a stop take effect only after a few virtual sleeps.
+	// stopKeeps makes a stop take effect only after a few observations.
 	stopKeeps bool
 	// staleList keeps an ended instance listed, its process gone, as Task
 	// Scheduler can (0021-MADR Amendment A4).
@@ -72,7 +74,6 @@ const (
 func newFake() *fakeSched {
 	return &fakeSched{
 		tasks: map[string]*fakeTask{}, born: map[uint32]uint64{}, alive: map[uint32]bool{}, nextPID: 9000,
-		now:     func() time.Time { return time.Unix(1_700_000_000, 0) },
 		folders: map[string]bool{`\`: true}, fail: map[string]error{},
 	}
 }
@@ -230,13 +231,22 @@ func (f *fakeSched) created(pid uint32) uint64 {
 func (f *fakeSched) running(pid uint32, born uint64) bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.observe()
 	return f.alive[pid] && (born == 0 || f.born[pid] == born)
 }
 
-// tick is time passing: a task asked to exit counts down.
-func (f *fakeSched) tick() {
-	f.mu.Lock()
-	defer f.mu.Unlock()
+// observe is time passing: a read later than the fake last saw counts
+// down each task asked to exit. Time is the synctest bubble's, so the
+// tests keep no clock of their own
+// (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// D3-A). f.mu is held.
+func (f *fakeSched) observe() {
+	now := time.Now()
+	ticked := !f.seen.IsZero() && now.After(f.seen)
+	f.seen = now
+	if !ticked {
+		return
+	}
 	for _, ft := range f.tasks {
 		if ft.exitIn > 0 {
 			if ft.exitIn--; ft.exitIn == 0 {
@@ -268,7 +278,11 @@ type fakeReg struct {
 
 func (r *fakeReg) lock() func() { r.f.mu.Lock(); return r.f.mu.Unlock }
 
-func (r *fakeReg) state() (int32, error) { defer r.lock()(); return r.t.st, r.t.readErr["state"] }
+func (r *fakeReg) state() (int32, error) {
+	defer r.lock()()
+	r.f.observe()
+	return r.t.st, r.t.readErr["state"]
+}
 
 func (r *fakeReg) enabled() (bool, error) { defer r.lock()(); return r.t.on, r.t.readErr["enabled"] }
 
@@ -299,7 +313,8 @@ func (r *fakeReg) run() error {
 		// (0022-PLAN-documentation-pass-after-v1-14-0.md P1).
 		return hrTaskDisabled
 	}
-	r.t.last.Time = r.f.now()
+	r.f.seen = time.Now()
+	r.t.last.Time = r.f.seen
 	if r.t.runExits != nil {
 		r.t.last.Result = *r.t.runExits
 		return nil
@@ -315,6 +330,7 @@ func (r *fakeReg) run() error {
 func (r *fakeReg) stop() error {
 	defer r.lock()()
 	r.f.record("stop")
+	r.f.seen = time.Now()
 	if r.t.stopErr != nil {
 		return r.t.stopErr
 	}
@@ -330,6 +346,7 @@ func (r *fakeReg) stop() error {
 
 func (r *fakeReg) instances() ([]uint32, error) {
 	defer r.lock()()
+	r.f.observe()
 	return append([]uint32(nil), r.t.pids...), r.t.readErr["instances"]
 }
 
@@ -352,6 +369,7 @@ func (r *fakeReg) principal() (principal, error) {
 
 func (r *fakeReg) lastRun() (lastRun, error) {
 	defer r.lock()()
+	r.f.observe()
 	return r.t.last, r.t.readErr["lastRun"]
 }
 
@@ -376,40 +394,14 @@ func (r *fakeReg) restore(xml string) error {
 
 func (*fakeReg) close() error { return nil }
 
-// virtualClock is the Task's now and sleep: a sleep advances it at once,
-// and runs onSleep.
-type virtualClock struct {
-	mu      sync.Mutex
-	t       time.Time
-	onSleep func()
-}
-
-func (c *virtualClock) now() time.Time {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.t
-}
-
-func (c *virtualClock) sleep(ctx context.Context, d time.Duration) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	c.mu.Lock()
-	c.t = c.t.Add(d)
-	c.mu.Unlock()
-	if c.onSleep != nil {
-		c.onSleep()
-	}
-	return nil
-}
-
 // selfPID is the PID the fake process table gives this process; 6000 is
 // its parent and 4 its grandparent.
 const selfPID = 7000
 
-// testTask is a Task for the task `\demo` over f, on a virtual clock, with
-// this process at selfPID and no settle window.
-func testTask(t *testing.T, f *fakeSched, o Options) (*Task, *virtualClock) {
+// testTask is a Task for the task `\demo` over f, with this process at
+// selfPID and no settle window. A test that stops, starts or waits calls
+// it inside a synctest bubble.
+func testTask(t *testing.T, f *fakeSched, o Options) *Task {
 	t.Helper()
 	if o.Name == "" {
 		o.Name = "demo"
@@ -417,22 +409,13 @@ func testTask(t *testing.T, f *fakeSched, o Options) (*Task, *virtualClock) {
 	if o.Poll.Settle == 0 {
 		o.Poll.Settle = -1
 	}
-	if o.Poll.Interval == 0 {
-		o.Poll.Interval = time.Millisecond
-	}
-	if o.Poll.Timeout == 0 {
-		o.Poll.Timeout = 2 * time.Second
-	}
 	task, err := newTask(o, "windows", f)
 	if err != nil {
 		t.Fatal(err)
 	}
-	clock := &virtualClock{t: time.Unix(1_700_000_000, 0), onSleep: f.tick}
-	task.now, task.sleep = clock.now, clock.sleep
-	f.now = clock.now
 	task.self = func() uint32 { return selfPID }
 	if len(f.procs) == 0 {
 		f.procs = []winproc.Process{{PID: selfPID, ParentPID: 6000}, {PID: 6000, ParentPID: 4}, {PID: 4}}
 	}
-	return task, clock
+	return task
 }

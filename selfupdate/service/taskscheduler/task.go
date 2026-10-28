@@ -110,11 +110,9 @@ type instance struct {
 // Register, Definition and Delete check it before they start, and ignore
 // it after.
 type Task struct {
-	o     Options
-	s     scheduler
-	now   func() time.Time
-	sleep func(context.Context, time.Duration) error
-	self  func() uint32
+	o    Options
+	s    scheduler
+	self func() uint32
 
 	mu sync.Mutex
 	// previous is, per task, the instance Stop saw, which WaitHealthy will
@@ -178,7 +176,7 @@ func newTask(o Options, goos string, s scheduler) (*Task, error) {
 		return nil, fmt.Errorf("selfupdate: taskscheduler: Options.StopGrace %s is not shorter than Options.Poll.Timeout %s, which it is spent inside", o.StopGrace, timeout)
 	}
 	return &Task{
-		o: o, s: s, now: time.Now, sleep: sleepCtx, self: currentPID,
+		o: o, s: s, self: currentPID,
 		previous: map[string]instance{}, disabled: map[string]bool{}, started: map[string]time.Time{},
 	}, nil
 }

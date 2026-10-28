@@ -6,6 +6,7 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
@@ -15,68 +16,72 @@ import (
 // 0032-PLAN-task-scheduler-registration-and-one-shot-handoff.md J5).
 
 func TestStatus(t *testing.T) {
-	ran := time.Unix(1_700_000_000, 0)
-	for _, c := range []struct {
-		name string
-		edit func(ft *fakeTask)
-		pid  uint32
-		want Status
-	}{
-		{"running", func(ft *fakeTask) { ft.last = lastRun{Result: 0x41301, Time: ran} }, 4242,
-			Status{Installed: true, Enabled: true, State: "running", Running: true, PIDs: []uint32{4242}, LastRunTime: ran, LastResult: 0x41301}},
-		{"ready after a run", func(ft *fakeTask) { ft.last = lastRun{Result: 7, Time: ran} }, 0,
-			Status{Installed: true, Enabled: true, State: "ready", LastRunTime: ran, LastResult: 7}},
-		{"never run", func(ft *fakeTask) {
-			ft.last = lastRun{Result: hasNotRun, Time: time.Date(1999, 11, 30, 0, 0, 0, 0, time.UTC)}
-		}, 0,
-			Status{Installed: true, Enabled: true, State: "ready", LastResult: hasNotRun}},
-		{"disabled", func(ft *fakeTask) { ft.on, ft.st = false, stateDisabled }, 0,
-			Status{State: "disabled", Installed: true, Disabled: true}},
-		// A task disabled while its program runs reads running
-		// (0034-MADR Amendment A1, P5): only Disabled tells it.
-		{"disabled while running", func(ft *fakeTask) { ft.on = false }, 4242,
-			Status{Installed: true, Disabled: true, State: "running", Running: true, PIDs: []uint32{4242}}},
-		{"no trigger that starts it", func(ft *fakeTask) { ft.trig = []trigger{{Type: triggerTime, Enabled: true}} }, 0,
-			Status{Installed: true, State: "ready"}},
-		{"listed while ready", func(ft *fakeTask) { ft.pids = []uint32{99} }, 0,
-			Status{Installed: true, Enabled: true, State: "ready", Running: true, PIDs: []uint32{99}}},
-	} {
-		f := newFake()
-		c.edit(f.add(`\demo`, c.pid))
-		task, _ := testTask(t, f, Options{})
-		got, err := task.Status(context.Background(), "demo")
-		if err != nil || !reflect.DeepEqual(got, c.want) {
-			t.Errorf("%s: Status = %+v, %v; want %+v", c.name, got, err, c.want)
+	synctest.Test(t, func(t *testing.T) {
+		ran := time.Unix(1_700_000_000, 0)
+		for _, c := range []struct {
+			name string
+			edit func(ft *fakeTask)
+			pid  uint32
+			want Status
+		}{
+			{"running", func(ft *fakeTask) { ft.last = lastRun{Result: 0x41301, Time: ran} }, 4242,
+				Status{Installed: true, Enabled: true, State: "running", Running: true, PIDs: []uint32{4242}, LastRunTime: ran, LastResult: 0x41301}},
+			{"ready after a run", func(ft *fakeTask) { ft.last = lastRun{Result: 7, Time: ran} }, 0,
+				Status{Installed: true, Enabled: true, State: "ready", LastRunTime: ran, LastResult: 7}},
+			{"never run", func(ft *fakeTask) {
+				ft.last = lastRun{Result: hasNotRun, Time: time.Date(1999, 11, 30, 0, 0, 0, 0, time.UTC)}
+			}, 0,
+				Status{Installed: true, Enabled: true, State: "ready", LastResult: hasNotRun}},
+			{"disabled", func(ft *fakeTask) { ft.on, ft.st = false, stateDisabled }, 0,
+				Status{State: "disabled", Installed: true, Disabled: true}},
+			// A task disabled while its program runs reads running
+			// (0034-MADR Amendment A1, P5): only Disabled tells it.
+			{"disabled while running", func(ft *fakeTask) { ft.on = false }, 4242,
+				Status{Installed: true, Disabled: true, State: "running", Running: true, PIDs: []uint32{4242}}},
+			{"no trigger that starts it", func(ft *fakeTask) { ft.trig = []trigger{{Type: triggerTime, Enabled: true}} }, 0,
+				Status{Installed: true, State: "ready"}},
+			{"listed while ready", func(ft *fakeTask) { ft.pids = []uint32{99} }, 0,
+				Status{Installed: true, Enabled: true, State: "ready", Running: true, PIDs: []uint32{99}}},
+		} {
+			f := newFake()
+			c.edit(f.add(`\demo`, c.pid))
+			task := testTask(t, f, Options{})
+			got, err := task.Status(context.Background(), "demo")
+			if err != nil || !reflect.DeepEqual(got, c.want) {
+				t.Errorf("%s: Status = %+v, %v; want %+v", c.name, got, err, c.want)
+			}
 		}
-	}
+	})
 }
 
 func TestStatusMissingAndErrors(t *testing.T) {
-	ctx := context.Background()
-	task, _ := testTask(t, newFake(), Options{})
-	if got, err := task.Status(ctx, "demo"); err != nil || !reflect.DeepEqual(got, Status{}) {
-		t.Fatalf("missing: %+v, %v; want a zero Status", got, err)
-	}
-	for _, method := range []string{"state", "enabled", "instances", "triggers", "lastRun"} {
-		f := newFake()
-		f.add(`\demo`, 0).readErr = map[string]error{method: hrAccessDenied}
-		task, _ := testTask(t, f, Options{})
-		got, err := task.Status(ctx, "demo")
-		if !errors.Is(err, service.ErrPermission) || !reflect.DeepEqual(got, Status{}) {
-			t.Errorf("%s fails: %+v, %v; want a zero Status and ErrPermission", method, got, err)
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		task := testTask(t, newFake(), Options{})
+		if got, err := task.Status(ctx, "demo"); err != nil || !reflect.DeepEqual(got, Status{}) {
+			t.Fatalf("missing: %+v, %v; want a zero Status", got, err)
 		}
-	}
-	f := newFake()
-	f.openErr = hrAccessDenied
-	task, _ = testTask(t, f, Options{})
-	if _, err := task.Status(ctx, "demo"); !errors.Is(err, service.ErrPermission) {
-		t.Fatalf("open denied: %v, want ErrPermission", err)
-	}
-	cancelled, cancel := context.WithCancel(ctx)
-	cancel()
-	if _, err := task.Status(cancelled, "demo"); !errors.Is(err, context.Canceled) {
-		t.Fatalf("cancelled: %v", err)
-	}
+		for _, method := range []string{"state", "enabled", "instances", "triggers", "lastRun"} {
+			f := newFake()
+			f.add(`\demo`, 0).readErr = map[string]error{method: hrAccessDenied}
+			task := testTask(t, f, Options{})
+			got, err := task.Status(ctx, "demo")
+			if !errors.Is(err, service.ErrPermission) || !reflect.DeepEqual(got, Status{}) {
+				t.Errorf("%s fails: %+v, %v; want a zero Status and ErrPermission", method, got, err)
+			}
+		}
+		f := newFake()
+		f.openErr = hrAccessDenied
+		task = testTask(t, f, Options{})
+		if _, err := task.Status(ctx, "demo"); !errors.Is(err, service.ErrPermission) {
+			t.Fatalf("open denied: %v, want ErrPermission", err)
+		}
+		cancelled, cancel := context.WithCancel(ctx)
+		cancel()
+		if _, err := task.Status(cancelled, "demo"); !errors.Is(err, context.Canceled) {
+			t.Fatalf("cancelled: %v", err)
+		}
+	})
 }
 
 func TestStatusJSON(t *testing.T) {

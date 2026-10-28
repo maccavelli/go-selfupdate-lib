@@ -251,25 +251,25 @@ func requestError(err error) error {
 	return fmt.Errorf("selfupdate: taskscheduler: Options.RequestStop: %w", err)
 }
 
-// waitGone waits, for at most limit by this Task's clock and until ctx's
-// deadline, until inst's process has exited, checked by PID and creation
-// time. It reports whether it had. Stop calls it only with a recorded
+// waitGone waits, for at most limit and until ctx's deadline, until
+// inst's process has exited, checked by PID and creation time. It reports
+// whether it had. Stop calls it only with a recorded
 // instance.
 func (t *Task) waitGone(ctx context.Context, inst instance, limit time.Duration) bool {
 	if limit <= 0 {
 		limit = service.DefaultPollTimeout
 	}
-	end := t.now().Add(limit)
+	end := time.Now().Add(limit)
 	for {
 		if !t.s.running(inst.pid, inst.born) {
 			return true
 		}
-		// The wait ends at limit by this clock, or at ctx's deadline, which
-		// Stop sets from the same timeout before the grace: either way the
-		// bound is reached, and Stop reports what still runs
+		// The wait ends at limit, or at ctx's deadline, which Stop sets
+		// from the same timeout before the grace: either way the bound is
+		// reached, and Stop reports what still runs
 		// (docs/decisions/0037-MADR-honour-contexts-in-backend-fakes-and-stop-commands.md
 		// D5-A).
-		if !t.now().Before(end) || t.sleep(ctx, t.interval()) != nil {
+		if !time.Now().Before(end) || sleepCtx(ctx, t.interval()) != nil {
 			return false
 		}
 	}
@@ -318,7 +318,7 @@ func (t *Task) Start(_ context.Context, product string) (err error) {
 	if len(t.current(pids, prev)) > 0 {
 		return nil
 	}
-	at := t.now()
+	at := time.Now()
 	if err := r.run(); err != nil {
 		return mapError("run", path, err)
 	}
