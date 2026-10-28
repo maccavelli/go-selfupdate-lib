@@ -539,3 +539,29 @@ Files: from the list, `selfupdate/target.go`, `github.go`, `credentials.go`, `co
 6. **The proxy:** `go list -m -json github.com/maccavelli/go-selfupdate-lib@v1.22.3` gives `Hash 0620e96ba7eb47d45cc94b474dc2db87d029ce40`, `Ref refs/tags/v1.22.3`, and `@latest` resolves to `v1.22.3`.
 
 Release 1 is out. Q9 starts release 2 on the owner's word.
+
+### Q9: `servicetest` (2026-10-28)
+
+Files, as listed: new `selfupdate/service/servicetest/doc.go`, `lifecycle.go`, `runner.go`, `fake.go`, `lifecycle_test.go`, `runner_test.go`, `fake_test.go`, `example_test.go`; changed `.golangci.yml`, AGENTS.md, `docs/architecture.md`, `selfupdate/service/doc.go`.
+
+1. **The API**, as the plan's step 1 names it: `State` (with `String`), `Arrangement` and `Observation` with JSON tags, `Lab`, `Method` and its four constants, `LifecycleCase`, `VerifyLifecycle`, `RunnerCase`, `VerifyRunner`, and `FakeService` with `FakeOptions`, `NewFakeService`, and `StopBound` and `StartBound` methods that a case reads its bounds from. `VerifyLifecycle` refuses a nil lifecycle, a nil lab, an empty product and a zero `StopBound` before any check, and leaves the service `Absent`.
+2. **The checks**, in the MADR's order: absent, ended context (`Stop` and `WaitHealthy` always held to it; `Installed`, `Running`, `Enabled` and `Start` unless `ContextFree` names them), enabled (both arrangements, against the lab), cycle, stubborn, cancel during stop, crash, start hangs. A lab's error wrapping `errors.ErrUnsupported` skips the check through `Logf`, and `RequireAll` makes it a violation. Two choices beyond the plan's text:
+   * a violation shows a lifecycle's or a lab's error as text, never wraps it, so a lifecycle error that wraps `errors.ErrUnsupported` cannot turn a violation into a skip; only an arrange error, the lab's own word, can skip;
+   * an arrange that fails after a check has found violations reports the violations, so a skip never hides them.
+3. **`FakeService`** keeps its whole stop in an unexported `issueStop(caller, wait, product)`, which `Stop` calls once it has checked its context; the tests build their broken lifecycles over it without a defect switch in the exported type.
+4. **Tests**, in bubbles: `TestVerifyLifecyclePasses` (the fake, no check skipped); `TestVerifyLifecycleFails`, 13 broken lifecycles, one rule each, each failing with its rule named; `TestVerifyLifecycleContextFree`; `TestVerifyLifecycleSkips` (a lab that cannot arrange `Stubborn`, and no `StartBound`: two skips, and two violations with `RequireAll`); `TestVerifyLifecycleRefusesItsCase`; `TestVerifyLifecycleTakesNoWallTime` (over two minutes of bubble time); `TestVerifyRunnerPasses`, `TestVerifyRunnerFails` (ignores its context; records a call on an ended context; a blocking run that ignores its cancellation), `TestVerifyRunnerRefusesItsCase`; `TestFakeServiceStates`, `TestFakeServiceSlowStop`; and `ExampleVerifyLifecycle`, on the real clock with short bounds. Two test faults found and fixed on the way: the "Stop ignores its context" row's expected message (the check named a different, also correct, violation), and the runner fake's `exited` channel, first made outside the bubble, where a receive does not count as durably blocked, so bubble time stood still and the run timed out after ten minutes.
+5. **Seen failing**, each in a scratch copy:
+
+   | Plant | Failure |
+   | :--- | :--- |
+   | each of the eight checks disabled (`return nil` first) | `lifecycle_test.go:217: err = <nil>` in its rows |
+   | `RequireAll` ignored | `lifecycle_test.go:278: RequireAll: err = <nil>; want both skips as violations` |
+   | `ContextFree` ignored | `lifecycle_test.go:240: servicetest: ended context: Installed on an ended context returned no error` |
+   | `VerifyRunner`'s cancelled-context check disabled | `runner_test.go:98: err = servicetest: Run past its deadline = no error; …` (the deadline check still caught the ignoring runner) |
+   | its recorded-calls check disabled | `runner_test.go:98: err = <nil>` |
+   | its blocking check disabled | `runner_test.go:98: err = <nil>` |
+   | an `internal/winproc` import planted in `doc.go` | `import '…/internal/winproc' is not allowed from list 'service-servicetest' (depguard)` |
+
+6. **depguard:** the `service-servicetest` rule (the standard library, `selfupdate`, `service`), and the package excluded from `other-packages`. **AGENTS.md:** the scope paragraph names the package, and the depguard list the rule. **architecture.md:** the tree, the package table's row (4 and 4 files), and the rule count, 22. The page said 20 and left `internal-procfs` out of its list before this change, though `.golangci.yml` had 21 rules; both are corrected here. **`service/doc.go`** names the subpackage.
+7. **Runs:** `go test -race -count=20 ./selfupdate/service/servicetest/` on this Mac; golangci-lint for linux, darwin and windows clean; `go test -race -count=5` of the package on the Linux and Windows test hosts; `make pre-add-check` on the nine Go files: `9 file(s) clean`; `make markdownlint`, `make docs-check` (847 links, 0 broken; 20 architecture rows, 0 differ) and `--ids` on the changed files exit 0.
+8. **`make gate`**: every step rc=0, `apicheck` "compatible with v1.22.3", `overall=0`.

@@ -114,6 +114,8 @@ selfupdate/                 the self-update package
     launchd/                the launchd lifecycle
     scm/                    the Windows SCM lifecycle
     taskscheduler/          the Windows Task Scheduler lifecycle, over COM
+    servicetest/            conformance checks for a Lifecycle and a
+                            Runner, and a reference fake service
 internal/winproc/           the library's process starts: no console
                             window, no batch file; the ancestor walk and
                             the liveness check
@@ -158,6 +160,7 @@ docs/
 | `selfupdate/service/systemd/` | `systemd` | 9 | 18, plus 3 `testdata/` captures of `systemctl show` | none (`selfupdate`, `service`) |
 | `selfupdate/service/launchd/` | `launchd` | 7 | 14, plus 7 `testdata/` captures of `launchctl print` and `list` | none (`selfupdate`, `service`) |
 | `selfupdate/service/scm/` | `scm` | 7 | 13 | `x/sys/windows`, `x/sys/windows/svc`, `x/sys/windows/svc/mgr` (and `selfupdate`, `service`, `internal/winproc`) |
+| `selfupdate/service/servicetest/` | `servicetest` | 4 | 4 | none (`selfupdate`, `service`) |
 | `selfupdate/service/taskscheduler/` | `taskscheduler` | 15 | 18, plus 12 `testdata/definitions/` captures of task XML as registered and as stored, and the one-shot handoff task as stored | `x/sys/windows` (and `selfupdate`, `service`, `internal/winproc`) |
 | `internal/winproc/` | `winproc` | 5 | 4 | `x/sys/windows` |
 | `internal/procfs/` | `procfs` | 3 | 4 | none |
@@ -766,15 +769,16 @@ D9; the threat analysis is
   `BASE=`), and any incompatible change fails it.
 - **`make lint`** runs `golangci-lint run -c .golangci.yml ./...` three
   times: `GOOS=linux`, `darwin` and `windows`, each with `CGO_ENABLED=0`.
-- **Import rules** are 20 `depguard` rules in `.golangci.yml`
+- **Import rules** are 22 `depguard` rules in `.golangci.yml`
   ([0008-MADR](decisions/0008-MADR-enforce-import-rules-with-depguard.md)):
   - `banned`: mcplib, the MCP go-sdk, go-llmprovider-sdk and Charm, in
     every file;
   - `module`: only the standard library, this module, `x/mod`, `x/sys`
     and `x/term`, in every file;
-  - `buildinfo`, `internal-testproc`, `internal-winproc`, `selfupdate`,
-    `selfupdate-cli`, `selfupdatetest`, `service`, `service-launchd`,
-    `service-scm`, `service-taskscheduler`, `service-systemd`,
+  - `buildinfo`, `internal-testproc`, `internal-winproc`, `internal-procfs`,
+    `selfupdate`, `selfupdate-cli`, `selfupdatetest`, `service`,
+    `service-launchd`, `service-scm`, `service-taskscheduler`,
+    `service-systemd`, `service-servicetest`,
     `selfupdate-archive`, `selfupdate-codesign`, `selfupdate-releasespec`,
     `selfupdate-verify-ghattest`, `selfupdate-verify-signednote` and
     `internal-cmd-selfupdate-note`: each package's own allowed imports,

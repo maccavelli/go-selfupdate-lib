@@ -6,7 +6,11 @@
 // The lifecycles themselves are in the subpackages systemd, launchd, scm
 // and taskscheduler. Each implements selfupdate.Lifecycle,
 // selfupdate.EnabledLifecycle, selfupdate.Reconciler and Detacher, compiles
-// on every OS, and returns ErrUnsupported on the wrong one.
+// on every OS, and returns ErrUnsupported on the wrong one. Package
+// servicetest checks any Lifecycle, theirs or a program's own, against
+// the contract the managed installer relies on
+// (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// D2-A).
 //
 // For a supervisor with no backend here, such as runit, s6 or OpenRC,
 // NewSupervised builds the same four from the program's own State, Up and

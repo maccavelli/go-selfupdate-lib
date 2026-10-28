@@ -187,6 +187,19 @@ linters:
             - $gostd
             - github.com/maccavelli/go-selfupdate-lib/selfupdate$
             - github.com/maccavelli/go-selfupdate-lib/selfupdate/service$
+        # selfupdate/service/servicetest: the Lifecycle and Runner
+        # conformance checks: the standard library, selfupdate and service
+        # (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+        # D2-A).
+        service-servicetest:
+          list-mode: strict
+          files:
+            - "**/selfupdate/service/servicetest/*.go"
+            - "!$test"
+          allow:
+            - $gostd
+            - github.com/maccavelli/go-selfupdate-lib/selfupdate$
+            - github.com/maccavelli/go-selfupdate-lib/selfupdate/service$
         # selfupdate/archive: the standard library and selfupdate
         # (docs/decisions/0012-MADR-archive-assets-and-macos-codesign.md §1).
         # Named after the package's path, since "archive" would sort before
@@ -279,6 +292,7 @@ linters:
             - "!**/selfupdate/service/scm/*.go"
             - "!**/selfupdate/service/systemd/*.go"
             - "!**/selfupdate/service/taskscheduler/*.go"
+            - "!**/selfupdate/service/servicetest/*.go"
             - "!**/selfupdate/archive/*.go"
             - "!**/selfupdate/codesign/*.go"
             - "!**/selfupdate/releasespec/*.go"
