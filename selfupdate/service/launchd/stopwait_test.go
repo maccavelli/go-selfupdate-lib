@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
@@ -25,54 +26,58 @@ import (
 // (docs/decisions/0037-MADR-honour-contexts-in-backend-fakes-and-stop-commands.md
 // D3-A).
 func TestStopFinishesAfterCancel(t *testing.T) {
-	f := newFake()
-	f.pid = 99999999 // a PID no process has
-	f.goneAfter = 3
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	f.onBootout = func(*fakeLaunchd) { cancel() }
-	j := testJob(t, f, Options{})
-	err := j.Stop(ctx, "demo")
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("Stop = %v, want the caller's cancellation", err)
-	}
-	v := f.verbs()
-	bootout := slices.Index(v, "bootout")
-	if bootout < 0 || strings.Count(strings.Join(v[bootout:], " "), "print") < 3 || f.loaded {
-		t.Fatalf("verbs %q, loaded %t: Stop returned while the job was still loaded", v, f.loaded)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		f := newFake()
+		f.pid = 99999999 // a PID no process has
+		f.goneAfter = 3
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		f.onBootout = func(*fakeLaunchd) { cancel() }
+		j := testJob(t, f, Options{Poll: bubblePoll})
+		err := j.Stop(ctx, "demo")
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("Stop = %v, want the caller's cancellation", err)
+		}
+		v := f.verbs()
+		bootout := slices.Index(v, "bootout")
+		if bootout < 0 || strings.Count(strings.Join(v[bootout:], " "), "print") < 3 || f.loaded {
+			t.Fatalf("verbs %q, loaded %t: Stop returned while the job was still loaded", v, f.loaded)
+		}
+	})
 }
 
 // TestManagedStopTimeoutRestartsJob: the job leaves launchd's list after
 // bootout, but the stop wait times out first. The managed update then
 // finds the job not running and starts it again.
 func TestManagedStopTimeoutRestartsJob(t *testing.T) {
-	f := newFake()
-	f.pid = 99999999
-	f.goneAfter = 1 << 30
-	// ExitTimeOut 0 is no kill bound, so the wait is Poll.Timeout's.
-	f.keys["ExitTimeOut"] = "0"
-	j := testJob(t, f, Options{Poll: service.PollOptions{Timeout: 100 * time.Millisecond}})
-	dir, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	target := filepath.Join(dir, "demo")
-	if err := os.WriteFile(target, []byte("old-bytes"), 0o755); err != nil { //nolint:gosec // an executable fixture
-		t.Fatal(err)
-	}
-	res, err := fakeManagedInstall(t, j, target)
-	if !errors.Is(err, selfupdate.ErrManagedInstall) || res.Applied {
-		t.Fatalf("Install = %+v, %v; want a failed update", res, err)
-	}
-	v := f.verbs()
-	bootout := slices.Index(v, "bootout")
-	if bootout < 0 || !slices.Contains(v[bootout:], "kickstart") {
-		t.Fatalf("verbs %q; want the job started again after the failed stop", v)
-	}
-	if got, _ := os.ReadFile(target); string(got) != "old-bytes" { //nolint:gosec // the test's own file
-		t.Fatalf("target holds %q", got)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		f := newFake()
+		f.pid = 99999999
+		f.goneAfter = 1 << 30
+		// ExitTimeOut 0 is no kill bound, so the wait is Poll.Timeout's.
+		f.keys["ExitTimeOut"] = "0"
+		j := testJob(t, f, Options{Poll: bubblePoll})
+		dir, err := filepath.EvalSymlinks(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		target := filepath.Join(dir, "demo")
+		if err := os.WriteFile(target, []byte("old-bytes"), 0o755); err != nil { //nolint:gosec // an executable fixture
+			t.Fatal(err)
+		}
+		res, err := fakeManagedInstall(t, j, target)
+		if !errors.Is(err, selfupdate.ErrManagedInstall) || res.Applied {
+			t.Fatalf("Install = %+v, %v; want a failed update", res, err)
+		}
+		v := f.verbs()
+		bootout := slices.Index(v, "bootout")
+		if bootout < 0 || !slices.Contains(v[bootout:], "kickstart") {
+			t.Fatalf("verbs %q; want the job started again after the failed stop", v)
+		}
+		if got, _ := os.ReadFile(target); string(got) != "old-bytes" { //nolint:gosec // the test's own file
+			t.Fatalf("target holds %q", got)
+		}
+	})
 }
 
 // fakeManagedInstall installs "new-bytes" over target through a managed
@@ -152,12 +157,14 @@ func TestStopBound(t *testing.T) {
 // bound, not to the poll timeout, so a job that takes longer than the poll
 // timeout to exit is waited for.
 func TestStopWaitFollowsExitTimeOut(t *testing.T) {
-	f := newFake()
-	f.pid = 99999999
-	f.goneAfter = 3
-	f.keys["ExitTimeOut"] = "90"
-	j := testJob(t, f, Options{Poll: service.PollOptions{Timeout: time.Millisecond}})
-	if err := j.Stop(context.Background(), "demo"); err != nil {
-		t.Fatalf("Stop = %v; a 1 ms poll timeout must not cut a 120 s bound short", err)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		f := newFake()
+		f.pid = 99999999
+		f.goneAfter = 3
+		f.keys["ExitTimeOut"] = "90"
+		j := testJob(t, f, Options{Poll: service.PollOptions{Interval: service.DefaultPollInterval, Timeout: time.Millisecond, Settle: -1}})
+		if err := j.Stop(context.Background(), "demo"); err != nil {
+			t.Fatalf("Stop = %v; a 1 ms poll timeout must not cut a 120 s bound short", err)
+		}
+	})
 }

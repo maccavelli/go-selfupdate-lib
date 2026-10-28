@@ -185,6 +185,14 @@ func testUnit(t *testing.T, f *fakeSystemd, o Options) *Unit {
 	return u
 }
 
+// bubblePoll is the poll of a test that runs in a synctest bubble: the
+// documented defaults, with no settle window. testUnit's 1 ns interval
+// suits the real clock, where the fake answers at once; in a bubble it
+// would be billions of steps of fake time
+// (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// D3-A).
+var bubblePoll = service.PollOptions{Interval: service.DefaultPollInterval, Timeout: service.DefaultPollTimeout, Settle: -1}
+
 func setCgroup(t *testing.T, content string) {
 	t.Helper()
 	prev := readSelfCgroup

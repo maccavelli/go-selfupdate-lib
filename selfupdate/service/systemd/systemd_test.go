@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
@@ -159,34 +160,43 @@ func TestDefaultUnitFromProduct(t *testing.T) {
 
 func TestStopWaitsForInactive(t *testing.T) {
 	testproc.CheckNoLeak(t)
-	f := newFake()
-	u := testUnit(t, f, Options{})
-	// The first probe after the stop sees deactivating, the next inactive.
-	f.onStop = func(p map[string]string) {
-		p["ActiveState"] = "deactivating"
-		f.showQueue = []map[string]string{
-			{"ActiveState": "deactivating", "SubState": "stop-sigterm"},
-			{"ActiveState": "inactive", "SubState": "dead"},
+	synctest.Test(t, func(t *testing.T) {
+		f := newFake()
+		u := testUnit(t, f, Options{Poll: bubblePoll})
+		// The first probe after the stop sees deactivating, the next inactive.
+		f.onStop = func(p map[string]string) {
+			p["ActiveState"] = "deactivating"
+			f.showQueue = []map[string]string{
+				{"ActiveState": "deactivating", "SubState": "stop-sigterm"},
+				{"ActiveState": "inactive", "SubState": "dead"},
+			}
 		}
-	}
-	if err := u.Stop(context.Background(), "demo"); err != nil {
-		t.Fatal(err)
-	}
-	v := f.verbs()
-	stop := slices.Index(v, "stop")
-	if stop < 0 || len(v)-stop-1 != 2 {
-		t.Fatalf("verbs %q; want two probes after the stop", v)
-	}
+		if err := u.Stop(context.Background(), "demo"); err != nil {
+			t.Fatal(err)
+		}
+		v := f.verbs()
+		stop := slices.Index(v, "stop")
+		if stop < 0 || len(v)-stop-1 != 2 {
+			t.Fatalf("verbs %q; want two probes after the stop", v)
+		}
+	})
 }
 
 func TestStopStalls(t *testing.T) {
 	testproc.CheckNoLeak(t)
-	f := newFake()
-	u := testUnit(t, f, Options{Poll: service.PollOptions{Interval: 1, Timeout: 20e6}})
-	f.onStop = func(p map[string]string) { p["ActiveState"] = "deactivating" }
-	if err := u.Stop(context.Background(), "demo"); !errors.Is(err, service.ErrTimeout) {
-		t.Fatalf("err = %v, want a timeout", err)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		f := newFake()
+		u := testUnit(t, f, Options{Poll: bubblePoll})
+		f.onStop = func(p map[string]string) { p["ActiveState"] = "deactivating" }
+		bound := u.stopBound(context.Background(), "demo.service")
+		start := time.Now()
+		if err := u.Stop(context.Background(), "demo"); !errors.Is(err, service.ErrTimeout) {
+			t.Fatalf("err = %v, want a timeout", err)
+		}
+		if took := time.Since(start); took != bound {
+			t.Fatalf("timed out after %s, want the stop's bound, %s", took, bound)
+		}
+	})
 }
 
 func TestStopRefusesInsideUnit(t *testing.T) {
@@ -232,34 +242,42 @@ func TestCommandErrors(t *testing.T) {
 
 func TestStartThenWaitHealthy(t *testing.T) {
 	testproc.CheckNoLeak(t)
-	f := newFake()
-	appProbed := 0
-	u := testUnit(t, f, Options{Probe: func(context.Context) (service.Health, error) {
-		appProbed++
-		return service.Health{Ready: true}, nil
-	}})
-	ctx := context.Background()
-	if err := u.Start(ctx, "demo"); err != nil {
-		t.Fatal(err)
-	}
-	if err := u.WaitHealthy(ctx, "demo"); err != nil || appProbed != 1 {
-		t.Fatalf("err = %v, application probe ran %d times", err, appProbed)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		f := newFake()
+		appProbed := 0
+		u := testUnit(t, f, Options{Poll: bubblePoll, Probe: func(context.Context) (service.Health, error) {
+			appProbed++
+			return service.Health{Ready: true}, nil
+		}})
+		ctx := context.Background()
+		if err := u.Start(ctx, "demo"); err != nil {
+			t.Fatal(err)
+		}
+		if err := u.WaitHealthy(ctx, "demo"); err != nil || appProbed != 1 {
+			t.Fatalf("err = %v, application probe ran %d times", err, appProbed)
+		}
+	})
 }
 
 // TestWaitHealthyNeedsNewInvocation: the invocation from before the start
 // never counts.
 func TestWaitHealthyNeedsNewInvocation(t *testing.T) {
 	testproc.CheckNoLeak(t)
-	f := newFake()
-	u := testUnit(t, f, Options{Poll: service.PollOptions{Interval: 1, Timeout: 20e6}})
-	f.onStart = func(p map[string]string) { p["ActiveState"] = "active" } // same InvocationID
-	if err := u.Start(context.Background(), "demo"); err != nil {
-		t.Fatal(err)
-	}
-	if err := u.WaitHealthy(context.Background(), "demo"); !errors.Is(err, service.ErrTimeout) {
-		t.Fatalf("err = %v, want a timeout", err)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		f := newFake()
+		u := testUnit(t, f, Options{Poll: bubblePoll})
+		f.onStart = func(p map[string]string) { p["ActiveState"] = "active" } // same InvocationID
+		if err := u.Start(context.Background(), "demo"); err != nil {
+			t.Fatal(err)
+		}
+		start := time.Now()
+		if err := u.WaitHealthy(context.Background(), "demo"); !errors.Is(err, service.ErrTimeout) {
+			t.Fatalf("err = %v, want a timeout", err)
+		}
+		if took := time.Since(start); took != service.DefaultPollTimeout {
+			t.Fatalf("timed out after %s, want %s", took, service.DefaultPollTimeout)
+		}
+	})
 }
 
 func TestWaitHealthyFailsFast(t *testing.T) {
@@ -273,25 +291,27 @@ func TestWaitHealthyFailsFast(t *testing.T) {
 		"restarted": nil, // below: a restart after the start's baseline
 	} {
 		t.Run(name, func(t *testing.T) {
-			f := newFake()
-			u := testUnit(t, f, Options{})
-			f.onStart = after
-			if after == nil {
-				// The baseline is read once the start returned, so the
-				// restart comes after it (0015-MADR D2).
-				f.onStart = func(map[string]string) {
-					f.showQueue = []map[string]string{
-						{"NRestarts": "0"},
-						{"ActiveState": "active", "SubState": "running", "InvocationID": "ccc", "NRestarts": "1"},
+			synctest.Test(t, func(t *testing.T) {
+				f := newFake()
+				u := testUnit(t, f, Options{Poll: bubblePoll})
+				f.onStart = after
+				if after == nil {
+					// The baseline is read once the start returned, so the
+					// restart comes after it (0015-MADR D2).
+					f.onStart = func(map[string]string) {
+						f.showQueue = []map[string]string{
+							{"NRestarts": "0"},
+							{"ActiveState": "active", "SubState": "running", "InvocationID": "ccc", "NRestarts": "1"},
+						}
 					}
 				}
-			}
-			if err := u.Start(context.Background(), "demo"); err != nil {
-				t.Fatal(err)
-			}
-			if err := u.WaitHealthy(context.Background(), "demo"); !errors.Is(err, service.ErrUnhealthy) {
-				t.Fatalf("err = %v, want ErrUnhealthy", err)
-			}
+				if err := u.Start(context.Background(), "demo"); err != nil {
+					t.Fatal(err)
+				}
+				if err := u.WaitHealthy(context.Background(), "demo"); !errors.Is(err, service.ErrUnhealthy) {
+					t.Fatalf("err = %v, want ErrUnhealthy", err)
+				}
+			})
 		})
 	}
 }

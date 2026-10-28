@@ -5,6 +5,7 @@ import (
 	"errors"
 	"slices"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
@@ -19,57 +20,61 @@ import (
 // is issued does not cut the wait short. Stop waits until the unit is
 // inactive, then reports the cancellation.
 func TestStopFinishesAfterCancel(t *testing.T) {
-	f := newFake()
-	u := testUnit(t, f, Options{Poll: service.PollOptions{Interval: time.Millisecond, Timeout: 5 * time.Second}})
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	f.onStop = func(p map[string]string) {
-		cancel()
-		p["ActiveState"] = "deactivating"
-		f.showQueue = []map[string]string{
-			{"ActiveState": "deactivating", "SubState": "stop-sigterm"},
-			{"ActiveState": "deactivating", "SubState": "stop-sigkill"},
-			{"ActiveState": "inactive", "SubState": "dead"},
+	synctest.Test(t, func(t *testing.T) {
+		f := newFake()
+		u := testUnit(t, f, Options{Poll: bubblePoll})
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		f.onStop = func(p map[string]string) {
+			cancel()
+			p["ActiveState"] = "deactivating"
+			f.showQueue = []map[string]string{
+				{"ActiveState": "deactivating", "SubState": "stop-sigterm"},
+				{"ActiveState": "deactivating", "SubState": "stop-sigkill"},
+				{"ActiveState": "inactive", "SubState": "dead"},
+			}
 		}
-	}
-	err := u.Stop(ctx, "demo")
-	if !errors.Is(err, context.Canceled) || errors.Is(err, service.ErrTimeout) {
-		t.Fatalf("Stop = %v, want the caller's cancellation alone", err)
-	}
-	v := f.verbs()
-	stop := slices.Index(v, "stop")
-	if stop < 0 || len(v)-stop-1 != 3 || len(f.showQueue) != 0 {
-		t.Fatalf("verbs %q; want three probes after the stop, until inactive", v)
-	}
+		err := u.Stop(ctx, "demo")
+		if !errors.Is(err, context.Canceled) || errors.Is(err, service.ErrTimeout) {
+			t.Fatalf("Stop = %v, want the caller's cancellation alone", err)
+		}
+		v := f.verbs()
+		stop := slices.Index(v, "stop")
+		if stop < 0 || len(v)-stop-1 != 3 || len(f.showQueue) != 0 {
+			t.Fatalf("verbs %q; want three probes after the stop, until inactive", v)
+		}
+	})
 }
 
 // TestStopBoundsAJobThatNeverEnds: under TimeoutStopUSec=infinity, a
 // stop job whose program ignores TERM never ends. Stop only queues it, and
-// returns ErrTimeout at its bound, Poll's timeout, on the real clock
+// returns ErrTimeout at its bound, Poll's timeout, the 60 s default
 // (docs/decisions/0037-MADR-honour-contexts-in-backend-fakes-and-stop-commands.md
 // D2-A; Amendment A1, P1).
 func TestStopBoundsAJobThatNeverEnds(t *testing.T) {
-	const timeout = 300 * time.Millisecond
-	f := newFake()
-	f.props["TimeoutStopUSec"] = "infinity"
-	f.onStop = func(p map[string]string) {
-		p["ActiveState"], p["SubState"] = "deactivating", "stop-sigterm"
-	}
-	f.stopBlocks = make(chan struct{})
-	u := testUnit(t, f, Options{Poll: service.PollOptions{Interval: 10 * time.Millisecond, Timeout: timeout}})
-	start := time.Now()
-	done := make(chan error, 1)
-	go func() { done <- u.Stop(context.Background(), "demo") }()
-	var err error
-	select {
-	case err = <-done:
-	case <-time.After(5 * time.Second):
-		close(f.stopBlocks)
-		t.Fatalf("Stop still blocked after 5 s on a stop job that never ends (then: %v)", <-done)
-	}
-	if took := time.Since(start); !errors.Is(err, service.ErrTimeout) || took < timeout || took > 3*time.Second {
-		t.Fatalf("Stop = %v after %s; want ErrTimeout at the %s bound", err, took, timeout)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		const timeout = service.DefaultPollTimeout
+		f := newFake()
+		f.props["TimeoutStopUSec"] = "infinity"
+		f.onStop = func(p map[string]string) {
+			p["ActiveState"], p["SubState"] = "deactivating", "stop-sigterm"
+		}
+		f.stopBlocks = make(chan struct{})
+		u := testUnit(t, f, Options{Poll: bubblePoll})
+		start := time.Now()
+		done := make(chan error, 1)
+		go func() { done <- u.Stop(context.Background(), "demo") }()
+		var err error
+		select {
+		case err = <-done:
+		case <-time.After(2 * timeout):
+			close(f.stopBlocks)
+			t.Fatalf("Stop still blocked after twice its bound on a stop job that never ends (then: %v)", <-done)
+		}
+		if took := time.Since(start); !errors.Is(err, service.ErrTimeout) || took != timeout {
+			t.Fatalf("Stop = %v after %s; want ErrTimeout at the %s bound", err, took, timeout)
+		}
+	})
 }
 
 // TestParseTimespan: systemctl show's time spans, and what is not one.

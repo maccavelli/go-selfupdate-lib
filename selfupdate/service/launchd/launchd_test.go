@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
@@ -255,32 +256,40 @@ func TestEnabledRefusesUnreadablePlist(t *testing.T) {
 
 func TestStopWaitsUntilGone(t *testing.T) {
 	testproc.CheckNoLeak(t)
-	f := newFake()
-	f.pid = 99999999 // a PID no process has
-	f.goneAfter = 3  // bootout returns while the job is still loaded
-	j := testJob(t, f, Options{})
-	if err := j.Stop(context.Background(), "demo"); err != nil {
-		t.Fatal(err)
-	}
-	v := f.verbs()
-	bootout := slices.Index(v, "bootout")
-	if bootout < 0 || strings.Count(strings.Join(v[bootout:], " "), "print") < 3 {
-		t.Fatalf("verbs %q; want prints until the job was gone", v)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		f := newFake()
+		f.pid = 99999999 // a PID no process has
+		f.goneAfter = 3  // bootout returns while the job is still loaded
+		j := testJob(t, f, Options{Poll: bubblePoll})
+		if err := j.Stop(context.Background(), "demo"); err != nil {
+			t.Fatal(err)
+		}
+		v := f.verbs()
+		bootout := slices.Index(v, "bootout")
+		if bootout < 0 || strings.Count(strings.Join(v[bootout:], " "), "print") < 3 {
+			t.Fatalf("verbs %q; want prints until the job was gone", v)
+		}
+	})
 }
 
 func TestStopTimesOut(t *testing.T) {
 	testproc.CheckNoLeak(t)
-	f := newFake()
-	f.pid = 99999999
-	f.goneAfter = 1 << 30
-	// ExitTimeOut 0 is no kill bound, so the wait is Poll.Timeout's
-	// (0015-MADR B3).
-	f.keys["ExitTimeOut"] = "0"
-	j := testJob(t, f, Options{Poll: service.PollOptions{Timeout: 100 * time.Millisecond}})
-	if err := j.Stop(context.Background(), "demo"); !errors.Is(err, service.ErrTimeout) {
-		t.Fatalf("err = %v, want a timeout", err)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		f := newFake()
+		f.pid = 99999999
+		f.goneAfter = 1 << 30
+		// ExitTimeOut 0 is no kill bound, so the wait is Poll.Timeout's
+		// (0015-MADR B3).
+		f.keys["ExitTimeOut"] = "0"
+		j := testJob(t, f, Options{Poll: bubblePoll})
+		start := time.Now()
+		if err := j.Stop(context.Background(), "demo"); !errors.Is(err, service.ErrTimeout) {
+			t.Fatalf("err = %v, want a timeout", err)
+		}
+		if took := time.Since(start); took != service.DefaultPollTimeout {
+			t.Fatalf("timed out after %s, want Poll's timeout, %s", took, service.DefaultPollTimeout)
+		}
+	})
 }
 
 func TestStopNotLoadedAndRefused(t *testing.T) {
@@ -370,23 +379,30 @@ func TestLaunchctlError(t *testing.T) {
 
 func TestStartBootstrapsAndRetries(t *testing.T) {
 	testproc.CheckNoLeak(t)
-	f := newFake()
-	f.loaded, f.pid = false, 0
-	f.bootstrapCodes = []int{exitIO, exitAlready, 0}
-	j := testJob(t, f, Options{})
-	if err := j.Start(context.Background(), "demo"); err != nil {
-		t.Fatal(err)
-	}
-	v := f.verbs()
-	if strings.Count(strings.Join(v, " "), "bootstrap") != 3 || v[len(v)-1] != "kickstart" || !slices.Contains(v, "enable") {
-		t.Fatalf("verbs %q", v)
-	}
-	f = newFake()
-	f.loaded, f.pid = false, 0
-	f.bootstrapCodes = []int{exitNotPermitted}
-	if err := testJob(t, f, Options{}).Start(context.Background(), "demo"); !errors.Is(err, service.ErrPermission) {
-		t.Fatalf("err = %v, want ErrPermission", err)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		f := newFake()
+		f.loaded, f.pid = false, 0
+		f.bootstrapCodes = []int{exitIO, exitAlready, 0}
+		j := testJob(t, f, Options{Poll: bubblePoll})
+		start := time.Now()
+		if err := j.Start(context.Background(), "demo"); err != nil {
+			t.Fatal(err)
+		}
+		// Two refusals: a retry after bootstrapFirst, then after twice that.
+		if took := time.Since(start); took != 3*bootstrapFirst {
+			t.Fatalf("started after %s, want %s", took, 3*bootstrapFirst)
+		}
+		v := f.verbs()
+		if strings.Count(strings.Join(v, " "), "bootstrap") != 3 || v[len(v)-1] != "kickstart" || !slices.Contains(v, "enable") {
+			t.Fatalf("verbs %q", v)
+		}
+		f = newFake()
+		f.loaded, f.pid = false, 0
+		f.bootstrapCodes = []int{exitNotPermitted}
+		if err := testJob(t, f, Options{Poll: bubblePoll}).Start(context.Background(), "demo"); !errors.Is(err, service.ErrPermission) {
+			t.Fatalf("err = %v, want ErrPermission", err)
+		}
+	})
 }
 
 // TestStartBootstrapHangs: a bootstrap that its bound ends mid-run is
@@ -395,13 +411,19 @@ func TestStartBootstrapsAndRetries(t *testing.T) {
 // D4-A).
 func TestStartBootstrapHangs(t *testing.T) {
 	testproc.CheckNoLeak(t)
-	f := newFake()
-	f.loaded, f.pid = false, 0
-	f.bootstrapHangs = true
-	j := testJob(t, f, Options{Poll: service.PollOptions{Interval: time.Millisecond, Timeout: 200 * time.Millisecond, Settle: -1}})
-	if err := j.Start(context.Background(), "demo"); !errors.Is(err, service.ErrTimeout) || !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("Start = %v, want ErrTimeout wrapping the deadline", err)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		f := newFake()
+		f.loaded, f.pid = false, 0
+		f.bootstrapHangs = true
+		j := testJob(t, f, Options{Poll: bubblePoll})
+		start := time.Now()
+		if err := j.Start(context.Background(), "demo"); !errors.Is(err, service.ErrTimeout) || !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("Start = %v, want ErrTimeout wrapping the deadline", err)
+		}
+		if took := time.Since(start); took != service.DefaultPollTimeout {
+			t.Fatalf("timed out after %s, want %s", took, service.DefaultPollTimeout)
+		}
+	})
 }
 
 // TestStartLoadedSkipsBootstrap: a job still loaded, such as an on-demand
@@ -417,49 +439,57 @@ func TestStartLoadedSkipsBootstrap(t *testing.T) {
 
 func TestWaitHealthy(t *testing.T) {
 	testproc.CheckNoLeak(t)
-	f := newFake()
-	f.pid = 99999999
-	j := testJob(t, f, Options{})
-	ctx := context.Background()
-	if err := j.Stop(ctx, "demo"); err != nil {
-		t.Fatal(err)
-	}
-	if err := j.Start(ctx, "demo"); err != nil {
-		t.Fatal(err)
-	}
-	if err := j.WaitHealthy(ctx, "demo"); err != nil {
-		t.Fatal(err)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		f := newFake()
+		f.pid = 99999999
+		j := testJob(t, f, Options{Poll: bubblePoll})
+		ctx := context.Background()
+		if err := j.Stop(ctx, "demo"); err != nil {
+			t.Fatal(err)
+		}
+		if err := j.Start(ctx, "demo"); err != nil {
+			t.Fatal(err)
+		}
+		if err := j.WaitHealthy(ctx, "demo"); err != nil {
+			t.Fatal(err)
+		}
 
-	// The process from before the update never counts.
-	f = newFake()
-	f.onStart = func(f *fakeLaunchd) { f.loaded, f.state = true, "running" }
-	j = testJob(t, f, Options{Poll: service.PollOptions{Timeout: 50 * time.Millisecond}})
-	if err := j.Start(ctx, "demo"); err != nil {
-		t.Fatal(err)
-	}
-	if err := j.WaitHealthy(ctx, "demo"); !errors.Is(err, service.ErrTimeout) {
-		t.Fatalf("same PID: %v, want a timeout", err)
-	}
+		// The process from before the update never counts.
+		f = newFake()
+		f.onStart = func(f *fakeLaunchd) { f.loaded, f.state = true, "running" }
+		j = testJob(t, f, Options{Poll: bubblePoll})
+		if err := j.Start(ctx, "demo"); err != nil {
+			t.Fatal(err)
+		}
+		start := time.Now()
+		if err := j.WaitHealthy(ctx, "demo"); !errors.Is(err, service.ErrTimeout) {
+			t.Fatalf("same PID: %v, want a timeout", err)
+		}
+		if took := time.Since(start); took != service.DefaultPollTimeout {
+			t.Fatalf("same PID: timed out after %s, want %s", took, service.DefaultPollTimeout)
+		}
 
-	f.loaded = false
-	if err := j.WaitHealthy(ctx, "demo"); !errors.Is(err, service.ErrUnhealthy) {
-		t.Fatalf("not loaded: %v, want ErrUnhealthy", err)
-	}
+		f.loaded = false
+		if err := j.WaitHealthy(ctx, "demo"); !errors.Is(err, service.ErrUnhealthy) {
+			t.Fatalf("not loaded: %v, want ErrUnhealthy", err)
+		}
+	})
 }
 
 // TestWaitHealthySettlesAtLeastThrottle: a settle window shorter than
 // launchd's ThrottleInterval is raised to it.
 func TestWaitHealthySettlesAtLeastThrottle(t *testing.T) {
 	testproc.CheckNoLeak(t)
-	f := newFake()
-	// New refuses these options (0015-MADR D10); WaitHealthy must still
-	// raise the settle when they are set afterwards.
-	j := testJob(t, f, Options{})
-	j.o.Poll = service.PollOptions{Settle: time.Millisecond, Timeout: 50 * time.Millisecond}
-	if err := j.WaitHealthy(context.Background(), "demo"); !errors.Is(err, service.ErrTimeout) {
-		t.Fatalf("err = %v; a 1 ms settle must have become 10 s, and timed out", err)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		f := newFake()
+		// New refuses these options (0015-MADR D10); WaitHealthy must still
+		// raise the settle when they are set afterwards.
+		j := testJob(t, f, Options{})
+		j.o.Poll = service.PollOptions{Settle: time.Millisecond, Timeout: 50 * time.Millisecond}
+		if err := j.WaitHealthy(context.Background(), "demo"); !errors.Is(err, service.ErrTimeout) {
+			t.Fatalf("err = %v; a 1 ms settle must have become 10 s, and timed out", err)
+		}
+	})
 }
 
 func TestReconcile(t *testing.T) {

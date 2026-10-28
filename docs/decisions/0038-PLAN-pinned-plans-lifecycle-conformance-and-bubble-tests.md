@@ -403,3 +403,30 @@ Files: `selfupdate/service/taskscheduler/task.go`, `lifecycle.go`, `fake_test.go
 * **Files added to Q3:** `selfupdate/service/taskscheduler/handoff.go`, one line: `t.sleep(ctx, t.interval())` becomes `sleepCtx(ctx, t.interval())`.
 
 Q3, continued: `go test -race -count=3` of the package passed again after the restore, and `make gate`: every step rc=0, `apicheck` "compatible with v1.22.2", `overall=0`.
+
+### Q4: systemd and launchd in bubbles (2026-10-27)
+
+Files: `selfupdate/service/systemd/systemd_test.go`, `stopwait_test.go`, `fake_test.go`; `selfupdate/service/launchd/launchd_test.go`, `fake_test.go`, as listed, and `selfupdate/service/launchd/stopwait_test.go` (Deviation D2). No production file changed.
+
+1. **`testUnit` and `testJob` keep their real-clock defaults** (1 ns and 1 ms intervals, a 2 s timeout): eight other systemd test files and five other launchd ones use them for tests that do not wait, outside this phase's files. Each package's `fake_test.go` gains `bubblePoll`, the documented defaults with no settle window, which every test moved into a bubble passes.
+2. **systemd, in bubbles:** `TestStopWaitsForInactive`, `TestStopStalls`, `TestStartThenWaitHealthy`, `TestWaitHealthyNeedsNewInvocation`, `TestStopFinishesAfterCancel`, `TestStopBoundsAJobThatNeverEnds`, and `TestWaitHealthyFailsFast` with one bubble per subtest. `TestStopStalls` and `TestWaitHealthyNeedsNewInvocation` move from a 1 ns interval to `bubblePoll` (MADR F9), and assert their timeouts exactly: the stop's bound, from `stopBound`, and 60 s. `TestStopBoundsAJobThatNeverEnds` runs at the 60 s default, its watchdog at twice the bound, and asserts the bound exactly. `TestCapturedShowOutput` does not wait, and stays as it is.
+3. **launchd, in bubbles:** `TestStopWaitsUntilGone`, `TestStopTimesOut` (exactly 60 s), `TestStartBootstrapsAndRetries` (exactly `3*bootstrapFirst`, the two retries' backoff), `TestStartBootstrapHangs` (exactly 60 s), `TestWaitHealthy` (the same-PID timeout exactly 60 s), `TestWaitHealthySettlesAtLeastThrottle`, `TestStopFinishesAfterCancel`, `TestManagedStopTimeoutRestartsJob` and `TestStopWaitFollowsExitTimeOut`. `TestCapturedOutput`, `TestProbeUsesListWhenItSees`, `TestLoaded` and `TestStatus` do not wait, and stay as they are. The fake's `pidAlive` stays a real `kill(pid, 0)` on a PID no process has; it returns at once, so it does not hold the bubble.
+4. Plants, each in a scratch copy:
+
+   | Plant | Failure |
+   | :--- | :--- |
+   | systemd's stop without `--no-block` (0037-MADR F2) | `stopwait_test.go:72: Stop still blocked after twice its bound on a stop job that never ends …` |
+   | systemd's stop wait at twice its bound | `stopwait_test.go:72: …`; `systemd_test.go:197: timed out after 2m0s, want the stop's bound, 1m0s` |
+   | launchd's bootout on the caller's context (0037-MADR F3) | `stopwait_test.go:44: verbs ["managername" "list" "list" "bootout"], loaded true: Stop returned while the job was still loaded` |
+   | a bootstrap the bound ends not `ErrTimeout` (0037-MADR F4) | `launchd_test.go:421: Start = context deadline exceeded, want ErrTimeout wrapping the deadline` |
+   | the bootstrap backoff tripled | `launchd_test.go:393: started after 400ms, want 300ms` |
+
+5. **Runs:** `go test -race -count=20` of both packages on this Mac, which runs launchd's darwin-only tests; `-race -count=3` of both on the Linux test host, which runs systemd's Linux-only tests. Cross-target `go vet` clean. `make pre-add-check` on the six files: `6 file(s) clean`.
+
+### Deviation D2 (2026-10-27): launchd's stop tests live in `stopwait_test.go`
+
+* **Found:** Q4 step 2 moves launchd's stop tests into bubbles, and step 3 plants 0037-MADR F3, whose test, `TestStopFinishesAfterCancel`, is in `selfupdate/service/launchd/stopwait_test.go`, with `TestManagedStopTimeoutRestartsJob` and `TestStopWaitFollowsExitTimeOut`. Q4's list names `launchd_test.go`, `fake_test.go` and "`lifecycle_test.go` if present", which is not; it omits `stopwait_test.go`.
+* **Decision:** the owner, 2026-10-27, chose "Add stopwait_test.go to Q4": the file holds the stop tests the step moves and the test its F3 plant needs. Test-only; no MADR change.
+* **Files added to Q4:** `selfupdate/service/launchd/stopwait_test.go`: the three tests move into bubbles with `bubblePoll`; `TestStopWaitFollowsExitTimeOut` keeps its 1 ms poll timeout, which is its subject, with the default interval.
+
+Q4, continued: `make gate`: every step rc=0, `apicheck` "compatible with v1.22.2", `overall=0`.

@@ -241,6 +241,13 @@ func (f *fakeLaunchd) verbs() []string {
 
 // testJob is a Job over f for macOS, in gui/503 as uid 503, with fast
 // polling, and a plist in a temporary directory.
+// bubblePoll is the poll of a test that runs in a synctest bubble: the
+// documented defaults, with no settle window. testJob's 1 ms interval
+// suits the real clock, where the fake answers at once
+// (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// D3-A).
+var bubblePoll = service.PollOptions{Interval: service.DefaultPollInterval, Timeout: service.DefaultPollTimeout, Settle: -1}
+
 func testJob(t *testing.T, f *fakeLaunchd, o Options) *Job {
 	t.Helper()
 	dir := t.TempDir()
