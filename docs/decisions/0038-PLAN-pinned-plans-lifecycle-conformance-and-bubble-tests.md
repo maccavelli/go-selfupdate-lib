@@ -1,6 +1,6 @@
 ---
 status: in-progress
-date: 2026-10-27
+date: 2026-10-28
 associated-madr: "0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md"
 ---
 <!-- markdownlint-disable MD004 MD013 MD024 MD060 -->
@@ -584,3 +584,45 @@ Files: from the list, `selfupdate/service/scm/lifecycle.go`, `launchd/lifecycle.
 
 * **Found:** Q10 step 3 documents launchd's `Installed` as ignoring its context "in `Job`'s doc beside its siblings'", and `Job` is declared in `selfupdate/service/launchd/job.go`, which the list does not name.
 * **Decision:** the owner, 2026-10-28, chose "Add job.go to Q10": four comment lines on `Job`, as scm and Task Scheduler document theirs on the type. Comment-only; no MADR change.
+
+### Q11: `servicetest` over the fakes (2026-10-28)
+
+Files: from the list, the new `systemd/conformance_test.go`, `launchd/conformance_test.go`, `scm/conformance_test.go`, `taskscheduler/conformance_test.go`, `service/export_test.go`, `service/conformance_test.go` and `service/runner_conformance_test.go`; `systemd/fake_test.go` and `launchd/fake_test.go`; and `docs/architecture.md`'s package table (`service` 24 to 27 test files, systemd 18 to 19, launchd 14 to 15, scm 13 to 14, Task Scheduler 18 to 19). `scm/fake_test.go` and `taskscheduler/fake_test.go` needed no change: their hooks (`onStop`, `onStart`, `stopKeeps`, `exitIn`, `runExits`) arrange every state, and their reads already move the fake as time passes.
+
+1. **Fake labs**, each a `servicetest.Lab` over its package's fake, run inside a bubble, each with an assertion on the checks it skipped:
+
+   | Backend | Test | Case | Skipped |
+   | :--- | :--- | :--- | :--- |
+   | systemd | `TestConformance` | `StopBound` `DefaultPollTimeout` (no `TimeoutStopUSec`) | start hangs: `Start` documents no bound of its own |
+   | launchd | `TestConformance` | `StopBound` and `StartBound` `DefaultPollTimeout`; `ContextFree: MethodInstalled` | none |
+   | scm | `TestConformance` | `StopBound` and `StartBound` `DefaultPollTimeout`; `ContextFree: MethodInstalled\|MethodRunning\|MethodEnabled` | none |
+   | Task Scheduler | `TestTaskConformance` | `StopBound` `DefaultPollTimeout`; `ContextFree` the four methods; `RestoresAfterFailedStop` | start hangs: `Start` runs the task without waiting |
+   | `Supervised` | `TestSupervisedConformance` (external) | `StopBound` twice `DefaultPollTimeout` (a failed stop's `Up` has a bound of its own); `RestoresAfterFailedStop` | start hangs: `Up` runs on the caller's context |
+
+   * **systemd:** a new `InvocationID` per start; `SlowStop` goes 5 s after the stop job is queued, through a new `onRun` hook that runs before each call is answered; `Stubborn` stays `deactivating` and sets `stopBlocks`, so a stop that waits for its job (F2) blocks. `StartHangs` sets a new `startBlocks`, the same hold for a start; no check reaches it, since the case passes no `StartBound`. The fake now reads both channels under its lock, so a lab that replaces them races with no stray call.
+   * **launchd:** the lab is also the `Runner` the `Job` uses, passing each command to the fake: `bootout` returns 2 s after launchd took it, and returns the context's error if the context ends first. A new `pidUntilGone` field keeps the job's process while a bootout leaves it loaded. It is opt-in, not the fake's default: `TestManagedStopTimeoutRestartsJob` (`stopwait_test.go:76`) relies on bootout clearing the pid, and failed with the default changed. `SlowStop` goes 5 s after its bootout; `Stubborn` sets `ExitTimeOut` 0. Process IDs start at 50,000,000, which no host runs, so `pidAlive` is false once a job has gone. `bootstrapHangs` is read under the fake's lock.
+   * **scm:** `SlowStop` reports `STOP_PENDING` five times, its checkpoint advancing, then `STOPPED`; `Stubborn` stays `STOP_PENDING` with no progress, which `waitPending` declares hung after 10 s; `StartHangs` the same in `START_PENDING`; a new process ID per start.
+   * **Task Scheduler:** `SlowStop` through `stopKeeps`, `Stubborn` through `stopKeeps` and `exitIn` -1; `Stopping` is a recorded `stop` since `Arrange` while the program runs; `Wanted` is the task's switch, which a failed stop turns back on.
+   * **`Supervised`:** `export_test.go` exports `SupervisedFake` and `NewSupervisedFake` over `fakeSup`, its process table, and a fixed `self` and `exe`, with a `Down` that takes one second of bubble time. The lab is in the external test, because `servicetest` imports `service`: an internal test file cannot import it.
+2. **`VerifyRunner`:** `TestRunnerConformance` over the systemd fake (`Blocking` a stop without `--no-block`, with `stopBlocks`) and the launchd fake (a hanging `bootstrap`), each also checking that only the quick call was recorded; `TestExecRunnerConformance` over `ExecRunner` on the real clock, the test binary in its `receipt` and `sleep` modes. The two `TestFakeHonoursContext` tests stay.
+3. **Seen failing**, each in a scratch copy, the first lines of the failure:
+
+   | Plant | Test | Failure |
+   | :--- | :--- | :--- |
+   | 0037-MADR F1: `fakeSystemd.Run`'s context check removed | systemd both | `ended context: Installed on an ended context returned no error`; `Run on a cancelled context = no error; want an error wrapping context.Canceled` |
+   | F1: `fakeLaunchd.Run`'s context check removed | launchd both | `ended context: Running on an ended context returned no error`; `Run on a cancelled context = no error; …` |
+   | F2: `"stop", "--no-block", "--no-ask-password"` to `"stop", "--no-ask-password"` | systemd | `stubborn: stop of a service that ignores it did not return within 1m1s` |
+   | F3: `context.WithDeadline(context.WithoutCancel(ctx), deadline)` to `context.WithDeadline(ctx, deadline)` | launchd | `cancel during stop: stop returned on its cancellation while the service still ran (running=true, no error): the cancellation cut the wait short` |
+   | F4: the bootstrap's `return fmt.Errorf("%w: bootstrap %s: %w", service.ErrTimeout, j.o.Plist, err)` to `return err` | launchd | `start hangs: start the manager never completes = context deadline exceeded after 1m0s; want service.ErrTimeout` |
+   | 0035-MADR Amendment A3: `supervised_lifecycle.go` of `v1.22.0`, its three `s.now()` and one `s.sleep(ctx,` rewritten to `time.Now()` and `sleepCtx(ctx,`, as in Q1 | `TestSupervisedConformance` | `stubborn: after the timed-out Stop the service runs, but its manager no longer wants it up`; also `absent: after Start of an absent service the lab sees installed=false running=true`, the Q10 fix that file predates |
+   | 0015-MADR B3: systemd's `sctx := context.WithoutCancel(ctx)` to `sctx := ctx` | systemd | `cancel during stop: stop returned on its cancellation while the service still ran …` |
+   | B3: scm's `s.deadline(context.WithoutCancel(ctx))` to `s.deadline(ctx)` in `Stop` | scm | the same |
+   | B3: Task Scheduler's `t.deadline(context.WithoutCancel(ctx))` to `t.deadline(ctx)` | Task Scheduler | the same |
+   | 0024-MADR D4-A: Task Scheduler's restore after a failed stop disabled (`&& false`) | Task Scheduler | `stubborn: after the timed-out Stop the service runs, but its manager no longer wants it up` |
+   | Q10: `supervised_lifecycle.go` at `eb525be` | `TestSupervisedConformance` | `absent: after Start of an absent service the lab sees installed=false running=true` |
+   | Q10: `scm/lifecycle.go` at `eb525be` | scm | `ended context: after Start on an ended context the lab sees running=true (no error); want the service untouched` |
+   | Q10: `launchd/lifecycle.go` at `eb525be` | launchd | `absent: after Start of an absent service …`; `stubborn: stop of a service that ignores it did not return within 1m1s` (the two bounds Q10 joined) |
+   | `ExecRunner` runs on `context.WithoutCancel(ctx)` | `TestExecRunnerConformance` | `a run whose context was cancelled still ran after 10s` |
+
+4. **Runs:** `go test -race -count=20 -run Conformance` of the five packages on this Mac, all `ok`; `go test -race -count=3` of `./selfupdate/service/` and its five subpackages on the Linux and Windows test hosts, six packages each, all `ok`; the conformance tests under Go 1.26.10, all `ok`; `make pre-add-check` on the nine Go files: `9 file(s) clean`; the architecture table: 20 rows, 0 differ; `make markdownlint`, `make check-records`, `make docs-check` and `--ids` on the changed files exit 0.
+5. **`make gate`**: every step rc=0, `apicheck` "compatible with v1.22.3", `overall=0`.

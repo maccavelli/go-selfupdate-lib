@@ -34,15 +34,24 @@ type fakeSystemd struct {
 	// stopBlocks, when set, holds a stop without --no-block until it is
 	// closed or the call's context ends.
 	stopBlocks chan struct{}
+	// startBlocks, when set, holds a start without --no-block the same
+	// way, as a start job that never completes.
+	startBlocks chan struct{}
+	// onRun, when set, runs before each call is answered, as time
+	// passing changes props.
+	onRun func(map[string]string)
 }
 
-// blocksOnStop is a systemctl stop that waits for its job: one without
-// --no-block.
-func blocksOnStop(args []string) bool {
+// waitsFor is the job a systemctl call waits for, "stop" or "start",
+// when it has no --no-block; otherwise "".
+func waitsFor(args []string) string {
 	if len(args) > 0 && args[0] == "--user" {
 		args = args[1:]
 	}
-	return len(args) > 0 && args[0] == "stop" && !slices.Contains(args, "--no-block")
+	if len(args) == 0 || slices.Contains(args, "--no-block") || (args[0] != "stop" && args[0] != "start") {
+		return ""
+	}
+	return args[0]
 }
 
 func newFake() *fakeSystemd {
@@ -64,18 +73,24 @@ func (f *fakeSystemd) Run(ctx context.Context, c service.Command) (service.Outpu
 	if err := ctx.Err(); err != nil {
 		return service.Output{}, err
 	}
-	if f.stopBlocks != nil && blocksOnStop(c.Args) {
-		// A stop without --no-block waits for its job, as systemctl does
-		// (0037-MADR Amendment A1, P1): until the test releases it, or
-		// until ctx ends, when ExecRunner would kill it.
+	f.mu.Lock()
+	block := map[string]chan struct{}{"stop": f.stopBlocks, "start": f.startBlocks}[waitsFor(c.Args)]
+	f.mu.Unlock()
+	if block != nil {
+		// A stop or start without --no-block waits for its job, as
+		// systemctl does (0037-MADR Amendment A1, P1): until the test
+		// releases it, or until ctx ends, when ExecRunner would kill it.
 		select {
-		case <-f.stopBlocks:
+		case <-block:
 		case <-ctx.Done():
 			return service.Output{}, ctx.Err()
 		}
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.onRun != nil {
+		f.onRun(f.props)
+	}
 	f.calls = append(f.calls, append([]string{c.Path}, c.Args...))
 	f.envs = append(f.envs, c.Env)
 	args := c.Args

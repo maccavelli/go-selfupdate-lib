@@ -156,12 +156,12 @@ docs/
 | `selfupdate/verify/ghattest/` | `ghattest` | 2 | 3, plus a `testdata/` capture of `gh attestation verify --format json` | none (`selfupdate`, `service`) |
 | `selfupdate/verify/signednote/` | `signednote` | 3 | 4, including a fuzz target | `x/mod/semver`, `x/mod/sumdb/note` (and `selfupdate`) |
 | `selfupdate/releasespec/` | `releasespec` | 4 | 5, including a fuzz target, plus 4 `testdata/` specs and 3 `testdata/fuzz/` seeds | none (`selfupdate`, `archive`) |
-| `selfupdate/service/` | `service` | 21 | 24 | `x/sys/windows` (and `selfupdate`, `internal/winproc`, `internal/procfs`) |
-| `selfupdate/service/systemd/` | `systemd` | 9 | 18, plus 3 `testdata/` captures of `systemctl show` | none (`selfupdate`, `service`) |
-| `selfupdate/service/launchd/` | `launchd` | 7 | 14, plus 7 `testdata/` captures of `launchctl print` and `list` | none (`selfupdate`, `service`) |
-| `selfupdate/service/scm/` | `scm` | 7 | 13 | `x/sys/windows`, `x/sys/windows/svc`, `x/sys/windows/svc/mgr` (and `selfupdate`, `service`, `internal/winproc`) |
+| `selfupdate/service/` | `service` | 21 | 27 | `x/sys/windows` (and `selfupdate`, `internal/winproc`, `internal/procfs`) |
+| `selfupdate/service/systemd/` | `systemd` | 9 | 19, plus 3 `testdata/` captures of `systemctl show` | none (`selfupdate`, `service`) |
+| `selfupdate/service/launchd/` | `launchd` | 7 | 15, plus 7 `testdata/` captures of `launchctl print` and `list` | none (`selfupdate`, `service`) |
+| `selfupdate/service/scm/` | `scm` | 7 | 14 | `x/sys/windows`, `x/sys/windows/svc`, `x/sys/windows/svc/mgr` (and `selfupdate`, `service`, `internal/winproc`) |
 | `selfupdate/service/servicetest/` | `servicetest` | 4 | 4 | none (`selfupdate`, `service`) |
-| `selfupdate/service/taskscheduler/` | `taskscheduler` | 15 | 18, plus 12 `testdata/definitions/` captures of task XML as registered and as stored, and the one-shot handoff task as stored | `x/sys/windows` (and `selfupdate`, `service`, `internal/winproc`) |
+| `selfupdate/service/taskscheduler/` | `taskscheduler` | 15 | 19, plus 12 `testdata/definitions/` captures of task XML as registered and as stored, and the one-shot handoff task as stored | `x/sys/windows` (and `selfupdate`, `service`, `internal/winproc`) |
 | `internal/winproc/` | `winproc` | 5 | 4 | `x/sys/windows` |
 | `internal/procfs/` | `procfs` | 3 | 4 | none |
 | `internal/testproc/` | `testproc` | 1 | 1 | none |

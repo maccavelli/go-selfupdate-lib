@@ -27,6 +27,10 @@ type fakeLaunchd struct {
 	keys     map[string]string
 	// goneAfter: bootout leaves the job loaded for this many prints.
 	goneAfter int
+	// pidUntilGone keeps the job's process while bootout leaves it
+	// loaded, as a job still going down: without it, bootout ends the
+	// process at once.
+	pidUntilGone bool
 	// bootstrapCodes are bootstrap's exit codes, in turn; then 0.
 	bootstrapCodes []int
 	// onStart runs on kickstart, as the job starting.
@@ -85,7 +89,10 @@ func (f *fakeLaunchd) Run(ctx context.Context, c service.Command) (service.Outpu
 	if err := ctx.Err(); err != nil {
 		return service.Output{}, err
 	}
-	if f.bootstrapHangs && len(c.Args) > 0 && c.Args[0] == "bootstrap" {
+	f.mu.Lock()
+	hangs := f.bootstrapHangs
+	f.mu.Unlock()
+	if hangs && len(c.Args) > 0 && c.Args[0] == "bootstrap" {
 		<-ctx.Done()
 		return service.Output{}, ctx.Err()
 	}
@@ -134,7 +141,7 @@ func (f *fakeLaunchd) Run(ctx context.Context, c service.Command) (service.Outpu
 		if f.goneAfter > 0 {
 			f.goneAfter--
 			if f.goneAfter == 0 {
-				f.loaded = false
+				f.loaded, f.pid, f.state = false, 0, "not running"
 			}
 		}
 		return service.Output{Stdout: []byte(printOutput(f.pid, f.state))}, nil
@@ -151,7 +158,9 @@ func (f *fakeLaunchd) Run(ctx context.Context, c service.Command) (service.Outpu
 		if f.goneAfter == 0 {
 			f.loaded = false
 		}
-		f.pid, f.state = 0, "not running"
+		if !f.loaded || !f.pidUntilGone {
+			f.pid, f.state = 0, "not running"
+		}
 		// A context that ended during the call killed launchctl after
 		// launchd took the request: the job goes, and ExecRunner reports
 		// the context's error (0037-MADR Amendment A1, P2).
