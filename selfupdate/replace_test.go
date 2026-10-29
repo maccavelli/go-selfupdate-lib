@@ -79,7 +79,12 @@ func TestChmodStagingCopiesPerm(t *testing.T) {
 	if err := os.WriteFile(staging, []byte("new"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := realFS().chmodStaging(staging, Target{}, info); err != nil {
+	f, err := os.OpenFile(staging, os.O_RDWR, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = f.Close() })
+	if err := realFS().chmodStaging(f, Target{}, info); err != nil {
 		t.Fatal(err)
 	}
 	st, err := os.Stat(staging)
@@ -91,10 +96,9 @@ func TestChmodStagingCopiesPerm(t *testing.T) {
 	}
 }
 
-func TestSyncDirectoryOnTempRoot(t *testing.T) {
+func TestSyncRootOnTempRoot(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
-	if err := syncDirectory(dir); err != nil {
+	if err := syncRoot(testRoot(t, t.TempDir())); err != nil {
 		t.Fatal(err)
 	}
 }

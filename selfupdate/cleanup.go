@@ -10,7 +10,7 @@ func cleanupReceiptName(base string) string {
 	return "." + base + ".selfupdate.cleanup"
 }
 
-// backupPrefix is the name prefix of every backup randomSibling allocates.
+// backupPrefix is the name prefix of every backup backupFile makes.
 func backupPrefix(base string) string {
 	return "." + base + ".selfupdate-bak-"
 }

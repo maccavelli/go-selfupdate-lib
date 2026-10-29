@@ -133,7 +133,7 @@ func TestWindowsCommitAddsToPendingReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 	holdBusy(t, second)
-	pending, err := realFS().commitReplacement(context.Background(), target, applyResult{backup: second, oldDigest: oldBytesDigest(t)})
+	pending, err := realFS().commitReplacement(context.Background(), testRoot(t, target.Dir), target, applyResult{backup: second, oldDigest: oldBytesDigest(t)})
 	if err != nil {
 		t.Fatalf("commit with a pending receipt: %v", err)
 	}
@@ -361,7 +361,7 @@ func TestWindowsCommitReceiptNotCancelled(t *testing.T) {
 	t.Parallel()
 	sess, target := lockedSession(t, 5*time.Second)
 	first := busyBackup(t, target, ".demo.selfupdate-bak-first")
-	if err := realFS().writeCleanupReceipt(context.Background(), target, applyResult{backup: first, oldDigest: oldBytesDigest(t)}); err != nil {
+	if err := realFS().writeCleanupReceipt(context.Background(), testRoot(t, target.Dir), target, applyResult{backup: first, oldDigest: oldBytesDigest(t)}); err != nil {
 		t.Fatal(err)
 	}
 	release := holdBusy(t, cleanupReceiptPath(target))
@@ -393,7 +393,7 @@ func TestWindowsCommitReceiptBoundedByLockTimeout(t *testing.T) {
 	t.Parallel()
 	sess, target := lockedSession(t, 200*time.Millisecond)
 	first := busyBackup(t, target, ".demo.selfupdate-bak-first")
-	if err := realFS().writeCleanupReceipt(context.Background(), target, applyResult{backup: first, oldDigest: oldBytesDigest(t)}); err != nil {
+	if err := realFS().writeCleanupReceipt(context.Background(), testRoot(t, target.Dir), target, applyResult{backup: first, oldDigest: oldBytesDigest(t)}); err != nil {
 		t.Fatal(err)
 	}
 	holdBusy(t, cleanupReceiptPath(target))

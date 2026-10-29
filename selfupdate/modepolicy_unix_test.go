@@ -91,7 +91,7 @@ func TestStagingOwnership(t *testing.T) {
 			st := info.Sys().(*syscall.Stat_t)
 			var gotUID, gotGID int
 			res, err := unixInstall(t, exe, targetPolicy(exe), func(fx *fsOps) {
-				fx.osLchown = func(_ string, uid, gid int) error {
+				fx.fileChown = func(_ *os.File, uid, gid int) error {
 					gotUID, gotGID = uid, gid
 					return c.err
 				}

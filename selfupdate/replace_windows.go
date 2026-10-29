@@ -6,6 +6,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"golang.org/x/sys/windows"
@@ -23,47 +25,58 @@ func isUnsupportedDirSync(err error) bool {
 	return errors.Is(err, windows.ERROR_ACCESS_DENIED)
 }
 
-func (fx *fsOps) replacePathOS(ctx context.Context, oldpath, newpath string) error {
-	return fx.moveFileReplace(ctx, oldpath, newpath)
+// replacePathOS replaces by path, under root's name: moveFileReplace
+// writes through and retries a busy image, which Root.Rename does not
+// (0038-MADR F8).
+func (fx *fsOps) replacePathOS(ctx context.Context, root *os.Root, oldname, newname string) error {
+	return fx.moveFileReplace(ctx, filepath.Join(root.Name(), oldname), filepath.Join(root.Name(), newname))
 }
 
-// replaceTarget replaces target with staging, keeping a backup. When
-// beforeRename is set it runs once the backup exists and before the
-// replace, with the backup's path and the previous binary's digest; its
-// error leaves the target untouched (0017-PLAN N7).
-func (fx *fsOps) replaceTarget(ctx context.Context, target Target, staging string, beforeRename func(backup, oldDigest string) error) (applyResult, error) {
-	info, err := lockedTarget(target)
+// modeOpenFlags opens a file to set its mode: SetFileInformationByHandle
+// needs write access. Only staging is opened so; a backup has no setuid or
+// setgid bit to clear on Windows.
+const modeOpenFlags = os.O_RDWR
+
+// chownStaging does nothing: Windows has no owner to carry.
+func (*fsOps) chownStaging(*os.File, os.FileInfo) error {
+	return nil
+}
+
+// replaceTarget replaces target with staging, both names in root, keeping
+// a backup. When beforeRename is set it runs once the backup exists and
+// before the replace, with the backup's path and the previous binary's
+// digest; its error leaves the target untouched (0017-PLAN N7).
+func (fx *fsOps) replaceTarget(ctx context.Context, root *os.Root, target Target, staging string, beforeRename func(backup, oldDigest string) error) (applyResult, error) {
+	info, err := lockedTarget(root, target)
 	if err != nil {
 		return applyResult{}, err
 	}
-	if err := fx.chmodStaging(staging, target, info); err != nil {
-		return applyResult{}, fmt.Errorf("selfupdate: chmod staging: %w", err)
+	if err := fx.setStagingMode(root, staging, target, info); err != nil {
+		return applyResult{}, err
 	}
-	oldDigest, err := fileSHA256(target.Path)
+	oldDigest, err := rootFileSHA256(root, target.Base, info)
 	if err != nil {
 		return applyResult{}, err
 	}
-	backup, err := randomSibling(target.Dir, "."+target.Base+".selfupdate-bak-")
+	name, err := fx.backupFile(root, target)
 	if err != nil {
-		return applyResult{}, fmt.Errorf("selfupdate: allocate backup: %w", err)
-	}
-	if err := fx.backupFile(target.Path, backup); err != nil {
 		return applyResult{}, fmt.Errorf("selfupdate: backup target: %w", err)
 	}
+	backup := filepath.Join(target.Dir, name)
 	if beforeRename != nil {
 		if err := beforeRename(backup, oldDigest); err != nil {
-			return applyResult{}, joinRemove(fmt.Errorf("selfupdate: write the journal: %w", err), backup)
+			return applyResult{}, joinRootRemove(fmt.Errorf("selfupdate: write the journal: %w", err), root, name)
 		}
 	}
-	if err := fx.replacePath(ctx, staging, target.Path); err != nil {
-		return applyResult{}, joinRemove(fmt.Errorf("selfupdate: replace target: %w", err), backup)
+	if err := fx.replacePath(ctx, root, staging, target.Base); err != nil {
+		return applyResult{}, joinRootRemove(fmt.Errorf("selfupdate: replace target: %w", err), root, name)
 	}
-	if err := fx.syncDirFn(target.Dir); err != nil && !isUnsupportedSync(err) {
+	if err := fx.syncRootFn(root); err != nil {
 		syncErr := fmt.Errorf("selfupdate: sync directory: %w", err)
 		// The restore is recovery: the caller's cancellation must not
 		// abandon it with the new binary live. moveFileReplace still bounds
 		// it by the retry budget (0004-MADR R4).
-		if rerr := fx.replacePath(context.WithoutCancel(ctx), backup, target.Path); rerr != nil {
+		if rerr := fx.replacePath(context.WithoutCancel(ctx), root, name, target.Base); rerr != nil {
 			// The new binary is live and the backup is kept: report both
 			// (0003-MADR B1).
 			return applyResult{backup: backup, oldDigest: oldDigest, renamed: true},
@@ -150,40 +163,42 @@ func isReadOnlyDenial(err error, to *uint16) bool {
 
 // keepAsPending puts result's backup on the cleanup receipt when err is a
 // running image's refusal (0010-MADR B6). ok reports that it applied.
-func (fx *fsOps) keepAsPending(ctx context.Context, target Target, result applyResult, err error) (pending string, ok bool, kerr error) {
+func (fx *fsOps) keepAsPending(ctx context.Context, root *os.Root, target Target, result applyResult, err error) (pending string, ok bool, kerr error) {
 	if !isBusyRunningImage(err) {
 		return "", false, nil
 	}
-	if werr := fx.writeCleanupReceipt(ctx, target, result); werr != nil {
+	if werr := fx.writeCleanupReceipt(ctx, root, target, result); werr != nil {
 		return "", true, errors.Join(fmt.Errorf("selfupdate: keep previous: %w", err), werr)
 	}
-	return result.backup, true, fx.syncDirFn(target.Dir)
+	return result.backup, true, fx.syncRootFn(root)
 }
 
-func (fx *fsOps) commitReplacement(ctx context.Context, target Target, result applyResult) (pending string, err error) {
+func (fx *fsOps) commitReplacement(ctx context.Context, root *os.Root, target Target, result applyResult) (pending string, err error) {
 	if result.backup == "" {
 		return "", nil
 	}
-	if err := fx.osRemove(result.backup); err != nil {
+	if err := fx.rootRemove(root, filepath.Base(result.backup)); err != nil {
 		if isBusyRunningImage(err) {
-			if werr := fx.writeCleanupReceipt(ctx, target, result); werr != nil {
+			if werr := fx.writeCleanupReceipt(ctx, root, target, result); werr != nil {
 				return "", errors.Join(fmt.Errorf("selfupdate: remove backup: %w", err), werr)
 			}
 			return result.backup, nil
 		}
 		return "", fmt.Errorf("selfupdate: remove backup: %w", err)
 	}
-	return "", fx.syncDirFn(target.Dir)
+	return "", fx.syncRootFn(root)
 }
 
-func (fx *fsOps) rollbackReplacement(ctx context.Context, target Target, result applyResult) error {
+func (fx *fsOps) rollbackReplacement(ctx context.Context, root *os.Root, target Target, result applyResult) error {
 	if result.backup == "" {
 		return fmt.Errorf("selfupdate: no backup to restore")
 	}
-	if err := fx.replacePath(ctx, result.backup, target.Path); err != nil {
+	backup := filepath.Base(result.backup)
+	if err := fx.replacePath(ctx, root, backup, target.Base); err != nil {
 		return fmt.Errorf("selfupdate: restore backup: %w", err)
 	}
-	if err := fx.syncDirFn(target.Dir); err != nil {
+	dropSameBackup(root, backup, target.Base)
+	if err := fx.syncRootFn(root); err != nil {
 		return errors.Join(errRestoredUnsynced, err)
 	}
 	return nil

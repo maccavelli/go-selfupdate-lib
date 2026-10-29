@@ -25,11 +25,7 @@ func TestWindowsCleanupReceiptRoundTrip(t *testing.T) {
 	if err := os.WriteFile(backup, []byte("old-bytes"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	digest, err := fileSHA256(backup)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := realFS().writeCleanupReceipt(context.Background(), target, applyResult{backup: backup, oldDigest: digest}); err != nil {
+	if err := realFS().writeCleanupReceipt(context.Background(), testRoot(t, target.Dir), target, applyResult{backup: backup, oldDigest: oldBytesDigest(t)}); err != nil {
 		t.Fatal(err)
 	}
 	root, err := os.OpenRoot(target.Dir)

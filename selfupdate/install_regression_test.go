@@ -29,9 +29,9 @@ func swapAfterFirstReplace(t *testing.T, fx *fsOps, dir string, readOnly bool) (
 	moved = dir + ".moved"
 	real := fx.replacePath
 	calls := 0
-	fx.replacePath = func(ctx context.Context, oldpath, newpath string) error {
+	fx.replacePath = func(ctx context.Context, root *os.Root, oldname, newname string) error {
 		calls++
-		if err := real(ctx, oldpath, newpath); err != nil {
+		if err := real(ctx, root, oldname, newname); err != nil {
 			return err
 		}
 		if calls == 1 {
@@ -214,14 +214,12 @@ func TestProbeRollbackSyncFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer sess.Close()
-	calls := 0
-	fsOf(t, sess).syncDirFn = func(dir string) error {
-		calls++
-		if calls == 2 {
+	syncsAfterJournal(fsOf(t, sess), func(n int, root *os.Root) error {
+		if n == 2 {
 			return errors.New("injected sync failure after the rollback rename")
 		}
-		return syncDirectory(dir)
-	}
+		return syncRoot(root)
+	})
 	path := stageNew(t, sess)
 	res, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: path}})
 	if err == nil || !strings.Contains(err.Error(), "injected sync failure") {

@@ -58,6 +58,29 @@ func fsFor(inst *StandaloneInstaller) *fsOps {
 	return inst.fs
 }
 
+// syncsAfterJournal sends fx's directory syncs after the journal is
+// written to sync, numbered from 1: the replacement's, then a commit's or
+// a rollback's. The syncs before it, the journal's own included, are real.
+// Every flush goes through the session's root
+// (docs/decisions/0038-PLAN-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// Q13), so the number tells them apart.
+func syncsAfterJournal(fx *fsOps, sync func(n int, root *os.Root) error) {
+	realJournal := fx.writeJournalFn
+	journaled, n := false, 0
+	fx.writeJournalFn = func(root *os.Root, target Target, j pendingJournal) error {
+		err := realJournal(root, target, j)
+		journaled = true
+		return err
+	}
+	fx.syncRootFn = func(root *os.Root) error {
+		if !journaled {
+			return syncRoot(root)
+		}
+		n++
+		return sync(n, root)
+	}
+}
+
 func readString(t *testing.T, path string) string {
 	t.Helper()
 	b, err := os.ReadFile(path)
@@ -91,14 +114,14 @@ func TestInstallSyncAndRollbackFailureReported(t *testing.T) {
 	path := stageNew(t, sess)
 	syncErr := errors.New("injected dir sync failure")
 	restoreErr := errors.New("injected restore failure")
-	fsOf(t, sess).syncDirFn = func(string) error { return syncErr }
+	syncsAfterJournal(fsOf(t, sess), func(int, *os.Root) error { return syncErr })
 	fx := fsOf(t, sess)
 	real := fx.replacePath
 	calls := 0
-	fx.replacePath = func(ctx context.Context, oldpath, newpath string) error {
+	fx.replacePath = func(ctx context.Context, root *os.Root, oldname, newname string) error {
 		calls++
 		if calls == 1 {
-			return real(ctx, oldpath, newpath)
+			return real(ctx, root, oldname, newname)
 		}
 		return restoreErr
 	}
@@ -124,24 +147,21 @@ func TestManagedApplyFailureRetriesRollback(t *testing.T) {
 	life := &fakeLife{installed: true, running: true}
 	_, _, sess, exe := managedEnv(t, life, &fakeRec{})
 	path := stageNew(t, sess)
-	syncCalls := 0
 	fx := fsOf(t, sess)
-	realSync := fx.syncDirFn
-	fx.syncDirFn = func(dir string) error {
-		syncCalls++
-		if syncCalls == 1 {
+	syncsAfterJournal(fx, func(n int, root *os.Root) error {
+		if n == 1 {
 			return errors.New("injected dir sync failure")
 		}
-		return realSync(dir)
-	}
+		return syncRoot(root)
+	})
 	real := fx.replacePath
 	calls := 0
-	fx.replacePath = func(ctx context.Context, oldpath, newpath string) error {
+	fx.replacePath = func(ctx context.Context, root *os.Root, oldname, newname string) error {
 		calls++
 		if calls == 2 {
 			return errors.New("injected restore failure")
 		}
-		return real(ctx, oldpath, newpath)
+		return real(ctx, root, oldname, newname)
 	}
 	_, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: path}})
 	if !errors.Is(err, ErrManagedInstall) {
@@ -188,7 +208,7 @@ func TestBackupCopyFallbackPreservesMode(t *testing.T) {
 	}
 	life := &fakeLife{installed: true, running: true, healthErr: errors.New("unhealthy")}
 	_, _, sess, exe := managedEnv(t, life, &fakeRec{})
-	fsOf(t, sess).osLink = func(string, string) error { return errors.New("injected link failure") }
+	fsOf(t, sess).rootLink = func(*os.Root, string, string) error { return errors.New("injected link failure") }
 	before, err := os.Stat(exe)
 	if err != nil {
 		t.Fatal(err)
@@ -214,7 +234,7 @@ func TestInstallFailureBeforeRenameRemovesStagingOnClose(t *testing.T) {
 	t.Parallel()
 	sess, exe := standaloneSession(t)
 	path := stageNew(t, sess)
-	fsOf(t, sess).replacePath = func(context.Context, string, string) error { return errors.New("injected rename failure") }
+	fsOf(t, sess).replacePath = func(context.Context, *os.Root, string, string) error { return errors.New("injected rename failure") }
 	if _, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: path}}); err == nil {
 		t.Fatal("expected the rename failure")
 	}
@@ -349,16 +369,16 @@ func TestInstallInjectedFailures(t *testing.T) {
 		wantApply  bool
 	}{
 		{"chmod", func(t *testing.T, fx *fsOps) {
-			fx.osChmod = func(string, os.FileMode) error { return failing }
+			fx.fileChmod = func(*os.File, os.FileMode) error { return failing }
 		}, "old-bytes", false},
 		{"rename", func(t *testing.T, fx *fsOps) {
-			fx.replacePath = func(context.Context, string, string) error { return failing }
+			fx.replacePath = func(context.Context, *os.Root, string, string) error { return failing }
 		}, "old-bytes", false},
 		{"dir sync, restored", func(t *testing.T, fx *fsOps) {
-			fx.syncDirFn = func(string) error { return failing }
+			syncsAfterJournal(fx, func(int, *os.Root) error { return failing })
 		}, "old-bytes", false},
 		{"commit remove backup", func(t *testing.T, fx *fsOps) {
-			fx.osRemove = func(string) error { return failing }
+			fx.rootRemove = func(*os.Root, string) error { return failing }
 		}, "new-bytes", true},
 	}
 	for _, tc := range cases {
@@ -522,16 +542,12 @@ func TestInstallReportsRestoreAfterSyncFailure(t *testing.T) {
 	t.Run("restored after a failed sync", func(t *testing.T) {
 		sess, exe := standaloneSession(t)
 		path := stageNew(t, sess)
-		fx := fsOf(t, sess)
-		real := fx.syncDirFn
-		calls := 0
-		fx.syncDirFn = func(dir string) error {
-			calls++
-			if calls == 1 {
+		syncsAfterJournal(fsOf(t, sess), func(n int, root *os.Root) error {
+			if n == 1 {
 				return errors.New("injected dir sync failure")
 			}
-			return real(dir)
-		}
+			return syncRoot(root)
+		})
 		res, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: path}})
 		check(t, res, err, exe)
 	})
@@ -539,19 +555,15 @@ func TestInstallReportsRestoreAfterSyncFailure(t *testing.T) {
 		sess, exe := standaloneSession(t)
 		path := stageNew(t, sess)
 		moved := swapAfterFirstReplace(t, fsOf(t, sess), filepath.Dir(exe), false)
-		// The first root sync is the journal's, before the rename
+		// The replacement's own sync, the first after the journal's
 		// (docs/decisions/0017-PLAN-verify-build-provenance-and-close-0015-open-items.md
-		// Q1); the rollback's, after it, fails.
-		fx := fsOf(t, sess)
-		real := fx.syncRootFn
-		rootSyncs := 0
-		fx.syncRootFn = func(r *os.Root) error {
-			rootSyncs++
-			if rootSyncs == 1 {
-				return real(r)
+		// Q1), passes; the rollback's, after it, fails.
+		syncsAfterJournal(fsOf(t, sess), func(n int, root *os.Root) error {
+			if n == 1 {
+				return syncRoot(root)
 			}
 			return errors.New("injected root sync failure")
-		}
+		})
 		res, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: path}})
 		check(t, res, err, filepath.Join(moved, filepath.Base(exe)))
 		// The rollback's own sync failed, and says so

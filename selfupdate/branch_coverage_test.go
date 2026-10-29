@@ -196,7 +196,7 @@ func TestCommitReportsBackupRemovalFailure(t *testing.T) {
 	t.Parallel()
 	sess, _ := standaloneSession(t)
 	path := stageNew(t, sess)
-	fsOf(t, sess).osRemove = func(string) error { return errors.New("injected remove failure") }
+	fsOf(t, sess).rootRemove = func(*os.Root, string) error { return errors.New("injected remove failure") }
 	res, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: path}})
 	if !res.Applied {
 		t.Fatalf("Applied=false err=%v; the replacement itself succeeded", err)
@@ -210,14 +210,12 @@ func TestCommitReportsDirectorySyncFailure(t *testing.T) {
 	t.Parallel()
 	sess, _ := standaloneSession(t)
 	path := stageNew(t, sess)
-	syncs := 0
-	fsOf(t, sess).syncDirFn = func(string) error {
-		syncs++
-		if syncs == 1 {
-			return nil // the sync inside the replacement
+	syncsAfterJournal(fsOf(t, sess), func(n int, root *os.Root) error {
+		if n == 1 {
+			return syncRoot(root) // the sync inside the replacement
 		}
 		return errors.New("injected commit sync failure")
-	}
+	})
 	res, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: path}})
 	if !res.Applied {
 		t.Fatalf("Applied=false err=%v", err)
@@ -236,17 +234,18 @@ func TestRollbackReplacementFailures(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	wantErrContaining(t, realFS().rollbackReplacement(ctx, target, applyResult{}), "no backup to restore")
+	root := testRoot(t, target.Dir)
+	wantErrContaining(t, realFS().rollbackReplacement(ctx, root, target, applyResult{}), "no backup to restore")
 
 	t.Run("restore", func(t *testing.T) {
 		fx := realFS()
-		fx.replacePath = func(context.Context, string, string) error { return errors.New("injected restore failure") }
-		wantErrContaining(t, fx.rollbackReplacement(ctx, target, applyResult{backup: backup}), "restore backup")
+		fx.replacePath = func(context.Context, *os.Root, string, string) error { return errors.New("injected restore failure") }
+		wantErrContaining(t, fx.rollbackReplacement(ctx, root, target, applyResult{backup: backup}), "restore backup")
 	})
 	t.Run("sync", func(t *testing.T) {
 		fx := realFS()
-		fx.syncDirFn = func(string) error { return errors.New("injected rollback sync failure") }
-		wantErrContaining(t, fx.rollbackReplacement(ctx, target, applyResult{backup: backup}), "injected rollback sync failure")
+		fx.syncRootFn = func(*os.Root) error { return errors.New("injected rollback sync failure") }
+		wantErrContaining(t, fx.rollbackReplacement(ctx, root, target, applyResult{backup: backup}), "injected rollback sync failure")
 		if got := readString(t, exe); got != "old-bytes" {
 			t.Fatalf("target holds %q; the restore ran before the sync failed", got)
 		}
@@ -278,12 +277,12 @@ func TestCopyFileFailuresRemoveTheCopy(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			fx := realFS()
 			inject(fx)
-			dst := filepath.Join(dir, "dst-"+name)
-			if err := fx.copyFile(src, dst); !errors.Is(err, injected) {
+			prefix := "dst-" + name + "-"
+			if _, err := fx.copyFile(testRoot(t, dir), filepath.Base(src), prefix); !errors.Is(err, injected) {
 				t.Fatalf("err = %v, want the injected %s failure", err, name)
 			}
-			if _, err := os.Lstat(dst); !errors.Is(err, os.ErrNotExist) {
-				t.Fatalf("a failed copy left %s behind: %v", dst, err)
+			if left, err := filepath.Glob(filepath.Join(dir, prefix+"*")); err != nil || len(left) != 0 {
+				t.Fatalf("a failed copy left %q behind: %v", left, err)
 			}
 		})
 	}

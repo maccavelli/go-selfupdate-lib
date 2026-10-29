@@ -16,9 +16,10 @@ import (
 
 // isLeftover reports whether name is one this package creates for the
 // target base and removes on success: a staging file, as CreateStaging
-// names it, or a backup, as randomSibling names it. Both end in the
-// decimal number os.CreateTemp chooses, so no other name matches,
-// including another target's whose name starts with base.
+// names it, or a backup, as backupFile names it. Both end in the random
+// decimal number rootCreateTemp and backupFile choose, as os.CreateTemp
+// does, so no other name matches, including another target's whose name
+// starts with base.
 func isLeftover(base, name string) bool {
 	// The Windows cleanup receipt's temporary file, before its rename
 	// (0015-MADR B8).

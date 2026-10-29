@@ -55,12 +55,7 @@ func (fx *fsOps) writeJournal(root *os.Root, target Target, j pendingJournal) er
 	if err != nil {
 		return err
 	}
-	tmpPath, err := randomSibling(target.Dir, journalTmpPrefix(target.Base))
-	if err != nil {
-		return err
-	}
-	tmp := filepath.Base(tmpPath)
-	f, err := root.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	f, tmp, err := rootCreateTemp(root, journalTmpPrefix(target.Base), "")
 	if err != nil {
 		return err
 	}
@@ -186,17 +181,17 @@ func previousStillLive(root *os.Root, target Target, backup os.FileInfo, oldDige
 func (fx *fsOps) keepInterrupted(root *os.Root, target Target, backup string) bool {
 	kept, _ := keptName(target.Base, backup)
 	if _, err := root.Lstat(kept); err == nil {
-		fresh, err := randomSibling(target.Dir, "."+target.Base+".selfupdate-kept-")
+		fresh, err := rootReserveName(root, "."+target.Base+".selfupdate-kept-")
 		if err != nil {
 			return false
 		}
-		kept = filepath.Base(fresh)
+		kept = fresh
 	}
 	if err := fx.keptRenameFn(root, backup, kept); err != nil {
 		return false
 	}
 	advisory(fx.syncRootFn(root))
-	advisory(fx.clearSpecialBits(filepath.Join(target.Dir, kept)))
+	advisory(fx.clearSpecialBits(root, kept))
 	return true
 }
 

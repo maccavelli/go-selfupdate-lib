@@ -151,7 +151,7 @@ func TestKeptBackupClearsSpecialBits(t *testing.T) {
 	}
 	defer func() { _ = sess.Close() }()
 	staged := stageNew(t, sess)
-	fsOf(t, sess).syncDirFn = func(string) error { return errors.New("injected directory sync failure") }
+	syncsAfterJournal(fsOf(t, sess), func(int, *os.Root) error { return errors.New("injected directory sync failure") })
 	failRestore(t, fsOf(t, sess))
 	res, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: staged}})
 	if err == nil || res.Applied || res.Backup == "" {

@@ -124,11 +124,11 @@ func (fx *fsOps) processCleanupReceipt(ctx context.Context, target Target, root 
 			return fmt.Errorf("selfupdate: remove cleanup receipt: %w", err)
 		}
 	default:
-		if err := fx.writeCleanupEntries(ctx, target, kept); err != nil {
+		if err := fx.writeCleanupEntries(ctx, root, target, kept); err != nil {
 			return fmt.Errorf("selfupdate: rewrite cleanup receipt: %w", err)
 		}
 	}
-	return fx.syncDirFn(target.Dir)
+	return fx.syncRootFn(root)
 }
 
 // removePendingBackup removes one pending backup through the root. It
@@ -167,15 +167,16 @@ func removePendingBackup(target Target, root *os.Root, e cleanupEntry) (keep boo
 	return false, nil
 }
 
-// writeCleanupReceipt adds result's backup to the target's receipt,
-// creating it when there is none. The caller holds the session's lock.
-func (fx *fsOps) writeCleanupReceipt(ctx context.Context, target Target, result applyResult) error {
+// writeCleanupReceipt adds result's backup to the target's receipt in
+// root, creating it when there is none. The caller holds the session's
+// lock.
+func (fx *fsOps) writeCleanupReceipt(ctx context.Context, root *os.Root, target Target, result applyResult) error {
 	entries, err := readCleanupEntries(target)
 	if err != nil {
 		return err
 	}
 	entries = append(entries, cleanupEntry{Backup: filepath.Base(result.backup), Digest: result.oldDigest})
-	return fx.writeCleanupEntries(ctx, target, entries)
+	return fx.writeCleanupEntries(ctx, root, target, entries)
 }
 
 // readCleanupEntries reads the target's receipt by path, under the lock:
@@ -215,37 +216,35 @@ func listedBackups(target Target) (names map[string]bool, ok bool) {
 }
 
 // writeCleanupEntries replaces the target's receipt with one listing
-// entries: a new file, restricted to the current user, then a replace, so a
-// reader never sees a partial receipt. ctx bounds the replace's retries:
-// its retry budget, and its cancellation when it has one
+// entries: a new file in root, restricted to the current user, then a
+// replace, so a reader never sees a partial receipt. The replace is by
+// path, as every Windows replace is (0038-MADR F8). ctx bounds its
+// retries: its retry budget, and its cancellation when it has one
 // (0025-MADR-align-with-go-sdk-design-practices.md Amendment A2).
-func (fx *fsOps) writeCleanupEntries(ctx context.Context, target Target, entries []cleanupEntry) error {
+func (fx *fsOps) writeCleanupEntries(ctx context.Context, root *os.Root, target Target, entries []cleanupEntry) error {
 	data, err := json.Marshal(receiptFor(entries))
 	if err != nil {
 		return err
 	}
-	tmp, err := randomSibling(target.Dir, "."+target.Base+".selfupdate.cleanup-tmp-")
+	f, name, err := rootCreateTemp(root, "."+target.Base+".selfupdate.cleanup-tmp-", "")
 	if err != nil {
 		return err
 	}
-	f, err := openAbsFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if err != nil {
-		return err
-	}
+	tmp := filepath.Join(target.Dir, name)
 	if _, err := f.Write(data); err != nil {
-		return joinRemove(joinClose(err, f), tmp)
+		return joinRootRemove(joinClose(err, f), root, name)
 	}
 	if err := f.Sync(); err != nil {
-		return joinRemove(joinClose(err, f), tmp)
+		return joinRootRemove(joinClose(err, f), root, name)
 	}
 	if err := f.Close(); err != nil {
-		return joinRemove(err, tmp)
+		return joinRootRemove(err, root, name)
 	}
 	if err := restrictToCurrentUser(tmp); err != nil {
-		return joinRemove(err, tmp)
+		return joinRootRemove(err, root, name)
 	}
 	if err := fx.moveFileReplace(ctx, tmp, cleanupReceiptPath(target)); err != nil {
-		return joinRemove(err, tmp)
+		return joinRootRemove(err, root, name)
 	}
 	return nil
 }

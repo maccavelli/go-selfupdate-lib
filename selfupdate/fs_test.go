@@ -15,7 +15,7 @@ func TestInjectedRenameFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fsFor(inst).replacePath = func(ctx context.Context, oldpath, newpath string) error {
+	fsFor(inst).replacePath = func(ctx context.Context, root *os.Root, oldname, newname string) error {
 		return errors.New("injected rename failure")
 	}
 	target, err := inst.ResolveTarget(context.Background())

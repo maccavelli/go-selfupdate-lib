@@ -221,16 +221,12 @@ func TestManagedRecoveryReportsRestoredBinary(t *testing.T) {
 		life := &fakeLife{installed: true, running: true, healthErr: errors.New("unhealthy")}
 		_, _, sess, exe := managedEnv(t, life, &fakeRec{})
 		path := stageNew(t, sess)
-		fx := fsOf(t, sess)
-		real := fx.syncDirFn
-		calls := 0
-		fx.syncDirFn = func(dir string) error {
-			calls++
-			if calls == 2 {
+		syncsAfterJournal(fsOf(t, sess), func(n int, root *os.Root) error {
+			if n == 2 {
 				return errors.New("injected sync failure after the restore")
 			}
-			return real(dir)
-		}
+			return syncRoot(root)
+		})
 		res, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: path}})
 		check(t, res, err, exe)
 	})

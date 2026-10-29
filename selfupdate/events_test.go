@@ -291,8 +291,8 @@ func TestInstallersReportRolledBack(t *testing.T) {
 	fx := fsOf(t, standalone)
 	real := fx.replacePath
 	var swapErr error
-	fx.replacePath = func(ctx context.Context, oldpath, newpath string) error {
-		if err := real(ctx, oldpath, newpath); err != nil {
+	fx.replacePath = func(ctx context.Context, root *os.Root, oldname, newname string) error {
+		if err := real(ctx, root, oldname, newname); err != nil {
 			return err
 		}
 		if swapErr = os.Rename(dir, moved); swapErr == nil {

@@ -98,17 +98,13 @@ func (s *installSession) CreateStaging(ctx context.Context) (*os.File, string, e
 	if s.closed {
 		return nil, "", fmt.Errorf("selfupdate: session is closed")
 	}
-	f, err := os.CreateTemp(s.target.Dir, "."+s.target.Base+".selfupdate-*"+stagingSuffix())
+	// Made in the locked directory through its root, whatever path names
+	// it now (0038-MADR F8).
+	f, base, err := rootCreateTemp(s.root, "."+s.target.Base+".selfupdate-", stagingSuffix())
 	if err != nil {
 		return nil, "", fmt.Errorf("selfupdate: create staging: %w", err)
 	}
-	name := f.Name()
-	base := filepath.Base(name)
-	if _, err := s.root.Lstat(base); err != nil {
-		err = fmt.Errorf("selfupdate: staging escaped target directory: %w", err)
-		err = joinClose(err, f)
-		return nil, "", joinRemove(err, name)
-	}
+	name := filepath.Join(s.target.Dir, base)
 	if s.staging == nil {
 		s.staging = make(map[string]struct{})
 	}
@@ -218,25 +214,26 @@ func (s *installSession) Install(ctx context.Context, req InstallRequest) (Insta
 func (s *installSession) commitLocked(ctx context.Context, applied applyResult) (pending, previous string, err error) {
 	receiptCtx := withRetryBudget(context.WithoutCancel(ctx), s.lockTimeout)
 	if !s.keepPrevious || applied.backup == "" {
-		pending, err = s.fs.commitReplacement(receiptCtx, s.target, applied)
+		pending, err = s.fs.commitReplacement(receiptCtx, s.root, s.target, applied)
 		return pending, "", err
 	}
 	previous = previousPath(s.target)
-	if err := s.fs.clearSpecialBits(applied.backup); err != nil {
+	backup := filepath.Base(applied.backup)
+	if err := s.fs.clearSpecialBits(s.root, backup); err != nil {
 		// A privileged copy must not stay at a predictable path: the
 		// backup goes (0015-MADR B5).
-		return "", "", errors.Join(fmt.Errorf("selfupdate: keep previous: %w", err), os.Remove(applied.backup))
+		return "", "", errors.Join(fmt.Errorf("selfupdate: keep previous: %w", err), s.root.Remove(backup))
 	}
-	if err := s.fs.replacePath(withRetryBudget(ctx, s.lockTimeout), applied.backup, previous); err != nil {
+	if err := s.fs.replacePath(withRetryBudget(ctx, s.lockTimeout), s.root, backup, filepath.Base(previous)); err != nil {
 		// A .previous a running image holds cannot be replaced: on Windows
 		// the new backup goes on the cleanup receipt instead, and the
 		// commit stands (0010-MADR B6).
-		if pending, ok, kerr := s.fs.keepAsPending(receiptCtx, s.target, applied, err); ok {
+		if pending, ok, kerr := s.fs.keepAsPending(receiptCtx, s.root, s.target, applied, err); ok {
 			return pending, "", kerr
 		}
 		return "", "", fmt.Errorf("selfupdate: keep previous: %w", err)
 	}
-	return "", previous, s.fs.syncDirFn(s.target.Dir)
+	return "", previous, s.fs.syncRootFn(s.root)
 }
 
 // Apply implements TwoPhaseSession: it replaces the target, keeps the
@@ -301,7 +298,7 @@ func (s *installSession) probeInstalled(ctx context.Context, req InstallRequest,
 	}
 	perr = fmt.Errorf("selfupdate: installed binary failed its probe: %w", perr)
 	rctx := withRetryBudget(context.WithoutCancel(ctx), s.lockTimeout)
-	if rerr := s.fs.rollbackReplacement(rctx, s.target, applied); rerr != nil {
+	if rerr := s.fs.rollbackReplacement(rctx, s.root, s.target, applied); rerr != nil {
 		if errors.Is(rerr, errRestoredUnsynced) {
 			// The backup is back in place; only its sync failed. It is
 			// rolled back, and no backup is left to report (0010-MADR B9).
@@ -330,7 +327,12 @@ func (s *installSession) replaceLocked(ctx context.Context, req InstallRequest, 
 	if err := s.checkDir(); err != nil {
 		return applyResult{}, err
 	}
-	info, err := os.Lstat(path)
+	s.fs.afterCheckHook()
+	// From here every name resolves through the root: a directory swapped
+	// in after the check is never written to, and the check after the
+	// rename sees the swap (0038-MADR F8, P2).
+	staging := filepath.Base(path)
+	info, err := s.root.Lstat(staging)
 	if err != nil {
 		return applyResult{}, fmt.Errorf("selfupdate: stat staging: %w", err)
 	}
@@ -342,7 +344,7 @@ func (s *installSession) replaceLocked(ctx context.Context, req InstallRequest, 
 	if _, err := s.root.Lstat(journalName(s.target.Base)); err == nil {
 		return applyResult{}, errJournalPending(s.target)
 	}
-	newDigest, err := stagedDigest(req.Artifact)
+	newDigest, err := stagedDigest(s.root, staging, info, req.Artifact)
 	if err != nil {
 		return applyResult{}, fmt.Errorf("selfupdate: hash staging: %w", err)
 	}
@@ -356,7 +358,7 @@ func (s *installSession) replaceLocked(ctx context.Context, req InstallRequest, 
 		s.journal = true
 		return nil
 	}
-	applied, err := s.fs.replaceTarget(withRetryBudget(ctx, s.lockTimeout), s.target, path, journal)
+	applied, err := s.fs.replaceTarget(withRetryBudget(ctx, s.lockTimeout), s.root, s.target, staging, journal)
 	if applied.renamed {
 		delete(s.staging, path)
 	}
@@ -369,12 +371,13 @@ func (s *installSession) replaceLocked(ctx context.Context, req InstallRequest, 
 }
 
 // stagedDigest is the staged binary's SHA-256: the Updater's
-// InstalledDigest when it is one, otherwise the staging file's.
-func stagedDigest(a StagedArtifact) (string, error) {
+// InstalledDigest when it is one, otherwise that of staging in root, the
+// file info describes.
+func stagedDigest(root *os.Root, staging string, info os.FileInfo, a StagedArtifact) (string, error) {
 	if len(a.InstalledDigest) == 64 && strings.Trim(a.InstalledDigest, "0123456789abcdef") == "" {
 		return a.InstalledDigest, nil
 	}
-	return fileSHA256(a.Path)
+	return rootFileSHA256(root, staging, info)
 }
 
 // finishJournalLocked removes the journal this session wrote, once its
@@ -458,7 +461,7 @@ func (s *installSession) Rollback(ctx context.Context, a AppliedReplacement) err
 	if s.checkDir() != nil {
 		err = s.rollbackInRoot(st.applied)
 	} else {
-		err = s.fs.rollbackReplacement(withRetryBudget(ctx, s.lockTimeout), s.target, st.applied)
+		err = s.fs.rollbackReplacement(withRetryBudget(ctx, s.lockTimeout), s.root, s.target, st.applied)
 	}
 	if err == nil || errors.Is(err, errRestoredUnsynced) {
 		st.finished = true
@@ -494,16 +497,17 @@ func (s *installSession) retainLocked(backup string) string {
 	path := filepath.Join(filepath.Dir(backup), kept)
 	// The only copy of the previous binary is kept, without setuid or
 	// setgid; a restore must set them again (0015-MADR B5).
-	advisory(s.fs.clearSpecialBits(path))
+	advisory(s.fs.clearSpecialBits(s.root, kept))
 	s.finishJournalLocked()
 	return path
 }
 
-// clearSpecialBits drops setuid and setgid from a copy of the previous
-// binary, keeping its permissions and the sticky bit, so the copy an
-// update replaced is not left privileged (0015-MADR B5).
-func (fx *fsOps) clearSpecialBits(path string) error {
-	info, err := os.Lstat(path)
+// clearSpecialBits drops setuid and setgid from name in root, a copy of
+// the previous binary, keeping its permissions and the sticky bit, so the
+// copy an update replaced is not left privileged (0015-MADR B5). The mode
+// is set through a descriptor (0038-MADR F8).
+func (fx *fsOps) clearSpecialBits(root *os.Root, name string) error {
+	info, err := root.Lstat(name)
 	if err != nil {
 		return err
 	}
@@ -511,7 +515,11 @@ func (fx *fsOps) clearSpecialBits(path string) error {
 	if mode&(os.ModeSetuid|os.ModeSetgid) == 0 {
 		return nil
 	}
-	return fx.osChmod(path, mode.Perm()|mode&os.ModeSticky)
+	f, err := openChecked(root, name, info)
+	if err != nil {
+		return err
+	}
+	return joinClose(fx.fileChmod(f, mode.Perm()|mode&os.ModeSticky), f)
 }
 
 // backupOf is a's backup as it is now: a session of this package renames a
@@ -533,9 +541,11 @@ func (s *installSession) rollbackInRoot(applied applyResult) error {
 	if applied.backup == "" {
 		return fmt.Errorf("selfupdate: no backup to restore")
 	}
-	if err := s.root.Rename(filepath.Base(applied.backup), s.target.Base); err != nil {
+	backup := filepath.Base(applied.backup)
+	if err := s.root.Rename(backup, s.target.Base); err != nil {
 		return fmt.Errorf("selfupdate: restore backup: %w", err)
 	}
+	dropSameBackup(s.root, backup, s.target.Base)
 	if err := s.fs.syncRootFn(s.root); err != nil {
 		// The rename restored the backup: no backup is left to report
 		// (0015-MADR B4, as rollbackReplacement does since 0010-MADR B9).
@@ -553,7 +563,7 @@ func (s *installSession) Close() error {
 	s.closed = true
 	var errs []error
 	for name := range s.staging {
-		if err := os.Remove(name); err != nil && !errors.Is(err, os.ErrNotExist) {
+		if err := s.root.Remove(filepath.Base(name)); err != nil && !errors.Is(err, os.ErrNotExist) {
 			errs = append(errs, err)
 		}
 	}

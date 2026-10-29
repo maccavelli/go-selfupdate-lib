@@ -32,10 +32,10 @@ func failRestore(t *testing.T, fx *fsOps) {
 	t.Helper()
 	real := fx.replacePath
 	calls := 0
-	fx.replacePath = func(ctx context.Context, oldpath, newpath string) error {
+	fx.replacePath = func(ctx context.Context, root *os.Root, oldname, newname string) error {
 		calls++
 		if calls == 1 {
-			return real(ctx, oldpath, newpath)
+			return real(ctx, root, oldname, newname)
 		}
 		return errors.New("injected restore failure")
 	}
@@ -58,7 +58,7 @@ func TestRunReportsKeptBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 	fx := fsFor(inst)
-	fx.syncDirFn = func(string) error { return errors.New("injected directory sync failure") }
+	syncsAfterJournal(fx, func(int, *os.Root) error { return errors.New("injected directory sync failure") })
 	failRestore(t, fx)
 	u, err := New(Config{
 		Source: &scriptSource{rel: rel, bodies: bodies}, Versions: NewStrictVersionPolicy(), Assets: sel,
@@ -120,8 +120,8 @@ func TestInstallRollsBackWhenDirectoryMovesAfterRename(t *testing.T) {
 	fx := fsOf(t, sess)
 	real := fx.replacePath
 	var swapErr error
-	fx.replacePath = func(ctx context.Context, oldpath, newpath string) error {
-		if err := real(ctx, oldpath, newpath); err != nil {
+	fx.replacePath = func(ctx context.Context, root *os.Root, oldname, newname string) error {
+		if err := real(ctx, root, oldname, newname); err != nil {
 			return err
 		}
 		// A refused swap is recorded, not returned: the replacement itself
@@ -177,17 +177,17 @@ func TestReplaceRestoreSurvivesCancellation(t *testing.T) {
 	real := fx.replacePath
 	var restoreCtxErr error
 	calls := 0
-	fx.replacePath = func(c context.Context, oldpath, newpath string) error {
+	fx.replacePath = func(c context.Context, root *os.Root, oldname, newname string) error {
 		calls++
 		if calls == 1 {
-			err := real(c, oldpath, newpath)
+			err := real(c, root, oldname, newname)
 			cancel()
 			return err
 		}
 		restoreCtxErr = c.Err()
-		return real(c, oldpath, newpath)
+		return real(c, root, oldname, newname)
 	}
-	fx.syncDirFn = func(string) error { return errors.New("injected directory sync failure") }
+	syncsAfterJournal(fx, func(int, *os.Root) error { return errors.New("injected directory sync failure") })
 	_, err := sess.Install(ctx, InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: path}})
 	if err == nil {
 		t.Fatal("want the injected sync failure")
@@ -308,7 +308,7 @@ func TestKeptBackupSurvivesLaterSessions(t *testing.T) {
 	keep := func(t *testing.T, sess InstallSession, install func() (InstallResult, error)) string {
 		t.Helper()
 		fx := fsOf(t, sess)
-		fx.syncDirFn = func(string) error { return errors.New("injected directory sync failure") }
+		syncsAfterJournal(fx, func(int, *os.Root) error { return errors.New("injected directory sync failure") })
 		failRestore(t, fx)
 		res, err := install()
 		if err == nil || res.Applied || res.Backup == "" {

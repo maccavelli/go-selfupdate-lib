@@ -30,8 +30,8 @@ func TestStagingMode(t *testing.T) {
 	}
 }
 
-// TestIsLeftover: only the names CreateStaging and randomSibling make for
-// this target match.
+// TestIsLeftover: only the names CreateStaging, backupFile and the
+// temporary files make for this target match.
 func TestIsLeftover(t *testing.T) {
 	t.Parallel()
 	for name, want := range map[string]bool{
