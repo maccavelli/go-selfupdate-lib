@@ -800,3 +800,29 @@ Files: from the list, `selfupdate/checker.go`, `updater.go`, `runoptions.go`, `e
 9. **Runs:** `go test -race -shuffle=on -count=3 ./selfupdate/` on this Mac `ok`; `go test -race -count=1 ./selfupdate/` on the Linux test host and the Windows test host `ok`; under Go 1.26.10, `go test ./selfupdate/` `ok` and `go vet` for the three targets clean.
 10. **Checks:** `golangci-lint` for the three targets, 0 issues each after `manifestEntry` and D14; `make pre-add-check` on the Go files: clean; the architecture table: 20 rows, 0 differ.
 11. **`make gate`**: every step rc=0, `apicheck` "compatible with v1.22.3", the fuzz step "6 fuzz targets ran clean in ./selfupdate", `FuzzParsePlan` among them, `overall=0`; `make markdownlint`, `make check-records` and `make docs-check` exit 0; `scripts/check-docs.sh --ids` on the 14 changed files: 0 findings.
+
+### Q15: streams and test support (2026-10-29)
+
+Files: from the list, `selfupdate/stream.go` and `stream_run_test.go`; `selfupdate/selfupdatetest/selfupdatetest.go`, `githubserver.go`, `conformance.go`, `selfupdatetest_test.go` and `conformance_test.go`. No `.go` file added or removed.
+
+1. **`StartApply(ctx, u, req, p, opts...) *Stream`** and `Start` share `startStream`; `Stream.prepare` checks the plan after the Updater and before the options, as `Apply` does. `Start` still calls `execRun`, and `StartApply` `execPinned`, so `execRun`'s doc ("RunWith and Start both use it") stays true and `runoptions.go` is untouched. The helper is `startStream`, not `start`: revive's `confusing-naming` refuses a function that differs from `Start` only in case. Tests: `TestStartApplyConfirms` plans, publishes v1.2.0 on the `FakeSource`, drives the one `ConfirmNeeded` of an Apply stream (its prompt names v1.1.0), and sees v1.1.0 installed; `TestStartApplyRefusesBeforeRunning`: a nil Updater and an invalid plan each give only `Finished`, with no source call.
+2. **`Publish(ReleaseSpec)`** on `FakeSource` and `GitHubServer`: the release takes IDs from a counter each fake now keeps, lists after every other, and is the latest unless it is a draft or a prerelease, as on GitHub; a tag already published is replaced with new IDs, and its old asset IDs are no longer served. `FakeSource.Latest` now reads the latest tag under the lock. `GitHubServer`'s handlers read the release list through `snapshot()`, under the lock, and `Publish` replaces the slice rather than changing it, so a handler never reads one being changed; `serveRelease` went into the handler. Tests: `TestFakeSourcePublish` and `TestGitHubServerPublish`, the second ending with a loop of requests while 50 releases are published.
+3. **`VerifyReleaseSource`** also requires `ByTag(LatestTag)` to return `Latest`'s release ID and asset IDs, and its doc says `Updater.Apply` compares them. `TestVerifyReleaseSourceFails` gains a source whose release ID changes on each call. The migration guide is not in this phase's list; Q17 step 3 names the check there.
+4. **End to end:** `TestPlanSurvivesNewerReleaseOnGitHub` in `stream_run_test.go`, over `NewGitHubServer` and a `GitHubSource`: `Plan` for v1.1.0, `Publish` of v1.2.0, `Apply` installs v1.1.0, and a `Run` from v1.1.0 then installs v1.2.0.
+
+   **Seen failing**, each in a scratch copy with `go test -count=1 ./selfupdate/ ./selfupdate/selfupdatetest/` (the lock plant with `-race` on `selfupdatetest`), all caught on the final tests:
+
+   | Plant | Failed |
+   | :--- | :--- |
+   | `StartApply` running unpinned (`execRun`) | `TestStartApplyConfirms` |
+   | `StartApply` without the plan check | `TestStartApplyRefusesBeforeRunning` |
+   | `FakeSource.Publish` not moving the latest | `TestFakeSourcePublish` |
+   | `FakeSource.Publish` numbering from zero | `TestFakeSourcePublish` |
+   | `GitHubServer.snapshot` without the lock | `TestGitHubServerPublish`, `WARNING: DATA RACE` (three runs of three) |
+   | `GitHubServer.Publish` keeping the old release of a tag | `TestGitHubServerPublish` |
+   | `VerifyReleaseSource` without the ID check | `TestVerifyReleaseSourceFails` |
+   | `Apply` fetching the latest release | `TestPlanSurvivesNewerReleaseOnGitHub`, `TestStartApplyConfirms`, and Q14's `TestApplyIgnoresNewerRelease` |
+
+   The lock plant first passed: the test then published once while 20 requests ran, and each handler takes the lock in `record` before it reads, so the race needs a publish between the two. The test now publishes 50 releases while requests run, and the plant fails each time.
+5. **Runs:** `go test -race -shuffle=on -count=3` of `./selfupdate/` and `./selfupdate/selfupdatetest/` on this Mac `ok`; `go test -race -count=1` of both on the Linux test host and the Windows test host `ok`; under Go 1.26.10, `go test` of both `ok` and `go vet` for the three targets clean.
+6. **Checks:** `make pre-add-check` on the 7 Go files: clean, after the rename; the architecture table: 20 rows, 0 differ; `make gate`: every step rc=0, `apicheck` "compatible with v1.22.3", `overall=0`; `scripts/check-docs.sh --ids` on the changed files: 0 findings.

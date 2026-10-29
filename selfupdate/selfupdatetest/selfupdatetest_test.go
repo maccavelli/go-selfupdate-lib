@@ -422,3 +422,118 @@ func TestGitHubServerList(t *testing.T) {
 		t.Fatalf("the list under RequireToken: status %d", got.status)
 	}
 }
+
+// releaseIDs is a release's ID and its asset IDs.
+func releaseIDs(r selfupdate.Release) []int64 {
+	ids := []int64{r.ID}
+	for _, a := range r.Assets {
+		ids = append(ids, a.ID)
+	}
+	return ids
+}
+
+// TestFakeSourcePublish: a published release is the latest unless it is a
+// prerelease, lists last, and has IDs no release had before; a republished
+// tag gets new IDs, and its old asset IDs are no longer served
+// (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// D1-A).
+func TestFakeSourcePublish(t *testing.T) {
+	ctx := context.Background()
+	src := selfupdatetest.NewFakeSource("v1.0.0", selfupdatetest.NewRelease("demo", "v1.0.0", plats, body))
+	first, err := src.Latest(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src.Publish(selfupdatetest.NewRelease("demo", "v1.1.0", plats, body))
+	pre := selfupdatetest.NewRelease("demo", "v1.2.0-rc.1", plats, body)
+	pre.Prerelease = true
+	src.Publish(pre)
+	published, err := src.Latest(ctx)
+	if err != nil || published.Tag != "v1.1.0" {
+		t.Fatalf("Latest after publishing v1.1.0 and a prerelease = %+v, %v", published, err)
+	}
+	for _, id := range releaseIDs(published) {
+		if slices.Contains(releaseIDs(first), id) {
+			t.Fatalf("published IDs %v reuse one of %v", releaseIDs(published), releaseIDs(first))
+		}
+	}
+	src.Publish(selfupdatetest.NewRelease("demo", "v1.1.0", plats, body))
+	again, err := src.ByTag(ctx, "v1.1.0")
+	if err != nil || slices.Equal(releaseIDs(again), releaseIDs(published)) {
+		t.Fatalf("republished v1.1.0 = %v, %v; want new IDs, not %v", releaseIDs(again), err, releaseIDs(published))
+	}
+	if _, err := src.OpenAsset(ctx, published, published.Assets[0]); err == nil {
+		t.Fatal("the replaced release's asset is still served")
+	}
+	list, err := src.ListReleases(ctx, selfupdate.ListOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tags []string
+	for _, r := range list {
+		tags = append(tags, r.Tag)
+	}
+	if want := []string{"v1.0.0", "v1.2.0-rc.1", "v1.1.0"}; !slices.Equal(tags, want) {
+		t.Fatalf("ListReleases = %v, want %v", tags, want)
+	}
+}
+
+// TestGitHubServerPublish: Publish on the fake API, as TestFakeSourcePublish,
+// while requests are served.
+func TestGitHubServerPublish(t *testing.T) {
+	g := selfupdatetest.NewGitHubServer(t, "owner", "repo", selfupdatetest.NewRelease("demo", "v1.0.0", plats, body))
+	first := decode(t, get(t, g, "/repos/owner/repo/releases/latest"))
+	g.Publish(selfupdatetest.NewRelease("demo", "v1.1.0", plats, body))
+	published := decode(t, get(t, g, "/repos/owner/repo/releases/latest"))
+	if published.TagName != "v1.1.0" || published.ID == first.ID || published.Assets[0].ID == first.Assets[0].ID {
+		t.Fatalf("latest after Publish = %+v, want v1.1.0 with new IDs", published)
+	}
+	pre := selfupdatetest.NewRelease("demo", "v1.2.0-rc.1", plats, body)
+	pre.Prerelease = true
+	g.Publish(pre)
+	g.Publish(selfupdatetest.NewRelease("demo", "v1.1.0", plats, body))
+	again := decode(t, get(t, g, "/repos/owner/repo/releases/latest"))
+	if again.TagName != "v1.1.0" || again.ID == published.ID {
+		t.Fatalf("latest after republishing = %+v, want v1.1.0 with a new ID", again)
+	}
+	if old := get(t, g, "/repos/owner/repo/releases/assets/"+itoa(published.Assets[0].ID)); old.status != http.StatusNotFound {
+		t.Fatalf("the replaced release's asset: status %d, want 404", old.status)
+	}
+	if tag := decode(t, get(t, g, "/repos/owner/repo/releases/tags/v1.0.0")); tag.ID != first.ID {
+		t.Fatalf("v1.0.0 changed: %+v", tag)
+	}
+
+	// Requests run while releases are published; under -race, a handler
+	// that reads the releases without the lock is reported.
+	stop, done := make(chan struct{}), make(chan error, 1)
+	go func() {
+		for {
+			select {
+			case <-stop:
+				done <- nil
+				return
+			default:
+			}
+			resp, err := g.Client.Get(g.APIBase.String() + "/repos/owner/repo/releases")
+			if err != nil {
+				done <- err
+				return
+			}
+			_, err = io.Copy(io.Discard, resp.Body)
+			if cerr := resp.Body.Close(); err == nil {
+				err = cerr
+			}
+			if err != nil {
+				done <- err
+				return
+			}
+		}
+	}()
+	for i := range 50 {
+		g.Publish(selfupdatetest.NewRelease("demo", "v2.0."+itoa(int64(i)), plats, body))
+	}
+	close(stop)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}

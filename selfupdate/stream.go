@@ -149,9 +149,28 @@ type streamKey struct{}
 //
 // Errors: those of RunWith, delivered as Finished.Err.
 func Start(ctx context.Context, u *Updater, req Request, opts ...RunOption) *Stream {
+	return startStream(ctx, u, req, nil, opts)
+}
+
+// StartApply is Start for Updater.Apply: it begins applying p for req on u
+// in its own goroutine and returns its Stream at once, so a host can show a
+// plan, answer its ConfirmNeeded, and watch it apply. opts apply as they do
+// to Start. A nil u, an invalid plan or option, or a run already in
+// progress gives a Stream whose only interaction is Finished with that
+// error
+// (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// D1-A).
+//
+// Errors: those of Apply, delivered as Finished.Err.
+func StartApply(ctx context.Context, u *Updater, req Request, p Plan, opts ...RunOption) *Stream {
+	return startStream(ctx, u, req, &p, opts)
+}
+
+// startStream is Start, and StartApply when pin is set.
+func startStream(ctx context.Context, u *Updater, req Request, pin *Plan, opts []RunOption) *Stream {
 	runCtx, cancel := context.WithCancel(ctx)
 	s := &Stream{cancel: cancel, wake: make(chan struct{}, 1), closed: make(chan struct{})}
-	r, err := s.prepare(u, opts)
+	r, err := s.prepare(u, pin, opts)
 	if err != nil {
 		cancel()
 		s.push(Finished{Err: err})
@@ -160,18 +179,31 @@ func Start(ctx context.Context, u *Updater, req Request, opts ...RunOption) *Str
 	runCtx = context.WithValue(runCtx, streamKey{}, s)
 	go func() {
 		defer cancel()
-		res, err := u.execRun(runCtx, req, r)
+		var res Result
+		var err error
+		if pin == nil {
+			res, err = u.execRun(runCtx, req, r)
+		} else {
+			res, err = u.execPinned(runCtx, req, r, pin)
+		}
 		s.push(Finished{Result: res, Err: err})
 	}()
 	return s
 }
 
-func (s *Stream) prepare(u *Updater, opts []RunOption) (*run, error) {
+// prepare checks u, then the plan when there is one, as Apply does, then
+// the options.
+func (s *Stream) prepare(u *Updater, pin *Plan, opts []RunOption) (*run, error) {
 	if u == nil {
 		return nil, fmt.Errorf("selfupdate: updater is nil")
 	}
 	if !u.constructed() {
 		return nil, ErrNotConstructed
+	}
+	if pin != nil {
+		if err := pin.validate(); err != nil {
+			return nil, err
+		}
 	}
 	sc, err := scope(opts)
 	if err != nil {

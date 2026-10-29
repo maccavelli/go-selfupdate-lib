@@ -100,6 +100,10 @@ func TestVerifyReleaseSourceFails(t *testing.T) {
 		{"short body", broken{body: func(b []byte) []byte { return b[:len(b)-1] }}, conformanceCase, "bytes, want Size"},
 		{"wrong digest", broken{edit: func(r *selfupdate.Release) { r.Assets[0].Digest = "sha256:" + strings.Repeat("0", 64) }}, conformanceCase, "does not match its Digest"},
 		{"wrong latest", broken{}, selfupdatetest.SourceCase{LatestTag: "v2.0.0", MissingTag: "v9.9.9"}, `Latest returned "v1.1.0", want "v2.0.0"`},
+		// A plan's Apply compares the release ID
+		// (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+		// D1-A).
+		{"IDs that change per call", broken{edit: idsPerCall()}, conformanceCase, "needs the same IDs each time"},
 	} {
 		c.src.ReleaseSource = selfupdatetest.NewFakeSource("v1.1.0", conformanceReleases()...)
 		err := selfupdatetest.VerifyReleaseSource(context.Background(), c.src, c.sc)
@@ -112,5 +116,15 @@ func TestVerifyReleaseSourceFails(t *testing.T) {
 	}
 	if err := selfupdatetest.VerifyReleaseSource(context.Background(), selfupdatetest.NewFakeSource("v1.1.0"), selfupdatetest.SourceCase{}); err == nil {
 		t.Error("an empty SourceCase passed")
+	}
+}
+
+// idsPerCall gives the release a new ID on each call, as a source that
+// numbers its answers rather than its releases would.
+func idsPerCall() func(*selfupdate.Release) {
+	var n int64
+	return func(r *selfupdate.Release) {
+		n++
+		r.ID += 1000 * n
 	}
 }

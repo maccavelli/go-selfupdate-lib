@@ -54,7 +54,7 @@ func (h HeaderNames) Has(name string) bool {
 // releases/latest, releases/tags/{tag}, releases/assets/{id} and the paged
 // release list for one repository. Each asset request answers 302 to a second TLS origin, which
 // serves the bytes, as GitHub redirects to its download host. Both servers
-// close when the test ends.
+// close when the test ends. Publish adds a release while it serves.
 type GitHubServer struct {
 	// APIBase is the API origin, for selfupdate.GitHubOptions.APIBaseURL.
 	APIBase *url.URL
@@ -63,10 +63,14 @@ type GitHubServer struct {
 
 	api, assets *httptest.Server
 	prefix      string
+	tagURL      string // a release's URL, before its tag
 
-	mu        sync.Mutex
+	mu sync.Mutex
+	// releases is replaced, never changed in place, so a handler reads the
+	// slice it took under mu.
 	releases  []builtRelease
-	latest    int // index into releases, or -1
+	latest    int   // index into releases, or -1
+	next      int64 // the last ID assigned
 	requests  []RecordedRequest
 	limited   int
 	limitHdr  http.Header
@@ -80,10 +84,12 @@ type GitHubServer struct {
 // release that is neither a draft nor a prerelease, as on GitHub.
 func NewGitHubServer(t testing.TB, owner, repo string, releases ...ReleaseSpec) *GitHubServer {
 	t.Helper()
-	g := &GitHubServer{prefix: "/repos/" + owner + "/" + repo + "/releases/", latest: -1}
-	var next int64
+	g := &GitHubServer{
+		prefix: "/repos/" + owner + "/" + repo + "/releases/", latest: -1,
+		tagURL: "https://github.invalid/" + owner + "/" + repo + "/releases/tag/",
+	}
 	for i, spec := range releases {
-		g.releases = append(g.releases, build(spec, &next, "https://github.invalid/"+owner+"/"+repo+"/releases/tag/"+spec.Tag))
+		g.releases = append(g.releases, build(spec, &g.next, g.tagURL+spec.Tag))
 		if !spec.Draft && !spec.Prerelease {
 			g.latest = i
 		}
@@ -108,6 +114,40 @@ func NewGitHubServer(t testing.TB, owner, repo string, releases ...ReleaseSpec) 
 	g.Client = &http.Client{Transport: transport}
 	t.Cleanup(transport.CloseIdleConnections)
 	return g
+}
+
+// Publish adds spec's release, with release and asset IDs no release had
+// before, after every other in the release list, and makes it the latest
+// unless it is a draft or a prerelease, as publishing on GitHub does. A tag
+// already published is replaced, with new IDs, and the old IDs are no
+// longer served. A test publishes a newer release, or republishes one,
+// between selfupdate.Updater.Plan and Apply
+// (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// D1-A).
+func (g *GitHubServer) Publish(spec ReleaseSpec) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	releases := make([]builtRelease, 0, len(g.releases)+1)
+	for _, b := range g.releases {
+		if b.release.Tag != spec.Tag {
+			releases = append(releases, b)
+		}
+	}
+	releases = append(releases, build(spec, &g.next, g.tagURL+spec.Tag))
+	g.latest = -1
+	for i, b := range releases {
+		if !b.release.Draft && !b.release.Prerelease {
+			g.latest = i
+		}
+	}
+	g.releases = releases
+}
+
+// snapshot is the releases and the latest index, as Publish last left them.
+func (g *GitHubServer) snapshot() ([]builtRelease, int) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.releases, g.latest
 }
 
 // RateLimit makes every later API request fail with status and header,
@@ -247,21 +287,19 @@ func (g *GitHubServer) serveAPI(w http.ResponseWriter, r *http.Request) {
 		notFound(w)
 		return
 	}
+	releases, latest := g.snapshot()
 	switch {
 	case rest == "latest":
-		g.mu.Lock()
-		i := g.latest
-		g.mu.Unlock()
-		if i < 0 {
+		if latest < 0 {
 			notFound(w)
 			return
 		}
-		g.serveRelease(w, i)
+		writeJSON(w, http.StatusOK, releaseDoc(releases[latest].release))
 	case strings.HasPrefix(rest, "tags/"):
 		tag := strings.TrimPrefix(rest, "tags/")
-		for i := range g.releases {
-			if g.releases[i].release.Tag == tag {
-				g.serveRelease(w, i)
+		for _, b := range releases {
+			if b.release.Tag == tag {
+				writeJSON(w, http.StatusOK, releaseDoc(b.release))
 				return
 			}
 		}
@@ -293,9 +331,10 @@ func (g *GitHubServer) serveList(w http.ResponseWriter, r *http.Request) {
 	if v, err := strconv.Atoi(q.Get("per_page")); err == nil && v > 0 {
 		perPage = min(v, 100)
 	}
+	releases, _ := g.snapshot()
 	out := []releaseJSON{}
-	for i := (page - 1) * perPage; i < len(g.releases) && i < page*perPage; i++ {
-		out = append(out, releaseDoc(g.releases[i].release))
+	for i := (page - 1) * perPage; i < len(releases) && i < page*perPage; i++ {
+		out = append(out, releaseDoc(releases[i].release))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -312,12 +351,9 @@ func releaseDoc(rel selfupdate.Release) releaseJSON {
 	return out
 }
 
-func (g *GitHubServer) serveRelease(w http.ResponseWriter, i int) {
-	writeJSON(w, http.StatusOK, releaseDoc(g.releases[i].release))
-}
-
 func (g *GitHubServer) body(id int64) ([]byte, bool) {
-	for _, b := range g.releases {
+	releases, _ := g.snapshot()
+	for _, b := range releases {
 		if body, ok := b.bodies[id]; ok {
 			return body, true
 		}

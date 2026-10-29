@@ -443,3 +443,102 @@ func TestCredentialNeededCancel(t *testing.T) {
 		}
 	})
 }
+
+// Plans through a Stream and over the fake GitHub API
+// (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// D1-A; 0038-PLAN Q15).
+
+func newerRelease() selfupdatetest.ReleaseSpec {
+	return selfupdatetest.NewRelease("demo", "v1.2.0", []selfupdate.Platform{goldenPlatform}, releaseBody("v1.2.0"))
+}
+
+// TestStartApplyConfirms: an Apply stream asks for confirmation as a Run
+// stream does, and installs the planned release, not the newer one
+// published since.
+func TestStartApplyConfirms(t *testing.T) {
+	selfupdate.CheckNoLeak(t)
+	src := selfupdatetest.NewFakeSource("v1.1.0", goldenRelease())
+	u, exe := streamUpdater(t, src)
+	plan, err := u.Plan(context.Background(), streamReq(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	src.Publish(newerRelease())
+	yes := true
+	seen, fin := drain(t, selfupdate.StartApply(context.Background(), u, plan.Request(), plan), &yes)
+	var prompts []selfupdate.Prompt
+	for _, it := range seen {
+		if c, ok := it.(*selfupdate.ConfirmNeeded); ok {
+			prompts = append(prompts, c.Prompt)
+		}
+	}
+	if len(prompts) != 1 || prompts[0].Target != "v1.1.0" || prompts[0].Operation != selfupdate.OperationUpgrade {
+		t.Fatalf("prompts = %+v, want one for v1.1.0", prompts)
+	}
+	if fin.Err != nil || !fin.Result.Applied || fin.Result.TargetVersion != "v1.1.0" {
+		t.Fatalf("Finished = %+v", fin)
+	}
+	if got, _ := os.ReadFile(exe); string(got) != string(releaseBody("v1.1.0")(goldenPlatform)) {
+		t.Fatalf("target = %q, want the planned v1.1.0", got)
+	}
+}
+
+// TestStartApplyRefusesBeforeRunning: a nil Updater or an invalid plan
+// gives a Stream whose only interaction is Finished, with no source call.
+func TestStartApplyRefusesBeforeRunning(t *testing.T) {
+	selfupdate.CheckNoLeak(t)
+	src := selfupdatetest.NewFakeSource("v1.1.0", goldenRelease())
+	u, _ := streamUpdater(t, src)
+	for name, s := range map[string]*selfupdate.Stream{
+		"nil updater":  selfupdate.StartApply(context.Background(), nil, streamReq(true), selfupdate.Plan{}),
+		"invalid plan": selfupdate.StartApply(context.Background(), u, streamReq(true), selfupdate.Plan{}),
+	} {
+		seen, fin := drain(t, s, nil)
+		if len(seen) != 1 || fin.Err == nil || errors.Is(fin.Err, selfupdate.ErrPlanStale) {
+			t.Fatalf("%s: %d interactions, Finished = %+v", name, len(seen), fin)
+		}
+	}
+	if calls := src.Calls(); len(calls) != 0 {
+		t.Fatalf("source calls %v, want none", calls)
+	}
+}
+
+// TestPlanSurvivesNewerReleaseOnGitHub is the MADR's end-to-end check: over
+// the fake GitHub API, a plan made for v1.1.0 installs v1.1.0 after v1.2.0
+// is published, and a Run after it installs v1.2.0.
+func TestPlanSurvivesNewerReleaseOnGitHub(t *testing.T) {
+	t.Parallel()
+	gh := selfupdatetest.NewGitHubServer(t, "owner", "demo", goldenRelease())
+	src, err := selfupdate.NewGitHubSource(selfupdate.GitHubOptions{
+		Repository: selfupdate.Repository{Owner: "owner", Name: "demo"},
+		Client:     gh.Client, APIBaseURL: gh.APIBase, UserAgent: "demo/v1.0.0", Limits: selfupdate.DefaultLimits(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, exe := streamUpdater(t, src)
+	ctx := context.Background()
+	plan, err := u.Plan(ctx, streamReq(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gh.Publish(newerRelease())
+	req := plan.Request()
+	req.Yes = true
+	res, err := u.Apply(ctx, req, plan)
+	if err != nil || !res.Applied || res.TargetVersion != "v1.1.0" {
+		t.Fatalf("Apply = %+v, %v", res, err)
+	}
+	if got, _ := os.ReadFile(exe); string(got) != string(releaseBody("v1.1.0")(goldenPlatform)) {
+		t.Fatalf("after Apply the target = %q, want the planned v1.1.0", got)
+	}
+	run := streamReq(true)
+	run.CurrentVersion = "v1.1.0"
+	res, err = u.Run(ctx, run)
+	if err != nil || !res.Applied || res.TargetVersion != "v1.2.0" {
+		t.Fatalf("Run = %+v, %v", res, err)
+	}
+	if got, _ := os.ReadFile(exe); string(got) != string(releaseBody("v1.2.0")(goldenPlatform)) {
+		t.Fatalf("after Run the target = %q, want v1.2.0", got)
+	}
+}

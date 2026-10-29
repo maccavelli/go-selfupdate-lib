@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -30,7 +31,11 @@ type SourceCase struct {
 // than GitHub runs it in its tests:
 //
 //   - Latest returns LatestTag, Immutable, and not a draft;
-//   - ByTag(LatestTag) returns the same release;
+//   - ByTag(LatestTag) returns the same release, with the release ID and
+//     asset IDs Latest returned, which selfupdate.Updater.Apply compares
+//     with its plan's
+//     (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+//     D1-A);
 //   - ByTag(MissingTag) returns an error that wraps selfupdate.ErrNoRelease;
 //   - every asset of that release has a positive ID, a basename for Name,
 //     State selfupdate.AssetStateUploaded, a positive Size, and a Digest that
@@ -70,11 +75,26 @@ func VerifyReleaseSource(ctx context.Context, src selfupdate.ReleaseSource, c So
 		fail("ByTag(%q): %v", c.LatestTag, err)
 	case byTag.Tag != latest.Tag || len(byTag.Assets) != len(latest.Assets):
 		fail("ByTag(%q) is not the release Latest returned", c.LatestTag)
+	case byTag.ID != latest.ID || !slices.EqualFunc(byTag.Assets, latest.Assets, sameAssetID):
+		fail("ByTag(%q) returned release ID %d and asset IDs %v, Latest %d and %v; Updater.Apply needs the same IDs each time",
+			c.LatestTag, byTag.ID, assetIDs(byTag.Assets), latest.ID, assetIDs(latest.Assets))
 	}
 	for _, a := range latest.Assets {
 		verifyAsset(ctx, src, latest, a, fail)
 	}
 	return errors.Join(errs...)
+}
+
+func sameAssetID(a, b selfupdate.Asset) bool {
+	return a.ID == b.ID
+}
+
+func assetIDs(assets []selfupdate.Asset) []int64 {
+	ids := make([]int64, len(assets))
+	for i, a := range assets {
+		ids[i] = a.ID
+	}
+	return ids
 }
 
 func verifyAsset(ctx context.Context, src selfupdate.ReleaseSource, rel selfupdate.Release, a selfupdate.Asset, fail func(string, ...any)) {

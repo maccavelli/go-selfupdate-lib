@@ -16,6 +16,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"slices"
 	"sync"
 
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
@@ -103,8 +104,14 @@ type FakeSource struct {
 	mu       sync.Mutex
 	latest   string
 	releases map[string]builtRelease
-	order    []string // tags, as declared
+	order    []string // tags, as declared and published
 	calls    []string
+	next     int64 // the last ID assigned
+}
+
+// fakeTagURL is a FakeSource release's URL.
+func fakeTagURL(tag string) string {
+	return "https://github.invalid/releases/tag/" + tag
 }
 
 // NewFakeSource returns a source whose Latest is the release tagged latest.
@@ -113,12 +120,29 @@ type FakeSource struct {
 // CheckCached records it as selfupdate.CheckNoRelease (0024-MADR D4-A).
 func NewFakeSource(latest string, releases ...ReleaseSpec) *FakeSource {
 	s := &FakeSource{latest: latest, releases: make(map[string]builtRelease, len(releases))}
-	var next int64
 	for _, spec := range releases {
-		s.releases[spec.Tag] = build(spec, &next, "https://github.invalid/releases/tag/"+spec.Tag)
+		s.releases[spec.Tag] = build(spec, &s.next, fakeTagURL(spec.Tag))
 		s.order = append(s.order, spec.Tag)
 	}
 	return s
+}
+
+// Publish adds spec's release, with release and asset IDs no release had
+// before, after every other in ListReleases, and makes it the one Latest
+// returns unless it is a draft or a prerelease, as publishing a release on
+// GitHub does. A tag already published is replaced, with new IDs, so a
+// test can publish a newer release, or republish one, between
+// selfupdate.Updater.Plan and Apply
+// (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// D1-A). It is safe for concurrent use.
+func (s *FakeSource) Publish(spec ReleaseSpec) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.releases[spec.Tag] = build(spec, &s.next, fakeTagURL(spec.Tag))
+	s.order = append(slices.DeleteFunc(s.order, func(tag string) bool { return tag == spec.Tag }), spec.Tag)
+	if !spec.Draft && !spec.Prerelease {
+		s.latest = spec.Tag
+	}
 }
 
 func (s *FakeSource) record(call string) {
@@ -145,10 +169,13 @@ func (s *FakeSource) Latest(ctx context.Context) (selfupdate.Release, error) {
 	if err := ctx.Err(); err != nil {
 		return selfupdate.Release{}, err
 	}
-	if s.latest == "" {
+	s.mu.Lock()
+	latest := s.latest
+	s.mu.Unlock()
+	if latest == "" {
 		return selfupdate.Release{}, fmt.Errorf("selfupdatetest: no latest release: %w", selfupdate.ErrNoRelease)
 	}
-	return s.lookup(s.latest)
+	return s.lookup(latest)
 }
 
 // ByTag implements selfupdate.ReleaseSource.
