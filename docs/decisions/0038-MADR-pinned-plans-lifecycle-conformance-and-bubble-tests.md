@@ -380,3 +380,27 @@ The PLAN is [0038-PLAN-pinned-plans-lifecycle-conformance-and-bubble-tests.md](0
 * A bootstrap of a missing plist exits 5, `EIO`, the code `bootstrap` retries until its bound (`launchd/lifecycle.go`), so F11's fourth bullet holds as stated: `Start` on a missing plist is `ErrTimeout` after the bound, not `ErrNotInstalled`.
 * `enable` of a label launchd has never loaded succeeds, and leaves an override entry for it. `Start` runs `enable` before `bootstrap`, so today a `Start` on a missing plist leaves such an entry too. D2-A's fix, `ErrNotInstalled` before `enable` when the plist is missing, removes both.
 * No fact or decision changes. The probe's own `enable` left one such entry, for `com.example.p6-never-loaded`, on this Mac; launchctl has no command that removes an override, and the plan reports it to the owner rather than editing the root-owned override file.
+
+## Amendment A2 (2026-10-29): a live run requires its exact skips
+
+D2-A says `RequireAll` "turns a skip into a violation, as a live CI run needs". A live run cannot always use it: Task Scheduler's `Stop` ends the program after its grace, so its lab cannot arrange `Stubborn` or `SlowStop`, and systemd's `Start`, Task Scheduler's and `Supervised`'s `Up` document no bound, so "start hangs" has no `StartBound` to check (0038-PLAN Deviation D7). A live run therefore requires the exact list of checks it skips, through `Logf`, and sets `RequireAll` where that list is empty. An unexpected skip still fails it, which is what D2-A asks of a live CI run. `RequireAll` and its meaning do not change.
+
+## Amendment A3 (2026-10-29): probe P7
+
+**P7, launchd on macOS 26.6.2, on this Mac** (0038-PLAN Q12, Deviation D9), in the user's GUI domain under the live tests' fixed label: a `KeepAlive` job running `perl` that ignores TERM, booted out two seconds after it started; and two plists `bootstrap` cannot load.
+
+| Job or plist | `launchctl` | Result |
+| :--- | :--- | :--- |
+| `ExitTimeOut` 0, ignores TERM | `bootout` | exit 0; `print` exits 113 and the process is gone 0.1 s later: killed at once |
+| `ExitTimeOut` 3, ignores TERM | `bootout` | exit 0; the process still runs at 0.0 s and is gone at 3.1 s |
+| a malformed plist | `bootstrap` | exit 5, `Bootstrap failed: 5: Input/output error`, every time |
+| a plist with a label and no program | `bootstrap` | exit 5, the same |
+
+* launchd reads `ExitTimeOut` 0 as a kill at once, not as no kill, as `launchd/lifecycle.go`'s `stopBound` comment said. The code's behaviour stands: a 0 leaves the stop's bound at the poll timeout, which a kill at once never reaches.
+* launchd ends every job within its `ExitTimeOut`, which `Stop`'s bound exceeds by 30 s, so a live lab cannot arrange a job that outlives the bound: launchd's live lab returns `ErrUnsupported` for `Stubborn`, which D2-A provides for. The fake's `Stubborn` stands for a job a kill cannot end.
+* A plist `bootstrap` refuses with 5 is retried to `Start`'s bound, which is `StartHangs` on a real launchd.
+* The probe ran no `enable` or `disable`, so it left no override entry.
+
+## Amendment A4 (2026-10-29): systemd's `Start` reports a crashed start as unhealthy
+
+F11 found backends that did not do what they document. 0038-PLAN Q12's live run found one more (Deviation D10): on systemd, a `Type=notify` unit whose program exits before it is ready fails `systemctl start`, and `Start` returned a bare `*service.CommandError`, where D2-A's crash check, and the other backends, give `service.ErrUnhealthy`. `Start` now wraps `ErrUnhealthy` as well when the unit has a new invocation that is `failed` or `inactive`; the `CommandError` stays, for `errors.As`. A start that fails before the unit runs, as on a missing dependency, keeps the unit's invocation and is unchanged. The change only adds to an error's chain, so it is compatible within v1.

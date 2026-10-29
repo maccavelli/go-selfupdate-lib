@@ -122,7 +122,9 @@ func (l *fakeLab) Arrange(ctx context.Context, a servicetest.Arrangement) error 
 	case servicetest.Running, servicetest.SlowStop:
 		running()
 	case servicetest.Stubborn:
-		// No kill bound: launchd leaves a job that ignores TERM running.
+		// launchd kills a job by its ExitTimeOut, so only one a kill cannot
+		// end outlives the bound; ExitTimeOut 0 keeps the bound at
+		// Poll.Timeout's (0038-MADR Amendment A3).
 		running()
 		f.keys["ExitTimeOut"] = "0"
 	case servicetest.Crashing:

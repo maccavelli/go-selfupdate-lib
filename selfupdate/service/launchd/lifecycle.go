@@ -212,8 +212,10 @@ var (
 // stopBound is how long Stop waits for the job to go once bootout is
 // issued: the longer of Options.Poll's timeout and launchd's own kill
 // bound, ExitTimeOut plus stopGrace (0015-MADR B3). An ExitTimeOut of 0,
-// which launchd reads as no kill, or one that is not an integer or cannot
-// be read, leaves the poll timeout.
+// which launchd reads as a kill at once
+// (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// Amendment A3), or one that is not an integer or cannot be read, leaves
+// the poll timeout.
 func (j *Job) stopBound(ctx context.Context) time.Duration {
 	bound := j.o.Poll.Timeout
 	if bound <= 0 {

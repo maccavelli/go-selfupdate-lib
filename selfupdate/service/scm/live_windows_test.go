@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,6 +23,7 @@ import (
 
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
+	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service/servicetest"
 )
 
 // The live test against this host's SCM (0011-PLAN V4 step 8): a
@@ -44,6 +46,11 @@ type liveConfig struct {
 	Target string
 	New    string
 	Path   string
+	// Mode is how the service behaves, for the lab's states: "" runs and
+	// stops when asked; "slow-stop" takes liveSlowStop to stop;
+	// "ignore-stop" takes a stop and runs on; "crash" exits at once;
+	// "never-ready" never reports running.
+	Mode string `json:",omitempty"`
 }
 
 func liveMode(mode string, args []string) int {
@@ -85,6 +92,18 @@ type liveHandler struct{ cfg liveConfig }
 
 func (h *liveHandler) Execute(_ []string, r <-chan svc.ChangeRequest, s chan<- svc.Status) (bool, uint32) {
 	s <- svc.Status{State: svc.StartPending, WaitHint: 5000}
+	switch h.cfg.Mode {
+	case "crash":
+		return false, 1
+	case "never-ready":
+		// No progress either: the start hangs until the process is ended.
+		for c := range r {
+			if c.Cmd == svc.Interrogate {
+				s <- c.CurrentStatus
+			}
+		}
+		return false, 0
+	}
 	if err := killWithMe(); err != nil {
 		report(h.cfg, "service-error", "job: "+err.Error())
 		return true, 1
@@ -100,6 +119,19 @@ func (h *liveHandler) Execute(_ []string, r <-chan svc.ChangeRequest, s chan<- s
 			case svc.Interrogate:
 				s <- c.CurrentStatus
 			case svc.Stop, svc.Shutdown:
+				switch h.cfg.Mode {
+				case "slow-stop":
+					for cp := uint32(1); cp <= 6; cp++ {
+						s <- svc.Status{State: svc.StopPending, CheckPoint: cp, WaitHint: 2000}
+						time.Sleep(liveSlowStop / 6)
+					}
+					return false, 0
+				case "ignore-stop":
+					// STOP_PENDING with no progress, until the process is
+					// ended.
+					s <- svc.Status{State: svc.StopPending, CheckPoint: 1, WaitHint: 2000}
+					continue
+				}
 				s <- svc.Status{State: svc.StopPending, WaitHint: 5000}
 				return false, 0
 			}
@@ -271,17 +303,22 @@ func managedInstallWith(life selfupdate.Lifecycle, rec selfupdate.Reconciler, ta
 // runs with data after its last section.
 func build(t *testing.T, dst, marker string) {
 	t.Helper()
+	if err := buildTo(dst, marker); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// buildTo is build, returning its error.
+func buildTo(dst, marker string) error {
 	self, err := os.Executable()
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
 	body, err := os.ReadFile(self) //nolint:gosec // the test binary
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
-	if err := os.WriteFile(dst, append(body, marker...), 0o755); err != nil { //nolint:gosec // an executable fixture
-		t.Fatal(err)
-	}
+	return os.WriteFile(dst, append(body, marker...), 0o755) //nolint:gosec // an executable fixture
 }
 
 func requireLive(t *testing.T) {
@@ -295,100 +332,291 @@ func requireLive(t *testing.T) {
 // waits until the SCM has let it go.
 func removeService(t *testing.T, name string) {
 	t.Helper()
+	if err := removeServiceErr(name); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// connect connects to the SCM, which needs an elevated session.
+func connect() (*mgr.Mgr, error) {
 	m, err := mgr.Connect()
 	if err != nil {
-		t.Fatalf("connect to the SCM (the live test needs an elevated session): %v", err)
+		return nil, fmt.Errorf("connect to the SCM (the live test needs an elevated session): %w", err)
+	}
+	return m, nil
+}
+
+// removeServiceErr is removeService, returning its error.
+func removeServiceErr(name string) error {
+	m, err := connect()
+	if err != nil {
+		return err
 	}
 	defer func() { _ = m.Disconnect() }()
+	if err := endService(m, name); err != nil {
+		return err
+	}
+	return deleteService(m, name)
+}
+
+// endService stops the named service, if there is one, and waits until it
+// is STOPPED; one still there 5 s after the stop, as one that ignores it
+// or never finishes starting is, has its process ended.
+func endService(m *mgr.Mgr, name string) error {
 	s, err := m.OpenService(name)
 	if errors.Is(err, windows.ERROR_SERVICE_DOES_NOT_EXIST) {
-		return
+		return nil
 	}
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
-	_, _ = s.Control(svc.Stop)
-	for deadline := time.Now().Add(30 * time.Second); time.Now().Before(deadline); time.Sleep(100 * time.Millisecond) {
-		if st, err := s.Query(); err != nil || st.State == svc.Stopped {
-			break
+	defer func() { _ = s.Close() }()
+	stopped := func(limit time.Duration) (svc.Status, error) {
+		for deadline := time.Now().Add(limit); ; time.Sleep(100 * time.Millisecond) {
+			st, err := s.Query()
+			if err != nil || st.State == svc.Stopped || time.Now().After(deadline) {
+				return st, err
+			}
 		}
 	}
+	_, _ = s.Control(svc.Stop)
+	st, err := stopped(5 * time.Second)
+	if err != nil || st.State == svc.Stopped {
+		return err
+	}
+	if out, err := exec.Command("taskkill", "/F", "/PID", strconv.FormatUint(uint64(st.ProcessId), 10)).CombinedOutput(); err != nil {
+		return fmt.Errorf("taskkill %d: %w: %s", st.ProcessId, err, out)
+	}
+	if st, err = stopped(20 * time.Second); err == nil && st.State != svc.Stopped {
+		err = fmt.Errorf("service %s is in state %d 20 s after its process was ended", name, st.State)
+	}
+	return err
+}
+
+// deleteService deletes the named service, if there is one, and waits
+// until the SCM has let it go.
+func deleteService(m *mgr.Mgr, name string) error {
+	s, err := m.OpenService(name)
+	if errors.Is(err, windows.ERROR_SERVICE_DOES_NOT_EXIST) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
 	if err := s.Delete(); err != nil && !errors.Is(err, windows.ERROR_SERVICE_MARKED_FOR_DELETE) {
-		t.Fatal(err)
+		_ = s.Close()
+		return err
 	}
 	_ = s.Close()
 	for deadline := time.Now().Add(30 * time.Second); time.Now().Before(deadline); time.Sleep(100 * time.Millisecond) {
 		s, err := m.OpenService(name)
 		if errors.Is(err, windows.ERROR_SERVICE_DOES_NOT_EXIST) {
-			return
+			return nil
 		}
 		if err == nil {
 			_ = s.Close()
 		}
 	}
-	t.Fatalf("service %s was never deleted", name)
+	return fmt.Errorf("service %s was never deleted", name)
 }
 
 // registeredPath is path's 8.3 short form, or path itself when the volume
 // gives it none.
 func registeredPath(t *testing.T, path string) string {
 	t.Helper()
-	p, err := windows.UTF16PtrFromString(path)
+	short, err := shortPath(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	buf := make([]uint16, windows.MAX_LONG_PATH)
-	n, err := windows.GetShortPathName(p, &buf[0], uint32(len(buf)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	short := windows.UTF16ToString(buf[:n])
 	t.Logf("the service is registered as %s", short)
 	return short
 }
 
+// shortPath is registeredPath, returning its error.
+func shortPath(path string) (string, error) {
+	p, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return "", err
+	}
+	buf := make([]uint16, windows.MAX_LONG_PATH)
+	n, err := windows.GetShortPathName(p, &buf[0], uint32(len(buf)))
+	if err != nil {
+		return "", err
+	}
+	return windows.UTF16ToString(buf[:n]), nil
+}
+
 // newLiveService creates and starts the throwaway service, and deletes it
-// when the test ends.
+// when the test ends. The lab arranges it, Running and automatic.
 func newLiveService(t *testing.T) liveConfig {
 	t.Helper()
+	l := newLiveLabFor(t)
+	if err := l.Arrange(context.Background(), servicetest.Arrangement{State: servicetest.Running, Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("the service is registered as %s", l.registered)
+	waitReady(t, l.cfg, 0)
+	return l.cfg
+}
+
+// liveSlowStop is how long a SlowStop service takes to stop.
+const liveSlowStop = 3 * time.Second
+
+// liveLab is a servicetest.Lab over this host's SCM: the throwaway service
+// liveName, running a copy of this test binary in "service" mode from a
+// directory whose name has a space, in the mode its config file names for
+// the state
+// (docs/decisions/0038-PLAN-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// Q12).
+type liveLab struct {
+	cfg liveConfig
+	// registered is the binary path the service is registered with.
+	registered string
+}
+
+// newLiveLabFor is a lab over a new directory, after removing a service
+// a run that crashed may have left; the service is removed when the test
+// ends.
+func newLiveLabFor(t *testing.T) *liveLab {
+	t.Helper()
 	requireLive(t)
-	removeService(t, liveName) // a run that crashed may have left it
+	removeService(t, liveName)
 	dir := filepath.Join(t.TempDir(), "scm live")
 	if err := os.Mkdir(dir, 0o755); err != nil { //nolint:gosec // the service, LocalSystem, writes here too
 		t.Fatal(err)
 	}
-	cfg := liveConfig{Name: liveName, Dir: dir, Target: filepath.Join(dir, "demo.exe"), New: filepath.Join(dir, "new.exe")}
-	cfg.Path = filepath.Join(dir, "live.json")
-	body, err := json.Marshal(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(cfg.Path, body, 0o644); err != nil { //nolint:gosec // read by the service
-		t.Fatal(err)
-	}
-	build(t, cfg.Target, "\nold build\n")
-	m, err := mgr.Connect()
-	if err != nil {
-		t.Fatalf("connect to the SCM (the live test needs an elevated session): %v", err)
-	}
-	defer func() { _ = m.Disconnect() }()
-	// Registered by its 8.3 short path when the volume gives one, as CI's
-	// %TEMP% does: Reconcile must still recognise the binary (0011-MADR
-	// amendment A5).
-	s, err := m.CreateService(liveName, registeredPath(t, cfg.Target), mgr.Config{
-		StartType: mgr.StartAutomatic, DisplayName: "go-selfupdate-lib live test",
-	}, liveArg, "service", cfg.Path)
-	if err != nil {
+	cfg := liveConfig{Name: liveName, Dir: dir, Target: filepath.Join(dir, "demo.exe"), New: filepath.Join(dir, "new.exe"), Path: filepath.Join(dir, "live.json")}
+	if err := buildTo(cfg.Target, "\nold build\n"); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { removeService(t, liveName) })
-	if err := s.Start(); err != nil {
-		_ = s.Close()
-		t.Fatal(err)
+	return &liveLab{cfg: cfg}
+}
+
+// Arrange implements servicetest.Lab. It ends the service, then writes
+// the config file with the state's mode, creates the service or sets its
+// start type, automatic when enabled, and starts it for a state that
+// runs, returning once it is RUNNING.
+func (l *liveLab) Arrange(_ context.Context, a servicetest.Arrangement) error {
+	m, err := connect()
+	if err != nil {
+		return err
 	}
-	_ = s.Close()
-	waitReady(t, cfg, 0)
-	return cfg
+	defer func() { _ = m.Disconnect() }()
+	if err := endService(m, l.cfg.Name); err != nil {
+		return err
+	}
+	cfg := l.cfg
+	switch a.State {
+	case servicetest.Absent:
+		return deleteService(m, cfg.Name)
+	case servicetest.Stopped, servicetest.Running:
+	case servicetest.SlowStop:
+		cfg.Mode = "slow-stop"
+	case servicetest.Stubborn:
+		cfg.Mode = "ignore-stop"
+	case servicetest.Crashing:
+		cfg.Mode = "crash"
+	case servicetest.StartHangs:
+		cfg.Mode = "never-ready"
+	default:
+		return fmt.Errorf("scm live lab: %s: %w", a.State, errors.ErrUnsupported)
+	}
+	body, err := json.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(cfg.Path, body, 0o644); err != nil { //nolint:gosec // read by the service
+		return err
+	}
+	if err := os.Remove(filepath.Join(cfg.Dir, "ready")); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	start := uint32(mgr.StartManual)
+	if a.Enabled {
+		start = mgr.StartAutomatic
+	}
+	s, err := m.OpenService(cfg.Name)
+	switch {
+	case errors.Is(err, windows.ERROR_SERVICE_DOES_NOT_EXIST):
+		// Registered by its 8.3 short path when the volume gives one, as
+		// CI's %TEMP% does: Reconcile must still recognise the binary
+		// (0011-MADR amendment A5).
+		if l.registered, err = shortPath(cfg.Target); err != nil {
+			return err
+		}
+		s, err = m.CreateService(cfg.Name, l.registered, mgr.Config{StartType: start, DisplayName: "go-selfupdate-lib live test"},
+			liveArg, "service", cfg.Path)
+		if err != nil {
+			return err
+		}
+	case err != nil:
+		return err
+	default:
+		c, err := s.Config()
+		if err == nil && c.StartType != start {
+			c.StartType = start
+			err = s.UpdateConfig(c)
+		}
+		if err != nil {
+			_ = s.Close()
+			return err
+		}
+	}
+	defer func() { _ = s.Close() }()
+	switch a.State {
+	case servicetest.Running, servicetest.SlowStop, servicetest.Stubborn:
+	default:
+		return nil
+	}
+	if err := s.Start(); err != nil {
+		return err
+	}
+	for deadline := time.Now().Add(30 * time.Second); ; time.Sleep(100 * time.Millisecond) {
+		st, err := s.Query()
+		if err != nil {
+			return err
+		}
+		if st.State == svc.Running {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("service %s is in state %d 30 s after its start", cfg.Name, st.State)
+		}
+	}
+}
+
+// Observe implements servicetest.Lab.
+func (l *liveLab) Observe(context.Context) (servicetest.Observation, error) {
+	m, err := connect()
+	if err != nil {
+		return servicetest.Observation{}, err
+	}
+	defer func() { _ = m.Disconnect() }()
+	s, err := m.OpenService(l.cfg.Name)
+	if errors.Is(err, windows.ERROR_SERVICE_DOES_NOT_EXIST) {
+		return servicetest.Observation{Detail: "no service"}, nil
+	}
+	if err != nil {
+		return servicetest.Observation{}, err
+	}
+	defer func() { _ = s.Close() }()
+	st, err := s.Query()
+	if err != nil {
+		return servicetest.Observation{}, err
+	}
+	c, err := s.Config()
+	if err != nil {
+		return servicetest.Observation{}, err
+	}
+	return servicetest.Observation{
+		Installed: true,
+		Running:   st.State != svc.Stopped,
+		Stopping:  st.State == svc.StopPending,
+		Enabled:   c.StartType == mgr.StartAutomatic,
+		Wanted:    st.State == svc.Running || st.State == svc.StartPending,
+		Detail:    fmt.Sprintf("state %d checkpoint %d pid %d", st.State, st.CheckPoint, st.ProcessId),
+	}, nil
 }
 
 // waitReady waits for the service to report ready as a process other than
@@ -613,5 +841,28 @@ func TestLiveReplaceBeforeStopHealthFailure(t *testing.T) {
 	waitReady(t, cfg, before)
 	if got, err := os.ReadFile(cfg.Target); err != nil || string(got) != string(orig) { //nolint:gosec // the live test's own file
 		t.Fatal("after the rollback the target is not the previous binary")
+	}
+}
+
+// TestLiveConformance: Service meets the Lifecycle contract over this
+// host's SCM (docs/decisions/0038-PLAN-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// Q12). Stop and Start are bounded by Poll's timeout; Installed, Running
+// and Enabled ignore their context (Service's documentation). The lab
+// arranges every state, so no check may be skipped (0038-PLAN Deviation
+// D7).
+func TestLiveConformance(t *testing.T) {
+	lab := newLiveLabFor(t)
+	poll := service.PollOptions{Interval: 200 * time.Millisecond, Timeout: 20 * time.Second, Settle: 2 * time.Second}
+	s, err := New(Options{Name: liveName, Poll: poll})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = servicetest.VerifyLifecycle(context.Background(), s, servicetest.LifecycleCase{
+		Product: "demo", Lab: lab, StopBound: poll.Timeout, StartBound: poll.Timeout,
+		ContextFree: servicetest.MethodInstalled | servicetest.MethodRunning | servicetest.MethodEnabled,
+		RequireAll:  true, Logf: t.Logf,
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

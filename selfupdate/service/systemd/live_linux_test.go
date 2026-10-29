@@ -8,10 +8,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -19,6 +21,7 @@ import (
 
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
+	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service/servicetest"
 )
 
 // The live test against a real systemd (0011-PLAN V2 step 8). It runs only
@@ -47,8 +50,31 @@ func liveMode(mode string) int {
 		return liveUpdate()
 	case "ignore-term":
 		return liveIgnoreTerm()
+	case "slow-stop":
+		return liveSlowStopMode()
+	case "crash":
+		// Exits at once, before it reports ready.
+		return 3
+	case "never-ready":
+		// Runs, and never reports ready: a start that never completes.
+		for {
+			time.Sleep(time.Hour)
+		}
 	}
 	return 2
+}
+
+// liveSlowStopMode reports ready, then exits liveSlowStop after SIGTERM.
+func liveSlowStopMode() int {
+	term := make(chan os.Signal, 1)
+	signal.Notify(term, syscall.SIGTERM)
+	if _, err := Ready(); err != nil {
+		return 3
+	}
+	<-term
+	_, _ = Stopping()
+	time.Sleep(liveSlowStop)
+	return 0
 }
 
 // liveIgnoreTerm reports ready, then ignores SIGTERM, as a program that
@@ -244,10 +270,16 @@ func requireLive(t *testing.T) Scope {
 }
 
 // newLiveUnit installs a throwaway Type=notify unit running a copy of this
-// test binary, starts it, and removes it when the test ends.
+// test binary, starts it, and removes it when the test ends. extra is
+// added to its environment. The lab arranges it, Running.
 func newLiveUnit(t *testing.T, scope Scope, extra ...string) *liveEnv {
 	t.Helper()
-	return newLiveUnitWith(t, scope, liveUnitOpts{}, extra...)
+	l := newLiveLabFor(t, scope)
+	l.extra = extra
+	if err := l.Arrange(context.Background(), servicetest.Arrangement{State: servicetest.Running}); err != nil {
+		t.Fatal(err)
+	}
+	return l.liveEnv
 }
 
 // liveUnitOpts add lines to the throwaway unit's [Unit] and [Service]
@@ -260,61 +292,8 @@ type liveUnitOpts struct {
 // newLiveUnitWith is newLiveUnit with o's lines, started unless o.noStart.
 func newLiveUnitWith(t *testing.T, scope Scope, o liveUnitOpts, extra ...string) *liveEnv {
 	t.Helper()
-	var b [4]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		t.Fatal(err)
-	}
-	e := &liveEnv{unit: "selfupdate-live-" + hex.EncodeToString(b[:]) + ".service", scope: scope}
-	// The binary's directory must be one the service can execute from: not
-	// a noexec /tmp, and not a 0700 test directory another user cannot
-	// enter, so it is made world-readable.
-	dir, err := os.MkdirTemp(os.Getenv("FAKE_LIVE_ROOT"), "selfupdate-live-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chmod(dir, 0o755); err != nil { //nolint:gosec // the unit's binary lives here
-		t.Fatal(err)
-	}
-	e.dir = dir
-	e.target = filepath.Join(dir, "demo")
-	self, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
-	copyFile(t, self, e.target, nil)
-	unitDir := "/etc/systemd/system"
-	if scope == User {
-		home, _ := os.UserHomeDir()
-		unitDir = filepath.Join(home, ".config", "systemd", "user")
-	}
-	e.unitFile = filepath.Join(unitDir, e.unit)
-	env := []string{
-		liveModeEnv + "=service", "FAKE_UNIT=" + e.unit, "FAKE_DIR=" + dir,
-		"FAKE_TARGET=" + e.target, "FAKE_NEW=" + filepath.Join(dir, "new"), "FAKE_TRIGGER=" + filepath.Join(dir, "trigger"),
-	}
-	if scope == User {
-		env = append(env, scopeEnv+"=user", "XDG_RUNTIME_DIR="+os.Getenv("XDG_RUNTIME_DIR"))
-	}
-	env = append(env, extra...)
-	var unit strings.Builder
-	unit.WriteString("[Unit]\nDescription=go-selfupdate-lib live test\n" + o.unit + "[Service]\nType=notify\n" + o.service)
-	for _, kv := range env {
-		fmt.Fprintf(&unit, "Environment=%q\n", kv)
-	}
-	fmt.Fprintf(&unit, "ExecStart=%q\n", e.target)
-	if err := os.MkdirAll(unitDir, 0o755); err != nil { //nolint:gosec // a unit directory
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(e.unitFile, []byte(unit.String()), 0o644); err != nil { //nolint:gosec // systemd reads units as any user
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		_ = e.systemctl("stop", e.unit)
-		_ = os.Remove(e.unitFile)
-		_ = e.systemctl("daemon-reload")
-		_ = os.RemoveAll(dir)
-	})
-	if err := e.systemctl("daemon-reload"); err != nil {
+	e := newLiveLabFor(t, scope).liveEnv
+	if err := e.writeUnit(o, extra...); err != nil {
 		t.Fatal(err)
 	}
 	if o.noStart {
@@ -326,6 +305,107 @@ func newLiveUnitWith(t *testing.T, scope Scope, o liveUnitOpts, extra ...string)
 	return e
 }
 
+// newLiveEnv names a throwaway unit and copies this test binary into its
+// directory. It writes no unit.
+func newLiveEnv(scope Scope) (*liveEnv, error) {
+	var b [4]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return nil, err
+	}
+	e := &liveEnv{unit: "selfupdate-live-" + hex.EncodeToString(b[:]) + ".service", scope: scope}
+	// The binary's directory must be one the service can execute from: not
+	// a noexec /tmp, and not a 0700 test directory another user cannot
+	// enter, so it is made world-readable.
+	dir, err := os.MkdirTemp(os.Getenv("FAKE_LIVE_ROOT"), "selfupdate-live-")
+	if err != nil {
+		return nil, err
+	}
+	if err := os.Chmod(dir, 0o755); err != nil { //nolint:gosec // the unit's binary lives here
+		return nil, errors.Join(err, os.RemoveAll(dir))
+	}
+	e.dir = dir
+	e.target = filepath.Join(dir, "demo")
+	self, err := os.Executable()
+	if err != nil {
+		return nil, errors.Join(err, os.RemoveAll(dir))
+	}
+	body, err := os.ReadFile(self) //nolint:gosec // the test binary
+	if err != nil {
+		return nil, errors.Join(err, os.RemoveAll(dir))
+	}
+	if err := os.WriteFile(e.target, body, 0o755); err != nil { //nolint:gosec // an executable fixture
+		return nil, errors.Join(err, os.RemoveAll(dir))
+	}
+	unitDir := "/etc/systemd/system"
+	if scope == User {
+		home, _ := os.UserHomeDir()
+		unitDir = filepath.Join(home, ".config", "systemd", "user")
+	}
+	e.unitFile = filepath.Join(unitDir, e.unit)
+	return e, nil
+}
+
+// writeUnit writes e's unit, with o's lines, the service mode's
+// environment and extra, a later assignment winning, and reloads systemd.
+func (e *liveEnv) writeUnit(o liveUnitOpts, extra ...string) error {
+	env := []string{
+		liveModeEnv + "=service", "FAKE_UNIT=" + e.unit, "FAKE_DIR=" + e.dir,
+		"FAKE_TARGET=" + e.target, "FAKE_NEW=" + filepath.Join(e.dir, "new"), "FAKE_TRIGGER=" + filepath.Join(e.dir, "trigger"),
+	}
+	if e.scope == User {
+		env = append(env, scopeEnv+"=user", "XDG_RUNTIME_DIR="+os.Getenv("XDG_RUNTIME_DIR"))
+	}
+	env = append(env, extra...)
+	var unit strings.Builder
+	unit.WriteString("[Unit]\nDescription=go-selfupdate-lib live test\n" + o.unit + "[Service]\nType=notify\n" + o.service)
+	for _, kv := range env {
+		fmt.Fprintf(&unit, "Environment=%q\n", kv)
+	}
+	fmt.Fprintf(&unit, "ExecStart=%q\n[Install]\nWantedBy=default.target\n", e.target)
+	if err := os.MkdirAll(filepath.Dir(e.unitFile), 0o755); err != nil { //nolint:gosec // a unit directory
+		return err
+	}
+	if err := os.WriteFile(e.unitFile, []byte(unit.String()), 0o644); err != nil { //nolint:gosec // systemd reads units as any user
+		return err
+	}
+	return e.systemctl("daemon-reload")
+}
+
+// remove ends the unit and deletes it: a stop, which also cancels a
+// restart, then a kill if the unit is still there 3 s later, as one that
+// ignores TERM under TimeoutStopSec=infinity is; then it clears the
+// unit's failure, disables it, deletes its file and reloads systemd.
+func (e *liveEnv) remove() error {
+	if _, err := os.Stat(e.unitFile); errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	ended := func() bool {
+		p, err := e.props("ActiveState", "MainPID")
+		return err == nil && (p["ActiveState"] == "inactive" || p["ActiveState"] == "failed") && p["MainPID"] == "0"
+	}
+	wait := func(limit time.Duration) bool {
+		for deadline := time.Now().Add(limit); time.Now().Before(deadline); time.Sleep(100 * time.Millisecond) {
+			if ended() {
+				return true
+			}
+		}
+		return ended()
+	}
+	_ = e.systemctl("stop", "--no-block", e.unit)
+	if !wait(3 * time.Second) {
+		_ = e.systemctl("kill", "-s", "KILL", e.unit)
+		if !wait(20 * time.Second) {
+			return fmt.Errorf("%s did not go after a stop and a kill", e.unit)
+		}
+	}
+	_ = e.systemctl("reset-failed", e.unit)
+	_ = e.systemctl("disable", e.unit)
+	if err := os.Remove(e.unitFile); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	return e.systemctl("daemon-reload")
+}
+
 func (e *liveEnv) systemctl(args ...string) error {
 	if e.scope == User {
 		args = append([]string{"--user"}, args...)
@@ -335,6 +415,119 @@ func (e *liveEnv) systemctl(args ...string) error {
 		return fmt.Errorf("systemctl %s: %w: %s", strings.Join(args, " "), err, out)
 	}
 	return nil
+}
+
+// props reads the unit's properties through systemctl show.
+func (e *liveEnv) props(names ...string) (map[string]string, error) {
+	args := []string{"show", "--property=" + strings.Join(names, ","), "--", e.unit}
+	if e.scope == User {
+		args = append([]string{"--user"}, args...)
+	}
+	out, err := exec.Command("/usr/bin/systemctl", args...).Output() //nolint:gosec // the live test's own unit
+	if err != nil {
+		return nil, fmt.Errorf("systemctl %s: %w", strings.Join(args, " "), err)
+	}
+	p := map[string]string{}
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
+		if k, v, ok := strings.Cut(line, "="); ok {
+			p[k] = v
+		}
+	}
+	return p, nil
+}
+
+// liveStopTimeout is the lab's units' TimeoutStopSec. Stop's bound is it
+// plus stopGrace, or Poll's timeout when that is longer.
+const liveStopTimeout = 5 * time.Second
+
+// liveSlowStop is how long a SlowStop unit's program takes to exit after
+// TERM.
+const liveSlowStop = 3 * time.Second
+
+// liveLab is a servicetest.Lab over this host's systemd: the throwaway
+// unit, rewritten for each state, running a copy of this test binary
+// (docs/decisions/0038-PLAN-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// Q12).
+type liveLab struct {
+	*liveEnv
+	// extra is added to the unit's environment.
+	extra []string
+}
+
+// newLiveLabFor is a lab over a new throwaway unit, removed with its
+// directory when the test ends.
+func newLiveLabFor(t *testing.T, scope Scope) *liveLab {
+	t.Helper()
+	e, err := newLiveEnv(scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := e.remove(); err != nil {
+			t.Error(err)
+		}
+		_ = os.RemoveAll(e.dir)
+	})
+	return &liveLab{liveEnv: e}
+}
+
+// Arrange implements servicetest.Lab. It removes the unit, then writes it
+// for the state, its program in the state's mode, enables it if asked,
+// and starts it for a state that runs. A Stubborn unit ignores TERM under
+// TimeoutStopSec=infinity; a StartHangs one never reports ready under
+// TimeoutStartSec=infinity.
+func (l *liveLab) Arrange(_ context.Context, a servicetest.Arrangement) error {
+	if err := l.remove(); err != nil {
+		return err
+	}
+	o := liveUnitOpts{service: fmt.Sprintf("TimeoutStopSec=%d\n", int(liveStopTimeout.Seconds()))}
+	mode := "service"
+	switch a.State {
+	case servicetest.Absent:
+		return nil
+	case servicetest.Stopped, servicetest.Running:
+	case servicetest.SlowStop:
+		mode = "slow-stop"
+	case servicetest.Stubborn:
+		mode, o.service = "ignore-term", o.service+"TimeoutStopSec=infinity\n"
+	case servicetest.Crashing:
+		mode = "crash"
+	case servicetest.StartHangs:
+		mode, o.service = "never-ready", o.service+"TimeoutStartSec=infinity\n"
+	default:
+		return fmt.Errorf("systemd live lab: %s: %w", a.State, errors.ErrUnsupported)
+	}
+	if err := l.writeUnit(o, append(slices.Clone(l.extra), liveModeEnv+"="+mode)...); err != nil {
+		return err
+	}
+	// remove disabled it; enable, like disable, reloads systemd.
+	if a.Enabled {
+		if err := l.systemctl("enable", l.unit); err != nil {
+			return err
+		}
+	}
+	switch a.State {
+	case servicetest.Running, servicetest.SlowStop, servicetest.Stubborn:
+		return l.systemctl("start", l.unit)
+	}
+	return nil
+}
+
+// Observe implements servicetest.Lab.
+func (l *liveLab) Observe(context.Context) (servicetest.Observation, error) {
+	p, err := l.props("LoadState", "ActiveState", "SubState", "UnitFileState", "MainPID")
+	if err != nil {
+		return servicetest.Observation{}, err
+	}
+	s := p["ActiveState"]
+	return servicetest.Observation{
+		Installed: p["LoadState"] != "" && p["LoadState"] != "not-found",
+		Running:   p["MainPID"] != "" && p["MainPID"] != "0",
+		Stopping:  s == "deactivating",
+		Enabled:   p["UnitFileState"] == "enabled",
+		Wanted:    s == "active" || s == "activating" || s == "reloading",
+		Detail:    fmt.Sprintf("LoadState=%s ActiveState=%s SubState=%s MainPID=%s", p["LoadState"], s, p["SubState"], p["MainPID"]),
+	}, nil
 }
 
 func (e *liveEnv) show(t *testing.T, prop string) string {
@@ -573,18 +766,12 @@ func TestLiveReplaceBeforeStopHealthFailure(t *testing.T) {
 // D2-A; Amendment A1, P1).
 func TestLiveStopInfinityTimesOut(t *testing.T) {
 	scope := requireLive(t)
-	e := newLiveUnitWith(t, scope, liveUnitOpts{service: "TimeoutStopSec=infinity\n"}, liveModeEnv+"=ignore-term")
-	// Cleanups run last first: this one kills the unit before
-	// newLiveUnitWith's own, whose blocking stop would otherwise never end.
-	t.Cleanup(func() {
-		_ = e.systemctl("kill", "-s", "KILL", e.unit)
-		for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(100 * time.Millisecond) {
-			if s := e.show(t, "ActiveState"); s != "deactivating" && s != "active" {
-				break
-			}
-		}
-		_ = e.systemctl("reset-failed", e.unit)
-	})
+	// The lab's cleanup kills the unit, which no stop ends.
+	l := newLiveLabFor(t, scope)
+	if err := l.Arrange(context.Background(), servicetest.Arrangement{State: servicetest.Stubborn}); err != nil {
+		t.Fatal(err)
+	}
+	e := l.liveEnv
 	const timeout = 3 * time.Second
 	u, err := New(Options{Unit: e.unit, Scope: scope, Poll: service.PollOptions{Interval: 100 * time.Millisecond, Timeout: timeout, Settle: -1}})
 	if err != nil {
@@ -606,5 +793,33 @@ func TestLiveStopInfinityTimesOut(t *testing.T) {
 	}
 	if s := e.show(t, "ActiveState"); s != "deactivating" {
 		t.Fatalf("after Stop the unit is %s, want deactivating: the stop job still running", s)
+	}
+}
+
+// TestLiveConformance: Unit meets the Lifecycle contract over this host's
+// systemd, in the scope SELFUPDATE_SYSTEMD_SCOPE names
+// (docs/decisions/0038-PLAN-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// Q12). Stop's bound is the longer of Poll's timeout and the lab's
+// TimeoutStopSec plus stopGrace; under TimeoutStopSec=infinity it is
+// Poll's timeout. Start documents no bound, so "start hangs" is the one
+// check skipped (0038-PLAN Deviation D7).
+func TestLiveConformance(t *testing.T) {
+	scope := requireLive(t)
+	lab := newLiveLabFor(t, scope)
+	poll := service.PollOptions{Interval: 100 * time.Millisecond, Timeout: 10 * time.Second, Settle: time.Second}
+	u, err := New(Options{Unit: lab.unit, Scope: scope, Poll: poll})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var skipped []string
+	err = servicetest.VerifyLifecycle(context.Background(), u, servicetest.LifecycleCase{
+		Product: "demo", Lab: lab, StopBound: max(poll.Timeout, liveStopTimeout+stopGrace),
+		Logf: func(format string, args ...any) { skipped = append(skipped, fmt.Sprintf(format, args...)) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(skipped) != 1 || !strings.HasPrefix(skipped[0], "servicetest: start hangs: skipped") {
+		t.Fatalf("skipped %q; want only start hangs", skipped)
 	}
 }

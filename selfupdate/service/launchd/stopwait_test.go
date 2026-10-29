@@ -56,7 +56,8 @@ func TestStopOneDeadline(t *testing.T) {
 		f := newFake()
 		f.pid = 99999999
 		f.goneAfter = 1 << 30
-		// ExitTimeOut 0 is no kill bound, so the bound is Poll.Timeout's.
+		// ExitTimeOut 0 leaves the bound at Poll.Timeout's. launchd would kill
+		// the job at once; the fake's never goes, as one a kill cannot end.
 		f.keys["ExitTimeOut"] = "0"
 		f.onBootout = func(*fakeLaunchd) { time.Sleep(service.DefaultPollTimeout / 2) }
 		j := testJob(t, f, Options{Poll: bubblePoll})
@@ -78,7 +79,8 @@ func TestManagedStopTimeoutRestartsJob(t *testing.T) {
 		f := newFake()
 		f.pid = 99999999
 		f.goneAfter = 1 << 30
-		// ExitTimeOut 0 is no kill bound, so the wait is Poll.Timeout's.
+		// ExitTimeOut 0 leaves the bound at Poll.Timeout's. launchd would kill
+		// the job at once; the fake's never goes, as one a kill cannot end.
 		f.keys["ExitTimeOut"] = "0"
 		j := testJob(t, f, Options{Poll: bubblePoll})
 		dir, err := filepath.EvalSymlinks(t.TempDir())

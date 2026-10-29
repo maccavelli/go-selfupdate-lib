@@ -240,6 +240,56 @@ func TestCommandErrors(t *testing.T) {
 	}
 }
 
+// failOnStart is the fake, which then leaves the unit as a failed start
+// did: its invocation, ActiveState and Result.
+type failOnStart struct {
+	f                   *fakeSystemd
+	inv, active, result string
+}
+
+func (c failOnStart) Run(ctx context.Context, cmd service.Command) (service.Output, error) {
+	out, err := c.f.Run(ctx, cmd)
+	if slices.Contains(cmd.Args, "start") {
+		c.f.mu.Lock()
+		c.f.props["InvocationID"], c.f.props["ActiveState"], c.f.props["Result"] = c.inv, c.active, c.result
+		c.f.mu.Unlock()
+	}
+	return out, err
+}
+
+// TestStartOfCrashedUnitIsUnhealthy: a start that fails because the unit
+// ran and failed, as a Type=notify program that exits before it is ready
+// does, wraps ErrUnhealthy as well as the CommandError; one that fails
+// before the unit ran, as on a missing dependency, does not, though an
+// earlier failure left it failed
+// (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// Amendment A4).
+func TestStartOfCrashedUnitIsUnhealthy(t *testing.T) {
+	testproc.CheckNoLeak(t)
+	for _, c := range []struct {
+		name      string
+		after     failOnStart
+		unhealthy bool
+	}{
+		{"failed", failOnStart{inv: "bbb", active: "failed", result: "exit-code"}, true},
+		{"inactive", failOnStart{inv: "bbb", active: "inactive", result: "exit-code"}, true},
+		{"not run", failOnStart{inv: "aaa", active: "failed", result: "exit-code"}, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newFake()
+			u := testUnit(t, f, Options{})
+			c.after.f = f
+			u.o.Runner = c.after
+			f.fail["start"] = service.Output{ExitCode: 1}
+			err := u.Start(context.Background(), "demo")
+			var ce *service.CommandError
+			if !errors.As(err, &ce) || errors.Is(err, service.ErrUnhealthy) != c.unhealthy {
+				t.Fatalf("err = %v; want a CommandError, ErrUnhealthy %t", err, c.unhealthy)
+			}
+		})
+	}
+}
+
 func TestStartThenWaitHealthy(t *testing.T) {
 	testproc.CheckNoLeak(t)
 	synctest.Test(t, func(t *testing.T) {

@@ -24,6 +24,7 @@ import (
 	"github.com/maccavelli/go-selfupdate-lib/internal/winproc"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
+	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service/servicetest"
 )
 
 // The live test against this host's Task Scheduler
@@ -61,6 +62,8 @@ func liveMode(mode string, args []string) int {
 		return 3
 	}
 	switch mode {
+	case "crash":
+		return 1
 	case "serve":
 		return liveServe(cfg)
 	case "agent":
@@ -474,20 +477,29 @@ func newLiveTaskWith(t *testing.T, sub string, with liveConfig) liveConfig {
 // that starts now and repeats every minute with no end, so a task left
 // enabled while stopped is started again within the hold wait.
 func liveXML(exe, args string) string {
-	start := time.Now().Format("2006-01-02T15:04:05")
-	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-16"?>
-<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-  <Triggers>
-    <LogonTrigger>
-      <Enabled>true</Enabled>
-    </LogonTrigger>
+	return liveXMLWith(exe, args, true)
+}
+
+// liveXMLWith is liveXML, with the watchdog time trigger only when
+// watchdog is set.
+func liveXMLWith(exe, args string, watchdog bool) string {
+	trigger := ""
+	if watchdog {
+		trigger = fmt.Sprintf(`
     <TimeTrigger>
       <Repetition>
         <Interval>PT1M</Interval>
       </Repetition>
       <StartBoundary>%s</StartBoundary>
       <Enabled>true</Enabled>
-    </TimeTrigger>
+    </TimeTrigger>`, time.Now().Format("2006-01-02T15:04:05"))
+	}
+	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <Triggers>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+    </LogonTrigger>%s
   </Triggers>
   <Principals>
     <Principal id="Author">
@@ -506,7 +518,7 @@ func liveXML(exe, args string) string {
     </Exec>
   </Actions>
 </Task>
-`, start, exe, args)
+`, trigger, exe, args)
 }
 
 func build(t *testing.T, dst, marker string) {
@@ -1042,6 +1054,219 @@ func TestLiveTaskRegister(t *testing.T) {
 	}
 	if st, err := task.Status(ctx, "demo"); err != nil || !reflect.DeepEqual(st, Status{}) {
 		t.Fatalf("Status after delete = %+v, %v; want a zero Status", st, err)
+	}
+}
+
+// liveLab is a servicetest.Lab over this host's Task Scheduler: a
+// throwaway task whose definition has no watchdog trigger, so only a start
+// runs it, and whose program is a copy of this test binary, in "serve"
+// mode, or "crash" for Crashing
+// (docs/decisions/0038-PLAN-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// Q12). Task's Stop ends a program that does not exit within its grace,
+// so the lab arranges neither SlowStop nor Stubborn; Start runs the task
+// without waiting, so it arranges no StartHangs (Deviation D7). It sees
+// the task through schtasks, and the program by the process it reported.
+type liveLab struct {
+	cfg liveConfig
+	// task registers and deletes the task, which a Lifecycle does not.
+	task *Task
+}
+
+// newLiveLabFor is a lab over a new task, deleted when the test ends.
+func newLiveLabFor(t *testing.T) *liveLab {
+	t.Helper()
+	requireLive(t)
+	dir := t.TempDir()
+	cfg := liveConfig{Name: "selfupdate-live-" + randomHex(), Dir: dir, Target: filepath.Join(dir, "demo.exe"),
+		New: filepath.Join(dir, "new.exe"), Path: filepath.Join(dir, "live.json")}
+	body, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cfg.Path, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	build(t, cfg.Target, "\nold build\n")
+	l := &liveLab{cfg: cfg, task: liveSvc(t, cfg)}
+	t.Cleanup(func() {
+		if err := l.Arrange(context.Background(), servicetest.Arrangement{State: servicetest.Absent}); err != nil {
+			t.Error(err)
+		}
+	})
+	return l
+}
+
+// Arrange implements servicetest.Lab. It ends the program, then registers
+// the task for the state, disables it unless enabled, and runs it for
+// Running, returning once the program has reported ready.
+func (l *liveLab) Arrange(ctx context.Context, a servicetest.Arrangement) error {
+	l.end()
+	mode := "serve"
+	switch a.State {
+	case servicetest.Absent:
+		return l.task.Delete(ctx, "demo")
+	case servicetest.Stopped, servicetest.Running:
+	case servicetest.Crashing:
+		mode = "crash"
+	default:
+		return fmt.Errorf("Task Scheduler live lab: %s: %w", a.State, errors.ErrUnsupported)
+	}
+	if err := l.task.Register(ctx, "demo", liveXMLWith(l.cfg.Target, "tasksched-live "+mode+` "`+l.cfg.Path+`"`, false)); err != nil {
+		return err
+	}
+	schtasks := func(args ...string) error {
+		if out, err := exec.Command("schtasks", append(args, "/tn", l.cfg.Name)...).CombinedOutput(); err != nil {
+			return fmt.Errorf("schtasks %s: %w: %s", args[0], err, out)
+		}
+		return nil
+	}
+	if !a.Enabled {
+		if err := schtasks("/change", "/disable"); err != nil {
+			return err
+		}
+	}
+	if a.State != servicetest.Running {
+		return nil
+	}
+	if err := schtasks("/run"); err != nil {
+		return err
+	}
+	for deadline := time.Now().Add(45 * time.Second); ; time.Sleep(100 * time.Millisecond) {
+		if pid := l.readyPID(); pid > 0 && l.alive(pid) {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return errors.New("the task's program never reported ready")
+		}
+	}
+}
+
+// end ends the task's instance, and the program's process if it still
+// runs, and removes the files the program and Stop exchange.
+func (l *liveLab) end() {
+	_ = exec.Command("schtasks", "/end", "/tn", l.cfg.Name).Run()
+	if pid := l.readyPID(); pid > 0 {
+		if h, ok := l.process(pid, windows.PROCESS_TERMINATE|windows.SYNCHRONIZE); ok {
+			_ = windows.TerminateProcess(h, 1)
+			_, _ = windows.WaitForSingleObject(h, 10_000)
+			_ = windows.CloseHandle(h)
+		}
+	}
+	for _, name := range []string{"ready", "please-stop"} {
+		_ = os.Remove(filepath.Join(l.cfg.Dir, name))
+	}
+}
+
+// readyPID is the process the program last reported ready as, or 0.
+func (l *liveLab) readyPID() uint32 {
+	b, err := os.ReadFile(filepath.Join(l.cfg.Dir, "ready")) //nolint:gosec // the live test's own file
+	if err != nil {
+		return 0
+	}
+	pid, err := strconv.ParseUint(strings.TrimSpace(string(b)), 10, 32)
+	if err != nil {
+		return 0
+	}
+	return uint32(pid)
+}
+
+// process opens pid with access when it is still the task's program: a
+// running process whose image is the lab's binary, so a reused ID is never
+// taken for it.
+func (l *liveLab) process(pid, access uint32) (windows.Handle, bool) {
+	h, err := windows.OpenProcess(access|windows.PROCESS_QUERY_LIMITED_INFORMATION|windows.SYNCHRONIZE, false, pid)
+	if err != nil {
+		return 0, false
+	}
+	buf := make([]uint16, windows.MAX_LONG_PATH)
+	n := uint32(len(buf))
+	ev, _ := windows.WaitForSingleObject(h, 0)
+	if ev != uint32(windows.WAIT_TIMEOUT) || windows.QueryFullProcessImageName(h, 0, &buf[0], &n) != nil ||
+		!strings.EqualFold(windows.UTF16ToString(buf[:n]), l.cfg.Target) {
+		_ = windows.CloseHandle(h)
+		return 0, false
+	}
+	return h, true
+}
+
+// alive reports whether pid is still the task's program.
+func (l *liveLab) alive(pid uint32) bool {
+	h, ok := l.process(pid, 0)
+	if ok {
+		_ = windows.CloseHandle(h)
+	}
+	return ok
+}
+
+// Observe implements servicetest.Lab. The task is installed when schtasks
+// finds it, and enabled unless its definition's Settings say false; a
+// stop is under way once Stop has asked the running program to exit.
+func (l *liveLab) Observe(context.Context) (servicetest.Observation, error) {
+	out, err := exec.Command("schtasks", "/query", "/tn", l.cfg.Name, "/xml").Output()
+	var ee *exec.ExitError
+	installed := err == nil
+	if err != nil && !errors.As(err, &ee) {
+		return servicetest.Observation{}, err
+	}
+	def := string(out)
+	if len(out) >= 2 && out[0] == 0xff && out[1] == 0xfe {
+		u := make([]uint16, (len(out)-2)/2)
+		for i := range u {
+			u[i] = uint16(out[2+2*i]) | uint16(out[3+2*i])<<8
+		}
+		def = windows.UTF16ToString(u)
+	}
+	_, settings, _ := strings.Cut(def, "<Settings>")
+	settings, _, _ = strings.Cut(settings, "</Settings>")
+	enabled := installed && !strings.Contains(settings, "<Enabled>false</Enabled>")
+	pid := l.readyPID()
+	running := pid > 0 && l.alive(pid)
+	_, serr := os.Stat(filepath.Join(l.cfg.Dir, "please-stop"))
+	return servicetest.Observation{
+		Installed: installed,
+		Running:   running,
+		Stopping:  running && serr == nil,
+		Enabled:   enabled,
+		Wanted:    enabled,
+		Detail:    fmt.Sprintf("installed=%t enabled=%t pid=%d running=%t", installed, enabled, pid, running),
+	}, nil
+}
+
+// TestLiveTaskConformance: Task meets the Lifecycle contract over this
+// host's Task Scheduler (0038-PLAN Q12). Stop is bounded by Poll's
+// timeout; Installed, Running, Enabled and Start ignore their context
+// (Task's documentation); a failed Stop enables the task again. The lab
+// arranges neither SlowStop nor Stubborn, and Start has no bound, so
+// three checks are skipped, and only those (Deviation D7).
+func TestLiveTaskConformance(t *testing.T) {
+	lab := newLiveLabFor(t)
+	poll := service.PollOptions{Interval: 200 * time.Millisecond, Timeout: 30 * time.Second, Settle: 3 * time.Second}
+	task, err := New(Options{
+		Name: lab.cfg.Name, Poll: poll, StopGrace: 5 * time.Second,
+		RequestStop: func(context.Context, uint32) error {
+			return os.WriteFile(filepath.Join(lab.cfg.Dir, "please-stop"), nil, 0o600)
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var skipped []string
+	err = servicetest.VerifyLifecycle(context.Background(), task, servicetest.LifecycleCase{
+		Product: "demo", Lab: lab, StopBound: poll.Timeout,
+		ContextFree:             servicetest.MethodInstalled | servicetest.MethodRunning | servicetest.MethodEnabled | servicetest.MethodStart,
+		RestoresAfterFailedStop: true,
+		Logf:                    func(format string, args ...any) { skipped = append(skipped, fmt.Sprintf(format, args...)) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var checks []string
+	for _, s := range skipped {
+		name, _, _ := strings.Cut(strings.TrimPrefix(s, "servicetest: "), ": skipped")
+		checks = append(checks, name)
+	}
+	if want := []string{"stubborn", "cancel during stop", "start hangs"}; !slices.Equal(checks, want) {
+		t.Fatalf("skipped %q; want only %q", skipped, want)
 	}
 }
 

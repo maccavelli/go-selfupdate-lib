@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
+	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service/servicetest"
 )
 
 // The live test against this Mac's launchd (0011-PLAN V3 step 8): a
@@ -41,15 +43,14 @@ func liveMode(mode string) int {
 }
 
 // liveService is the job's process: it waits for SIGTERM, or for
-// FAKE_TRIGGER, which makes it run the update from inside the job.
+// FAKE_TRIGGER, which makes it run the update from inside the job. With
+// FAKE_IGNORE_TERM=1 it is slow to exit: it notes a SIGTERM in the
+// "termed" file, for the lab to see the stop under way, and runs on until
+// launchd kills it after ExitTimeOut.
 func liveService() int {
 	term := make(chan os.Signal, 1)
-	if os.Getenv("FAKE_IGNORE_TERM") == "1" {
-		// Slow to exit: launchd kills it after ExitTimeOut.
-		signal.Ignore(syscall.SIGTERM)
-	} else {
-		signal.Notify(term, syscall.SIGTERM)
-	}
+	signal.Notify(term, syscall.SIGTERM)
+	ignore := os.Getenv("FAKE_IGNORE_TERM") == "1"
 	// The signal disposition is set: a PID in list may still be xpcproxy's.
 	report("ready", strconv.Itoa(os.Getpid()))
 	tick := time.NewTicker(50 * time.Millisecond)
@@ -57,6 +58,10 @@ func liveService() int {
 	for {
 		select {
 		case <-term:
+			if ignore {
+				report("termed", strconv.Itoa(os.Getpid()))
+				continue
+			}
 			return 0
 		case <-tick.C:
 			if trigger := os.Getenv("FAKE_TRIGGER"); trigger != "" {
@@ -207,20 +212,28 @@ func requireLive(t *testing.T) {
 // killed.
 func build(t *testing.T, dst, marker string) {
 	t.Helper()
+	if err := buildTo(dst, marker); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// buildTo is build, returning its error.
+func buildTo(dst, marker string) error {
 	self, err := os.Executable()
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
 	body, err := os.ReadFile(self) //nolint:gosec // the test binary
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
 	if err := os.WriteFile(dst, body, 0o755); err != nil { //nolint:gosec // an executable fixture
-		t.Fatal(err)
+		return err
 	}
 	if out, err := exec.Command("/usr/bin/codesign", "--force", "--sign", "-", "--identifier", marker, dst).CombinedOutput(); err != nil {
-		t.Fatalf("codesign: %v: %s", err, out)
+		return fmt.Errorf("codesign: %w: %s", err, out)
 	}
+	return nil
 }
 
 // dump describes the live test's files and the handoff jobs, for a failure.
@@ -277,49 +290,237 @@ func newLiveJob(t *testing.T) *liveEnv {
 }
 
 // newSlowLiveJob is newLiveJob; with exitTimeOut > 0, the job ignores
-// SIGTERM, and launchd kills it that many seconds after a bootout.
+// SIGTERM, and launchd kills it that many seconds after a bootout. The
+// lab arranges it, Running or SlowStop.
 func newSlowLiveJob(t *testing.T, exitTimeOut int) *liveEnv {
 	t.Helper()
 	dir, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := &liveEnv{label: liveLabel, dir: dir}
-	e.target = filepath.Join(dir, "demo")
-	e.plist = filepath.Join(dir, e.label+".plist")
-	build(t, e.target, "selfupdate.live.old")
-	env := map[string]string{
-		liveModeEnv: "service", "FAKE_LABEL": e.label, "FAKE_PLIST": e.plist, "FAKE_DIR": dir,
-		"FAKE_TARGET": e.target, "FAKE_NEW": filepath.Join(dir, "new"), "FAKE_TRIGGER": filepath.Join(dir, "trigger"),
-	}
-	keys := "<key>KeepAlive</key>\n\t<true/>\n\t"
-	if exitTimeOut > 0 {
-		env["FAKE_IGNORE_TERM"] = "1"
-		keys += fmt.Sprintf("<key>ExitTimeOut</key>\n\t<integer>%d</integer>\n\t", exitTimeOut)
-	}
-	body := strings.Replace(string(oneShotPlist(e.label, []string{e.target}, env)),
-		"<key>RunAtLoad</key>", keys+"<key>RunAtLoad</key>", 1)
-	body = strings.Replace(body, "\t<key>AbandonProcessGroup</key>\n\t<true/>\n", "", 1)
-	if err := os.WriteFile(e.plist, []byte(body), 0o644); err != nil { //nolint:gosec // a LaunchAgent plist
+	l, err := newLiveLab(dir)
+	if err != nil {
 		t.Fatal(err)
 	}
-	domain := liveDomain()
-	// A run that crashed may have left the job loaded, or disabled
-	// (TestLiveExitCodes).
-	_ = exec.Command("/bin/launchctl", "bootout", domain+"/"+e.label).Run()
-	if out, err := exec.Command("/bin/launchctl", "enable", domain+"/"+e.label).CombinedOutput(); err != nil {
-		t.Fatalf("enable: %v: %s", err, out)
-	}
 	t.Cleanup(func() {
-		_ = exec.Command("/bin/launchctl", "bootout", domain+"/"+e.label).Run()
-		if j, err := liveJobFor(e); err == nil {
+		_ = l.Arrange(context.Background(), servicetest.Arrangement{State: servicetest.Absent})
+		if j, err := liveJobFor(&l.liveEnv); err == nil {
 			_ = j.CleanupHandOffs(context.Background())
 		}
 	})
-	if out, err := exec.Command("/bin/launchctl", "bootstrap", domain, e.plist).CombinedOutput(); err != nil {
-		t.Fatalf("bootstrap: %v: %s", err, out)
+	state := servicetest.Running
+	if exitTimeOut > 0 {
+		l.exitTimeOut, state = exitTimeOut, servicetest.SlowStop
 	}
-	return e
+	if err := l.Arrange(context.Background(), servicetest.Arrangement{State: state, Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	return &l.liveEnv
+}
+
+// labExitTimeOut is the ExitTimeOut, in seconds, of the lab's SlowStop
+// job: it ignores SIGTERM, and launchd kills it that long after its
+// bootout.
+const labExitTimeOut = 3
+
+// liveLab is a servicetest.Lab over this Mac's launchd: a LaunchAgent
+// under liveLabel in gui/<uid>, whose plist the lab writes for each state,
+// running a copy of this test binary in "service" mode
+// (docs/decisions/0038-PLAN-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// Q12). launchd ends every job within its ExitTimeOut, so the lab cannot
+// arrange Stubborn (0038-MADR Amendment A3); a plist bootstrap refuses
+// with 5 every time is StartHangs.
+type liveLab struct {
+	liveEnv
+	// exitTimeOut is a SlowStop job's ExitTimeOut, in seconds.
+	exitTimeOut int
+	// enabled is the arrangement's Enabled: the plist's RunAtLoad and
+	// KeepAlive.
+	enabled bool
+	// pid is the job's process when the lab last saw one, so Arrange can
+	// wait for it to go.
+	pid int
+}
+
+// newLiveLab builds the job's binary in dir and enables the label: a run
+// that crashed may have left the job loaded, or disabled
+// (TestLiveExitCodes). It loads nothing.
+func newLiveLab(dir string) (*liveLab, error) {
+	l := &liveLab{
+		liveEnv:     liveEnv{label: liveLabel, dir: dir, target: filepath.Join(dir, "demo"), plist: filepath.Join(dir, liveLabel+".plist")},
+		exitTimeOut: labExitTimeOut,
+	}
+	if err := buildTo(l.target, "selfupdate.live.old"); err != nil {
+		return nil, err
+	}
+	_ = exec.Command("/bin/launchctl", "bootout", l.service()).Run()
+	if out, err := exec.Command("/bin/launchctl", "enable", l.service()).CombinedOutput(); err != nil {
+		return nil, fmt.Errorf("enable: %w: %s", err, out)
+	}
+	return l, nil
+}
+
+func (l *liveLab) service() string { return liveDomain() + "/" + l.label }
+
+// Arrange implements servicetest.Lab. It boots the job out and waits for
+// its process to go, then writes the plist the state needs. A Running or
+// SlowStop job is bootstrapped, and Arrange returns once it reports ready.
+func (l *liveLab) Arrange(ctx context.Context, a servicetest.Arrangement) error {
+	if err := l.remove(ctx); err != nil {
+		return err
+	}
+	for _, path := range []string{l.plist, filepath.Join(l.dir, "ready"), filepath.Join(l.dir, "termed")} {
+		if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+	}
+	l.enabled = a.Enabled
+	env := map[string]string{
+		liveModeEnv: "service", "FAKE_LABEL": l.label, "FAKE_PLIST": l.plist, "FAKE_DIR": l.dir,
+		"FAKE_TARGET": l.target, "FAKE_NEW": filepath.Join(l.dir, "new"), "FAKE_TRIGGER": filepath.Join(l.dir, "trigger"),
+	}
+	argv, keys := []string{l.target}, ""
+	if a.Enabled {
+		keys = "<key>KeepAlive</key>\n\t<true/>\n\t"
+	}
+	switch a.State {
+	case servicetest.Absent:
+		return nil
+	case servicetest.Stopped, servicetest.Running, servicetest.StartHangs:
+	case servicetest.SlowStop:
+		env["FAKE_IGNORE_TERM"] = "1"
+		keys += fmt.Sprintf("<key>ExitTimeOut</key>\n\t<integer>%d</integer>\n\t", l.exitTimeOut)
+	case servicetest.Crashing:
+		crash := filepath.Join(l.dir, "crash")
+		if err := os.WriteFile(crash, []byte("#!/bin/sh\nexit 3\n"), 0o755); err != nil { //nolint:gosec // an executable fixture
+			return err
+		}
+		argv = []string{crash}
+	case servicetest.Stubborn:
+		return fmt.Errorf("launchd live lab: %s: launchd ends a job within its ExitTimeOut, which Stop's bound exceeds: %w", a.State, errors.ErrUnsupported)
+	default:
+		return fmt.Errorf("launchd live lab: %s: %w", a.State, errors.ErrUnsupported)
+	}
+	body := strings.Replace(string(oneShotPlist(l.label, argv, env)),
+		"<key>RunAtLoad</key>\n\t<true/>", keys+"<key>RunAtLoad</key>\n\t<"+strconv.FormatBool(a.Enabled)+"/>", 1)
+	body = strings.Replace(body, "\t<key>AbandonProcessGroup</key>\n\t<true/>\n", "", 1)
+	if a.State == servicetest.StartHangs {
+		// launchctl bootstrap refuses it with 5, which Start retries
+		// (0038-MADR Amendment A3).
+		body = `<?xml version="1.0"?><plist><dict><key>Label</key>`
+	}
+	if err := os.WriteFile(l.plist, []byte(body), 0o644); err != nil { //nolint:gosec // a LaunchAgent plist
+		return err
+	}
+	if a.State != servicetest.Running && a.State != servicetest.SlowStop {
+		return nil
+	}
+	for _, args := range [][]string{{"bootstrap", liveDomain(), l.plist}, {"kickstart", l.service()}} {
+		if out, err := exec.CommandContext(ctx, "/bin/launchctl", args...).CombinedOutput(); err != nil {
+			return fmt.Errorf("launchctl %s: %w: %s", args[0], err, out)
+		}
+	}
+	return l.waitReady(ctx)
+}
+
+// waitReady waits, up to 20 s, until the job's process has reported ready,
+// its signal disposition set.
+func (l *liveLab) waitReady(ctx context.Context) error {
+	for deadline := time.Now().Add(20 * time.Second); ; {
+		_, pid, err := l.print(ctx)
+		if err != nil {
+			return err
+		}
+		if b, err := os.ReadFile(filepath.Join(l.dir, "ready")); err == nil && pid > 0 && string(b) == strconv.Itoa(pid) { //nolint:gosec // the live test's own file
+			l.pid = pid
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("the job never reported ready (pid %d)", pid)
+		}
+		if err := sleepCtx(ctx, 100*time.Millisecond); err != nil {
+			return err
+		}
+	}
+}
+
+// remove boots the job out and waits, up to 20 s, until launchd no longer
+// knows it and its last process has gone: launchd kills a job within its
+// ExitTimeOut, 5 s by default.
+func (l *liveLab) remove(ctx context.Context) error {
+	_ = exec.CommandContext(ctx, "/bin/launchctl", "bootout", l.service()).Run()
+	for deadline := time.Now().Add(20 * time.Second); ; {
+		loaded, pid, err := l.print(ctx)
+		if err != nil {
+			return err
+		}
+		if pid > 0 {
+			l.pid = pid
+		}
+		if !loaded && (l.pid <= 0 || !pidAlive(l.pid)) {
+			l.pid = 0
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("20 s after its bootout the job is loaded=%t, its process %d alive=%t", loaded, l.pid, pidAlive(l.pid))
+		}
+		if err := sleepCtx(ctx, 100*time.Millisecond); err != nil {
+			return err
+		}
+	}
+}
+
+// print reads the job from `launchctl print`: loaded, and its process.
+func (l *liveLab) print(ctx context.Context) (loaded bool, pid int, err error) {
+	out, err := exec.CommandContext(ctx, "/bin/launchctl", "print", l.service()).Output()
+	var ee *exec.ExitError
+	switch {
+	case err == nil:
+		pid, _ = printState(out)
+		return true, pid, nil
+	case errors.As(err, &ee) && ee.ExitCode() == exitNotFound:
+		return false, 0, nil
+	}
+	return false, 0, errors.Join(err, ctx.Err())
+}
+
+// Observe implements servicetest.Lab. A stop is under way once the job's
+// process has noted a SIGTERM it ignores (liveService).
+func (l *liveLab) Observe(ctx context.Context) (servicetest.Observation, error) {
+	_, err := os.Stat(l.plist)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return servicetest.Observation{}, err
+	}
+	installed := err == nil
+	loaded, pid, err := l.print(ctx)
+	if err != nil {
+		return servicetest.Observation{}, err
+	}
+	if pid > 0 {
+		l.pid = pid
+	}
+	b, _ := os.ReadFile(filepath.Join(l.dir, "termed")) //nolint:gosec // the live test's own file
+	termed := pid > 0 && string(b) == strconv.Itoa(pid)
+	return servicetest.Observation{
+		Installed: installed,
+		Running:   loaded && pid > 0,
+		Stopping:  loaded && termed,
+		Enabled:   installed && l.enabled,
+		Wanted:    loaded && l.enabled && !termed,
+		Detail:    fmt.Sprintf("loaded=%t pid=%d termed=%t", loaded, pid, termed),
+	}, nil
+}
+
+// sleepCtx sleeps for d, or until ctx ends.
+func sleepCtx(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func liveJobFor(e *liveEnv) (*Job, error) {
@@ -707,5 +908,42 @@ func TestLiveReplaceBeforeStopHealthFailure(t *testing.T) {
 	}
 	if pid := waitRunning(t, e); pid <= 0 {
 		t.Fatal("after the rollback the job is not running")
+	}
+}
+
+// TestLiveConformance: Job meets the Lifecycle contract over this Mac's
+// launchd (docs/decisions/0038-PLAN-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// Q12). Stop's bound is the longer of Poll's timeout and the default
+// ExitTimeOut plus stopGrace; Start's, the bootstrap's, is Poll's timeout.
+// launchd ends every job within its ExitTimeOut, so "stubborn" is the one
+// check skipped (0038-MADR Amendment A3; 0038-PLAN Deviation D7).
+func TestLiveConformance(t *testing.T) {
+	requireLive(t)
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	lab, err := newLiveLab(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = lab.Arrange(context.Background(), servicetest.Arrangement{State: servicetest.Absent}) })
+	poll := service.PollOptions{Interval: 100 * time.Millisecond, Timeout: 20 * time.Second}
+	j, err := New(Options{Label: lab.label, Domain: GUI(os.Getuid()), Plist: lab.plist, Poll: poll})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var skipped []string
+	err = servicetest.VerifyLifecycle(context.Background(), j, servicetest.LifecycleCase{
+		Product: "demo", Lab: lab,
+		StopBound: max(poll.Timeout, defaultExitTimeOut+stopGrace), StartBound: poll.Timeout,
+		ContextFree: servicetest.MethodInstalled,
+		Logf:        func(format string, args ...any) { skipped = append(skipped, fmt.Sprintf(format, args...)) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(skipped) != 1 || !strings.HasPrefix(skipped[0], "servicetest: stubborn: skipped") {
+		t.Fatalf("skipped %q; want only stubborn", skipped)
 	}
 }

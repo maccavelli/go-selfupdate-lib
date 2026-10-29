@@ -103,11 +103,13 @@ func (u *Unit) Stop(ctx context.Context, product string) error {
 	}
 	// The client's exit is not the job's result: wait on the unit.
 	err = u.waitState(sctx, unit, "stop", bound, func(p properties) (bool, bool) {
-		s := p["ActiveState"]
-		return s == "inactive" || s == "failed", false
+		return gone(p["ActiveState"]), false
 	})
 	return errors.Join(err, ctx.Err())
 }
+
+// gone reports an ActiveState with no process: inactive or failed.
+func gone(state string) bool { return state == "inactive" || state == "failed" }
 
 // stopGrace is how much longer than the unit's own TimeoutStopUSec the stop
 // wait allows: systemd kills the unit then (0011-MADR §7).
@@ -137,9 +139,11 @@ func (u *Unit) stopBound(ctx context.Context, unit string) time.Duration {
 // the start succeeded or failed.
 //
 // Errors, matched with errors.Is: service.ErrPermission,
-// service.ErrNotInstalled and service.ErrUnsupported. errors.As finds
-// the failed command as a *service.CommandError. When ctx ends, its
-// error is returned.
+// service.ErrNotInstalled and service.ErrUnsupported; and
+// service.ErrUnhealthy when the unit ran and failed before the start
+// completed, as a Type=notify program that exits before it is ready does.
+// errors.As finds the failed command as a *service.CommandError. When ctx
+// ends, its error is returned.
 func (u *Unit) Start(ctx context.Context, product string) error {
 	unit, err := u.unit(product)
 	if err != nil {
@@ -154,7 +158,7 @@ func (u *Unit) Start(ctx context.Context, product string) error {
 		return err
 	}
 	if out.ExitCode != 0 {
-		return commandError("start", unit, out)
+		return u.startError(ctx, unit, p["InvocationID"], out)
 	}
 	// The restart count is read once the start returned: what the start
 	// itself does to it is not a restart. A start during the RestartSec
@@ -168,6 +172,29 @@ func (u *Unit) Start(ctx context.Context, product string) error {
 	u.baseline[unit] = baseline{invocation: p["InvocationID"], restarts: after["NRestarts"]}
 	u.mu.Unlock()
 	return nil
+}
+
+// startError is the error of a start systemctl failed. A unit with a new
+// invocation that is failed or inactive ran and failed, as a Type=notify
+// program that exits before it is ready does, and the error wraps
+// service.ErrUnhealthy as well; a start that failed before the unit ran,
+// as on a missing dependency, keeps the invocation, and does not
+// (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// Amendment A4).
+func (u *Unit) startError(ctx context.Context, unit, before string, out service.Output) error {
+	err := commandError("start", unit, out)
+	if errors.Is(err, service.ErrPermission) || errors.Is(err, service.ErrNotInstalled) {
+		return err
+	}
+	p, perr := u.show(ctx, unit, "InvocationID", "ActiveState", "Result")
+	if perr != nil {
+		return err
+	}
+	ran := p["InvocationID"] != "" && p["InvocationID"] != before
+	if s := p["ActiveState"]; ran && gone(s) {
+		return fmt.Errorf("%w: %s ran and is %s, Result=%s: %w", service.ErrUnhealthy, unit, s, p["Result"], err)
+	}
+	return err
 }
 
 // WaitHealthy waits until the unit is active as a new invocation, with no

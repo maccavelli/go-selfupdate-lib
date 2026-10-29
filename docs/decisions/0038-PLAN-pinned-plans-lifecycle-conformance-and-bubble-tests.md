@@ -1,6 +1,6 @@
 ---
 status: in-progress
-date: 2026-10-28
+date: 2026-10-29
 associated-madr: "0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md"
 ---
 <!-- markdownlint-disable MD004 MD013 MD024 MD060 -->
@@ -221,8 +221,8 @@ Files (new): `selfupdate/service/systemd/conformance_test.go`, `launchd/conforma
 Files: each backend's `live_*_test.go` and `live_fixes_*_test.go`, `selfupdate/service/supervised_live_linux_test.go`, and each package's `main_test.go` for new helper modes.
 
 1. Each live test file gains a `liveLab` whose `Arrange` and `Observe` drive the real manager, built from the helpers it has: systemd's `newLiveUnitWith`, launchd's `newLiveJob` and `newSlowLiveJob`, scm's `newLiveService` and `removeService`, Task Scheduler's `newLiveTaskWith`, and the s6 scan directory. The helpers return errors, with the `t`-taking wrappers kept for the existing tests.
-2. New helper modes where no live test arranges the state today (MADR Decision Outcome): systemd `SlowStop` (a TERM delay) and `Crashing`; launchd `Stubborn` (`FAKE_IGNORE_TERM`, with an `ExitTimeOut` launchd honours as no kill, or `ErrUnsupported` if P6 shows none) and `Crashing`; scm a handler that ignores stop and one that stops slowly with checkpoints, with cleanup that ends the process before `removeService`; Task Scheduler a definition without the minute watchdog trigger, and `Stubborn` and `SlowStop` returning `ErrUnsupported`. s6 `Stubborn` through a run script that ignores TERM.
-3. Tests: `TestLiveConformance` (systemd, launchd, scm) and `TestLiveTaskConformance`, with `RequireAll` and a short `Poll.Timeout` whose bound is passed as `StopBound`; for s6, a `conformance` subtest of `TestLiveSupervisedS6`. The names match CI's selectors, so `ci.yml` does not change.
+2. New helper modes where no live test arranges the state today (MADR Decision Outcome): systemd `SlowStop` (a TERM delay) and `Crashing`; launchd `Stubborn` (`FAKE_IGNORE_TERM`, with an `ExitTimeOut` launchd honours as no kill, or `ErrUnsupported` if ~~P6~~ P7 shows none: it does, Deviation D9) and `Crashing`; scm a handler that ignores stop and one that stops slowly with checkpoints, with cleanup that ends the process before `removeService`; Task Scheduler a definition without the minute watchdog trigger, and `Stubborn` and `SlowStop` returning `ErrUnsupported`. s6 `Stubborn` through a run script that ignores TERM.
+3. Tests: `TestLiveConformance` (systemd, launchd, scm) and `TestLiveTaskConformance`, with ~~`RequireAll`~~ the exact list of skipped checks, and `RequireAll` where that list is empty (Deviation D7), and a short `Poll.Timeout` whose bound is passed as `StopBound`; for s6, a `conformance` subtest of `TestLiveSupervisedS6`, run through a hook (Deviation D8). The names match CI's selectors, so `ci.yml` does not change.
 4. The existing live tests whose setup matches a state move it to `lab.Arrange`; bespoke setups (override drop-ins, a missing dependency, the handoff) stay helpers.
 5. Runs: systemd on the Linux test host and the WSL, in both scopes; launchd on this Mac; scm and Task Scheduler on the Windows test host; s6 on the WSL; then CI. Seen failing: one F11 or 0037 plant per backend, on its host.
 
@@ -626,3 +626,78 @@ Files: from the list, the new `systemd/conformance_test.go`, `launchd/conformanc
 
 4. **Runs:** `go test -race -count=20 -run Conformance` of the five packages on this Mac, all `ok`; `go test -race -count=3` of `./selfupdate/service/` and its five subpackages on the Linux and Windows test hosts, six packages each, all `ok`; the conformance tests under Go 1.26.10, all `ok`; `make pre-add-check` on the nine Go files: `9 file(s) clean`; the architecture table: 20 rows, 0 differ; `make markdownlint`, `make check-records`, `make docs-check` and `--ids` on the changed files exit 0.
 5. **`make gate`**: every step rc=0, `apicheck` "compatible with v1.22.3", `overall=0`.
+
+### Deviation D7 (2026-10-29): `RequireAll` and the skips the plan expects
+
+* **Found:** Q12 step 3 runs every live test with `RequireAll`, which makes a skipped check a violation (`servicetest/lifecycle.go:181`). Step 2 has Task Scheduler's lab return `ErrUnsupported` for `Stubborn` and `SlowStop`, as its `Stop` ends the program after its grace, which skips "stubborn" and "cancel during stop"; and systemd's `Start`, Task Scheduler's and `Supervised`'s `Up` document no bound, so they pass no `StartBound` and "start hangs" is always skipped (`lifecycle.go:482-483`). As written, the systemd, Task Scheduler and s6 live tests fail on every run. Not pre-existing: Q11's fake tests met the same skips with an assertion on the exact skip list, and no `RequireAll`.
+* **Decision:** the owner, 2026-10-29, chose "Exact skip list": each live test records its skips through `Logf` and requires exactly the list it expects, as Q11's do; `RequireAll` is set where that list is empty (scm, and launchd unless its probe shows `Stubborn` cannot be arranged). An unexpected skip fails the test. MADR Amendment A2.
+
+### Deviation D8 (2026-10-29): the s6 subtest cannot import `servicetest`
+
+* **Found:** Q12 step 3 makes the s6 run a `conformance` subtest of `TestLiveSupervisedS6`, which is in package `service` (`supervised_live_linux_test.go:3`); `servicetest` imports `service`, so that file cannot import it, the cycle Q11 met. CI selects the test by `^TestLiveSupervisedS6$` (`ci.yml:77`).
+* **Decision:** the owner, 2026-10-29, chose "Hook from external file": `supervised_live_linux_test.go` declares an exported hook variable, a new Linux-only external test file sets it in `init` and holds the s6 lab, and `TestLiveSupervisedS6` runs `t.Run("conformance", …)` through it, failing when it is unset. Both packages build into one test binary, so CI's selector runs it and `ci.yml` does not change. No MADR change.
+* **Files added to Q12:** `selfupdate/service/supervised_live_conformance_linux_test.go` (package `service_test`); `docs/architecture.md`'s package table (`service` 27 to 28 test files).
+
+### Deviation D9 (2026-10-29): launchd reads `ExitTimeOut` 0 as a kill at once
+
+* **Found:** Q12 step 2 makes launchd's `Stubborn` depend on an `ExitTimeOut` launchd honours as no kill, and cites P6, which probed only a missing plist. Probe P7 on this Mac (MADR Amendment A3) shows a job that ignores TERM killed at once after `bootout` under `ExitTimeOut` 0, and at 3 s under 3. `launchd/lifecycle.go:214-215` says launchd reads 0 "as no kill", as do test comments at `stopwait_test.go:59,81`, `launchd_test.go:281` and Q11's `conformance_test.go:125`. Pre-existing in the comments; no behaviour depends on it, since a 0 leaves the stop's bound at the poll timeout, more than a kill at once needs.
+* **Decision:** the owner, 2026-10-29, chose "Amend + fix comments": MADR Amendment A3 records P7; the five comments are corrected, comment only. launchd's live lab returns `ErrUnsupported` for `Stubborn`, as step 2 allows, so its exact skip list (Deviation D7) is "stubborn"; P7's malformed plist, which `bootstrap` refuses with 5 every time, arranges `StartHangs`.
+* **Files added to Q12:** `selfupdate/service/launchd/lifecycle.go`, `stopwait_test.go`, `launchd_test.go` and `conformance_test.go`, comments only.
+
+### Deviation D10 (2026-10-29): systemd's `Start` of a unit that crashes is not `ErrUnhealthy`
+
+* **Found:** on the Linux test host, systemd 259, in both scopes, `TestLiveConformance` failed one check: `servicetest: crash: start of a service that exits at once = selfupdate: systemd: start selfupdate-live-74caca15.service: exit 1: `. The lab's `Crashing` unit is `Type=notify`, as every live unit is, and its program exits 3 before it is ready; `Unit.Start` waits for the start (`systemctl start --quiet`), which fails with exit 1 and no message, and `commandError` returns a bare `*service.CommandError` (`systemd/lifecycle.go:143-160`). The contract takes a failed `Start` only with `ErrUnhealthy` (`servicetest/lifecycle.go:468-472`). Pre-existing; the managed installer still rolls back (`TestLiveHealthFailureRollsBack`), but a caller cannot tell a crashed start from another failure on systemd alone. Every other check passed.
+* **Decision:** the owner, 2026-10-29, chose "Wrap ErrUnhealthy": after a failed start, `Start` reads the unit's `InvocationID`, `ActiveState` and `Result`; a new invocation that is `failed` or `inactive` ran and failed, and the error wraps `service.ErrUnhealthy` as well as the `CommandError`. A start that fails before the unit runs, as on a missing dependency, keeps the invocation, and is not `ErrUnhealthy` even when an earlier failure left the unit failed. MADR Amendment A4.
+* **Files added to Q12:** `selfupdate/service/systemd/lifecycle.go` (`Start`, its doc, and `startError`) and `systemd_test.go` (`TestStartOfCrashedUnitIsUnhealthy`, seen failing on today's code: `err = selfupdate: systemd: start demo.service: exit 1: ; want a CommandError, ErrUnhealthy true`, for the `failed` and `inactive` cases).
+
+### Deviation D11 (2026-10-29): gosec reports `SameExecutable`'s first `os.Stat`
+
+* **Found:** with Q12's Linux test changes, `GOOS=linux golangci-lint run ./...` reports `selfupdate/service/sameexec.go:22:20: G703: Path traversal via taint analysis (gosec)` on `ia, err := os.Stat(ca)`; darwin and windows are clean, and a copy of `HEAD` is clean. Bisected in scratch copies: no one change in `supervised_live_linux_test.go` alone brings it back over `HEAD`, nor does the external s6 file or passing the adapter as a function value; `HEAD`'s own s6 update mode already passes paths from the environment to `Reconcile`, and so to `SameExecutable`, unreported. gosec's taint analysis reaches the sink depending on the call graph's shape. The function's second `os.Stat` (line 25) already carries `//nolint:gosec // metadata of a path the caller names; nothing is opened, read or written`.
+* **Decision:** the owner, 2026-10-29, chose "Mirror nolint": line 22 carries the same comment and reason. Comment only; no MADR change.
+* **Files added to Q12:** `selfupdate/service/sameexec.go`.
+
+### Q12: `servicetest` over the real managers (2026-10-29)
+
+Files: from the list, `launchd/live_darwin_test.go`, `systemd/live_linux_test.go`, `scm/live_windows_test.go`, `taskscheduler/live_windows_test.go` and `service/supervised_live_linux_test.go`; the `live_fixes_*_test.go` files and the `main_test.go` files needed no change, since the new modes sit beside each file's existing ones and the fix tests keep the `t`-taking helpers. Added by the deviations: `service/supervised_live_conformance_linux_test.go` and the package table (`service` 27 to 28 test files) (D8); comments in `launchd/lifecycle.go`, `stopwait_test.go`, `launchd_test.go` and `conformance_test.go` (D9); `systemd/lifecycle.go` and `systemd_test.go` (D10); `service/sameexec.go` (D11).
+
+1. **Live labs**, each a `servicetest.Lab` over the real manager on the real clock, each test requiring its exact skips (D7):
+
+   | Backend | Test | Case | Skipped |
+   | :--- | :--- | :--- | :--- |
+   | launchd | `TestLiveConformance` | `Poll.Timeout` 20 s; `StopBound` 35 s, the longer of it and the default `ExitTimeOut` plus `stopGrace`; `StartBound` 20 s; `ContextFree: MethodInstalled` | stubborn (P7, MADR Amendment A3) |
+   | systemd | `TestLiveConformance` | `Poll.Timeout` 10 s; the lab's units `TimeoutStopSec=5`, so `StopBound` 35 s | start hangs |
+   | scm | `TestLiveConformance` | `Poll.Timeout` 20 s, `StopBound` and `StartBound` 20 s; `ContextFree` Installed, Running and Enabled; `RequireAll` | none |
+   | Task Scheduler | `TestLiveTaskConformance` | `Poll.Timeout` 30 s, `StopGrace` 5 s; `StopBound` 30 s; `ContextFree` the four methods; `RestoresAfterFailedStop` | stubborn, cancel during stop, start hangs |
+   | s6 | `TestLiveSupervisedS6`, subtest `conformance` | the adapter without `Kill`; `Poll.Timeout` 10 s, `StopBound` 20 s; `RestoresAfterFailedStop` | start hangs |
+
+   * **launchd:** the lab writes the job's plist for each state under the live tests' fixed label. `SlowStop` ignores TERM under `ExitTimeOut` 3; the service mode now catches TERM and notes it in a `termed` file rather than ignoring it, so the lab sees the stop under way. `Crashing` runs an `exit 3` script; `StartHangs` is P7's malformed plist, which `Start` retries to its bound; `Stubborn` is `ErrUnsupported`. `newLiveJob` and `newSlowLiveJob` arrange through the lab (`Running`, and `SlowStop` with their own `ExitTimeOut`); `build` keeps its `t` form over an error-returning `buildTo`.
+   * **systemd:** `newLiveEnv`, `writeUnit` and `remove` return errors. `remove` stops the unit without blocking, which also cancels a restart, kills it if it has not gone 3 s later, then clears its failure, disables it, deletes its file and reloads. Units gain `[Install] WantedBy=default.target`, enabled only when the arrangement asks. New modes: `slow-stop` (exits 3 s after TERM), `crash` (exits before it is ready), `never-ready`. `newLiveUnit` and `TestLiveStopInfinityTimesOut` arrange through the lab (`Running`, `Stubborn`); `newLiveUnitWith` stays for the fix tests' own lines. A first version also ran `systemctl disable` on a fresh unit, a second reload just before the start: one WSL system-scope run of `TestLiveStopInfinityTimesOut` then failed `Stop = … show …: exit 1: Failed to get properties: Transport endpoint is not connected after 21.70651ms`. With `enable` only when asked, three further runs of that test and `TestLiveConformance`, in both scopes, passed.
+   * **scm:** the service's config file gains `Mode`; the handler's modes are `slow-stop` (`STOP_PENDING` for 3 s, its checkpoint advancing), `ignore-stop` (one `STOP_PENDING` with no progress, then it runs on), `crash` (exits 1 at once) and `never-ready` (`START_PENDING` with no progress). `endService` stops the service and, when it is still there 5 s later, ends its process with `taskkill /F`, before `deleteService`. `removeService`, `registeredPath` and `build` keep their `t` forms over error-returning ones; `newLiveService` arranges through the lab (`Running`, automatic).
+   * **Task Scheduler:** `liveXMLWith` writes the definition without the watchdog trigger, so only a start runs the task; a `crash` mode exits 1. The lab reads the task through `schtasks /query /xml` and the program by the process it reported ready as, checked by its image, so a reused process ID is not taken for it. `newLiveTaskWith` is unchanged: its watchdog trigger is what `TestLiveTaskStopHoldsDisabled` tests.
+   * **s6:** the hook of D8. The adapter is built without `Kill`: with it, `Stop` kills a script that ignores TERM at half its timeout, and `Stubborn` could not be arranged. The reference `State` reports a missing service directory as not installed, for `absent`. The lab links the service directory into the scan directory and removes it as s6 does, by unlinking it and `s6-svscanctl -an`: with the directory in the scan directory, `s6-svscan` started `s6-supervise` again, and the first run failed `servicetest: stubborn: arrange Stubborn: s6-supervise exits: not within 10s`.
+2. **Runs on the managers**, the final code unless noted:
+
+   | Host | Run | Result |
+   | :--- | :--- | :--- |
+   | this Mac, launchd | `^TestLive`, `SELFUPDATE_REQUIRE_LAUNCHD=1` | 12 tests `ok`, 221 s; `TestLiveConformance` 56 s |
+   | the Linux test host, systemd 259 | the test binary as CI runs it, `^TestLive`, as root (system scope) and as the user (user scope) | 11 tests `ok` in each scope; `TestLiveConformance` 39 s and 28 s |
+   | the WSL, systemd | the same | 11 tests `ok` in each scope; `TestLiveConformance` 21 s and 19 s |
+   | the Windows test host, scm | `^TestLive`, `SELFUPDATE_REQUIRE_SCM=1` | 9 tests `ok`; `TestLiveConformance` 39 s |
+   | the Windows test host, Task Scheduler | `^TestLiveTask`, `-skip '^TestLiveTaskUpdate$'` as CI | 11 tests `ok`, `TestLiveTaskzCleanup` last |
+   | the WSL, s6 | `^TestLiveSupervisedS6$`, `SELFUPDATE_REQUIRE_SUPERVISED=1` | `ok`; subtest `conformance` 18 s |
+
+3. **Seen failing**, one plant per backend in a scratch copy, run on its host, the first violation lines:
+
+   | Plant | Host | Failure |
+   | :--- | :--- | :--- |
+   | 0037-MADR F2: `"stop", "--no-block", "--no-ask-password"` to `"stop", "--no-ask-password"` | the Linux test host, both scopes | `servicetest: stubborn: stop of a service that ignores it did not return within 36s` |
+   | F11: `launchd/lifecycle.go` at `eb525be` | this Mac | `servicetest: absent: Start of an absent service = selfupdate: service: timed out: bootstrap …: exit 5: Bootstrap failed: 5: Input/output error` |
+   | F11: `scm/lifecycle.go` at `eb525be` | the Windows test host | `servicetest: ended context: after Start on an ended context the lab sees running=true (no error); want the service untouched` |
+   | `Task.Stop`'s ended-context check removed | the Windows test host | `servicetest: ended context: after Stop on an ended context the lab sees running=false stopping=false (no error); want the service untouched` |
+   | 0035-MADR Amendment A3 and F11: `supervised_lifecycle.go` of `v1.22.0`, rewritten as in Q11 | the WSL | `servicetest: absent: Start of an absent service = … s6-svc -u exit 111 …`; `servicetest: stubborn: after the timed-out Stop the service runs, but its manager no longer wants it up` |
+   | D10: systemd's `Start` before the fix (today's code) | the Linux test host, both scopes | `servicetest: crash: start of a service that exits at once = selfupdate: systemd: start …: exit 1: ` |
+
+   0037-MADR F3, planted first for launchd, passed live: P7 shows `launchctl bootout` returning within 30 ms, before the lab can see the stop, so no cancellation reaches it on a real launchd. Q11's fake, whose bootout takes 2 s, catches it; the live run uses the F11 plant instead.
+4. **Checks:** `make pre-add-check` on the 13 Go files: `13 file(s) clean`; `golangci-lint` for `GOOS=linux`, `darwin` and `windows`: 0 issues each, after D11; `go test -race -count=3 ./selfupdate/service/...` on this Mac, the Linux test host and the Windows test host: six packages `ok` on each; under Go 1.26.10, `go test ./selfupdate/service/...` `ok` and `go vet` for the three targets clean; the architecture table: 20 rows, 0 differ.
+5. **Host state:** `s6` installed in the WSL with `apt-get install s6` (exit 0), as 0035's run did; it is left there until Q19 removes it, unless the owner keeps it. The P6 override entry 0038-MADR Amendment A1 records stays; the probes and runs here used the fixed label, and added none.
+6. **`make gate`**: every step rc=0, `apicheck` "compatible with v1.22.3", `overall=0`.

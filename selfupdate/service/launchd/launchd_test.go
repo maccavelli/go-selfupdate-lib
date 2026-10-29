@@ -278,8 +278,9 @@ func TestStopTimesOut(t *testing.T) {
 		f := newFake()
 		f.pid = 99999999
 		f.goneAfter = 1 << 30
-		// ExitTimeOut 0 is no kill bound, so the wait is Poll.Timeout's
-		// (0015-MADR B3).
+		// ExitTimeOut 0 leaves the wait at Poll.Timeout's (0015-MADR B3).
+		// launchd would kill the job at once; the fake's never goes, as one
+		// a kill cannot end.
 		f.keys["ExitTimeOut"] = "0"
 		j := testJob(t, f, Options{Poll: bubblePoll})
 		start := time.Now()

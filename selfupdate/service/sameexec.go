@@ -19,7 +19,7 @@ func SameExecutable(a, b string) bool {
 	if ca == cb || (runtime.GOOS == goosWindows && strings.EqualFold(ca, cb)) {
 		return true
 	}
-	ia, err := os.Stat(ca)
+	ia, err := os.Stat(ca) //nolint:gosec // metadata of a path the caller names; nothing is opened, read or written
 	if err != nil {
 		return false
 	}

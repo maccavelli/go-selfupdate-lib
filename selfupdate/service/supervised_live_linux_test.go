@@ -42,11 +42,26 @@ func s6Tool(name string) (string, error) {
 	return "", fmt.Errorf("%s is not installed", name)
 }
 
+// LiveS6Conformance runs servicetest over s, the test's adapter with no
+// Kill, over the service directory svc, which it creates and links into
+// an s6 tree of its own; s's Poll timeout is pollTimeout, and tool is
+// s6Tool. supervised_live_conformance_linux_test.go sets it: this package
+// cannot import servicetest, which imports it
+// (docs/decisions/0038-PLAN-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// Deviation D8).
+var LiveS6Conformance func(t *testing.T, s *Supervised, svc string, pollTimeout time.Duration, tool func(name string) (string, error))
+
 // s6Supervised is the adapter over the s6 service directory svc, with the
 // test's reference State over s6-svstat -o, the one documented machine
 // form (0035-MADR F17; Amendment A1, P2), and Up, Down and Kill over
 // s6-svc.
 func s6Supervised(svc string) (*Supervised, error) {
+	return s6SupervisedWith(svc, livePoll, true)
+}
+
+// s6SupervisedWith is s6Supervised with poll, and with Kill only when kill
+// is set. A service directory that does not exist is not installed.
+func s6SupervisedWith(svc string, poll PollOptions, kill bool) (*Supervised, error) {
 	svstat, err := s6Tool("s6-svstat")
 	if err != nil {
 		return nil, err
@@ -60,6 +75,9 @@ func s6Supervised(svc string) (*Supervised, error) {
 		_, serr := os.Stat(svc)
 		_, derr := os.Stat(filepath.Join(svc, "down"))
 		st := SupervisedState{Installed: serr == nil, NormallyUp: errors.Is(derr, fs.ErrNotExist)}
+		if errors.Is(serr, fs.ErrNotExist) {
+			return SupervisedState{}, ctx.Err()
+		}
 		out, err := run.Run(ctx, Command{Path: svstat, Args: []string{"-o", "up,wantedup,pid", svc}, Env: os.Environ()})
 		if err != nil {
 			return st, err
@@ -93,9 +111,11 @@ func s6Supervised(svc string) (*Supervised, error) {
 			return err
 		}
 	}
-	return NewSupervised(SupervisedOptions{
-		Name: "s6 live", State: state, Up: ctl("-u"), Down: ctl("-d"), Kill: ctl("-k"), Poll: livePoll,
-	})
+	o := SupervisedOptions{Name: "s6 live", State: state, Up: ctl("-u"), Down: ctl("-d"), Poll: poll}
+	if kill {
+		o.Kill = ctl("-k")
+	}
+	return NewSupervised(o)
 }
 
 // supervisedLiveMode runs this binary as the live service ("s6service") or
@@ -359,4 +379,18 @@ func TestLiveSupervisedS6(t *testing.T) {
 	if err != nil || !third.Up || !runsBuild(t, third.PID, "\nhanded-off build\n") {
 		t.Fatalf("after the handoff: %+v, %v; want the handed-off build running", third, err)
 	}
+
+	// The adapter meets the Lifecycle contract (0038-PLAN Q12).
+	t.Run("conformance", func(t *testing.T) {
+		if LiveS6Conformance == nil {
+			t.Fatal("LiveS6Conformance is not set: supervised_live_conformance_linux_test.go sets it")
+		}
+		svc := filepath.Join(t.TempDir(), "demo")
+		poll := PollOptions{Interval: 100 * time.Millisecond, Timeout: 10 * time.Second, Settle: 2 * time.Second}
+		s, err := s6SupervisedWith(svc, poll, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		LiveS6Conformance(t, s, svc, poll.Timeout, s6Tool)
+	})
 }
