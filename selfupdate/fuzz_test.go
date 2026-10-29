@@ -3,6 +3,7 @@ package selfupdate
 import (
 	"bytes"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -145,6 +146,35 @@ func FuzzSanitize(f *testing.F) {
 					t.Fatalf("%s: whitespace %U survived in %q", name, r, out)
 				}
 			}
+		}
+	})
+}
+
+// FuzzParsePlan: no panic, and a plan ParsePlan accepts writes back, as its
+// Document, to a document it reads as the same plan
+// (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// D1-A).
+func FuzzParsePlan(f *testing.F) {
+	valid, err := json.Marshal(validPlanJSON())
+	if err != nil {
+		f.Fatal(err)
+	}
+	f.Add(valid)
+	f.Add([]byte(`{"schema_version":1}`))
+	f.Add([]byte(`{"schema_version":1,"product":"demo","PRODUCT":"x"}`))
+	f.Add([]byte("null"))
+	f.Fuzz(func(t *testing.T, data []byte) {
+		p, err := ParsePlan(data)
+		if err != nil {
+			return
+		}
+		again, err := json.Marshal(p.Document())
+		if err != nil {
+			t.Fatal(err)
+		}
+		back, err := ParsePlan(again)
+		if err != nil || back != p {
+			t.Fatalf("round trip: %+v, %v; want %+v", back, err, p)
 		}
 	})
 }

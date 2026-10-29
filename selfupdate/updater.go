@@ -139,7 +139,10 @@ func (u *Updater) Run(ctx context.Context, req Request) (Result, error) {
 	return u.RunWith(ctx, req)
 }
 
-func (u *run) execute(ctx context.Context, req Request) (res Result, err error) {
+// execute is Run's pipeline, and Apply's when pin is set: then the request
+// must be the plan's, the release is the plan's tag, and what it resolves
+// to must be what the plan pinned (0038-MADR D1-A).
+func (u *run) execute(ctx context.Context, req Request, pin *Plan) (res Result, err error) {
 	// Each run resolves its own negative credential outcome (0010-MADR A2).
 	ctx = withRunMark(ctx)
 	// A failed run ends with EventFailed, except when the product name is
@@ -164,6 +167,13 @@ func (u *run) execute(ctx context.Context, req Request) (res Result, err error) 
 		return base, wrapRun(req, err)
 	}
 	req.Platform = normalizePlatform(req.Platform, u.runningPlatform())
+	// A plan applies to the request it was made for, and another is
+	// refused before anything is reported or fetched.
+	if pin != nil {
+		if err := pin.matches(req); err != nil {
+			return base, wrapRun(req, err)
+		}
+	}
 	if err := u.report(ctx, Event{Kind: EventResolvingTarget, Product: req.Product, Current: req.CurrentVersion}); err != nil {
 		return base, wrapRun(req, err)
 	}
@@ -175,8 +185,18 @@ func (u *run) execute(ctx context.Context, req Request) (res Result, err error) 
 		return base, wrapRun(req, err)
 	}
 	// Discovery is shared with Checker.Check, so Run and Check cannot
-	// disagree (0004-MADR G3).
-	rel, sel, op, err := u.checker().discover(ctx, req)
+	// disagree (0004-MADR G3); a plan's release is vetted as Plan vetted
+	// it, then compared with the plan.
+	var (
+		rel Release
+		sel Selection
+		op  Operation
+	)
+	if pin == nil {
+		rel, sel, op, err = u.checker().discover(ctx, req)
+	} else {
+		rel, sel, op, err = u.checker().pinned(ctx, req, *pin)
+	}
 	if err != nil {
 		return base, wrapRun(req, err)
 	}
@@ -226,10 +246,12 @@ func (u *run) execute(ctx context.Context, req Request) (res Result, err error) 
 			return result, nil
 		}
 	}
-	return u.apply(ctx, req, result, target, rel, sel)
+	return u.install(ctx, req, result, target, rel, sel, pin)
 }
 
-func (u *run) apply(ctx context.Context, req Request, result Result, target Target, rel Release, sel Selection) (resultOut Result, err error) {
+// install downloads, verifies and installs the selection. With pin, the
+// binary's SHA256SUMS entry must be the one the plan pinned.
+func (u *run) install(ctx context.Context, req Request, result Result, target Target, rel Release, sel Selection, pin *Plan) (resultOut Result, err error) {
 	resultOut = result
 	beginCtx := ctx
 	if req.DryRun {
@@ -258,23 +280,8 @@ func (u *run) apply(ctx context.Context, req Request, result Result, target Targ
 	if rerr := u.report(ctx, Event{Kind: EventDownloadingManifest, Product: req.Product, Target: rel.Tag, Asset: sel.Manifest.Name}); rerr != nil {
 		return resultOut, wrapRun(req, rerr)
 	}
-	var manifestBuf bytes.Buffer
-	if _, err = downloadAsset(ctx, u.source, rel, sel.Manifest, &manifestBuf, u.limits.Manifest); err != nil {
-		return resultOut, wrapRun(req, err)
-	}
-	// Parse the manifest and find the one required entry before any staging
-	// or binary download (0003-MADR C9).
-	entries, err := ParseSHA256SUMS(manifestBuf.Bytes())
+	manifestDigest, err := u.manifestEntry(ctx, req, rel, sel, pin)
 	if err != nil {
-		return resultOut, wrapRun(req, err)
-	}
-	manifestDigest, err := checksumFor(entries, sel.ManifestName)
-	if err != nil {
-		return resultOut, wrapRun(req, err)
-	}
-	// Manifest verifiers run before staging exists and before any binary
-	// byte is fetched (0004-MADR G9).
-	if err = u.runManifestVerifiers(ctx, req, rel, sel, manifestBuf.Bytes()); err != nil {
 		return resultOut, wrapRun(req, err)
 	}
 	if rerr := u.report(ctx, Event{Kind: EventDownloadingBinary, Product: req.Product, Target: rel.Tag, Asset: sel.Binary.Name, Bytes: sel.Binary.Size}); rerr != nil {
@@ -429,6 +436,40 @@ func (u *run) apply(ctx context.Context, req Request, result Result, target Targ
 	return u.warn(ctx, req, resultOut, rel, sel, append(warnings, instErr, closeErr, repErr)...), nil
 }
 
+// manifestEntry downloads SHA256SUMS within Limits.Manifest, returns the
+// binary's entry, and runs the ManifestVerifiers: in Run and Apply after
+// the confirmation, and in Plan, so the three cannot disagree. With pin,
+// the entry must be the one the plan pinned
+// (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// D1-A). Errors are returned unwrapped.
+func (u *run) manifestEntry(ctx context.Context, req Request, rel Release, sel Selection, pin *Plan) (string, error) {
+	var manifest bytes.Buffer
+	if _, err := downloadAsset(ctx, u.source, rel, sel.Manifest, &manifest, u.limits.Manifest); err != nil {
+		return "", err
+	}
+	// Parse the manifest and find the one required entry before any staging
+	// or binary download (0003-MADR C9).
+	entries, err := ParseSHA256SUMS(manifest.Bytes())
+	if err != nil {
+		return "", err
+	}
+	digest, err := checksumFor(entries, sel.ManifestName)
+	if err != nil {
+		return "", err
+	}
+	if pin != nil {
+		if err := pin.sameEntry(sel.ManifestName, digest); err != nil {
+			return "", err
+		}
+	}
+	// Manifest verifiers run before staging exists and before any binary
+	// byte is fetched (0004-MADR G9).
+	if err := u.runManifestVerifiers(ctx, req, rel, sel, manifest.Bytes()); err != nil {
+		return "", err
+	}
+	return digest, nil
+}
+
 // unpack has the Unpacker write the program from the archive at archive
 // into a second staging file, and checks that file as a transformed one is
 // checked. It returns the program's path, digest and size.
@@ -558,6 +599,9 @@ var failureClasses = []struct {
 	{ErrConfirmationRequired, "confirmation-required"},
 	{ErrForceRequired, "force-required"},
 	{ErrLatestOlder, "latest-older"},
+	// Before integrity: a changed SHA256SUMS entry is both, and is stale
+	// (0038-MADR D1-A).
+	{ErrPlanStale, "plan-stale"},
 	{ErrMutableRelease, "mutable-release"},
 	{ErrNoRelease, "no-release"},
 	{ErrRateLimited, "rate-limited"},

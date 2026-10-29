@@ -154,14 +154,53 @@ func (u *Updater) constructed() bool {
 	return u != nil && u.source != nil && u.versions != nil && u.assets != nil && u.installer != nil
 }
 
+// Apply installs the release p pins, for req, with opts applied to this
+// run only, as RunWith does. req must be the request p was made for, as
+// p.Request returns it, with Yes, DryRun or CheckOnly set as the caller
+// wants. Apply fetches the release by p's tag, and installs it only when
+// it still matches p: the same release ID, assets, digests and operation,
+// and, once SHA256SUMS is downloaded, the same entry for the binary. A
+// newer release published since p was made changes nothing. Apply asks the
+// Confirmer as Run does, unless req says Yes or DryRun: a plan carries no
+// approval. It reports Run's events, and shares Run's guard
+// (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// D1-A).
+//
+// Errors: those of RunWith; ErrPlanStale when req is not p's request or
+// the release no longer matches p, before any source call for the first,
+// and also matching ErrIntegrity for a changed SHA256SUMS entry; and an
+// invalid plan's, before anything else but ErrNotConstructed.
+func (u *Updater) Apply(ctx context.Context, req Request, p Plan, opts ...RunOption) (Result, error) {
+	if !u.constructed() {
+		return Result{}, ErrNotConstructed
+	}
+	if err := p.validate(); err != nil {
+		return Result{}, err
+	}
+	s, err := scope(opts)
+	if err != nil {
+		return Result{}, err
+	}
+	r, err := u.newRun(s)
+	if err != nil {
+		return Result{}, err
+	}
+	return u.execPinned(ctx, req, r, &p)
+}
+
 // execRun runs r under the Updater's one-run-at-a-time guard. RunWith and
 // Start both use it.
 func (u *Updater) execRun(ctx context.Context, req Request, r *run) (Result, error) {
+	return u.execPinned(ctx, req, r, nil)
+}
+
+// execPinned is execRun with a plan's pins, for Apply.
+func (u *Updater) execPinned(ctx context.Context, req Request, r *run, pin *Plan) (Result, error) {
 	if !u.running.CompareAndSwap(false, true) {
 		return Result{}, ErrConcurrentUpdate
 	}
 	defer u.running.Store(false)
-	return r.execute(ctx, req)
+	return r.execute(ctx, req, pin)
 }
 
 // checker is a Checker over the run's source, which checks the selection

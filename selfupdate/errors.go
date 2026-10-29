@@ -51,6 +51,14 @@ var (
 	// request's channel, is older than the running release build
 	// (0004-MADR G4).
 	ErrLatestOlder = errors.New("selfupdate: latest release is older than the running version")
+	// ErrPlanStale is returned by Updater.Apply when the request is not the
+	// one the plan was made for, or when the release no longer matches the
+	// plan: another release ID, other assets or digests, another
+	// operation, or another SHA256SUMS entry. A changed entry also matches
+	// ErrIntegrity
+	// (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+	// D1-A).
+	ErrPlanStale = errors.New("selfupdate: the plan is stale")
 	// ErrBatchFile is returned, wrapped, on Windows when the program to
 	// start is a .bat or .cmd file, in any spelling Windows resolves to
 	// one: a trailing dot or space, an alternate data stream, or no

@@ -148,7 +148,7 @@ docs/
 | Directory | Package | Non-test files | Test files | Non-standard imports |
 | :--- | :--- | :--- | :--- | :--- |
 | `buildinfo/` | `buildinfo` | 1 | 3 | none |
-| `selfupdate/` | `selfupdate` | 47 | 89, including five fuzz targets, plus `testdata/SHA256SUMS.{valid,invalid}`, 23 `testdata/manifest-parity/` cases, 14 `testdata/golden/` files and 1 `testdata/fuzz/` seed | `x/mod/semver`, `x/sys/unix`, `x/sys/windows`, `x/term` (and `internal/winproc`) |
+| `selfupdate/` | `selfupdate` | 48 | 91, including six fuzz targets, plus `testdata/SHA256SUMS.{valid,invalid}`, 23 `testdata/manifest-parity/` cases, 15 `testdata/golden/` files and 1 `testdata/fuzz/` seed | `x/mod/semver`, `x/sys/unix`, `x/sys/windows`, `x/term` (and `internal/winproc`) |
 | `selfupdate/cli/` | `cli` | 4 | 9, plus 53 `testdata/golden/` and 9 `testdata/migration/` files | `x/term` (and `selfupdate`, `buildinfo`) |
 | `selfupdate/selfupdatetest/` | `selfupdatetest` | 3 | 3 | none (`selfupdate` itself) |
 | `selfupdate/archive/` | `archive` | 3 | 8, including three fuzz targets, plus a real GoReleaser `testdata/` checksum file and 9 `testdata/fuzz/` seeds | none (`selfupdate`) |

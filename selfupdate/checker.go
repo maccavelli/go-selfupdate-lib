@@ -217,6 +217,16 @@ func (c *Checker) discover(ctx context.Context, req Request) (Release, Selection
 	if err != nil {
 		return Release{}, Selection{}, OperationNone, err
 	}
+	return c.vet(req, rel, fromLatest)
+}
+
+// vet applies every release and asset check to a fetched release, and
+// classifies the operation; fromLatest reports that the release was
+// resolved as the latest, stable or on the request's channel. discover,
+// Updater.Plan and Updater.Apply share it, so a plan is vetted as a run is
+// (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// D1-A). Errors are returned unwrapped.
+func (c *Checker) vet(req Request, rel Release, fromLatest bool) (Release, Selection, Operation, error) {
 	// Immutable, then state, then tag (0003-MADR C4). The tag is
 	// untrusted until Validate passes, so it is always quoted.
 	if !rel.Immutable {
@@ -342,13 +352,20 @@ func (c *Checker) fetchRelease(ctx context.Context, req Request) (Release, bool,
 		rel, err := c.source.Latest(ctx)
 		return rel, true, err
 	}
-	rel, err := c.source.ByTag(ctx, req.TargetVersion)
+	rel, err := c.fetchTag(ctx, req.TargetVersion)
+	return rel, false, err
+}
+
+// fetchTag is the release the source returns for tag, which must carry
+// that tag.
+func (c *Checker) fetchTag(ctx context.Context, tag string) (Release, error) {
+	rel, err := c.source.ByTag(ctx, tag)
 	if err != nil {
-		return Release{}, false, err
+		return Release{}, err
 	}
-	if rel.Tag != req.TargetVersion {
-		return Release{}, false, fmt.Errorf("selfupdate: source returned release %q for requested %q: %w",
-			rel.Tag, req.TargetVersion, ErrIntegrity)
+	if rel.Tag != tag {
+		return Release{}, fmt.Errorf("selfupdate: source returned release %q for requested %q: %w",
+			rel.Tag, tag, ErrIntegrity)
 	}
-	return rel, false, nil
+	return rel, nil
 }

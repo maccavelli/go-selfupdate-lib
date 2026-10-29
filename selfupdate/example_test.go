@@ -186,6 +186,60 @@ func ExampleNewChecker() {
 	// Output: demo v1.1.0 is available (you have v1.0.0): run 'demo update'
 }
 
+// A plan names the release a banner showed, so the update installs that
+// release even when a newer one is published in between. It carries no
+// approval: Apply asks the Confirmer unless the request says Yes. The plan
+// can be handed to another process as its JSON document.
+func ExampleUpdater_Plan() {
+	running := []selfupdate.Platform{{OS: runtime.GOOS, Arch: runtime.GOARCH}}
+	src := selfupdatetest.NewFakeSource("v1.1.0", selfupdatetest.NewRelease("demo", "v1.1.0", running,
+		func(selfupdate.Platform) []byte { return []byte("demo v1.1.0\n") }))
+	selector, err := selfupdate.NewExactAssetSelector(running)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	installer, err := selfupdate.NewStandaloneInstaller(selfupdate.InstallOptions{})
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	updater, err := selfupdate.New(selfupdate.Config{
+		Source: src, Versions: selfupdate.NewStrictVersionPolicy(), Assets: selector,
+		Installer: installer, Reporter: selfupdate.NewTextReporter(io.Discard),
+		Confirmer: selfupdate.NewTerminalConfirmer(os.Stdin, os.Stderr), Limits: selfupdate.DefaultLimits(),
+	})
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	plan, err := updater.Plan(context.Background(), selfupdate.Request{
+		Product: "demo", CurrentVersion: "v1.0.0", CurrentBuild: selfupdate.ReleaseBuild,
+	})
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Printf("%s %s: %s, SHA-256 %s...\n", plan.Product, plan.TargetVersion, plan.Operation, plan.ManifestSHA256[:12])
+
+	// Another process reads the plan back, then applies it once the user
+	// has approved what was shown:
+	//
+	//	req := plan.Request()
+	//	req.Yes = true
+	//	res, err := updater.Apply(ctx, req, plan)
+	doc, err := json.Marshal(plan.Document())
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	back, err := selfupdate.ParsePlan(doc)
+	fmt.Println("same plan:", err == nil && back == plan)
+	// Output:
+	// demo v1.1.0: upgrade, SHA-256 fb2346ee8f5f...
+	// same plan: true
+}
+
 // CheckCached keeps the last answer on disk, so a program that starts often
 // asks the network at most once per maxAge.
 func ExampleChecker_CheckCached() {

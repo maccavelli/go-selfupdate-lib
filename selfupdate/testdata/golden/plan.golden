@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "product": "demo",
+  "current_version": "v1.0.0",
+  "current_build": "release",
+  "os": "linux",
+  "arch": "amd64",
+  "force": false,
+  "target_version": "v1.1.0",
+  "release_id": 101,
+  "release_url": "https://example.invalid/releases/v1.1.0",
+  "latest": true,
+  "operation": "upgrade",
+  "binary": {
+    "id": 102,
+    "name": "demo-linux-amd64",
+    "state": "uploaded",
+    "size": 12,
+    "digest": "sha256:fb2346ee8f5f8c7febdb588bf31edd3026db904c0cec7f9e648d63f89a895f44"
+  },
+  "manifest": {
+    "id": 103,
+    "name": "SHA256SUMS",
+    "state": "uploaded",
+    "size": 83
+  },
+  "manifest_name": "demo-linux-amd64",
+  "packed": false,
+  "manifest_sha256": "fb2346ee8f5f8c7febdb588bf31edd3026db904c0cec7f9e648d63f89a895f44"
+}

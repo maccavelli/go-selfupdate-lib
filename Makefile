@@ -78,7 +78,7 @@ FUZZTIME ?= 20s
 # selfupdate/verify/signednote's one
 # (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D10).
 fuzz: ## Fuzzes every selfupdate, archive, releasespec and signednote fuzz target for FUZZTIME each (default 20s)
-	@./scripts/go-fuzz.sh -t $(FUZZTIME) -m 5 ./selfupdate
+	@./scripts/go-fuzz.sh -t $(FUZZTIME) -m 6 ./selfupdate
 	@./scripts/go-fuzz.sh -t $(FUZZTIME) -m 3 ./selfupdate/archive
 	@./scripts/go-fuzz.sh -t $(FUZZTIME) -m 1 ./selfupdate/releasespec
 	@./scripts/go-fuzz.sh -t $(FUZZTIME) -m 1 ./selfupdate/verify/signednote

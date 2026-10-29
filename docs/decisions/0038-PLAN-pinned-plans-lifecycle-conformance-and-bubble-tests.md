@@ -755,3 +755,48 @@ Files: from the list, `selfupdate/replace.go`, `replace_unix.go`, `replace_windo
 8. **V6:** a grep of `os.Remove`, `Rename`, `Lstat`, `Stat`, `Chmod`, `Chown`, `Lchown`, `Link`, `CreateTemp`, `Open`, `OpenFile`, `ReadFile`, `WriteFile` and `OpenRoot`, `openAbsFile` and `joinRemove` over the replace files leaves `checkDir`'s `os.Stat` (`session.go:401`), `beginSession`'s `os.OpenRoot` and its identity check's `os.Stat` (`:588`, `:608`), `resolveTarget`'s and `revalidateTarget`'s reads in `target.go`, and the Windows receipt read (`cleanup_windows.go:186`, `:196`). None is on the Unix replacement path.
 9. **Checks:** `make pre-add-check` on the 25 Go files: `25 file(s) clean`, after the split; under Go 1.26.10, `go test ./selfupdate/` `ok` and `go vet` for the three targets clean; the architecture table: 20 rows, 0 differ.
 10. **`make gate`**: every step rc=0, `apicheck` "compatible with v1.22.3", `overall=0`; `make markdownlint`, `make check-records` and `make docs-check` exit 0; `scripts/check-docs.sh --ids` on the 27 changed files: 0 findings.
+
+### Deviation D14 (2026-10-29): revive refuses `Plan{} == Plan{}`
+
+* **Found:** Q14 step 4 asserts `Plan`'s comparability with `var _ = Plan{} == Plan{}`. `golangci-lint` refuses it for each target: `selfupdate/plan.go:65:9: constant-logical-expr: expression always evaluates to true (revive)`.
+* **Decision:** the owner, 2026-10-29, chose "Map-key assertion": `var _ map[Plan]struct{}`, which a field that is not comparable fails to build, as `==` does. No MADR change.
+
+### Q14: `Plan` and `Apply` (2026-10-29)
+
+Files: from the list, `selfupdate/checker.go`, `updater.go`, `runoptions.go`, `errors.go`, `types.go` (`Release.ID`'s doc), the new `plan.go`, `plan_test.go` and `plan_document_test.go`, `testdata/golden/plan.golden`, `fuzz_test.go`, `example_test.go` and the `Makefile`; and the package table (`selfupdate` 47 to 48 files, 89 to 91 test files, five to six fuzz targets, 14 to 15 goldens). `stream.go` is untouched: `Start` keeps calling `execRun`, which `execPinned` now backs.
+
+1. **Discovery split.** `discover` is `fetchRelease`, then `vet(req, rel, fromLatest)`, which holds the immutable, state, `Validate`, channel, selection, metadata, classification and unpacker checks. `vet` takes no context: it makes no call. `fetchRelease`'s tag branch is `fetchTag(ctx, tag)`, which the pinned path also uses. With only this step in place, `go test ./selfupdate/` passed, the call-order test and the goldens included.
+2. **One pipeline.** `run.execute(ctx, req, pin *Plan)`, and `run.apply` is `run.install(…, pin)`. With a pin, the request must match the plan after `normalizePlatform`, before `EventResolvingTarget` (`Plan.matches`, naming each field that differs); `Checker.pinned` fetches `pin.TargetVersion` with `fetchTag`, vets it with `pin.Latest`, and compares the release ID, the selection (IDs, names, sizes and, where the plan has one, digests; `ManifestName`; `Packed`) and the operation (`Plan.sameRelease`). The manifest steps are one function, `run.manifestEntry`, which `install` and `Plan` share: it downloads `SHA256SUMS` within `Limits.Manifest`, finds the entry, compares it with the pin (`Plan.sameEntry`, `ErrPlanStale` joined with `ErrIntegrity`), and runs the `ManifestVerifiers`. It replaced `install`'s inline steps after `gocognit` reported `install` at 52, and is what the MADR's "Plan shares its discovery and manifest steps" names. `execRun` keeps its signature for `Start`, over a new `execPinned(ctx, req, r, pin)`.
+3. **`ErrPlanStale`** in `errors.go`, and `{ErrPlanStale, "plan-stale"}` after `latest-older` and before `mutable-release`.
+4. **`plan.go`:** `PlanSchema = 1`; `Plan`, comparable, asserted by `var _ map[Plan]struct{}` (D14); `PlanDocument` and `AssetDocument`; `Plan.Document()`, `Plan.Request()`; `ParsePlan` (64 KiB, `DisallowUnknownFields`, trailing data, `schema_version` refused as `releasespec` words it, then the build kind and operation parsed, then `Plan.validate`); and `(*Updater).Plan`. `validate` also holds two rules the plan did not list, which a plan `Updater.Plan` makes always meets: `requested_version`, when set, is `target_version`, and `latest` is set exactly when no version was requested, as `fetchRelease` decides it.
+5. **`(*Updater).Apply`** in `runoptions.go`: `ErrNotConstructed`, then an invalid plan, then the options, then `execPinned`. The confirmation is `Run`'s, unchanged. A request with `CheckOnly` checks the planned release, as `Run` does.
+6. **`Release.ID`'s doc** says Apply compares it, so a source returns the same ID each time, from `Latest` and from `ByTag`.
+7. **Tests**, in `plan_test.go` over a `tagSource`, a `scriptSource` whose `ByTag` answers by tag so a newer release can be published between `Plan` and `Apply`: `TestPlanThenApplyInstalls`; `TestApplyIgnoresNewerRelease` (Apply's source calls are `ByTag`, `OpenAsset:3`, `OpenAsset:2`); `TestApplyRefusesChangedRelease`, a row each for the release ID, the binary's asset ID, its digest, the `SHA256SUMS` entry (also `ErrIntegrity`) and the operation, each with no binary download and `plan-stale` as the failed event's detail, and a row where a latest plan names a rollback, which is `ErrLatestOlder`; `TestApplyRefusesAnotherRequest`, a row per request field with no source call, and an invalid plan; `TestApplyConfirms` (`Yes`, `DryRun`, approved, declined); `TestApplyCheckOnly`; `TestApplyEventsMatchRun`; `TestPlanReportsNothing` (no event, no question, source calls `Latest` and `OpenAsset:3`, nothing beside the target); `TestPlanRefusesCheckOnly`; `TestPlanUpToDate` (no manifest, no entry, and Apply's up-to-date result); `TestApplySharesRunsGuard`; `TestPlanDocumentRoundTrip`; `TestParsePlanRefuses`, 25 rows. `TestPlanDocumentGolden` in `plan_document_test.go` writes `plan.golden` and parses it back; `FuzzParsePlan` round-trips `Document`, and the `Makefile` fuzzes `./selfupdate` with `-m 6`; `ExampleUpdater_Plan`. A 20 s `go test -fuzz '^FuzzParsePlan$'` ran 536 948 inputs clean.
+
+   **Seen failing**, each in a scratch copy with `go test -count=1 ./selfupdate/`, all caught and none a build failure; the five of step 7 first:
+
+   | Plant | Failed |
+   | :--- | :--- |
+   | the release-ID compare dropped | `TestApplyRefusesChangedRelease/release_ID` |
+   | the manifest-entry compare dropped | `TestApplyRefusesChangedRelease/SHA256SUMS_entry` |
+   | the request match dropped | every row of `TestApplyRefusesAnotherRequest` |
+   | the schema check dropped | `TestParsePlanRefuses/schema_2`, `/no_schema` |
+   | `pin.Latest` replaced by `false` | `TestApplyRefusesChangedRelease/a_latest_plan's_rollback` |
+   | `pinned` fetching the latest release | `TestApplyIgnoresNewerRelease`, and rows of `TestApplyRefusesChangedRelease` |
+   | no confirmation with a pin | `TestApplyConfirms/approved`, `/declined` |
+   | `Plan` accepting `CheckOnly` | `TestPlanRefusesCheckOnly` |
+   | `Plan` downloading the manifest for `OperationNone` | `TestPlanUpToDate` |
+   | `Apply` without the guard | `TestApplySharesRunsGuard` |
+   | `Document` without `release_url` | `TestPlanDocumentGolden`, `TestPlanDocumentRoundTrip`, `ExampleUpdater_Plan` |
+   | `Document` without `latest` | `FuzzParsePlan/seed#0` (`round trip: … latest: a plan is the latest exactly when no version was requested`) |
+   | `Plan` reporting an event | `TestPlanReportsNothing`, `TestApplyEventsMatchRun` |
+   | `Apply`'s `EventSelected` with another detail | `TestApplyEventsMatchRun` |
+   | the latest consistency rule dropped | `TestParsePlanRefuses/latest_with_a_requested_tag` |
+   | the `plan-stale` class dropped | `TestApplyRefusesChangedRelease`'s stale rows |
+   | `Apply` with `CheckOnly` going on to install | `TestApplyCheckOnly` (`Applied:true … want ErrUpdateAvailable`) |
+
+   `TestPlanDocumentGolden` also failed before its golden existed (`no such file`), and `-update` wrote it.
+8. **`Run` unchanged:** `TestRunCallOrderFailureBoundaries`, `updater_contract_test.go` and `golden_test.go` are not changed, `git diff` of `testdata/golden/` shows only the new `plan.golden`, and the suite passes.
+9. **Runs:** `go test -race -shuffle=on -count=3 ./selfupdate/` on this Mac `ok`; `go test -race -count=1 ./selfupdate/` on the Linux test host and the Windows test host `ok`; under Go 1.26.10, `go test ./selfupdate/` `ok` and `go vet` for the three targets clean.
+10. **Checks:** `golangci-lint` for the three targets, 0 issues each after `manifestEntry` and D14; `make pre-add-check` on the Go files: clean; the architecture table: 20 rows, 0 differ.
+11. **`make gate`**: every step rc=0, `apicheck` "compatible with v1.22.3", the fuzz step "6 fuzz targets ran clean in ./selfupdate", `FuzzParsePlan` among them, `overall=0`; `make markdownlint`, `make check-records` and `make docs-check` exit 0; `scripts/check-docs.sh --ids` on the 14 changed files: 0 findings.

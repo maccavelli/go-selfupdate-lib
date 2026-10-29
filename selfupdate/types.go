@@ -242,7 +242,11 @@ type GitHubOptions struct {
 // (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D11).
 type Release struct {
 	// ID is the source's identifier for the release. The Updater passes it
-	// back to OpenAsset and reads it no further.
+	// back to OpenAsset, and Updater.Apply compares it with the one its
+	// Plan recorded, so a source returns the same ID for a release each
+	// time, from Latest and from ByTag
+	// (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+	// D1-A).
 	ID int64
 	// Tag is the release tag name, which the VersionPolicy validates.
 	Tag string
