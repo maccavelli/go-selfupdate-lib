@@ -1834,6 +1834,16 @@ in the [changelog](../../CHANGELOG.md).
   `errors.Is(err, service.ErrNotInstalled)`; one that matched systemd's
   crashed start can test `errors.Is(err, service.ErrUnhealthy)`.
 
+### From v1.23.0 to v1.23.1
+
+`v1.23.1` changes no exported API and no behaviour: `make apicheck`
+reports it compatible with `v1.23.0`, and there is nothing to adopt. It
+requires `golang.org/x/sys v0.49.0`, `golang.org/x/term v0.47.0` and
+`golang.org/x/mod v0.42.0`, so a program's `go.mod` may gain those
+versions when it takes `v1.23.1`. No identifier this module uses changed
+in them. Why it moved them is in
+[0039-MADR](../decisions/0039-MADR-refresh-golang-x-requirements.md).
+
 ### Check
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.

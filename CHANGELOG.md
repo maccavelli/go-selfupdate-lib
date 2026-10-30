@@ -8,6 +8,22 @@ listed in the
 [migration guide](docs/guides/migrating-from-mcplib-selfupdate.md), one
 section per release, and each entry links its section and its records.
 
+## v1.23.1 - 2026-10-30
+
+### Changed
+
+- The module requires `golang.org/x/sys v0.49.0`,
+  `golang.org/x/term v0.47.0` and `golang.org/x/mod v0.42.0`, where it
+  required `v0.47.0`, `v0.43.0` and `v0.40.0`. No exported identifier and no behaviour a
+  program can see changes: `make apicheck` reports `v1.23.1` compatible
+  with `v1.23.0`, and no identifier this module uses changed in those
+  releases. A program that takes `v1.23.1` requires at least these
+  versions.
+
+See [the guide](docs/guides/migrating-from-mcplib-selfupdate.md#from-v1230-to-v1231),
+[0039-MADR](docs/decisions/0039-MADR-refresh-golang-x-requirements.md) and
+[0039-PLAN](docs/decisions/0039-PLAN-refresh-golang-x-requirements.md) R1.
+
 ## v1.23.0 - 2026-10-29
 
 ### Added

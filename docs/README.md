@@ -97,7 +97,7 @@ name, and the files they cite moved with the rename
 | 0038 | MADR | [Improve the API and its implementation three ways: a pinned update plan, a lifecycle conformance check, and tests whose clock is the one production uses](decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md) | accepted |
 | 0038 | PLAN | [Implement a pinned update plan, a lifecycle conformance check, and tests on the production clock](decisions/0038-PLAN-pinned-plans-lifecycle-conformance-and-bubble-tests.md) | complete |
 | 0039 | MADR | [Move `golang.org/x/sys`, `x/term` and `x/mod` to their current releases, and release `v1.23.1`](decisions/0039-MADR-refresh-golang-x-requirements.md) | accepted |
-| 0039 | PLAN | [Implement the move of `golang.org/x/sys`, `x/term` and `x/mod` to their current releases, and release `v1.23.1`](decisions/0039-PLAN-refresh-golang-x-requirements.md) | proposed |
+| 0039 | PLAN | [Implement the move of `golang.org/x/sys`, `x/term` and `x/mod` to their current releases, and release `v1.23.1`](decisions/0039-PLAN-refresh-golang-x-requirements.md) | in-progress |
 
 ## I want to…
 

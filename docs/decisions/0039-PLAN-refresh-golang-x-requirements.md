@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: in-progress
 date: 2026-10-30
 associated-madr: "0039-MADR-refresh-golang-x-requirements.md"
 ---
@@ -204,3 +204,30 @@ recommended option in each:
 
 The MADR is `accepted`. This plan stays `proposed` until the owner
 approves its execution.
+
+### Approval (2026-10-30)
+
+The owner committed the records as `fc43aa3` and said "committed, proceed".
+This plan is `in-progress`.
+
+### R1: the move (2026-10-30)
+
+Files: `go.mod`, `go.sum`, `docs/architecture.md`, `CHANGELOG.md`, the migration guide, and this PLAN's record, as listed, with this plan's row in `docs/README.md` (`in-progress`).
+
+1. **Baseline:** `git status --short` clean at `fc43aa3`; `go list -m all` under `-mod=readonly`: `x/mod v0.40.0`, `x/sys v0.47.0`, `x/term v0.43.0`, `x/tools v0.49.0`.
+2. **The move:** `go get golang.org/x/sys@v0.49.0 golang.org/x/term@v0.47.0 golang.org/x/mod@v0.42.0` exited 0 ("upgraded" for each of the three), then `go mod tidy` exited 0.
+   * `git diff --stat -- go.mod go.sum`: 2 files changed, 9 insertions, 9 deletions;
+   * `git diff go.mod`: the three `require` lines only;
+   * `go mod tidy -diff`: exit 0;
+   * `go list -m all` under `-mod=readonly`: `x/mod v0.42.0`, `x/sys v0.49.0`, `x/term v0.47.0`, `x/tools v0.51.0`.
+3. **The floor:** under `GOTOOLCHAIN=go1.26.10` (`go version go1.26.10 darwin/arm64`), `go vet ./...` exit 0 and `go test -count=1 ./...` exit 0, 20 packages `ok`.
+4. **The documents:**
+   * `docs/architecture.md:17-20`: the three new versions, "their releases of October 2026", citing 0039-MADR.
+   * `CHANGELOG.md`: `## v1.23.1 - 2026-10-30`, under Changed, linking the guide's new section, 0039-MADR and this PLAN. R2 moves the date if the tag is cut on another day.
+   * The migration guide's §23: `### From v1.23.0 to v1.23.1`, before its `### Check`.
+5. **Checks:**
+   * `make gate`: every step rc=0; `tidy` clean; `apicheck` "compatible with v1.23.0"; `vuln` "No vulnerabilities found."; `links` 883 in 103 files, 0 broken; `arch` 20 rows, 0 differ; `ids` 7 files, 0 findings; `overall=0`.
+   * `make markdownlint`: 0 issues. `make check-records`: 90 records, 0 findings.
+   * `go test -race -count=1 ./...` with `CGO_ENABLED=1`, on a copy of the tree: the Linux test host, 20 packages `ok`, exit 0; the Windows test host, 20 packages `ok`, exit 0. Neither host holds a copy afterwards.
+6. **Seen failing:** this phase adds no test and no gate (step 6 as written).
+7. **Waiting:** the owner's commit, then the disclosure guard and the push, whose CI must pass every job.
