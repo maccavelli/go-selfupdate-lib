@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
 )
 
@@ -166,5 +167,73 @@ func TestDetachScrubsManagerEnv(t *testing.T) {
 				t.Errorf("the environment file holds the caller's %s", kv)
 			}
 		}
+	}
+}
+
+// carriedPlan is a plan whose document holds quotes, a dollar sign and an
+// ampersand, as a carrier must keep them
+// (docs/decisions/0038-PLAN-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// Deviation D15).
+func carriedPlan() selfupdate.Plan {
+	digest := strings.Repeat("ab", 32)
+	return selfupdate.Plan{
+		Product: "demo", CurrentVersion: "v1.0.0", CurrentBuild: selfupdate.ReleaseBuild,
+		Platform: selfupdate.Platform{OS: "linux", Arch: "amd64"}, TargetVersion: "v1.1.0", ReleaseID: 7,
+		ReleaseURL: `https://example.invalid/r?a="b"&c=$d\e`, Latest: true, Operation: selfupdate.OperationUpgrade,
+		Selection: selfupdate.Selection{
+			Binary:       selfupdate.Asset{ID: 8, Name: "demo-linux-amd64", State: selfupdate.AssetStateUploaded, Size: 12, Digest: "sha256:" + digest},
+			Manifest:     selfupdate.Asset{ID: 9, Name: "SHA256SUMS", State: selfupdate.AssetStateUploaded, Size: 83},
+			ManifestName: "demo-linux-amd64",
+		},
+		ManifestSHA256: digest,
+	}
+}
+
+// planEnv is the HandOff.Env entry service.HandOffPlanFunc adds for p.
+func planEnv(t *testing.T, p selfupdate.Plan) string {
+	t.Helper()
+	doc, err := json.Marshal(p.Document())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return service.EnvHandOffPlan + "=" + string(doc)
+}
+
+// planFrom finds the plan's entry in vars and parses it.
+func planFrom(t *testing.T, vars []string) selfupdate.Plan {
+	t.Helper()
+	for _, kv := range vars {
+		if doc, ok := strings.CutPrefix(kv, service.EnvHandOffPlan+"="); ok {
+			p, err := selfupdate.ParsePlan([]byte(doc))
+			if err != nil {
+				t.Fatalf("the carried plan: %v", err)
+			}
+			return p
+		}
+	}
+	t.Fatalf("no %s among %d variables", service.EnvHandOffPlan, len(vars))
+	return selfupdate.Plan{}
+}
+
+// TestDetachCarriesPlan: the plan's entry reaches the private environment
+// file, not the plist, and reads back as the same plan.
+func TestDetachCarriesPlan(t *testing.T) {
+	f := newFake()
+	j := testJob(t, f, Options{})
+	spec := handOffSpec()
+	p := carriedPlan()
+	spec.Env = append(slices.Clone(spec.Env), planEnv(t, p))
+	if _, err := j.Detach(context.Background(), spec); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(readString(t, filepath.Join(j.o.JobDir, "com.example.demo.selfupdate.abc123.plist")), service.EnvHandOffPlan) {
+		t.Fatal("the plan reached the plist")
+	}
+	var vars []string
+	if err := json.Unmarshal([]byte(readString(t, filepath.Join(j.o.JobDir, "handoff-abc123.env"))), &vars); err != nil {
+		t.Fatal(err)
+	}
+	if got := planFrom(t, vars); got != p {
+		t.Fatalf("the environment file carries %+v, want %+v", got, p)
 	}
 }

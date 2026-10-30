@@ -12,6 +12,7 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
 )
 
@@ -313,6 +314,81 @@ func TestDetachOneShotScrubsManagerEnv(t *testing.T) {
 		}
 		if last := vars[len(vars)-1]; last != service.EnvHandOffHop+"=1" {
 			t.Errorf("the last variable is %s, want the hop variable", last)
+		}
+	})
+}
+
+// carriedPlan is a plan whose document holds quotes, a dollar sign and an
+// ampersand, as a carrier must keep them
+// (docs/decisions/0038-PLAN-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// Deviation D15).
+func carriedPlan() selfupdate.Plan {
+	digest := strings.Repeat("ab", 32)
+	return selfupdate.Plan{
+		Product: "demo", CurrentVersion: "v1.0.0", CurrentBuild: selfupdate.ReleaseBuild,
+		Platform: selfupdate.Platform{OS: "linux", Arch: "amd64"}, TargetVersion: "v1.1.0", ReleaseID: 7,
+		ReleaseURL: `https://example.invalid/r?a="b"&c=$d\e`, Latest: true, Operation: selfupdate.OperationUpgrade,
+		Selection: selfupdate.Selection{
+			Binary:       selfupdate.Asset{ID: 8, Name: "demo-linux-amd64", State: selfupdate.AssetStateUploaded, Size: 12, Digest: "sha256:" + digest},
+			Manifest:     selfupdate.Asset{ID: 9, Name: "SHA256SUMS", State: selfupdate.AssetStateUploaded, Size: 83},
+			ManifestName: "demo-linux-amd64",
+		},
+		ManifestSHA256: digest,
+	}
+}
+
+// planEnv is the HandOff.Env entry service.HandOffPlanFunc adds for p.
+func planEnv(t *testing.T, p selfupdate.Plan) string {
+	t.Helper()
+	doc, err := json.Marshal(p.Document())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return service.EnvHandOffPlan + "=" + string(doc)
+}
+
+// planFrom finds the plan's entry in vars and parses it.
+func planFrom(t *testing.T, vars []string) selfupdate.Plan {
+	t.Helper()
+	for _, kv := range vars {
+		if doc, ok := strings.CutPrefix(kv, service.EnvHandOffPlan+"="); ok {
+			p, err := selfupdate.ParsePlan([]byte(doc))
+			if err != nil {
+				t.Fatalf("the carried plan: %v", err)
+			}
+			return p
+		}
+	}
+	t.Fatalf("no %s among %d variables", service.EnvHandOffPlan, len(vars))
+	return selfupdate.Plan{}
+}
+
+// TestDetachOneShotCarriesPlan: the plan's entry reaches the private
+// environment file, not the task's definition, and reads back as the same
+// plan.
+func TestDetachOneShotCarriesPlan(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		f := newFake()
+		task, dir := oneShotTask(t, f, Options{})
+		spec := oneShotSpec
+		p := carriedPlan()
+		spec.Env = append(slices.Clone(spec.Env), planEnv(t, p))
+		if _, err := task.Detach(context.Background(), spec); err != nil {
+			t.Fatal(err)
+		}
+		if ft := f.tasks[`\demo.selfupdate.abc123`]; ft == nil || strings.Contains(ft.def, "SHA256SUMS") {
+			t.Fatal("no one-shot task, or the plan reached its definition")
+		}
+		body, err := os.ReadFile(filepath.Join(dir, "handoff-abc123.env")) //nolint:gosec // the test's own file
+		if err != nil {
+			t.Fatal(err)
+		}
+		var vars []string
+		if err := json.Unmarshal(body, &vars); err != nil {
+			t.Fatal(err)
+		}
+		if got := planFrom(t, vars); got != p {
+			t.Fatalf("the environment file carries %+v, want %+v", got, p)
 		}
 	})
 }

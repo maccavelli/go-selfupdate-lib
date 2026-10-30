@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/signal"
@@ -53,7 +54,12 @@ type Options struct {
 // the service, such as by an agent the service spawned, runs as a detached
 // copy of the same command, outside the service's kill scope
 // (0011-MADR §9). service.HandOffFunc builds Detach for a backend, and
-// service.ReportFunc builds Report.
+// service.ReportFunc builds Report. A program that sets DetachPlan, from
+// service.HandOffPlanFunc, and Planned, service.LoadHandOffPlan, has the
+// detached run install the release this run resolved, not the latest one
+// when it starts
+// (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// D1-A).
 type HandOff struct {
 	// Detach runs before an apply that would install, never a check, a
 	// dry run, or a run with nothing to install. When it hands off, the
@@ -61,6 +67,18 @@ type HandOff struct {
 	// Stderr, or under JSON a result object with "handed_off", and exit
 	// 0. Its error fails the run.
 	Detach func(ctx context.Context, req selfupdate.Request) (handedOff bool, detail string, err error)
+	// DetachPlan replaces Detach when it is set. Run makes a plan with
+	// Updater.Plan first, and hands off only one that installs, with the
+	// plan, as Detach would; when it does not hand off, Run applies that
+	// plan here with Updater.Apply. When Plan fails, Run goes on without a
+	// plan, and the run reports the error as it would have.
+	DetachPlan func(ctx context.Context, req selfupdate.Request, p selfupdate.Plan) (handedOff bool, detail string, err error)
+	// Planned, in a detached run, returns the plan the run that handed off
+	// made. When ok, Run applies it with Updater.Apply and resolves
+	// nothing itself; Apply refuses a plan the release no longer matches.
+	// Its error fails the run, through Report. With ok false, Run runs as
+	// it would without it.
+	Planned func() (p selfupdate.Plan, ok bool, err error)
 	// Report runs after every update that ran here, with its outcome, and
 	// after an invocation Command ended before Run, with its error. It runs
 	// before the result object, and its error fails the run.
@@ -137,15 +155,17 @@ func Run(ctx context.Context, u *selfupdate.Updater, req selfupdate.Request, o O
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	if d := o.HandOff.Detach; d != nil && !req.CheckOnly && !req.DryRun && wouldInstall(ctx, u, req) {
-		res := selfupdate.Result{Product: req.Product, CurrentVersion: req.CurrentVersion}
-		handed, detail, err := d(ctx, req)
+	base := selfupdate.Result{Product: req.Product, CurrentVersion: req.CurrentVersion}
+	pin, loadErr := o.planned()
+	if loadErr == nil && pin == nil {
+		p, handed, detail, err := o.detach(ctx, u, req)
 		if err != nil {
-			return res, errors.Join(err, o.finish(res, err))
+			return base, errors.Join(err, o.finish(base, err))
 		}
 		if handed {
-			return res, o.handedOff(res, detail)
+			return base, o.handedOff(base, detail)
 		}
+		pin = p
 	}
 
 	rep := selfupdate.NewTextReporter(o.Stderr)
@@ -156,7 +176,17 @@ func Run(ctx context.Context, u *selfupdate.Updater, req selfupdate.Request, o O
 	if conf == nil {
 		conf = selfupdate.NewPromptConfirmer(o.Stdin, o.Stderr, o.Interactive)
 	}
-	res, err := u.RunWith(ctx, req, selfupdate.WithReporter(rep), selfupdate.WithConfirmer(conf))
+	opts := []selfupdate.RunOption{selfupdate.WithReporter(rep), selfupdate.WithConfirmer(conf)}
+	var res selfupdate.Result
+	var err error
+	switch {
+	case loadErr != nil:
+		res, err = base, loadErr
+	case pin != nil:
+		res, err = u.Apply(ctx, req, *pin, opts...)
+	default:
+		res, err = u.RunWith(ctx, req, opts...)
+	}
 	// The warnings and HandOff.Report come before the last line, so the
 	// result object carries every error that decides the exit code
 	// (0015-MADR C1).
@@ -166,6 +196,48 @@ func Run(ctx context.Context, u *selfupdate.Updater, req selfupdate.Request, o O
 	}
 	err = joinLate(err, late)
 	return res, joinLate(err, o.finish(res, err))
+}
+
+// planned is the plan HandOff.Planned returns, nil when there is none, and
+// its error.
+func (o Options) planned() (*selfupdate.Plan, error) {
+	if o.HandOff.Planned == nil {
+		return nil, nil
+	}
+	p, ok, err := o.HandOff.Planned()
+	if err != nil {
+		return nil, fmt.Errorf("cli: load the handed-off plan: %w", err)
+	}
+	if !ok {
+		return nil, nil
+	}
+	return &p, nil
+}
+
+// detach hands req off, through DetachPlan or else Detach, before an
+// apply that would install; never for a check or a dry run. pin is the
+// plan DetachPlan's run made, which Run applies when nothing was handed
+// off.
+func (o Options) detach(ctx context.Context, u *selfupdate.Updater, req selfupdate.Request) (pin *selfupdate.Plan, handed bool, detail string, err error) {
+	if req.CheckOnly || req.DryRun {
+		return nil, false, "", nil
+	}
+	if dp := o.HandOff.DetachPlan; dp != nil {
+		if p, perr := u.Plan(ctx, req); perr == nil {
+			if p.Operation == selfupdate.OperationNone {
+				return &p, false, "", nil
+			}
+			handed, detail, err = dp(ctx, req, p)
+			return &p, handed, detail, err
+		}
+		// Plan failed: the run reports it, as a run without a plan would.
+		return nil, false, "", nil
+	}
+	if d := o.HandOff.Detach; d != nil && wouldInstall(ctx, u, req) {
+		handed, detail, err = d(ctx, req)
+		return nil, handed, detail, err
+	}
+	return nil, false, "", nil
 }
 
 // wouldInstall reports whether req would install a release: there is

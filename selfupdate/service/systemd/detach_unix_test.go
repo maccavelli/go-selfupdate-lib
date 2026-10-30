@@ -4,6 +4,7 @@ package systemd
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
 )
 
@@ -153,5 +155,90 @@ func TestDetachScrubsManagerEnv(t *testing.T) {
 		if strings.Contains(body, gone) {
 			t.Errorf("environment file holds the caller's %s:\n%s", gone, body)
 		}
+	}
+}
+
+// carriedPlan is a plan whose document holds quotes, a dollar sign and an
+// ampersand, as a carrier must keep them
+// (docs/decisions/0038-PLAN-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// Deviation D15).
+func carriedPlan() selfupdate.Plan {
+	digest := strings.Repeat("ab", 32)
+	return selfupdate.Plan{
+		Product: "demo", CurrentVersion: "v1.0.0", CurrentBuild: selfupdate.ReleaseBuild,
+		Platform: selfupdate.Platform{OS: "linux", Arch: "amd64"}, TargetVersion: "v1.1.0", ReleaseID: 7,
+		ReleaseURL: `https://example.invalid/r?a="b"&c=$d\e`, Latest: true, Operation: selfupdate.OperationUpgrade,
+		Selection: selfupdate.Selection{
+			Binary:       selfupdate.Asset{ID: 8, Name: "demo-linux-amd64", State: selfupdate.AssetStateUploaded, Size: 12, Digest: "sha256:" + digest},
+			Manifest:     selfupdate.Asset{ID: 9, Name: "SHA256SUMS", State: selfupdate.AssetStateUploaded, Size: 83},
+			ManifestName: "demo-linux-amd64",
+		},
+		ManifestSHA256: digest,
+	}
+}
+
+// planEnv is the HandOff.Env entry service.HandOffPlanFunc adds for p.
+func planEnv(t *testing.T, p selfupdate.Plan) string {
+	t.Helper()
+	doc, err := json.Marshal(p.Document())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return service.EnvHandOffPlan + "=" + string(doc)
+}
+
+// planFrom finds the plan's entry in vars and parses it.
+func planFrom(t *testing.T, vars []string) selfupdate.Plan {
+	t.Helper()
+	for _, kv := range vars {
+		if doc, ok := strings.CutPrefix(kv, service.EnvHandOffPlan+"="); ok {
+			p, err := selfupdate.ParsePlan([]byte(doc))
+			if err != nil {
+				t.Fatalf("the carried plan: %v", err)
+			}
+			return p
+		}
+	}
+	t.Fatalf("no %s among %d variables", service.EnvHandOffPlan, len(vars))
+	return selfupdate.Plan{}
+}
+
+// unquoteEnvFile reads the NAME="value" lines envFileBody writes, undoing
+// its backslash escapes, as systemd reads an EnvironmentFile.
+func unquoteEnvFile(t *testing.T, body string) []string {
+	t.Helper()
+	var vars []string
+	for line := range strings.Lines(body) {
+		k, q, ok := strings.Cut(strings.TrimSuffix(line, "\n"), "=")
+		if !ok || len(q) < 2 || q[0] != '"' || q[len(q)-1] != '"' {
+			t.Fatalf("environment file line %q", line)
+		}
+		var v strings.Builder
+		for i := 1; i < len(q)-1; i++ {
+			if q[i] == '\\' && i+1 < len(q)-1 {
+				i++
+			}
+			v.WriteByte(q[i])
+		}
+		vars = append(vars, k+"="+v.String())
+	}
+	return vars
+}
+
+// TestDetachCarriesPlan: the plan's entry reaches the EnvironmentFile, and
+// reads back as the same plan.
+func TestDetachCarriesPlan(t *testing.T) {
+	f := newFake()
+	f.version = "systemd 239 (239-68.el8)"
+	u := testUnit(t, f, Options{Scope: User})
+	spec := handOffSpec(t)
+	p := carriedPlan()
+	spec.Env = append(slices.Clone(spec.Env), planEnv(t, p))
+	if _, err := u.Detach(context.Background(), spec); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(u.getenv("XDG_RUNTIME_DIR"), "selfupdate", "demo.service", "handoff-abc123.env")
+	if got := planFrom(t, unquoteEnvFile(t, readFile(t, file))); got != p {
+		t.Fatalf("the EnvironmentFile carries %+v, want %+v", got, p)
 	}
 }

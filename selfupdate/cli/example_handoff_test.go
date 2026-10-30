@@ -40,3 +40,23 @@ var (
 	relayIdentity   buildinfo.Info
 	newRelayUpdater func() (*selfupdate.Updater, error)
 )
+
+// With DetachPlan and Planned, the update the service's agent started is
+// planned once: the detached run installs the release planned here, even
+// when a newer one is published before it starts, and refuses a release
+// that changed (0038-MADR D1-A).
+func ExampleHandOff_plan() {
+	report := service.ReportFunc()
+
+	unit, err := systemd.New(systemd.Options{Unit: "relay.service"})
+	if err != nil {
+		os.Exit(1) // off Linux: service.ErrUnsupported
+	}
+	o := cli.StdioOptions()
+	o.HandOff = cli.HandOff{
+		DetachPlan: service.HandOffPlanFunc(unit, service.HandOff{Args: os.Args[1:]}),
+		Planned:    service.LoadHandOffPlan,
+		Report:     report,
+	}
+	os.Exit(cli.Command(context.Background(), os.Args[1:], "relay", relayIdentity, newRelayUpdater, o))
+}

@@ -826,3 +826,36 @@ Files: from the list, `selfupdate/stream.go` and `stream_run_test.go`; `selfupda
    The lock plant first passed: the test then published once while 20 requests ran, and each handler takes the lock in `record` before it reads, so the race needs a publish between the two. The test now publishes 50 releases while requests run, and the plant fails each time.
 5. **Runs:** `go test -race -shuffle=on -count=3` of `./selfupdate/` and `./selfupdate/selfupdatetest/` on this Mac `ok`; `go test -race -count=1` of both on the Linux test host and the Windows test host `ok`; under Go 1.26.10, `go test` of both `ok` and `go vet` for the three targets clean.
 6. **Checks:** `make pre-add-check` on the 7 Go files: clean, after the rename; the architecture table: 20 rows, 0 differ; `make gate`: every step rc=0, `apicheck` "compatible with v1.22.3", `overall=0`; `scripts/check-docs.sh --ids` on the changed files: 0 findings.
+
+### Deviation D15 (2026-10-29): the backends' carriers are tested in their own packages
+
+* **Found:** Q16 step 3 requires the plan's environment entry to reach each backend's carrier, "with the fakes those backends' handoff tests use". The carriers differ: systemd writes an `EnvironmentFile` with its own escaping (`systemd/detach.go:240`), launchd and Task Scheduler the private file of `service.WriteHandOffEnv` (`launchd/detach.go:102`, `taskscheduler/handoff.go:81`), and scm the process environment (`scm/detach.go:58`). Those fakes and tests are in `systemd/detach_unix_test.go`, `launchd/detach_test.go`, `taskscheduler/handoff_test.go` and `scm/detach_test.go`, none in Q16's list.
+* **Decision:** the owner, 2026-10-29, chose "Add the 4 test files": each gains a test that a `HandOff` whose `Env` holds `EnvHandOffPlan` with a real plan document reaches its carrier, read back as the same plan where the test can read it. Tests only; no MADR change.
+* **Files added to Q16:** `selfupdate/service/systemd/detach_unix_test.go`, `selfupdate/service/launchd/detach_test.go`, `selfupdate/service/taskscheduler/handoff_test.go`, `selfupdate/service/scm/detach_test.go`.
+
+### Q16: the handoff carries the plan (2026-10-29)
+
+Files: from the list, `selfupdate/service/handoff.go` (`HandOffFunc`'s doc names `HandOffPlanFunc`), the new `handoffplan.go` and `handoffplan_test.go`; `selfupdate/cli/run.go`, `doc.go`, `handoff_test.go` and `example_handoff_test.go`; the package table (`service` 21 to 22 files, 28 to 29 test files). Added by D15: the four backends' handoff test files.
+
+1. **`service`:** `EnvHandOffPlan`; `HandOffPlanFunc(d, spec)`, which encodes the plan's `PlanDocument` compactly, adds `EnvHandOffPlan=<document>` to a copy of `spec.Env`, and returns `HandOffFunc`'s hook for that spec, so its rules hold, the refusal of a request without `Yes` inside the service included; `LoadHandOffPlan()`, which unsets the variable, treats an empty one as none, and parses the rest with `selfupdate.ParsePlan`. The empty case was found when the first `cli` run failed `selfupdate: plan: EOF` on a variable a test had set empty.
+2. **`cli.HandOff`:** `DetachPlan` and `Planned`. `Run` first asks `Planned`; with a plan it applies it with `Updater.Apply`, and a load error goes through `Report` and fails the run. Otherwise `detach` runs `DetachPlan`, or else `Detach` as before: `DetachPlan` calls `Updater.Plan`, hands off only a plan whose operation is not `OperationNone`, and returns that plan, which `Run` applies when nothing was handed off; when `Plan` fails, `Run` goes on without a plan and reports what it reports today. The fallback is written as `if p, perr := u.Plan(ctx, req); perr == nil { … }`, as `nilerr` refuses `if perr != nil { return …, nil }`. With neither field set, every `cli` test and golden passes unchanged.
+3. **Tests.** `service`: `TestHandOffPlanFuncAddsThePlan` (the entry after `spec.Env`'s, compact, parsing back to the plan, `spec.Env` unchanged); `TestHandOffPlanFuncRules`; `TestLoadHandOffPlan` (unset, empty, valid and unset after, a tampered `schema_version` refused and unset); `TestHandOffPlanThroughEnvFile` (`WriteHandOffEnv`, `LoadHandOffEnv`, then `LoadHandOffPlan`). The backends (D15), each with a plan whose URL holds `"`, `&`, `$` and `\`: systemd's `EnvironmentFile`, unquoted as systemd reads it; launchd's private file, and not its plist; Task Scheduler's private file, and not its definition; scm's real run, whose environment the test binary writes out. `cli`: `TestHandOffCarriesThePlan` (the parent inside the service hands off through `HandOffPlanFunc`; the detached run, with v1.2.0 published, installs the parent's v1.1.0 through `LoadHandOffPlan`); `TestDetachPlanAppliesHere`; `TestDetachPlanOnlyForAnInstall` (check, dry run, up to date); `TestDetachPlanFallsBack` (a failing source: the same exit and stderr as without `DetachPlan`); `TestPlannedRefusals` (a plan with another release ID is `ErrPlanStale`, and a load error fails the run, each through `Report`, nothing installed). `ExampleHandOff_plan`.
+
+   **Seen failing**, each in a scratch copy with `go test -count=1 ./selfupdate/cli/ ./selfupdate/service/...`, all caught on the final code; the two of step 3 first:
+
+   | Plant | Failed |
+   | :--- | :--- |
+   | `HandOffPlanFunc` without the env entry | `TestHandOffPlanFuncAddsThePlan`, `TestHandOffCarriesThePlan` |
+   | `Run` ignoring `Planned` | `TestHandOffCarriesThePlan`, `TestPlannedRefusals` |
+   | `DetachPlan`'s plan not applied here | `TestDetachPlanAppliesHere` |
+   | a `Plan` error failing the run | `TestDetachPlanFallsBack` |
+   | `DetachPlan` for an up-to-date plan | `TestDetachPlanOnlyForAnInstall` |
+   | `LoadHandOffPlan` leaving the variable set | `TestLoadHandOffPlan` |
+   | an empty variable read as a plan | `TestLoadHandOffPlan`, `TestHandOffCarriesThePlan` |
+   | systemd's `EnvironmentFile` without the `\` and `"` escapes | systemd's `TestDetachCarriesPlan`, `TestEnvFileBody` |
+   | launchd putting every variable in the plist | launchd's `TestDetachCarriesPlan`, `TestDetach` |
+   | Task Scheduler's file without `spec.Env` | `TestDetachOneShotCarriesPlan`, and two existing tests |
+   | scm dropping the plan's entry | scm's `TestDetachCarriesPlan` |
+
+4. **Runs:** `go test -race -shuffle=on -count=3` of `./selfupdate/cli/` and `./selfupdate/service/...` on this Mac `ok`; `go test -race -count=1` of both on the Linux test host and the Windows test host `ok`, the Windows run of the carrier tests passing scm's through a real hop and real run; under Go 1.26.10, `go test` of both `ok` and `go vet` for the three targets clean.
+5. **Checks:** `make pre-add-check` on the 11 Go files: clean, after the `nilerr` change; the architecture table: 20 rows, 0 differ; `make gate`: every step rc=0, `apicheck` "compatible with v1.22.3", `overall=0`.

@@ -41,4 +41,12 @@
 // detached run reports to a file (package selfupdate/service). It hands
 // off only an update it would install, and the detached run cannot ask:
 // inside the service, an update without --yes is refused.
+//
+// With HandOff.DetachPlan and HandOff.Planned also set, from
+// service.HandOffPlanFunc and service.LoadHandOffPlan, the command plans
+// the update once, hands that plan off, and the detached run installs the
+// release it names, not whichever is the latest when it starts; it fails
+// with selfupdate.ErrPlanStale when that release has changed
+// (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// D1-A).
 package cli
