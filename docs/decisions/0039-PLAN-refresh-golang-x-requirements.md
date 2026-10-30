@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 date: 2026-10-30
 associated-madr: "0039-MADR-refresh-golang-x-requirements.md"
 ---
@@ -255,4 +255,27 @@ Files: `go.mod`, `go.sum`, `docs/architecture.md`, `CHANGELOG.md`, the migration
 
    Checks: `make markdownlint` 0 issues; `make docs-check` exit 0, 884 links in 103 files, 0 broken, and 20 rows in `docs/architecture.md`, 0 differ; `scripts/check-docs.sh --ids` on the five changed files, 0 findings; `make check-records` 90 records, 0 findings.
 5. **The proxy:** `go list -m -json github.com/maccavelli/go-selfupdate-lib@v1.23.1` gives `Hash c24f5919cd9e9e3ba3736e64bcf18a6e2a51489e`, `Ref refs/tags/v1.23.1` and `GoVersion 1.26.10`; `@latest` resolves to `v1.23.1`; the proxy's `go.mod` for `v1.23.1` requires `golang.org/x/mod v0.42.0`, `golang.org/x/sys v0.49.0` and `golang.org/x/term v0.47.0`.
-6. **Waiting:** the owner's commit and push of this change, whose Docs run must pass. R3 closes the plan on the owner's word.
+6. **The push:** the owner committed this change as `52ea996` and pushed it; the push hook ran the disclosure guard, and the guard run by hand over `c24f591..52ea996` afterwards exit 0. Docs run 41098540504: `success`.
+
+### R3: closing (2026-10-30)
+
+On the owner's "proceed":
+
+1. **Host state:** a read-only look found 0 `sulib-*` copies of the tree in the Linux test host's `/var/tmp`, the Windows test host's temporary directory and the WSL's `/var/tmp`. R1 step 5's runs removed theirs.
+2. **`make gate` at `52ea996`:** every step rc=0; `lint` 0 issues; `tidy` clean; `apicheck` "compatible with v1.23.1"; `fuzz` 11 targets clean (6 in `selfupdate`, 3 in `selfupdate/archive`, 1 each in `selfupdate/releasespec` and `selfupdate/verify/signednote`); `vuln` "No vulnerabilities found."; `links` 884 in 103 files, 0 broken; `arch` 20 rows, 0 differ; `overall=0`.
+3. **The floor at `52ea996`:** under `GOTOOLCHAIN=go1.26.10` (`go version go1.26.10 darwin/arm64`), `go vet ./...` exit 0 and `go test -count=1 ./...` exit 0, 20 packages `ok`.
+4. This PLAN `complete`, and its row in `docs/README.md` to match. The MADR stays `accepted`.
+
+### Verification, at closing (2026-10-30)
+
+* **V1 (the change):** `git diff --stat v1.23.0 v1.23.1 -- go.mod go.sum`: 2 files changed, 9 insertions, 9 deletions. `go.mod`'s diff is the three `require` lines, `x/mod v0.40.0` → `v0.42.0`, `x/sys v0.47.0` → `v0.49.0`, `x/term v0.43.0` → `v0.47.0`; `go.sum`'s is 6 lines out and 6 in. `git diff --stat v1.23.0 v1.23.1 -- '*.go'` prints nothing. `go mod tidy -diff` exit 0. `git diff --stat v1.23.1 HEAD -- ':!*.md'` prints nothing, so `main` holds no code beyond the tag.
+* **V2 (the gates):** `make gate` `overall=0` at `c24f591`'s tree (R1 step 5) and at `52ea996` (R3 step 2); `make markdownlint`, `make docs-check`, `make check-records` and `--ids` exit 0 (R1 step 5, R2 step 4); the floor's `vet` and `test` pass under `go1.26.10` (R1 step 3, R3 step 3).
+* **V3 (the platforms):** `go test -race` passes on this Mac (the gate's `race` step, R1 step 5 and R3 step 2), the Linux test host and the Windows test host (R1 step 5). CI on R1's push, run 41070697914, and on the tag, run 41094704802, each `success`, 18 of 18 jobs, with every live test of the three `validate` jobs passing but `TestLiveSignIdentity`, which skips without a signing identity (R1 step 7, R2 step 3).
+* **V4 (the API):** `apidiff` between a `git archive` of `v1.23.0` and the tree at `52ea996`, whose code is `v1.23.1`'s: no change, exit 0. `make apicheck` "compatible with v1.23.0" before the tag (R1 step 5).
+* **V5 (the release):** the tag's CI is green and its ten identity legs print `"v1.23.1 (release) c24f5919cd9e"` (R2 step 3); the proxy serves `v1.23.1` at `c24f5919cd9e9e3ba3736e64bcf18a6e2a51489e` as `@latest`, and its `go.mod` requires the three new versions (R2 step 5).
+
+Not done here, as the plan's scope says:
+
+* No test and no gate was added, so none was planted (R1 step 6).
+* `golang.org/x/tools v0.51.0` is not required: `x/mod v0.42.0` requires it, and `go mod tidy` prunes it from `go.sum`.
+* Programs take `v1.23.1` in their own repositories.
