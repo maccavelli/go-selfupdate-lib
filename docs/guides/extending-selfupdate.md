@@ -57,9 +57,24 @@ a missing release also wraps `ErrNoRelease` around it. Since `v1.16.0`,
 `CheckCached` measures record ages by: a `ClockFunc` that returns a fixed
 time makes them deterministic in a test.
 
-- `ExampleNewChecker`, `ExampleChecker_CheckCached`
+**Install what the banner showed.** Since `v1.23.0`, `Updater.Plan`
+resolves an update without installing it, as a `Plan`: the request, the
+release it resolved to, the selected assets and the binary's `SHA256SUMS`
+entry. `Updater.Apply` later installs exactly that release, whatever has
+been published since, and fails with `ErrPlanStale` when the request is
+not the plan's or the release itself has changed
+([0038-MADR](../decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md) D1-A). To install the release a cached banner named,
+plan with `Request.TargetVersion` set to the banner's
+`Availability.TargetVersion` when the user accepts; or plan at once and
+show `Plan.TargetVersion`. `Plan` downloads `SHA256SUMS` but no binary and
+reports no event, so keep `CheckCached` for the check on every start. A
+plan carries no approval: pass `Apply` the plan's request, `p.Request()`,
+with `Yes` set once the user has agreed, or `Apply` asks the `Confirmer`,
+as `Run` does.
+
+- `ExampleNewChecker`, `ExampleChecker_CheckCached`, `ExampleUpdater_Plan`
 - `selfupdate/checker_test.go`, `selfupdate/checkcache_test.go`,
-  `selfupdate/checkcache_outcome_test.go`
+  `selfupdate/checkcache_outcome_test.go`, `selfupdate/plan_test.go`
 
 ## Offer a beta channel
 
@@ -153,9 +168,25 @@ Byte progress is opt-in. Set `Config.ProgressInterval` to the minimum gap
 between `EventProgress` events; zero reports none. The text reporter skips
 progress events either way.
 
+A failed run's `failed` event has the error's class as its `detail`, such
+as `integrity` or `rate-limited`; since `v1.23.0`, `plan-stale` is
+`ErrPlanStale`'s, and comes before `mutable-release` and `integrity`, so a
+changed `SHA256SUMS` entry, which is both, is `plan-stale`.
+
+Since `v1.23.0`, `Plan.Document` is a plan's JSON form, a `PlanDocument`:
+`schema_version` 1 (`PlanSchema`); the request's `product`,
+`current_version`, `current_build`, `os`, `arch`, `channel`,
+`requested_version` and `force`; the release's `target_version`,
+`release_id`, `release_url` and `latest`; the `operation`; the `binary`
+and `manifest` assets, each an `AssetDocument`; `manifest_name`,
+`packed`; and `manifest_sha256`, the binary's entry. It has no `yes` and
+no `dry_run`. `ParsePlan` reads one back, and refuses more than 64 KiB, a
+key it does not know, anything after the object, any other
+`schema_version`, and a plan that is not valid.
+
 - `ExampleNewJSONReporter`, `ExampleMultiReporter`, `ExampleResult_Document`
 - `selfupdate/testdata/golden/`: the exact text and JSON Lines output of
-  seven whole runs
+  seven whole runs, and `plan.golden`, a plan's document
 
 ### Log with slog
 
@@ -242,10 +273,17 @@ prompt ([0004-MADR](../decisions/0004-MADR-evolve-selfupdate-api-and-tui-support
 `Run`, `RunWith` or `Start` that overlaps another on the same `Updater`
 fails with `ErrConcurrentUpdate`, which `Start` delivers in its `Finished`.
 
+Since `v1.23.0`, a TUI can show what it will install before anything
+starts: `Updater.Plan`, then, once the user has seen it,
+`StartApply(ctx, u, p.Request(), p)`. Its `Stream` is `Start`'s: the
+`ConfirmNeeded` names the planned release, and `Finished` carries
+`ErrPlanStale` if the release changed in between. With `Yes` in the
+request, there is no `ConfirmNeeded`.
+
 - `ExampleStart`, `ExampleStream_All`, `ExampleUpdater_RunWith`,
   `ExamplePromptCredential`
 - `selfupdate/stream_run_test.go`: cancellation mid-download, prompts,
-  and the delivery order
+  the delivery order, and an Apply stream
 
 ## Ship an archive
 
@@ -716,7 +754,11 @@ for Task Scheduler,
     does not run a job at load for an integer, even 1. A plist `plutil`
     cannot read is an error (since `v1.10.1`).
   - On systemd, a start that fails because a unit this one requires is
-    missing is not `service.ErrNotInstalled` (since `v1.10.1`).
+    missing is not `service.ErrNotInstalled` (since `v1.10.1`). Since
+    `v1.23.0`, a `Type=notify` unit whose program exits before it is
+    ready fails `Start` with an error that also wraps
+    `service.ErrUnhealthy`, as the other backends report a crashed start;
+    the `*service.CommandError` is still in its chain.
 - **systemd units: `Type=notify` or `Type=exec`.** With either, a failed
   start fails `systemctl start`. With `Type=simple`, it succeeds before the
   program has run. Under `Type=notify`, call `systemd.Ready()` once the
@@ -1212,6 +1254,31 @@ func main() {
   an agent's does. Since `v1.11.0`, an update from inside the service
   without it is refused with `ErrConfirmationRequired` (exit 1), even when
   this run could ask.
+- **Hand off the plan** (since `v1.23.0`). With `Detach`, the detached run
+  resolves the latest release again, later, in another process: not
+  necessarily the release that justified the handoff. Set `DetachPlan`
+  and `Planned` instead:
+
+  ```go
+  o.HandOff = cli.HandOff{
+      DetachPlan: service.HandOffPlanFunc(unit, service.HandOff{Args: os.Args[1:]}),
+      Planned:    service.LoadHandOffPlan,
+      Report:     report,
+  }
+  ```
+
+  The command plans the update once, and hands it off only when the plan
+  installs something. The plan travels in `SELFUPDATE_HANDOFF_PLAN`
+  (`service.EnvHandOffPlan`), which every backend carries as it carries
+  `HandOff.Env`, and the detached run applies it with `Apply`: it installs
+  the release this run resolved, or fails with `ErrPlanStale`, in its
+  result file, when that release has changed. `HandOffPlanFunc` keeps
+  `HandOffFunc`'s rules, `--yes` included. Outside the service, the
+  command applies its plan in place; when planning fails, it runs as
+  without one. `LoadHandOffPlan` unsets the variable it reads; call it
+  after `ReportFunc`, which applies the private environment file the
+  variable may arrive in. Without `cli`, `HandOffPlanFunc` is the hook,
+  and the detached run passes `LoadHandOffPlan`'s plan to `Apply`.
 - **Per platform:**
   - **systemd:** a transient unit, `<unit>-selfupdate-<id>.service`,
     started by `systemd-run`, needs systemd 236 or later. System scope
@@ -1241,7 +1308,7 @@ func main() {
 
 Pointers:
 
-- `ExampleHandOff` in `selfupdate/cli`
+- `ExampleHandOff` and `ExampleHandOff_plan` in `selfupdate/cli`
 - `selfupdate/service/systemd/live_linux_test.go`,
   `selfupdate/service/launchd/live_darwin_test.go`,
   `selfupdate/service/scm/live_windows_test.go`,
@@ -1254,6 +1321,56 @@ Pointers:
   which needs a signed-in console. `TestLiveTaskUpdate` also requires the
   update to run at medium integrity, which a GitHub runner does not give
   it, so CI skips that one test
+
+### Check your Lifecycle
+
+Since `v1.23.0`, `selfupdate/service/servicetest` checks a `Lifecycle`
+against the contract the managed installer relies on, as
+`VerifyReleaseSource` checks a release source. A program that writes its
+own `Lifecycle`, or feeds `service.Supervised` its `State`, `Up` and
+`Down`, runs it in its own tests. Five bugs in this module's last two
+releases were divergences from that contract that no test could see
+([0038-MADR](../decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md) D2-A).
+
+- **`servicetest.VerifyLifecycle(ctx, l, servicetest.LifecycleCase{…})`**
+  drives `l` through the states a `Lab` arranges, and returns every
+  violation, joined, or nil. It checks that:
+  - a service that is not installed is `service.ErrNotInstalled`, or is
+    left absent;
+  - a method called on an ended context fails with the context's error and
+    changes nothing, except one you declare in `ContextFree`;
+  - `Enabled` agrees with the lab;
+  - a stop, then a start, leaves the service running and healthy;
+  - a stop the service ignores is `service.ErrTimeout` within your
+    `StopBound`, and the service manager still wants it up when you set
+    `RestoresAfterFailedStop`;
+  - a cancellation once a stop is under way does not end the wait;
+  - a service that exits at once fails `WaitHealthy`;
+  - a start that never completes is `ErrTimeout` within `StartBound`.
+- **The `Lab` is yours.** `Arrange(ctx, servicetest.Arrangement{State,
+  Enabled})` sets the service up: `Absent`, `Stopped`, `Running`,
+  `SlowStop`, `Stubborn`, `Crashing` or `StartHangs`. `Observe(ctx)` reports
+  it without your `Lifecycle`. A state your manager cannot arrange returns
+  an error wrapping `errors.ErrUnsupported`, and the checks that need it
+  are skipped: `LifecycleCase.Logf` hears of each, and `RequireAll` makes a
+  skip a violation.
+- **Over a fake,** run it in a `testing/synctest` bubble: a 60 s stop
+  bound then costs no wall time. **Over the real service manager,** give
+  it short bounds on the real clock and pass the bound your lifecycle
+  documents for them as `StopBound`, as this module's live tests do for
+  every backend.
+- **`servicetest.FakeService`** is an in-memory service that is a
+  `Lifecycle`, an `EnabledLifecycle` and its own `Lab`, for testing your
+  managed-update flow; **`servicetest.VerifyRunner`** checks a
+  `service.Runner` of your own: a run on an ended context records nothing,
+  and a blocking run ends when its context does.
+
+Pointers:
+
+- `servicetest.ExampleVerifyLifecycle`
+- `selfupdate/service/*/conformance_test.go`: each backend's fake, in a
+  bubble; `TestLiveConformance` in each backend's live tests, and the s6
+  subtest of `TestLiveSupervisedS6`: the real managers
 
 ## Use another release host
 
@@ -1272,7 +1389,12 @@ elsewhere implements the interface for that host and passes it as
     a basename with no separator or control character; `State`
     `AssetStateUploaded`; a positive `Size`, exactly what `OpenAsset`
     returns; and a `Digest` that is empty or `sha256:<64 hex>`, which the
-    downloaded bytes must then match.
+    downloaded bytes must then match;
+  - the release's `ID` and its assets' `ID`s are the same each time the
+    release is fetched, from `Latest` and from `ByTag`: since `v1.23.0`,
+    `Updater.Apply` compares them with its plan's, so a source that
+    numbers its answers rather than its releases fails every `Apply` with
+    `ErrPlanStale`.
 - **Channels** need `ReleaseLister` too: `ListReleases` lists releases,
   prereleases included. A source without it is refused on a channel.
 - **`WithCredentials`** needs a `CredentialedSource`: its
@@ -1295,7 +1417,8 @@ func TestSourceConforms(t *testing.T) {
 ```
 
 It requires `Latest` to return `LatestTag`, immutable and not a draft;
-`ByTag` to return the same release for it, and an error that wraps
+`ByTag` to return the same release for it, with the same release and
+asset IDs since `v1.23.0`, and an error that wraps
 `ErrNoRelease` for `MissingTag`; every asset to meet the rules above; and
 `OpenAsset` to return exactly `Size` bytes, whose SHA-256 is `Digest` when
 it is set. It returns every violation, joined.
@@ -1343,7 +1466,15 @@ The `selfupdate/selfupdatetest` package provides:
 - `VerifyReleaseSource(ctx, src, SourceCase{LatestTag, MissingTag})`
   (since `v1.16.0`), which checks a `ReleaseSource` for another host
   against the contract the Updater relies on
-  ([Use another release host](#use-another-release-host)).
+  ([Use another release host](#use-another-release-host));
+- `FakeSource.Publish` and `GitHubServer.Publish` (since `v1.23.0`), which
+  publish a release while the test runs, as the latest unless it is a
+  draft or a prerelease, with IDs no release had before, so a test can
+  publish a newer release between `Plan` and `Apply`.
+
+For a service, `selfupdate/service/servicetest` (since `v1.23.0`) has
+`FakeService` and `VerifyLifecycle`
+([Check your Lifecycle](#check-your-lifecycle)).
 
 Pointers:
 
@@ -1351,4 +1482,7 @@ Pointers:
   `selfupdatetest.ExampleVerifyReleaseSource`,
   `selfupdate/selfupdatetest/selfupdatetest_test.go`
 - `selfupdate/e2e_github_test.go`, `selfupdate/golden_test.go`,
-  `selfupdate/credential_header_e2e_test.go`
+  `selfupdate/credential_header_e2e_test.go`; and
+  `TestPlanSurvivesNewerReleaseOnGitHub` in
+  `selfupdate/stream_run_test.go`, which publishes a newer release between
+  `Plan` and `Apply`

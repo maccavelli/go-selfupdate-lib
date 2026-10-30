@@ -8,6 +8,60 @@ listed in the
 [migration guide](docs/guides/migrating-from-mcplib-selfupdate.md), one
 section per release, and each entry links its section and its records.
 
+## v1.23.0 - 2026-10-29
+
+### Added
+
+- Pinned update plans. `Updater.Plan` resolves a request without
+  installing anything, as a `Plan`: the request, the release, its assets
+  and the binary's `SHA256SUMS` entry. `Updater.Apply` installs exactly
+  that release, whatever has been published since, or fails with the new
+  `ErrPlanStale`; `StartApply` is `Start` for it. `PlanDocument`,
+  `AssetDocument`, `PlanSchema` and `ParsePlan` are the plan's JSON form.
+  A plan carries no approval: `Apply` asks the `Confirmer` unless the
+  request says `Yes`. A failed run's `failed` event can have the
+  `plan-stale` detail.
+- The handoff carries the plan: `service.EnvHandOffPlan`,
+  `service.HandOffPlanFunc` and `service.LoadHandOffPlan`, and
+  `cli.HandOff`'s `DetachPlan` and `Planned`, so a detached run installs
+  the release the command resolved.
+- `selfupdate/service/servicetest`: `VerifyLifecycle`, with
+  `LifecycleCase`, `Lab`, `Arrangement`, `Observation`, `State` and
+  `Method`, checks a `Lifecycle` against the contract the managed
+  installer relies on; `VerifyRunner` and `RunnerCase` check a `Runner`;
+  `FakeService`, `FakeOptions` and `NewFakeService` are an in-memory
+  service that is its own lab. Every backend passes it over its fake and
+  its real service manager.
+- `selfupdatetest`: `FakeSource.Publish` and `GitHubServer.Publish`.
+
+### Changed
+
+- The install resolves every name through the `os.Root` of the directory
+  it locked: the staging file, the backup, the journal, the digests and,
+  on Unix, the rename. A directory swapped in after the lock is never
+  written to. The new binary's owner and mode are set through a
+  descriptor, and a rollback that leaves the backup as the target's own
+  file removes it. Windows still renames by path.
+- `selfupdatetest.VerifyReleaseSource` also requires `ByTag` of the latest
+  tag to return `Latest`'s release and asset IDs, which `Apply` compares;
+  `Release.ID`'s documentation says so.
+
+### Fixed
+
+- launchd: `Stop`'s `bootout` and the wait after it share one bound,
+  where each had it; `Start` on a missing property list is
+  `ErrNotInstalled` at once, before any `launchctl` call; `Installed` is
+  documented as ignoring its context.
+- scm: `Start` on an ended context starts nothing.
+- `service.Supervised`: `Start` is `ErrNotInstalled` when the supervisor
+  reports the service not installed, where it ran `Up`.
+- systemd: `Start` of a `Type=notify` unit whose program exits before it
+  is ready also wraps `ErrUnhealthy`.
+
+See [the guide](docs/guides/migrating-from-mcplib-selfupdate.md#23-from-v122-to-v123),
+[0038-MADR](docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md) and
+[0038-PLAN](docs/decisions/0038-PLAN-pinned-plans-lifecycle-conformance-and-bubble-tests.md) Q9 to Q16.
+
 ## v1.22.3 - 2026-10-28
 
 ### Changed

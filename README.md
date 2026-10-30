@@ -219,6 +219,8 @@ A re-run is refused while any release for the tag exists, drafts included.
 | see what is in this repository today | [architecture.md](docs/architecture.md) |
 | move a program from `mcplib/selfupdate` to this module | [the migration guide](docs/guides/migrating-from-mcplib-selfupdate.md) |
 | offer a beta or rc channel | [the extending guide](docs/guides/extending-selfupdate.md#offer-a-beta-channel) |
+| install exactly the release a banner showed | [the extending guide](docs/guides/extending-selfupdate.md#show-an-update-banner) |
+| check my own service `Lifecycle` | [the extending guide](docs/guides/extending-selfupdate.md#check-your-lifecycle) |
 | build and publish my program's releases from one spec | [the building guide](docs/guides/building-releases.md) |
 | know why `selfupdate` moved here, and what changed on the way | [0002-MADR](docs/decisions/0002-MADR-rehome-selfupdate-from-mcplib.md) |
 | know why the repository is set up the way it is | [0001-MADR](docs/decisions/0001-MADR-scaffold-shared-go-library.md) |

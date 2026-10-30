@@ -1742,3 +1742,96 @@ D3-A.
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
 - `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.22.3`.
+
+## 23. From v1.22 to v1.23
+
+```bash
+go get github.com/maccavelli/go-selfupdate-lib@v1.23.0
+```
+
+`v1.23.0` adds a pinned update plan, a conformance check for a service
+lifecycle, and an install that resolves every name through the directory
+it locked. `make apicheck` reports it compatible with `v1.22.3`: every
+exported change is an addition. Why, and how, is in
+[0038-MADR](../decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md),
+executed by [0038-PLAN](../decisions/0038-PLAN-pinned-plans-lifecycle-conformance-and-bubble-tests.md).
+What each change does is
+in the [changelog](../../CHANGELOG.md).
+
+### What is new
+
+- **Plans.** `Updater.Plan` resolves a request without installing
+  anything, as a `Plan`: the request, the release, its assets and the
+  binary's `SHA256SUMS` entry. `Updater.Apply` installs exactly that
+  release later, whatever has been published since, or fails with
+  `ErrPlanStale`. `StartApply` is `Start` for it. `Plan.Document`,
+  `PlanDocument`, `AssetDocument`, `PlanSchema` and `ParsePlan` are its JSON
+  form. A plan carries no approval. See
+  [Show an update banner](extending-selfupdate.md#show-an-update-banner).
+- **The handoff carries the plan:** `service.HandOffPlanFunc`,
+  `service.LoadHandOffPlan` and `service.EnvHandOffPlan`, and
+  `cli.HandOff`'s `DetachPlan` and `Planned`. See
+  [Updating from inside the service](extending-selfupdate.md#updating-from-inside-the-service).
+- **`selfupdate/service/servicetest`** checks a `Lifecycle`
+  (`VerifyLifecycle`, `LifecycleCase`, `Lab`) and a `Runner`
+  (`VerifyRunner`), and has `FakeService`. See
+  [Check your Lifecycle](extending-selfupdate.md#check-your-lifecycle).
+- **`selfupdatetest`:** `FakeSource.Publish` and `GitHubServer.Publish`.
+
+### Behaviour you may notice
+
+- **The install resolves every name through the directory it locked.**
+  The staging file, the backup and the journal are made in the locked
+  directory's `os.Root`, and on Unix the rename is `Root.Rename`: a
+  directory swapped in after the lock is never written to, and the update
+  rolls back in the locked one with `ErrConcurrentUpdate`. Before, a swap
+  between the check and the rename sent the new binary into the swapped-in
+  directory. The new binary's owner and mode are set through a descriptor,
+  not by name. A rollback that leaves the backup as the target's own file
+  removes it. The names keep their forms, so an earlier release's sweep
+  still recognises them. On Windows, the rename is unchanged.
+- **The backends do what they document:**
+  - launchd's `Stop`: `bootout` and the wait after it share one bound;
+    each had it, so a stop could take twice as long;
+  - launchd's `Start` on a missing property list is `ErrNotInstalled` at
+    once, before any `launchctl` call; it retried a refused `bootstrap`
+    to its bound, and left an `enable` override behind;
+  - launchd's `Installed` is documented as ignoring its context, as it
+    did;
+  - the SCM's `Start` on an ended context starts nothing; it started the
+    service, then returned `ErrTimeout` wrapping the context's error;
+  - `service.Supervised`'s `Start` is `ErrNotInstalled` when your `State`
+    reports the service not installed; it ran your `Up`;
+  - systemd's `Start` of a `Type=notify` unit whose program exits before
+    it is ready also wraps `service.ErrUnhealthy`; the
+    `*service.CommandError` is still in the chain.
+- **`selfupdatetest.VerifyReleaseSource`** also requires `ByTag` of the
+  latest tag to return `Latest`'s release ID and asset IDs. A source that
+  numbers its answers rather than its releases fails it now, and would
+  fail every `Apply`.
+- `Run`'s events, call order and output are as in `v1.22.3`.
+
+### Adopting it
+
+- **A banner, then an update:** plan when the user asks, show
+  `Plan.TargetVersion`, and call `Apply` with `p.Request()` and `Yes`
+  once they accept. A banner from `CheckCached` can plan for its tag, with
+  `Request.TargetVersion`.
+- **A program that hands off from inside its service:** set `DetachPlan`
+  and `Planned` in `cli.HandOff`, from `service.HandOffPlanFunc` and
+  `service.LoadHandOffPlan`. `DetachPlan` replaces `Detach`. Keep
+  `service.ReportFunc()` first in `main`.
+- **A `Lifecycle` of your own,** or a `Supervised` adapter: run
+  `servicetest.VerifyLifecycle` over it with a `Lab` for your fake, and
+  in a live test over your real supervisor.
+- **A `ReleaseSource` for another host:** keep `Release.ID` and the asset
+  IDs stable, and run `VerifyReleaseSource` again.
+- **A test that matched launchd's or `Supervised`'s `Start` result for a
+  service that is not installed** should test
+  `errors.Is(err, service.ErrNotInstalled)`; one that matched systemd's
+  crashed start can test `errors.Is(err, service.ErrUnhealthy)`.
+
+### Check
+
+- `go build ./...`, `go vet ./...` and `go test ./...` pass.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.23.0`.

@@ -57,6 +57,20 @@
 // wait for the real outcome rather than report one the run has not
 // reached. The host must answer every request or call Cancel.
 //
+// # Plans
+//
+// Updater.Plan resolves a request without installing anything, as a Plan:
+// the request, the release it resolved to, the selected assets and the
+// binary's SHA256SUMS entry. Updater.Apply later installs exactly that
+// release, however long after and whatever has been published since, or
+// fails with ErrPlanStale when the request is not the plan's or the release
+// no longer matches it; StartApply is Start for Apply. A plan carries no
+// approval: Apply asks the Confirmer unless the request says Yes.
+// Plan.Document and ParsePlan are its JSON form, which a service handoff
+// carries to the detached run
+// (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// D1-A).
+//
 // # Asking without installing
 //
 // NewChecker, or Updater.Checker, answers "is there an update?" as an
@@ -162,7 +176,9 @@
 // Package selfupdate/service holds the reference Lifecycles for
 // NewManagedInstaller: systemd, launchd, scm and taskscheduler, each in its
 // own subpackage, and the handoff an update started inside the service
-// needs (docs/decisions/0011-MADR-reference-service-lifecycles.md).
+// needs (docs/decisions/0011-MADR-reference-service-lifecycles.md). Its
+// servicetest package checks a program's own Lifecycle against the same
+// contract.
 //
 // # The canonical update command
 //
@@ -174,9 +190,9 @@
 // (docs/decisions/0004-MADR-evolve-selfupdate-api-and-tui-support.md §5).
 //
 // The selfupdatetest package provides test doubles: release fixtures, a fake
-// source, reporter and confirmer, and a fake GitHub API; and
-// VerifyReleaseSource, a conformance check for a ReleaseSource of another
-// host.
+// source, reporter and confirmer, and a fake GitHub API, either of which
+// can publish a release while a test runs; and VerifyReleaseSource, a
+// conformance check for a ReleaseSource of another host.
 //
 // Package selfupdate/archive selects and unpacks a release published as
 // archives, selfupdate/codesign signs and checks the installed binary on

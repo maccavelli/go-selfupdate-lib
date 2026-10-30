@@ -29,7 +29,13 @@
 // and SELFUPDATE_HANDOFF_RESULT set, and the caller returns at once. The
 // detached run performs the whole managed update and writes a
 // HandOffResult, which ReadHandOffResult reads after the caller reconnects.
-// cli.Options.HandOff takes HandOffFunc and ReportFunc.
+// cli.Options.HandOff takes HandOffFunc and ReportFunc. With
+// HandOffPlanFunc in place of HandOffFunc, and LoadHandOffPlan beside
+// ReportFunc, the command plans the update once, the plan travels in
+// EnvHandOffPlan, and the detached run installs the release the command
+// resolved
+// (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
+// D1-A).
 //
 // A program calls ReportFunc, or LoadHandOffEnv, first in main. In a
 // detached run it applies a private environment file, which the launchd

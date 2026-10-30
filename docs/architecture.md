@@ -232,6 +232,23 @@ docs/
     a mutex-guarded queue that coalesces only trailing progress, with a
     one-slot wake channel and a channel closed after `Finished`.
     `PromptCredential` finds the run's `Stream` through the run's context.
+- Plans ([0038-MADR](decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md) D1-A), by file:
+  - **the plan:** `plan.go`: `Plan`, which is comparable; its JSON form,
+    `PlanDocument`, `AssetDocument` and `PlanSchema`; `ParsePlan`;
+    `Plan.Request`; and `Updater.Plan`, which runs the checks `Run` makes
+    before its confirmation, then its manifest steps, reports no event and
+    downloads no binary;
+  - **applying it:** `Updater.Apply` (`runoptions.go`) and `StartApply`
+    (`stream.go`) run `Run`'s pipeline with the plan's pins. The request
+    must be the plan's, the release is fetched by the plan's tag, and its
+    ID, assets, digests, operation and `SHA256SUMS` entry must be the
+    plan's, or the run fails with `ErrPlanStale` (`errors.go`). `Run`,
+    `Apply` and `Plan` share discovery (`checker.go`'s `fetchRelease` and
+    `vet`) and the manifest steps (`updater.go`'s `manifestEntry`), so
+    they cannot disagree, and `Run`'s order and events are unchanged;
+  - **the handoff:** `service.EnvHandOffPlan`, `HandOffPlanFunc` and
+    `LoadHandOffPlan` (`handoffplan.go`), and `cli.HandOff`'s `DetachPlan`
+    and `Planned`.
 - Prerelease channels
   ([0005-MADR](decisions/0005-MADR-opt-in-prerelease-channels.md)):
   - **the grammar:** `version.go` (`NewSemverPolicy`, `SemverOptions`),
@@ -273,7 +290,10 @@ docs/
   `RecordingReporter`, `ScriptedConfirmer`, and `GitHubServer`, a fake
   GitHub API on one TLS origin whose asset requests redirect to a second,
   which can require a bearer token or a custom-header credential, and
-  records the credential headers' names on each request.
+  records the credential headers' names on each request. Since `v1.23.0`,
+  `FakeSource.Publish` and `GitHubServer.Publish` publish a release while
+  a test runs, with IDs no release had before, and `VerifyReleaseSource`
+  requires `ByTag` to return `Latest`'s release and asset IDs.
 - The reference service lifecycles
   ([0011-MADR](decisions/0011-MADR-reference-service-lifecycles.md)):
   - **`service`:** the command runner (`runner.go`), the six sentinel
@@ -282,7 +302,8 @@ docs/
     `HandOffIfInside`, `HandOffFunc`, `ReportFunc` and the result file
     (`handoff.go`), `DetachProcess` (`detach*.go`), the private
     environment file (`handoffenv*.go`), named by `ArgHandOffEnv` for a
-    Task Scheduler run and private to the user on Windows, the Windows hop
+    Task Scheduler run and private to the user on Windows, the plan a
+    handoff carries (`handoffplan.go`), the Windows hop
     (`handoffhop.go`) and the real run's wait for the hop to exit
     (`hopwait_*.go`); the service manager's per-unit variables, which
     `ManagerEnvNames` lists and `ScrubManagerEnv` leaves out of every
@@ -293,9 +314,18 @@ docs/
     `Up` and `Down`, with `ErrNoSupervisor` (`supervised.go`,
     `supervised_lifecycle.go`;
     [0035-MADR](decisions/0035-MADR-serve-supervisors-through-a-supervised-adapter.md));
+  - **`servicetest`** ([0038-MADR](decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md) D2-A): `VerifyLifecycle`, which
+    drives a `Lifecycle` through the states a `Lab` arranges and returns
+    every violation joined; `VerifyRunner`, the same for a `Runner`'s
+    handling of its context; and `FakeService`, an in-memory `Lifecycle`
+    that is its own `Lab`. Each backend's tests, and `Supervised`'s, run
+    `VerifyLifecycle` over their fake in a `testing/synctest` bubble, and
+    over the real service manager in their live tests, each requiring its
+    exact list of skipped checks;
   - **`systemd`:** probes over one `systemctl show` per call, read by key;
     `Stop`, `Start` and `WaitHealthy` on the unit's state and
-    `InvocationID`, with the restart count read after the start; a
+    `InvocationID`, with the restart count read after the start, and a
+    start whose new invocation failed reported as `ErrUnhealthy`; a
     drop-in for a moved binary, checked against the effective `ExecStart`
     after the reload; `Inside` by cgroup; the handoff by `systemd-run`,
     its environment file under a directory per unit; `Notify` and its
@@ -385,8 +415,9 @@ docs/
   Amendment A6), and the tests of `selfupdate`, `cli`, `service` and its
   backends call it. `TestNoDirectFixtureBuild` refuses a direct
   `go build` in any test file.
-- `cli.Options.HandOff` (`run.go`) runs `Detach` before an apply and
-  `Report` after an update that ran.
+- `cli.Options.HandOff` (`run.go`) runs `Detach`, or `DetachPlan` with a
+  plan it made, before an apply, applies `Planned`'s plan in a detached
+  run, and runs `Report` after an update that ran.
 - Archive assets and macOS signing
   ([0012-MADR](decisions/0012-MADR-archive-assets-and-macos-codesign.md)):
   - **in `selfupdate`:** the extract stage, which runs after the
@@ -430,16 +461,32 @@ docs/
   point is a `warning` event and an entry in `Result.Warnings`
   (`warnings.go`), not a failure. A check that succeeds, and a run that
   finds the program up to date, install nothing and end at `selected`: the
-  result's `Operation` is the outcome, and no `complete` follows.
+  result's `Operation` is the outcome, and no `complete` follows. A failed
+  run's `failed` event has the error's class as its detail, the first of
+  `canceled`, `deadline-exceeded`, `confirmation-required`,
+  `force-required`, `latest-older`, `plan-stale`, `mutable-release`,
+  `no-release`, `rate-limited`, `unsupported-platform`,
+  `concurrent-update`, `managed-install` and `integrity` that the error
+  matches, or `error`.
 - The install path (`session.go`, `replace_*.go`, `lock*.go`, `cleanup*.go`,
   `managed.go`):
   - locks the target directory through `os.Root`, refusing a symlinked lock
     (`openLockFile`);
+  - resolves every name of the replacement through that `os.Root`, so a
+    directory swapped in after the lock is never written to: the staging
+    file, and the journal's and the receipt's temporary files, made with
+    `O_EXCL` in the root (`rootCreateTemp`); the backup, a hard link or a
+    copy (`backupFile`); the digests; the rename, `Root.Rename` on Unix;
+    and the owner and mode, set through a descriptor checked to be the
+    file just read (`openChecked`), not by name. On Windows the rename
+    stays `MoveFileEx` by path, for its write-through and its retry of a
+    busy image ([0038-MADR](decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md) F8, D3-A);
   - checks that the locked directory is the one at the path before it reads
     a cleanup receipt, and re-checks it, by the handle's identity, before
     the replace, after it and before commit;
   - undoes the rename through the directory handle when the directory
-    changed after it;
+    changed after it, and removes a backup that a rollback leaves as the
+    target's own file;
   - refuses a staging path that is not a regular file, and a target that is
     no longer the file it resolved, replaced by another file or a symlink
     since `Begin` (`ErrConcurrentUpdate`);
@@ -688,7 +735,10 @@ D9; the threat analysis is
   gives one, its digest (`ErrIntegrity` otherwise);
 - an exact `--version` gets that tag, and a latest release older than the
   running one is refused (`ErrLatestOlder`): a downgrade needs an exact
-  version.
+  version;
+- an `Updater.Apply` installs only the release its `Plan` names, with the
+  same ID, assets, digests, operation and `SHA256SUMS` entry, or nothing,
+  with `ErrPlanStale` ([0038-MADR](decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md) D1-A).
 
 **It does not prove:**
 
@@ -705,7 +755,13 @@ D9; the threat analysis is
   ([TUF](https://theupdateframework.io/security/)), is mitigated only by
   TLS to the API origin; signing does not change that;
 - **the hosts redirects reach:** they are not allow-listed; the checksum,
-  not the host, guards the bytes.
+  not the host, guards the bytes;
+- **that a plan came from this program:** a `Plan` is not signed. `Apply`
+  requires the request to be the plan's and vets the release the plan
+  names as `Run` vets one, so a changed plan can name only a release the
+  request would accept: a plan for the latest release cannot install an
+  older one. A plan carries no approval: `Apply` asks the `Confirmer`
+  unless the request says `Yes`.
 
 **Opt-in checks add:**
 
@@ -806,6 +862,18 @@ D9; the threat analysis is
 - **`scripts/plant-copy.sh FILE OLD NEW`** copies the tracked and untracked
   files with one planted break, for a new test to be seen failing outside
   the tree.
+- **Tests on the production clock** ([0038-MADR](decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md) D3-A): no test
+  keeps a clock of its own. The timing tests of `service` and its
+  backends run in `testing/synctest` bubbles, over fakes that act on the
+  bubble's clock, at the documented default bounds. A test moves into a
+  bubble in the same change that drops its own clock; it starts no real
+  process and waits on no real file inside one, makes one bubble per
+  subtest, and never depends on which of two timers due at the same
+  instant fires first. `selfupdate`'s test seams are fields of the values
+  that use them: the installer's file-system effects (`fsOps`), and the
+  clock, the environment, the terminal check and the running platform.
+  Most of its tests run in parallel. `synctest.Sleep` is not used: it is
+  Go 1.27's, above the floor.
 - **`.golangci.yml`** enables `revive`'s `exported`, `package-comments` and
   `var-naming` rules in place of `golint`. Test files are exempt from
   `errcheck`, `gosec`, `unparam`, `revive`, `gocritic` and `goconst`.
