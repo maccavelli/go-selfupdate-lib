@@ -1,6 +1,6 @@
 ---
-status: in-progress
-date: 2026-10-29
+status: complete
+date: 2026-10-30
 associated-madr: "0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md"
 ---
 <!-- markdownlint-disable MD004 MD013 MD024 MD060 -->
@@ -882,3 +882,46 @@ Files: from the list, `docs/architecture.md`, `docs/guides/extending-selfupdate.
 6. **The proxy:** `go list -m -json github.com/maccavelli/go-selfupdate-lib@v1.23.0` gives `Hash 67520be8af1ad1b6228c29e4b1aa3e61e1ca7ae4`, `Ref refs/tags/v1.23.0`, and `@latest` resolves to `v1.23.0`.
 
 Release 2 is out. Q19 closes the plan on the owner's word.
+
+### Q19: closing (2026-10-30)
+
+The owner committed and pushed the pin commit as `3e39b54`; its Docs run 41054684488 passed. On "proceed to Q19, and remove s6 from the WSL":
+
+1. **Host state, before:** a read-only inventory of the Linux test host, the WSL, the Windows test host and this Mac found nothing of this plan's: no scratch copy from its runs, no `selfupdate*` systemd unit (system or user scope), no `selfupdate` scheduled task or service, no loaded `selfupdate` launchd job and no agent plist. Each closing run below copied the tree and removed its copy.
+2. **s6 removed from the WSL.** `apt-get install -y -q s6` of 2026-10-29 (Q12 step 5) brought in five packages: `s6`, `libs6-2.12t64`, `execline`, `libexecline2.9` and `libskarnet2.14t64`, as the apt history shows. A simulated purge removed exactly those five, and `apt-get purge -y -q` of them exited 0. After it: no s6, execline or skarnet package is installed, `s6-svscan` is not found, and no s6 process runs.
+3. **Host state, after:** on the Linux test host and the WSL, 0 scratch copies, 0 `selfupdate*` units in either scope and 0 unit files; on the Windows test host, 0 copies of this plan's runs, 0 `selfupdate` tasks and 0 services; on this Mac, 0 loaded `selfupdate` jobs and 0 agent plists. The GUI domain's override database holds 8 entries: Amendment A1's P6 label, the live tests' fixed label, and six of the form `io.github.maccavelli.selfupdate.live.<hex>` from runs that used random labels. `launchctl` has no command that removes an override entry, so they stay, as A1 records.
+4. **`make gate` at `3e39b54`:** every step rc=0; `apicheck` "compatible with v1.23.0"; the fuzz step ran `FuzzParsePlan` for 20 s among `selfupdate`'s six targets ("6 fuzz targets ran clean in ./selfupdate"); `links` 867 in 101 files, 0 broken; `arch` 20 rows, 0 differ; `overall=0`. `make check-records`: 88 records, 0 findings.
+5. **A grep on this host:** `git grep -E` with `\b` printed no match even where matches exist; V6's pattern matched nothing in files that hold the calls the Q13 record names. The greps for V2, V3 and V6 were run again with Python's `re` over the tracked files, after a positive control (`PollHealthy` in `selfupdate/service`: 32 matches). The answers below are from that run.
+
+### Verification, at closing (2026-10-30)
+
+* **V1 (records):** the MADR carries Amendments A1 (probe P6), A2 (a live run requires its exact skips, from D7), A3 (probe P7, from D9) and A4 (systemd's `Start` reports a crashed start as unhealthy, from D10). Deviations D1 to D15 are each recorded above, dated; those that changed no decision or fact (D1 to D6, D8, D11 to D15) changed only a phase's file list or a test's place, and amend nothing in the MADR. `make check-records`: 0 findings. At each tag, the code was what the record of the phase before it describes: `v1.22.3` on `0620e96` after Q8, `v1.23.0` on `67520be` after Q17.
+* **V2 (bubbles):**
+  * no match in any `.go` file for `pollClock`, `fakeClock`, `useFakeClock`, `virtualClock`, `realClock`, `timeNow` or `setSeam`; `vclock` has none either. `healthOver` remains only as the name of a test helper that builds a `Supervised` inside the bubble (Q1 step 6).
+  * no `now` or `sleep` field or variable remains in `Supervised`, `scm.Service` or `taskscheduler.Task`, the three the MADR names. The one `now func() time.Time` in a non-test file is `GitHubSource.now` (`github.go:53`), a field of the value, defaulting to `time.Now`, as Q7 step 2 left it; it is not a package-level seam and not one of the three.
+  * the moved tests pass under `-race`: the gate's race and shuffle steps on this Mac today; the Linux and Windows test hosts at each phase (Q1 to Q4); `go126` and the three `validate` jobs on both tags' CI. Each was seen failing on a plant, in Q1 to Q4's tables. P1's test fails on the `v1.22.0` file (Q1 step 1).
+* **V3 (seams):** a scan of every package-level variable in `selfupdate`'s non-test files lists 32: sentinel errors, regular expressions, two tables (`checkOutcomes`, `failureClasses`), `forwardedHeaders`, and `var _ map[Plan]struct{}` (D14). None holds a function. `setSeam` has no match. `go test -race -shuffle=on -count=3 ./selfupdate/` at `3e39b54`: `ok` on this Mac (74.6 s), the Linux test host (67.9 s) and the Windows test host (60.1 s), `CGO_ENABLED=1` on each. Each moved seam's test was seen failing in Q6's table and Q7 step 9.
+* **V4 (servicetest):** the package's tests pass in the gate and on both tags' CI. Q9 step 5 has the eight checks, `RequireAll`, `ContextFree`, the runner's three checks and the depguard rule each refusing a plant. Every backend passed over its fake (Q11) and its real manager (Q12). In `v1.23.0`'s tag CI: `TestLiveConformance` for systemd (21.45 s and 25.91 s), launchd (54.41 s) and scm (38.80 s), `TestLiveTaskConformance` (4.73 s) and `TestLiveSupervisedS6/conformance` (17.51 s) are each `--- PASS`. 0037-MADR F1 to F4 and 0035-MADR Amendment A3, planted, each failed their backend's conformance (Q11 step 3, Q12 step 3).
+* **V5 (F11):** each fix was seen failing first, on HEAD's file of the time or with its check planted out: scm `Start` (Q10 step 2), launchd's one deadline (step 4), launchd's missing plist (step 5), `Supervised.Start` (step 6), the codesign and ghattest fakes (step 7). The guide states each (step 8), and Q17 carried them to the migration guide's §23.
+* **V6 (root):** the scan of `os.Remove`, `RemoveAll`, `Rename`, `Lstat`, `Stat`, `Chmod`, `Chown`, `Lchown`, `Link`, `CreateTemp`, `Open`, `OpenFile`, `ReadFile`, `WriteFile`, `OpenRoot`, `openAbsFile` and `joinRemove` over the replace files, `target.go` among them, finds 10 calls, the ones Q13 step 8 names:
+  * in `session.go`: `checkDir`'s `os.Stat` (`:401`), and `beginSession`'s `os.OpenRoot` and its identity check's `os.Stat` (`:588`, `:608`);
+  * in `target.go`: `resolveTarget`'s and `revalidateTarget`'s reads (`:16`, `:34`, `:129`, `:140`, `:240`);
+  * in `cleanup_windows.go`: the Windows receipt read (`:186`, `:196`).
+
+  None is on the Unix replacement path. P2's test failed before Q13 and passes after it (Q13 step 1).
+* **V7 (plans):** Q14 to Q16's tests pass, in the gate's race and shuffle steps and on the tag's CI. `TestRunCallOrderFailureBoundaries`, `updater_contract_test.go` and `golden_test.go` were unchanged, and `testdata/golden/` gained only `plan.golden` (Q14 step 8). The end-to-end test installs the planned release over a newer one (Q15 step 4). `FuzzParsePlan` runs in `make gate` (step 4 above).
+* **V8 (API):** `apidiff`, between `git archive`s of the tags: `v1.22.2` to `v1.22.3`, no change; `v1.22.3` to `v1.23.0`, 17 changes, every one "added": `cli.HandOff.DetachPlan` and `Planned`; `service.EnvHandOffPlan`, `HandOffPlanFunc` and `LoadHandOffPlan`; `selfupdatetest`'s `(*FakeSource).Publish` and `(*GitHubServer).Publish`; `selfupdate`'s `(*Updater).Apply`, `(*Updater).Plan`, `AssetDocument`, `ErrPlanStale`, `ParsePlan`, `Plan`, `PlanDocument`, `PlanSchema` and `StartApply`; and the package `selfupdate/service/servicetest`. `go doc` exits 0 for each, with its doc comment. The gate's `apicheck` reports compatibility with `v1.23.0`.
+* **V9 (release):** `v1.22.3`'s tag CI, run 40728965923, and `v1.23.0`'s, run 40990578974: each `success`, 18 of 18 jobs. The proxy serves `v1.22.3` at `0620e96ba7eb47d45cc94b474dc2db87d029ce40`, which was `@latest` until `v1.23.0` (Q8 step 6), and `v1.23.0` at `67520be8af1ad1b6228c29e4b1aa3e61e1ca7ae4`, `Ref refs/tags/v1.23.0`; `@latest` resolves to `v1.23.0`.
+
+Not done here, as the plan's scope says, or as found:
+
+* The set-aside items stay out: `Availability.Plan` and a plan-returning `Checker`, a `StartPlan` stream, `Root.Chmod`, and `CheckNoLeak` per bubble.
+* The plant experiments were not rerun at closing. V2 to V7's "seen failing" rests on each phase's table, recorded when it ran.
+* Leftovers this plan's runs cannot be shown to have made stay on the hosts. This phase removes only what this plan's runs left. They are:
+  * on the Windows test host's temporary directory: 509 empty `selfupdate-artifact-*` directories from 2026-09-17 to 2026-10-01; four test directories from 2026-10-12 to 2026-10-18; and 34 `sulib-*` remote-run copies from 2026-10-23 and 2026-10-24;
+  * in the WSL: one `selfupdate-live-run-*` directory from 2026-10-04;
+  * in this Mac's temporary directory: nine fixture directories of `internal/cmd/selfupdate-release`'s tests, from 2026-10-14 and 2026-10-27. Test runs that did not reach their exit cleanup left them; they cannot be traced to a phase.
+* The launchd override entries of step 3 stay.
+* Programs adopt `v1.23.0` in their own repositories.
+
+The plan is complete.

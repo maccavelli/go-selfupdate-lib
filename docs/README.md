@@ -95,7 +95,7 @@ name, and the files they cite moved with the rename
 | 0037 | MADR | [Make the backend fakes honour their context, and bound every stop command the way its wait is bounded](decisions/0037-MADR-honour-contexts-in-backend-fakes-and-stop-commands.md) | accepted |
 | 0037 | PLAN | [Implement context-honest fakes and bounded stop commands for systemd, launchd and Task Scheduler](decisions/0037-PLAN-honour-contexts-in-backend-fakes-and-stop-commands.md) | complete |
 | 0038 | MADR | [Improve the API and its implementation three ways: a pinned update plan, a lifecycle conformance check, and tests whose clock is the one production uses](decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md) | accepted |
-| 0038 | PLAN | [Implement a pinned update plan, a lifecycle conformance check, and tests on the production clock](decisions/0038-PLAN-pinned-plans-lifecycle-conformance-and-bubble-tests.md) | in-progress |
+| 0038 | PLAN | [Implement a pinned update plan, a lifecycle conformance check, and tests on the production clock](decisions/0038-PLAN-pinned-plans-lifecycle-conformance-and-bubble-tests.md) | complete |
 
 ## I want to…
 
