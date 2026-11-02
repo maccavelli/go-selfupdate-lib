@@ -1,6 +1,6 @@
 ---
 status: proposed
-date: 2026-11-01
+date: 2026-11-02
 associated-madr: "0040-MADR-close-four-open-items-after-v1-23-1.md"
 ---
 <!-- markdownlint-disable MD004 MD013 MD024 MD060 -->
@@ -8,7 +8,7 @@ associated-madr: "0040-MADR-close-four-open-items-after-v1-23-1.md"
 # Implement D3: test Task Scheduler's `Stop` when its bound ends within the `RequestStop` grace
 
 Associated MADR: [0040-MADR-close-four-open-items-after-v1-23-1.md](0040-MADR-close-four-open-items-after-v1-23-1.md)
-(D3-A, proposed).
+(D3-A, as the owner chose on 2026-11-02).
 
 ## Goal
 
@@ -166,4 +166,10 @@ Files: `selfupdate/service/taskscheduler/lifecycle_test.go`, `selfupdate/service
 
 ## Execution record
 
-Not started. This plan is `proposed`.
+### The owner's answers (2026-11-02)
+
+* **Decisions:** "Accept D2-A, D3-A, D4-A (Recommended)". D3-A is the owner's decision.
+* **Order:** "Records, then D4, D3, D2 (Recommended)". This plan runs second, after D4's, and before D2's release, which then carries T1 step 3's doc sentence.
+* **Host tests:** "As written (Recommended)": T1 step 7's Windows run.
+
+This plan stays `proposed` until the owner approves its execution.

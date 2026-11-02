@@ -1,6 +1,6 @@
 ---
 status: proposed
-date: 2026-11-01
+date: 2026-11-02
 associated-madr: "0040-MADR-close-four-open-items-after-v1-23-1.md"
 ---
 <!-- markdownlint-disable MD004 MD013 MD024 MD060 -->
@@ -8,7 +8,7 @@ associated-madr: "0040-MADR-close-four-open-items-after-v1-23-1.md"
 # Implement D4: record in 0038-PLAN that the host leftovers were removed
 
 Associated MADR: [0040-MADR-close-four-open-items-after-v1-23-1.md](0040-MADR-close-four-open-items-after-v1-23-1.md)
-(D4-A, proposed).
+(D4-A, as the owner chose on 2026-11-02).
 
 ## Goal
 
@@ -115,4 +115,9 @@ Files: `docs/decisions/0038-PLAN-pinned-plans-lifecycle-conformance-and-bubble-t
 
 ## Execution record
 
-Not started. This plan is `proposed`.
+### The owner's answers (2026-11-02)
+
+* **Decisions:** "Accept D2-A, D3-A, D4-A (Recommended)". D4-A is the owner's decision.
+* **Order:** "Records, then D4, D3, D2 (Recommended)". The records commit comes first, then this plan's H1 as a commit of its own, on the owner's approval.
+
+This plan stays `proposed` until the owner approves its execution.

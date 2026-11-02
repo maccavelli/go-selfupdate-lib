@@ -1,6 +1,6 @@
 ---
 status: proposed
-date: 2026-11-01
+date: 2026-11-02
 associated-madr: "0040-MADR-close-four-open-items-after-v1-23-1.md"
 ---
 <!-- markdownlint-disable MD004 MD013 MD024 MD060 -->
@@ -8,7 +8,7 @@ associated-madr: "0040-MADR-close-four-open-items-after-v1-23-1.md"
 # Implement D2: redact `Env` when `service.Command`, `service.HandOff`, `service.ExecOptions` and `ghattest.Options` are formatted, and release `v1.24.0`
 
 Associated MADR: [0040-MADR-close-four-open-items-after-v1-23-1.md](0040-MADR-close-four-open-items-after-v1-23-1.md)
-(D2-A, proposed).
+(D2-A, as the owner chose on 2026-11-02, with the helpers in a new `internal/redact`).
 
 ## Goal
 
@@ -24,7 +24,7 @@ Associated MADR: [0040-MADR-close-four-open-items-after-v1-23-1.md](0040-MADR-cl
 | Phase | What | Commit |
 | :--- | :--- | :--- |
 | E0 | the records: the 0040 MADR, its three PLANs and their index rows | records only, shared with the D3 and D4 PLANs |
-| E1 | the methods and helpers in `runner.go`, `handoff.go`, `execreconciler.go` and `ghattest.go`; two new test files; `CHANGELOG.md`, the migration guide's §24, the extending guide, `docs/architecture.md`; this PLAN's record | one commit; its push runs full CI |
+| E1 | the methods in `runner.go`, `handoff.go`, `execreconciler.go` and `ghattest.go`; the new `internal/redact` package and its test; two new test files; the depguard rules in `.golangci.yml`; `AGENTS.md`; `CHANGELOG.md`, the migration guide's §24, the extending guide, `docs/architecture.md`; this PLAN's record | one commit; its push runs full CI |
 | E2 | `v1.24.0`: the tag, its CI, the pin commit, the proxy | the owner's tag, then a pin commit |
 | E3 | closing | records only |
 
@@ -34,13 +34,14 @@ Associated MADR: [0040-MADR-close-four-open-items-after-v1-23-1.md](0040-MADR-cl
 * **Changing a field's type** (D2-D), **redacting by name pattern** (D2-B), and an **exported redaction helper** (D2-C). The MADR rejects each.
 * **Other fields that could hold a secret.** `HandOff.Args`, `Command.Args` and the paths print as they are (F2.7).
 * **`ghattest.Policy` on its own.** It holds no secret and gains no method. `Options` prints it inside its own `String`.
-* **A shared internal package for the helpers.** See E1 step 3.
+* **`selfupdate`'s own `redacted` and `setOrNil`** (`credentials.go:64-77`). They stay where they are, and `selfupdate` does not import `internal/redact`. The owner chose the package for the four new types only (2026-11-02).
+* **The architecture table check itself.** At `3acd87f` it compares only the rows the table has: the pre-check's plant A1 removed the new row and the check still exited 0. [0040-PLAN-require-architecture-table-rows.md](0040-PLAN-require-architecture-table-rows.md) (D5, the MADR's Amendment A1) makes it require a row for every directory Go builds, and runs before this plan. If D5 is not in the tree when E1 starts, that is a deviation, and E1 step 8 asserts the row by name until it is.
 * **Programs that adopt `v1.24.0`,** which do so in their own repositories.
 * **Pushes and the tag,** which happen only on the owner's word, in the same turn.
 
 ## Rules
 
-* E1 ends in one commit, `git commit --no-edit`, made by the owner, after `make pre-add-check FILES="<the six .go files>"` exits 0.
+* E1 ends in one commit, `git commit --no-edit`, made by the owner, after `make pre-add-check FILES="<the eight .go files>"` exits 0. `actionlint` is not needed, since no workflow changes.
 * Every edit to an existing file is a Python script under the scratchpad that asserts each old string occurs exactly once before replacing it.
 * Every plant is made with `scripts/plant-copy.sh` on a scratch copy, never in the tree. Each copy is removed after its run.
 * Gate and tool output goes to the scratchpad, with its exit status captured before any filter.
@@ -55,7 +56,7 @@ What each method prints. The same rules apply to all four types:
 * a string field is quoted, with `strconv.Quote`;
 * a `[]string` other than `Env` is printed as `%q` prints it, `[]` when empty or nil;
 * a function or interface field is printed as `<set>` or `<nil>`;
-* every `Env` entry is redacted, by `redactEnv` (E1 step 3).
+* every `Env` entry is redacted, by `redact.Env` (E1 step 3).
 
 | `Env` entry | Prints as |
 | :--- | :--- |
@@ -95,14 +96,16 @@ Files:
 
 * `selfupdate/service/runner.go`, `handoff.go` and `execreconciler.go`;
 * `selfupdate/verify/ghattest/ghattest.go`;
+* `internal/redact/redact.go` and `internal/redact/redact_test.go`, both new;
 * `selfupdate/service/redact_test.go` and `selfupdate/verify/ghattest/redact_test.go`, both new;
+* `.golangci.yml` and `AGENTS.md`;
 * `CHANGELOG.md`, `docs/guides/migrating-from-mcplib-selfupdate.md`, `docs/guides/extending-selfupdate.md` and `docs/architecture.md`;
 * this PLAN, and `docs/README.md` (this plan's row).
 
 1. **Baseline.**
    * `git status --short` is clean.
-   * `git diff --stat 4a9ead5 HEAD -- selfupdate/service/runner.go selfupdate/service/handoff.go selfupdate/service/execreconciler.go selfupdate/verify/ghattest` prints nothing, so the four types are as the MADR read them.
-   * `git grep -n 'fixtureSecret\|secretForms' -- selfupdate/service selfupdate/verify` prints nothing, so the new tests' names are free.
+   * `git diff --stat 4a9ead5 HEAD -- selfupdate/service/runner.go selfupdate/service/handoff.go selfupdate/service/execreconciler.go selfupdate/verify/ghattest .golangci.yml` prints nothing, so the four types and the rules are as the MADR read them.
+   * `internal/redact` does not exist, and `git grep -n 'fixtureSecret\|secretForms' -- selfupdate/service selfupdate/verify` prints nothing, so the new names are free.
 2. **The methods.** Each type's four methods follow its declaration, in the order `String`, `GoString`, `Format`, `LogValue`, as `Credential`'s do in `credentials.go`. `Command`'s are, verbatim:
 
    ```go
@@ -110,8 +113,8 @@ Files:
    // <redacted>, or <empty> for an empty value, an entry with no "=" as
    // <redacted>, a nil Env as <nil>, and Stdin only as its length.
    func (c Command) String() string {
-   	return "Command{Path:" + strconv.Quote(c.Path) + " Args:" + quoted(c.Args) +
-   		" Env:" + envText(c.Env) + " Stdin:" + lengthText(c.Stdin) + "}"
+   	return "Command{Path:" + strconv.Quote(c.Path) + " Args:" + redact.Quoted(c.Args) +
+   		" Env:" + redact.EnvText(c.Env) + " Stdin:" + redact.Length(c.Stdin) + "}"
    }
 
    // GoString implements fmt.GoStringer. It is String.
@@ -126,28 +129,40 @@ Files:
    // LogValue implements slog.LogValuer, with Env and Stdin as String
    // prints them.
    func (c Command) LogValue() slog.Value {
-   	return slog.GroupValue(slog.String("path", c.Path), slog.Any("args", c.Args), envAttr(c.Env),
-   		slog.String("stdin", lengthText(c.Stdin)))
+   	return slog.GroupValue(slog.String("path", c.Path), slog.Any("args", c.Args), redact.EnvAttr(c.Env),
+   		slog.String("stdin", redact.Length(c.Stdin)))
    }
    ```
 
-   `HandOff`, `ExecOptions` and `ghattest.Options` follow the same shape, with the fields and keys of "The output" above. Each file's imports gain what it uses:
-   * `runner.go`: `io`, `log/slog`, `strconv` and `strings`;
+   `HandOff`, `ExecOptions` and `ghattest.Options` follow the same shape, with the fields and keys of "The output" above. `ghattest.Options` prints `SignerDigests` with `redact.Quoted`. Each file's imports gain `github.com/maccavelli/go-selfupdate-lib/internal/redact` and what else it uses:
+   * `runner.go`: `io`, `log/slog` and `strconv`;
    * `handoff.go`: `io`, `log/slog` and `strconv`;
    * `execreconciler.go`: `io` and `log/slog`;
    * `ghattest.go`: `io`, `log/slog` and `strconv`.
-
-   All are standard library, so no depguard rule changes.
-3. **The helpers.** These are unexported, at the end of `runner.go`, verbatim:
+3. **The package `internal/redact`.** This is the owner's answer of 2026-11-02: one copy of the helpers, which `service` and `ghattest` both import. It is not an exported API: the `internal/` directory keeps it within the module, so `apidiff` does not report it. `internal/redact/redact.go`, verbatim:
 
    ```go
-   // nilText stands in for a nil value a formatter does not print.
-   const nilText = "<nil>"
+   // Package redact is what the formatters of service.Command,
+   // service.HandOff, service.ExecOptions and ghattest.Options share: an
+   // environment with its values hidden, and stand-ins for what a formatter
+   // does not print (docs/decisions/0040-MADR-close-four-open-items-after-v1-23-1.md
+   // D2-A).
+   package redact
 
-   // redactEnv is env with every value hidden: NAME=<redacted>, or
-   // NAME=<empty> for an empty value, and <redacted> for an entry with no "="
-   // (0040-MADR D2-A). A nil env stays nil.
-   func redactEnv(env []string) []string {
+   import (
+   	"fmt"
+   	"log/slog"
+   	"strconv"
+   	"strings"
+   )
+
+   // Nil stands in for a nil value a formatter does not print.
+   const Nil = "<nil>"
+
+   // Env is env with every value hidden: NAME=<redacted>, or NAME=<empty> for
+   // an empty value, and <redacted> for an entry with no "=", which may be the
+   // secret itself. A nil env stays nil.
+   func Env(env []string) []string {
    	if env == nil {
    		return nil
    	}
@@ -166,49 +181,55 @@ Files:
    	return out
    }
 
-   // envText is env as String prints it: <nil>, or its redacted entries,
+   // EnvText is env as a String method prints it: Nil, or Env's entries,
    // quoted.
-   func envText(env []string) string {
+   func EnvText(env []string) string {
    	if env == nil {
-   		return nilText
+   		return Nil
    	}
-   	return quoted(redactEnv(env))
+   	return Quoted(Env(env))
    }
 
-   // envAttr is env as LogValue gives it.
-   func envAttr(env []string) slog.Attr {
+   // EnvAttr is env as a LogValue method gives it, under the key "env".
+   func EnvAttr(env []string) slog.Attr {
    	if env == nil {
-   		return slog.String("env", nilText)
+   		return slog.String("env", Nil)
    	}
-   	return slog.Any("env", redactEnv(env))
+   	return slog.Any("env", Env(env))
    }
 
-   // quoted is s as %q prints it, each element quoted.
-   func quoted(s []string) string { return fmt.Sprintf("%q", s) }
+   // Quoted is s as %q prints it, each element quoted.
+   func Quoted(s []string) string { return fmt.Sprintf("%q", s) }
 
-   // lengthText stands in for bytes a formatter does not print: <nil>, or
-   // their length.
-   func lengthText(b []byte) string {
+   // Length stands in for bytes a formatter does not print: Nil, or
+   // <N bytes>.
+   func Length(b []byte) string {
    	if b == nil {
-   		return nilText
+   		return Nil
    	}
    	return "<" + strconv.Itoa(len(b)) + " bytes>"
    }
 
-   // setOrNil stands in for a value a formatter does not print.
-   func setOrNil(set bool) string {
+   // SetOrNil stands in for a value a formatter does not print: <set>, or
+   // Nil.
+   func SetOrNil(set bool) string {
    	if set {
    		return "<set>"
    	}
-   	return nilText
+   	return Nil
    }
    ```
 
-   `ghattest.go` ends with a copy of `nilText`, `redactEnv`, `envText`, `envAttr`, `quoted` and `setOrNil`. It needs no `lengthText`. The copy's first comment names `service`'s as the original, and says why it is copied: `service`'s helpers are unexported, and `ghattest` may import only the standard library, `selfupdate` and `service` (`.golangci.yml`, `selfupdate-verify-ghattest`).
+   `Nil` is a constant because `golangci-lint`'s `goconst` refused three `"<nil>"` literals in one file in the first pre-check.
 
-   Sharing them instead would take either of two routes. One is an exported helper, which is D2-C's shape and which the MADR rejects. The other is a new `internal/` package, which needs its own depguard rule, a row in `docs/architecture.md` and a line in `AGENTS.md`, for the 61 lines the helpers take in the pre-check. The copy is the smaller change. If the owner prefers the internal package, it is a deviation: this PLAN gains the three files, and the MADR is unchanged.
+   `internal/redact/redact_test.go` tests the package on its own (`t.Parallel()`).
+   * `TestEnv`: `Env` maps `GH_TOKEN=secret`, `EMPTY=`, `secret`, `=C:=C:\x` (a Windows drive entry) and `A=b=c` to `GH_TOKEN=<redacted>`, `EMPTY=<empty>`, `<redacted>`, `=<redacted>` and `A=<redacted>`. A nil env stays nil, and an empty one stays empty and non-nil.
+   * `TestText`: `EnvText`, `Quoted`, `Length` and `SetOrNil` for nil, empty and set inputs, and `EnvAttr`'s key and kind.
 
-   `nilText` is a constant because `golangci-lint`'s `goconst` refused three `"<nil>"` literals in `runner.go`, in the pre-check below.
+   **The depguard rules** in `.golangci.yml`, as `AGENTS.md` ("Dependencies") requires of a new package:
+   * a rule `internal-redact`, which sorts after `banned`, beside the other `internal-*` rules: files `**/internal/redact/*.go` and `!$test`, allow `$gostd` only, with a comment citing 0040-MADR D2-A;
+   * `service` and `selfupdate-verify-ghattest` each gain the allow `github.com/maccavelli/go-selfupdate-lib/internal/redact$`;
+   * `other-packages` gains the exclusion `"!**/internal/redact/*.go"`.
 4. **The doc comments.** Each type's comment gains a paragraph after its first, after a `//` line, as `Credential`'s says what it redacts. In order, `Command`, `HandOff`, `ExecOptions` and `ghattest.Options`:
 
    ```go
@@ -249,21 +270,23 @@ Files:
      * a struct field.
 
      The slice and struct field hold a copy with `Runner` nil, since encoding/json cannot encode a `Runner`, and through slog's JSON handler they must show the secret, as above. The test also requires the `ghattest.Options` line of "The output" exactly, and `Env:<nil> Runner:<nil> Timeout:1m0s` for `Options{Timeout: time.Minute}`.
-6. **Seen failing.** Each plant runs `go test -count=1 -run '^(TestEnvNeverFormats|TestEnvFormatText|TestOptionsEnvNeverFormats)$' ./selfupdate/service/ ./selfupdate/verify/ghattest/` in a copy from `scripts/plant-copy.sh`, which holds the new code and tests. Each must exit 1, and the unplanted tree must exit 0.
+6. **Seen failing.** Each plant is made in a copy from `scripts/plant-copy.sh`, which holds the new code and tests. The test plants run `go test -count=1 -run '^(TestEnvNeverFormats|TestEnvFormatText|TestOptionsEnvNeverFormats|TestEnv|TestText)$' ./selfupdate/service/ ./selfupdate/verify/ghattest/ ./internal/redact/`. The rule plants run `golangci-lint run -c .golangci.yml` on the same three packages, with `GOOS=linux` and `CGO_ENABLED=0`. Each must exit 1, and the unplanted tree must exit 0.
 
-   | Plant | File | OLD → NEW | Fails, as the pre-check saw |
+   | Plant | File | OLD → NEW | Fails, as the pre-check of 2026-11-02 saw |
    | :--- | :--- | :--- | :--- |
-   | F1 | `runner.go` | `'func (c Command) Format('` → `'func (c Command) unusedFormat('` | `Command with %d prints the secret as "fixture-secret-0123"` |
-   | F2 | `handoff.go` | `'func (h HandOff) Format('` → `'func (h HandOff) unusedFormat('` | `HandOff with %x does not name GH_TOKEN` (hex of `String`), and `%d` prints the secret |
+   | F1 | `runner.go` | `'func (c Command) Format('` → `'func (c Command) unusedFormat('` | `slice with %d prints the secret as "fixture-secret-0123"` |
+   | F2 | `handoff.go` | `'func (h HandOff) Format('` → `'func (h HandOff) unusedFormat('` | `HandOff with %x does not name GH_TOKEN` (hex of `String`) |
    | F3 | `execreconciler.go` | `'func (o ExecOptions) Format('` → `'func (o ExecOptions) unusedFormat('` | as F2, for `ExecOptions` |
    | F4 | `ghattest.go` | `'func (o Options) Format('` → `'func (o Options) unusedFormat('` | as F2, for `Options` |
-   | L1 | `runner.go` | `'func (c Command) LogValue('` → `'func (c Command) unusedLogValue('` | `Command through slog's json handler prints the secret` |
+   | L1 | `runner.go` | `'func (c Command) LogValue('` → `'func (c Command) unusedLogValue('` | `Command through slog's json handler prints the secret as "fixture-secret-0123"` |
    | L2 | `ghattest.go` | `'func (o Options) LogValue('` → `'func (o Options) unusedLogValue('` | `Options through slog's json handler does not name GH_TOKEN`, since encoding/json fails on the `Runner` |
-   | R1 | `runner.go` | `'out[i] = name + "=<redacted>"'` → `'out[i] = e'` | `*Command with %v prints the secret` |
-   | R2 | `ghattest.go` | `'out[i] = name + "=<redacted>"'` → `'out[i] = e'` | `Options with %v prints the secret` |
-   | N1 | `runner.go` | `'out[i] = name + "=<redacted>"'` → `'out[i] = "<redacted>"'` | `HandOff with %v does not name GH_TOKEN` |
+   | R1 | `internal/redact/redact.go` | `'out[i] = name + "=<redacted>"'` → `'out[i] = e'` | `slice with %v prints the secret as "fixture-secret-0123"` |
+   | N1 | `internal/redact/redact.go` | `'out[i] = name + "=<redacted>"'` → `'out[i] = "<redacted>"'` | `HandOff with %v does not name GH_TOKEN` |
+   | E1 | `internal/redact/redact.go` | `'out[i] = name + "=<empty>"'` → `'out[i] = name + "=<redacted>"'` | `FAIL` in all three packages: `TestEnvFormatText`, `TestOptionsEnvNeverFormats`'s exact line, and `TestEnv` |
+   | G1 | `internal/redact/redact.go` | `'\t"strings"\n)'` → an import of `internal/testproc` and `var _ = testproc.CheckNoLeak` | `import 'github.com/maccavelli/go-selfupdate-lib/internal/testproc' is not allowed from list 'internal-redact' (depguard)` |
+   | G2 | `.golangci.yml` | `service`'s `internal/redact$` allow removed, OLD being its `internal/procfs$` line and the allow after it | `import 'github.com/maccavelli/go-selfupdate-lib/internal/redact' is not allowed from list 'service' (depguard)`, in `execreconciler.go`, `handoff.go` and `runner.go` |
 
-   F1 to F4 are 0025-PLAN S2 step 3's plant, one per type.
+   F1 to F4 are 0025-PLAN S2 step 3's plant, one per type. G1 and G2 show that the new rule and the new allow are live (`AGENTS.md`, "Checks").
 7. **The documents.**
    * **`CHANGELOG.md`:** `## v1.24.0 - <the tag's date>`.
      * Under Added: `String`, `GoString`, `Format` and `LogValue` on `service.Command`, `service.HandOff`, `service.ExecOptions` and `ghattest.Options`.
@@ -281,24 +304,41 @@ Files:
      It cites the MADR.
    * **`docs/guides/extending-selfupdate.md`** gains one bullet in "Run as a service", after the `ExecOptions.Env` sentence (`:734`), and one in "Check build provenance". Each says "Since `v1.24.0`, `fmt` and `log/slog` print … with each `Env` value as `<redacted>`", and that `encoding/json` does not.
    * **`docs/architecture.md`:**
-     * the redaction bullet (`:221-224`) gains the four types and their files;
-     * the package table's `selfupdate/service/` row goes from 22 / 29 to 22 / 30;
-     * the `selfupdate/verify/ghattest/` row goes from 2 / 3 to 2 / 4.
+     * the tree (`:121-128`) gains `internal/redact/`, after `internal/procfs/`: "the formatters' redaction: an environment's values hidden";
+     * the redaction bullet (`:221-224`) gains the four types, their files, and `internal/redact`;
+     * a bullet after `internal/procfs`'s (`:397`) says what `internal/redact` holds and who imports it;
+     * the package table:
+       * `selfupdate/service/` goes from 22 / 29 to 22 / 30, and its imports gain `internal/redact`;
+       * `selfupdate/verify/ghattest/` goes from 2 / 3 to 2 / 4, and its imports gain `internal/redact`;
+       * a new row after `internal/procfs/`: `` `internal/redact/` | `redact` | 1 | 1 | none ``.
+   * **`AGENTS.md`:**
+     * the scope paragraph names `internal/redact` after `internal/procfs`: what it hides and stands in for, for the formatters of the four types, citing 0040-MADR D2-A;
+     * "Dependencies" lists the rule `internal-redact` with the other `internal-*` rules.
 8. **Checks.**
-   * `make gate`: every step rc=0, `overall=0`. That covers `lint` 0 issues on three GOOS, `tidy` clean, `apicheck` "compatible with v1.23.1", `arch` 0 differ, and `ids` 0 findings.
+   * `make gate`: every step rc=0, `overall=0`. That covers `lint` 0 issues on three GOOS, `tidy` clean, `apicheck` "compatible with v1.23.1", `arch` "21 rows in docs/architecture.md, 0 differ, 0 without a row" (D5's check), and `ids` 0 findings.
+   * D5's check covers `internal/redact/`'s row. Seen failing: on a scratch copy of E1's tree with that row removed, `--arch` must exit 1 with `internal/redact: 1 non-test and 1 test .go files, and no row in the table`.
    * `apidiff` between a `git archive` of `v1.23.1` and the tree lists exactly the 16 methods, each "added", and nothing incompatible.
    * Under `GOTOOLCHAIN=go1.26.10`, `go vet ./...` and `go test -count=1 ./...` exit 0.
-   * `go test -race -count=1 ./selfupdate/service/ ./selfupdate/verify/ghattest/`, with `CGO_ENABLED=1`, on a copy of the tree on the Linux test host and on the Windows test host: `ok` each. Each copy is removed after its run.
+   * `go test -race -count=1 ./selfupdate/service/ ./selfupdate/verify/ghattest/ ./internal/redact/`, with `CGO_ENABLED=1`, on a copy of the tree on the Linux test host and on the Windows test host: `ok` each. Each copy is removed after its run.
    * `make markdownlint`, `make check-records`, `make docs-check`, and `scripts/check-docs.sh --ids` on the changed files: exit 0 each.
 9. The owner commits. The push runs full CI, which must pass every job.
 
-**Pre-check, 2026-11-01.** E1 steps 2 to 6 were prototyped on a scratch copy of `4a9ead5`, not in the tree (scratchpad scripts `p40d2.py`, then `p40d2b.py` with `nilText`). The code and tests were as written above. Results:
+**Pre-check, 2026-11-01.** E1 was first prototyped with the helpers unexported in each package, on a scratch copy of `4a9ead5`, not in the tree (scratchpad scripts `p40d2.py`, then `p40d2b.py`). Results:
 
-* `gofmt -l` printed nothing, and `go vet` exited 0 on both packages;
-* the three new tests passed, and so did both packages' other tests;
-* `golangci-lint` reported 0 issues for `GOOS=linux`, `darwin` and `windows`. The first run, without `nilText`, reported one `goconst` issue, `string "<nil>" has 3 occurrences`, which step 3's constant answers;
-* `apidiff` from `v1.23.1` listed the 16 methods as "added", and `-incompatible` listed nothing;
-* each of the nine plants exited 1 with the failure in step 6's table.
+* the three type tests passed;
+* `golangci-lint` reported 0 issues on three GOOS once `"<nil>"` was a constant. The first run reported `goconst`'s `string "<nil>" has 3 occurrences`;
+* `apidiff` listed the 16 methods as "added", and nothing as incompatible;
+* nine plants each exited 1.
+
+**Pre-check, 2026-11-02, as written above.** After the owner's answer, E1 steps 2 to 6 were prototyped with `internal/redact` on a scratch copy of `4a9ead5`, not in the tree (scratchpad script `p40d2c.py`). The `.golangci.yml` changes and the three package-table changes were made too. Results:
+
+* `gofmt -l` printed nothing, and `go vet` exited 0 on the three packages;
+* the five new tests passed, and so did the three packages' other tests;
+* `golangci-lint run ./...` reported 0 issues for `GOOS=linux`, `darwin` and `windows`, depguard included;
+* `scripts/check-docs.sh --arch` reported 21 rows and 0 differ, in a git index of the copy;
+* `apidiff` from `v1.23.1` listed 16 changes, the 16 methods, each "added". `-incompatible` listed nothing, and `internal/redact` is not reported;
+* each of the eleven plants in step 6's table exited 1 with its failure;
+* plant A1, the new table row removed, left `--arch` at exit 0 with 20 rows: the gap D5 closes. D5's pre-check saw its check refuse the same case, an untracked `internal/redact/redact.go` with no row (exit 1).
 
 ### Phase E2: `v1.24.0`
 
@@ -335,8 +375,9 @@ As [0039-PLAN-refresh-golang-x-requirements.md](0039-PLAN-refresh-golang-x-requi
 
 ## Verification
 
-* **V1 (redaction):** `TestEnvNeverFormats`, `TestEnvFormatText` and `TestOptionsEnvNeverFormats` pass at E1's commit, on every CI job and on the two test hosts. Probe E1's seven forms (MADR F2.5) are among them, and none prints the secret.
-* **V2 (seen failing):** the nine plants each fail as E1 step 6's table says.
+* **V1 (redaction):** `TestEnvNeverFormats`, `TestEnvFormatText`, `TestOptionsEnvNeverFormats`, and `internal/redact`'s `TestEnv` and `TestText` pass at E1's commit, on every CI job and on the two test hosts. Probe E1's seven forms (MADR F2.5) are among them, and none prints the secret.
+* **V2 (seen failing):** the eleven plants each fail as E1 step 6's table says, the two depguard plants among them.
+* **V2a (the package):** `internal/redact` is in `.golangci.yml` (its rule, two allows and the `other-packages` exclusion), in `AGENTS.md`, and in `docs/architecture.md`'s tree and table, by name.
 * **V3 (the API):** `apidiff` `v1.23.1` → `v1.24.0` lists the 16 methods, each "added", and nothing else. `make apicheck` reports compatibility with `v1.23.1` before the tag.
 * **V4 (the gates):** `make gate` `overall=0`, the documentation checks exit 0, and the floor's `vet` and `test` pass under `go1.26.10`.
 * **V5 (the release):** the tag's CI is green, its identity legs name `v1.24.0`, and the proxy serves it as `@latest`.
@@ -348,4 +389,13 @@ As [0039-PLAN-refresh-golang-x-requirements.md](0039-PLAN-refresh-golang-x-requi
 
 ## Execution record
 
-Not started. This plan is `proposed`.
+### The owner's answers (2026-11-02)
+
+Asked four questions, with three options each:
+
+* **Decisions:** "Accept D2-A, D3-A, D4-A (Recommended)". D2-A is the owner's decision.
+* **D2 helpers:** "New internal/redact package", not the recommended copy into `ghattest`. E1 steps 2, 3, 6, 7 and 8 were rewritten for it before any execution, and proved again on a scratch copy (E1's pre-check of 2026-11-02). Because nothing had been executed, this is not a deviation. `selfupdate`'s own helpers stay where they are.
+* **Order:** "Records, then D4, D3, D2 (Recommended)". This plan runs last, and its tag carries D3's doc sentence. With the MADR's Amendment A1, D5's plan runs just before it, if the owner accepts D5.
+* **Host tests:** "As written (Recommended)": E1 step 8's Linux and Windows runs.
+
+This plan stays `proposed` until the owner approves its execution.

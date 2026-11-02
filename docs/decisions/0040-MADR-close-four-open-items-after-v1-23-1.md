@@ -1,8 +1,8 @@
 ---
 status: proposed
-date: 2026-11-01
+date: 2026-11-02
 decision-makers: go-selfupdate-lib maintainers
-consulted: "the records' open items, read at 4a9ead5 on 2026-11-01; selfupdate/service, selfupdate/service/taskscheduler and selfupdate/verify/ghattest at 4a9ead5; probes E1, G1 and G2 on scratch copies of 4a9ead5; probe S1, read-only GETs of this repository's settings through the GitHub API, and probe S2, on 2026-11-01; GitHub's documentation on rulesets, private vulnerability reporting, Dependabot alerts and Actions settings, read 2026-11-01; the D2 to D4 citations re-read at 4a9ead5, and the D2 and D3 PLANs' code pre-checked on scratch copies of 4a9ead5, on 2026-11-01"
+consulted: "the records' open items, read at 4a9ead5 on 2026-11-01; selfupdate/service, selfupdate/service/taskscheduler and selfupdate/verify/ghattest at 4a9ead5; probes E1, G1 and G2 on scratch copies of 4a9ead5; probe S1, read-only GETs of this repository's settings through the GitHub API, and probe S2, on 2026-11-01; GitHub's documentation on rulesets, private vulnerability reporting, Dependabot alerts and Actions settings, read 2026-11-01; the D2 to D4 citations re-read at 4a9ead5, and the D2 and D3 PLANs' code pre-checked on scratch copies of 4a9ead5, on 2026-11-01; the D2 PLAN's internal/redact form pre-checked the same way on 2026-11-02"
 informed: the fleet's programs, which require this module and call its workflows
 ---
 <!-- markdownlint-disable MD004 MD013 MD024 MD060 -->
@@ -19,6 +19,8 @@ After `v1.23.1` an assessment of every record found no plan in progress and no o
 4. **A note in [0038-PLAN-pinned-plans-lifecycle-conformance-and-bubble-tests.md](0038-PLAN-pinned-plans-lifecycle-conformance-and-bubble-tests.md).** It still says host leftovers "stay on the hosts" (`:920-923`), though they were removed on 2026-10-30.
 
 The four are independent. This record decides each, D1 to D4. Each gets its own PLAN (More Information).
+
+Amendment A1 (2026-11-02), at the end of this record, adds a fifth, D5. It makes the architecture table check require a row for every directory Go builds, a gap the D2 PLAN's pre-check found. D2's verification relies on it. The slug keeps "four", since a record is never renamed.
 
 Facts are tagged by their source:
 
@@ -275,7 +277,13 @@ Facts are tagged by their source:
 
 ## Decision Outcome
 
-Proposed: "D1-B, D2-A, D3-A and D4-A". The owner has not decided, so the record is `proposed`.
+Proposed: "D1-B, D2-A, D3-A and D4-A".
+
+**The owner's answers (2026-11-02).** Asked with three options each, the owner chose:
+
+* **"Accept D2-A, D3-A, D4-A".** Chosen options: "D2-A", "D3-A" and "D4-A". D1 is not decided: D1-B stays proposed until its PLAN is asked for. The record keeps `status: proposed` because its front matter takes one status and D1 is open. It becomes `accepted` when D1 is decided.
+* **The helpers in a new `internal/redact` package,** in place of the recommended copy of them into `ghattest`. D2-A's formatters share one copy there, which no program can import, under its own depguard rule (D2-A below).
+* **The order "Records, then D4, D3, D2"**, and **the host tests as each PLAN writes them.**
 
 * **D1-B.**
   * **Each setting answers a fact here.**
@@ -303,6 +311,11 @@ Proposed: "D1-B, D2-A, D3-A and D4-A". The owner has not decided, so the record 
     * D2-C protects only a program that calls it.
     * D2-D changes four fields' types, which `apidiff` reports as incompatible, and that is a v2 change (0025-MADR "Out of scope").
     * D2-E is D1-C's "a documented leak is still a leak".
+  * **Where the helpers live (the owner's answer, 2026-11-02).** `service`'s and `ghattest`'s formatters share `internal/redact`: `Env`, `EnvText`, `EnvAttr`, `Quoted`, `Length`, `SetOrNil` and the constant `Nil`. A copy per package was the smaller change. The owner chose one copy, which a later formatter can import too.
+    * As `AGENTS.md` ("Dependencies") requires of a new package, it gets its own depguard rule, `internal-redact` (the standard library only). `service` and `selfupdate-verify-ghattest` each gain an allow for it, and `other-packages` excludes it.
+    * `AGENTS.md` and `docs/architecture.md` name it.
+    * `internal/` keeps it out of the exported API, so `apidiff` does not report it.
+    * `selfupdate`'s own `redacted` and `setOrNil` (`credentials.go:64-77`) stay where they are.
   * **Release.** The methods are exported additions, so `v1.24.0`. The D2 PLAN's pre-check bears this out: `apidiff` from `v1.23.1` to a prototype of D2-A lists the 16 methods as "added", and nothing as incompatible. Its changelog and the migration guide name the changed `fmt` output, as `v1.16.0`'s did.
 * **D3-A.**
   * **Why.**
@@ -326,6 +339,7 @@ Proposed: "D1-B, D2-A, D3-A and D4-A". The owner has not decided, so the record 
 * Good, because every block of Task Scheduler's `Stop` is covered, and `RequestStop`'s cost is documented.
 * Good, because 0038 matches the hosts.
 * Neutral, because D2-A changes what `fmt` prints for these four types. A program that parsed that output, which no documentation offered, sees a new form.
+* Neutral, because the module gains a package, `internal/redact`, with a depguard rule, a row in `docs/architecture.md` and a line in `AGENTS.md`. A program cannot import it.
 * Neutral, because `encoding/json`, and slog's JSON handler for a value nested in a struct, still print `Env`. Each type's doc says so, as `Credential`'s does.
 * Bad, because Dependabot alerts report a vulnerable module whether or not this module reaches it, where `govulncheck` reports reachability. An alert may need triage that CI's `govulncheck` would not ask for.
 * Bad, because deleting or moving a `v*` tag, which no record has ever needed, first needs the owner to disable "release tags: keep".
@@ -452,7 +466,8 @@ Proposed: "D1-B, D2-A, D3-A and D4-A". The owner has not decided, so the record 
   * `0040-PLAN-apply-repository-settings.md` (D1), not written yet. It follows when the owner asks for it, and no GitHub call, read or write, is made for it without the owner's word in that turn (F1.12);
   * [0040-PLAN-redact-env-in-formatted-values.md](0040-PLAN-redact-env-in-formatted-values.md) (D2);
   * [0040-PLAN-test-task-scheduler-grace-timeout.md](0040-PLAN-test-task-scheduler-grace-timeout.md) (D3);
-  * [0040-PLAN-record-host-cleanup-in-0038.md](0040-PLAN-record-host-cleanup-in-0038.md) (D4).
+  * [0040-PLAN-record-host-cleanup-in-0038.md](0040-PLAN-record-host-cleanup-in-0038.md) (D4);
+  * [0040-PLAN-require-architecture-table-rows.md](0040-PLAN-require-architecture-table-rows.md) (D5, Amendment A1).
 
   `make check-records` requires a lone PLAN to copy its MADR's slug (`scripts/check_records.py:121-122`). The three written PLANs are added in one change, so none is alone, and D1's joins them later under its own slug. They are independent. D4, then D3, then D2 with its release, then D1 when the owner chooses to apply it, is one order that keeps each commit small. It also puts D3's doc sentence into `v1.24.0`.
 * **The probes**, each on a scratch copy or by GET only. The tree was not written.
@@ -462,7 +477,9 @@ Proposed: "D1-B, D2-A, D3-A and D4-A". The owner has not decided, so the record 
   * **G1:** the grace-path test at HEAD and planted, F3.5.
   * **G2:** the coverage profile, F3.4.
   * **The D3 PLAN's pre-check:** its exact test at HEAD and with its two plants.
-  * **The D2 PLAN's pre-check:** a prototype of D2-A, with its tests, lint on three GOOS, `apidiff` from `v1.23.1`, and nine plants.
+  * **The D2 PLAN's pre-checks:**
+    * a prototype of D2-A with the helpers in each package (2026-11-01), with its tests, lint on three GOOS, `apidiff` from `v1.23.1`, and nine plants;
+    * then the `internal/redact` form the owner chose (2026-11-02). Its lint and depguard ran clean on three GOOS, and `apidiff` again listed the 16 methods alone. Eleven plants failed, two of them depguard refusals of the new rule and allow.
 * **GitHub documentation read on 2026-11-01:**
   * the About rulesets, Available rules for rulesets and Creating rulesets for a repository pages;
   * the REST pages for repository rules and repositories;
@@ -481,3 +498,62 @@ Proposed: "D1-B, D2-A, D3-A and D4-A". The owner has not decided, so the record 
   * secret scanning's non-provider patterns and validity checks, seen off in F1.4;
   * immutable releases, which apply to releases and this module publishes none (F1.8);
   * every setting of another repository.
+
+## Amendment A1 (2026-11-02): D5, the architecture table check
+
+The D2 PLAN's pre-check removed the new `internal/redact/` row from `docs/architecture.md`'s package table, and the check still passed. On 2026-11-02 the owner asked to fix that ("fix this"). This amendment adds D5. It is `proposed`, and the owner's decisions of the same day (Decision Outcome) do not cover it.
+
+### D5 facts
+
+* **F5.1 [read]. What the check does.** `scripts/check-docs.sh --arch` (`docs/decisions/0022-MADR-documentation-pass-after-v1-14-0.md` D2):
+  * reads the table under "## Go code";
+  * compares each row's first integers with the `.go` files in that directory, tracked or untracked and not ignored (`check_arch`, `:239-290`; `tracked_go`, `:220-236`);
+  * reports a row for a directory with no `.go` file (exit 2).
+
+  It never looks at a directory the table lacks. Its header says only that the table "states each directory's number of … files" (`:30-40`).
+* **F5.2 [probed]. The gap, and the tree today.**
+  * The D2 PLAN's pre-check plant A1 removed the `internal/redact/` row and `--arch` exited 0, with `20 rows … 0 differ`.
+  * Probe A2 (scratchpad `p40arch.py`, read-only) listed every directory that holds a `.go` file, by the check's own `git ls-files` rule: 22 directories. 20 of them have rows, and the 20 rows are exactly `go list ./...`'s 20 packages.
+  * The other two are `internal/cmd/selfupdate-release/testdata/fixture/cmd/nostamp` and `…/relay`. They are fixture programs that `go` does not build, and the `internal/cmd/selfupdate-release/` row's "plus the `testdata/fixture/` module" describes them.
+* **F5.3 [docs, read]. What `./...` leaves out.**
+  * `go help packages` (go1.27.3): patterns with "..." exclude "Directories named "vendor"", "Directories named "testdata"", "Files and directories with names beginning with "_" or ".", "Directories that contain a go.mod file", and "Directories matching an ignore directive in a module's go.mod file".
+  * The tree has no `vendor` directory, and `go.mod` has no `ignore` directive. Its only other `go.mod` is `internal/cmd/selfupdate-release/testdata/fixture/go.mod`, under `testdata`.
+* **F5.4 [read]. Who runs the check.**
+  * It runs in `make docs-check`, which full CI and `docs.yml` run (`Makefile:115-118`), and in `make gate`'s `arch` step (`scripts/gate.sh:139-143`).
+  * `docs.yml` installs no Go: it has no `setup-go` step.
+  * Nothing parses the summary line: a scan of every tracked file outside the records, for its text, finds only the script and its test.
+  * `scripts/check-docs_test.sh` tests the mode in a throwaway repository, and runs another script when `SCRIPT` names one (`:9`).
+* **F5.5 [probed]. The fix, tried.** The D5 PLAN's pre-check ran D5-A on a scratch copy of `3acd87f`. Its own tests passed, 20 of 20. Against HEAD's script, the `good` and `missing` cases failed. The real page passed with `0 without a row`. A removed row, and an untracked `internal/redact/redact.go` with no row, each exited 1, where HEAD's script passes the second. With the exemption planted out, the fixture's exempt directories were reported.
+
+### D5 options
+
+* **D5-A.** `--arch` also fails, exit 1, on a directory that holds a `.go` file and has no row. The exception is a path with a part named `testdata` or `vendor`, or starting with `.` or `_`: what `./...` leaves out by name (F5.3).
+  * The finding names the page, the directory and its counts.
+  * The summary gains "`<K>` without a row".
+  * The script's tests gain a missing-row case and exempt directories.
+  * Nested modules and `ignore` directives are not exempted. None exists outside `testdata`, and one would fail loudly.
+* **D5-B.** The same, with the package set from `go list ./...` in place of the `.go` files' directories.
+* **D5-C.** No change to the check. Each plan that adds a package asserts its row by name, as the D2 PLAN did.
+
+### D5 outcome
+
+Proposed: "D5-A".
+
+* **Why.**
+  * It closes the gap the plant found (F5.2) with the file list the check already reads, so it needs no Go and runs the same in `docs.yml` (F5.4).
+  * The rule is `go`'s own, by name (F5.3), and today it reports nothing on the real page (F5.5).
+* **Rejected.**
+  * D5-B needs Go in `docs.yml`, and its answer depends on the build constraints of the host it runs on.
+  * D5-C leaves the next package to whoever remembers.
+* **Consequences.**
+  * Good, because a package added without its row fails `make docs-check`, `make gate` and CI before it is committed. The `internal/redact` row D2 adds is then checked like every other.
+  * Neutral, because the summary line changes. Nothing reads it.
+  * Bad, because a future nested module or `ignore` directive outside `testdata` needs the check amended. It fails loudly until then.
+* **Confirmation.** The script's tests pass, and the new cases fail against HEAD's script. A removed row and an untracked package with no row each exit 1. The exemption, planted out, fails the tests. `make docs-check` and `make gate` exit 0.
+* **Plan and order.** [0040-PLAN-require-architecture-table-rows.md](0040-PLAN-require-architecture-table-rows.md). It runs after D3's and before D2's, so D2's new row is checked by the gate itself. The owner's order "Records, then D4, D3, D2" becomes D4, D3, D5, D2, if the owner accepts D5. No release: no released file changes.
+
+### D5 pros and cons
+
+* **D5-A:** Good, because it needs only git and the tree's own file list. Bad, because it encodes `./...`'s name rules, and not its `go.mod` rules.
+* **D5-B:** Good, because `go list` is the authority on packages. Bad, because it needs Go where the Docs workflow has none, and it varies with the host's GOOS.
+* **D5-C:** Good, because it costs nothing now. Bad, because the gap stays for every later package.
