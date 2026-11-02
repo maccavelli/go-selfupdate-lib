@@ -1,6 +1,6 @@
 ---
 status: complete
-date: 2026-10-27
+date: 2026-11-02
 associated-madr: "0037-MADR-honour-contexts-in-backend-fakes-and-stop-commands.md"
 ---
 <!-- markdownlint-disable MD004 MD013 MD024 MD060 -->
@@ -188,7 +188,7 @@ The owner answered "proceed" to the proposed pair, which approves this plan and 
   * `waitGone` ends at its own clock's limit or at its context's deadline, the same bound, and reports only whether the process went. Its error result and its unused `path` parameter are gone, and a comment cites D5-A.
   * `Stop` reports `stillRuns(path)`, `ErrTimeout: <path> still runs after it was stopped`, for either end.
   * A bound that runs out within the `RequestStop` grace still returns without ending the task, as before, now with that message. My first edit ended the task in that case, which D5-A does not cover. I restored the old path before recording.
-  * That path is not covered by a test: it needs the reads before the grace to spend the timeout, and `New` refuses a grace that is not shorter than it.
+  * That path is not covered by a test: ~~it needs the reads before the grace to spend the timeout, and `New` refuses a grace that is not shorter than it.~~ *Corrected on 2026-11-02: a `RequestStop` that spends most of the timeout reaches it too, since it runs inside the same bound ([0040-MADR-close-four-open-items-after-v1-23-1.md](0040-MADR-close-four-open-items-after-v1-23-1.md) F3.3). `TestStopBoundEndsInGrace` covers it ([0040-PLAN-test-task-scheduler-grace-timeout.md](0040-PLAN-test-task-scheduler-grace-timeout.md)).*
 * **`taskscheduler/lifecycle_test.go`, `TestStopTimeoutOnRealClock`:** a task that never exits, with a 300 ms `Poll.Timeout`, a 100 ms grace and `RequestStop`, on the real clock (`time.Now`, `sleepCtx`). `Stop` must be `ErrTimeout` saying `\demo still runs after it was stopped`.
 * **Seen failing:** `plants_37.py N5`, (g) HEAD's `lifecycle.go`: `Stop = selfupdate: service: timed out: \demo: context deadline exceeded, want ErrTimeout saying the task still runs`. `TestStopGraceRunsOut`, `TestStopRequestFails` and `TestStopRequestHonoured` pass on both.
 * **`errors.go`:** `CommandError.Backend`'s comment, D6-A.
@@ -231,7 +231,7 @@ The owner answered "proceed" to the proposed pair, which approves this plan and 
 Not done here, as the plan's scope says, or as found:
 
 * scm is unchanged (MADR F6).
-* The Task Scheduler grace path, where the bound runs out within the grace, is not covered by a test (N5).
+* The Task Scheduler grace path, where the bound runs out within the grace, is not covered by a test (N5). *Covered since 2026-11-02 by `TestStopBoundEndsInGrace` ([0040-PLAN-test-task-scheduler-grace-timeout.md](0040-PLAN-test-task-scheduler-grace-timeout.md)).*
 * The live Task Scheduler tests were not run, since its live path changed only in a message.
 * Programs that adopt `v1.22.2` do so in their own repositories. magic-cli-remote's systemd and launchd backends take the stop fixes with the bump.
 

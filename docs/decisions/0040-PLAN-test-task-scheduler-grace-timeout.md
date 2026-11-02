@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: complete
 date: 2026-11-02
 associated-madr: "0040-MADR-close-four-open-items-after-v1-23-1.md"
 ---
@@ -172,4 +172,59 @@ Files: `selfupdate/service/taskscheduler/lifecycle_test.go`, `selfupdate/service
 * **Order:** "Records, then D4, D3, D2 (Recommended)". This plan runs second, after D4's, and before D2's release, which then carries T1 step 3's doc sentence.
 * **Host tests:** "As written (Recommended)": T1 step 7's Windows run.
 
-This plan stays `proposed` until the owner approves its execution.
+This plan stayed `proposed` until the owner approved its execution.
+
+### Approval (2026-11-02)
+
+The owner committed and pushed D4's phase as `b34bcd1`, and said "committed and pushed, proceed". This plan ran second, as the order says.
+
+### T1: the test, the doc and the annotations (2026-11-02)
+
+Files: `lifecycle_test.go`, `task.go`, 0037-PLAN, this PLAN and `docs/README.md` (this plan's row), as listed.
+
+1. **Baseline.**
+   * `git status --short` was clean, with `main` level with `origin` at `b34bcd1`.
+   * `git diff --stat 4a9ead5 HEAD -- selfupdate/service/taskscheduler` printed nothing (exit 0).
+   * `go test -coverprofile` exited 0: `coverage: 89.0% of statements`, and `lifecycle.go:199.5,200.1 1 0`.
+2. **The test** went in before `TestStopRequestFails`'s comment, so after `TestStopTimeoutAtDefaultBound`, as step 2 gives it. It needed no new import.
+3. **The doc sentence** went in after "(0021-MADR D4)." in `Options.RequestStop`'s comment, as step 3 gives it. `gofmt -l` printed nothing, and no re-wrap was needed.
+4. **0037-PLAN:**
+   * line 191's reason is struck through and corrected;
+   * line 234 gains its pointer;
+   * `date:` moved from 2026-10-27 to 2026-11-02, and `status:` stays `complete`.
+
+   `<the commit's date>` became `2026-11-02`. `git diff -U0` of the file shows three one-line hunks, at lines 3, 191 and 234, and nothing else. The new line 234 starts with the old line's whole text.
+
+   The test, the sentence and both annotations were read from this PLAN's own code blocks by the edit script (scratchpad `p40t1.py`). The script asserted each anchor and each old line before writing.
+5. **Seen failing,** through `scripts/plant-copy.sh` (scratchpad `p40t1plant.py`), each copy removed after its run:
+   * the tree: `--- PASS: TestStopBoundEndsInGrace`, exit 0;
+   * P1: exit 1, `lifecycle_test.go:263: Stop = <nil>, want ErrTimeout saying the task still runs`;
+   * P2: exit 1, `lifecycle_test.go:272: calls ["enable false"], want ["enable false" "enable true"]: the task is not ended, and is enabled again` and `lifecycle_test.go:275: enabled false, program alive true, recorded as disabled true; want true, true, false`.
+6. **Coverage after:** exit 0, `coverage: 89.1% of statements`, and `lifecycle.go:199.5,200.1 1 1`.
+7. **Checks:**
+   * **`make gate`:** `overall=0`. Every step was rc=0:
+     * `lint` 0 issues, on three GOOS;
+     * `apicheck` "compatible with v1.23.1";
+     * `fuzz` 11 targets clean;
+     * `vuln` "No vulnerabilities found.";
+     * `scripts` "all script tests passed";
+     * `links` 921 in 108 files, 0 broken;
+     * `arch` 20 rows, 0 differ;
+     * `ids` 3 files, 0 findings.
+   * **`make pre-add-check`** on the two `.go` files: "2 file(s) clean (gofmt, golangci-lint, go vet, go test, govulncheck)".
+   * **The Windows test host:** `go test -race -count=1 ./selfupdate/service/taskscheduler/`, with `CGO_ENABLED=1`, on a copy of the tree: `ok … 1.720s`, `go-test-exit=0`. A first run narrowed to `-run TestStop` also passed, 15 `TestStop*` tests, `TestStopBoundEndsInGrace` among them. The whole package was then run as written. Afterwards the host holds 0 `sulib-*` copies.
+   * **Documents:**
+     * `make markdownlint`: 0 issues;
+     * `make check-records`: 95 records, 0 findings;
+     * `--links` on 0037-PLAN: 4 links, 0 broken;
+     * `--ids` on the three changed files, with the deny list: 0 findings.
+
+### Verification, at closing (2026-11-02)
+
+* **V1 (the path):** `TestStopBoundEndsInGrace` passes in the tree (step 5), in the gate's race and shuffle steps on this Mac (step 7), and under `-race` on the Windows test host (step 7). The push's CI is the owner's to report.
+* **V2 (seen failing):** P1 and P2 each exit 1 with the failures in step 5, as the pre-check of 2026-11-01 saw.
+* **V3 (coverage):** `lifecycle.go:199.5,200.1` went from 0 hits to 1 (steps 1 and 6). Statement coverage went from 89.0% to 89.1%.
+* **V4 (no behaviour change):** the only non-test `.go` change is the four comment lines in `task.go`. `make apicheck`: "compatible with v1.23.1".
+* **V5 (the records):** 0037-PLAN's lines 191 and 234 carry their annotations (step 4). `make check-records`: 0 findings.
+
+Not done here, as the plan's scope says: `Stop` is unchanged, no live test was run or changed, and there is no release. The doc sentence ships with the next tag.

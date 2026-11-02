@@ -72,6 +72,10 @@ type Options struct {
 	// StopGrace for it to exit. An error from RequestStop ends the grace at
 	// once; it is part of Stop's error only when ending the task fails too
 	// (0021-MADR D4).
+	// Its run is spent inside Poll's timeout, as StopGrace is: when a slow
+	// RequestStop leaves the grace to outlast that timeout, Stop returns
+	// service.ErrTimeout without ending the task, and enables the task
+	// again (0040-MADR D3-A).
 	RequestStop func(ctx context.Context, pid uint32) error
 	// StopGrace bounds the wait after RequestStop. It is spent inside
 	// Poll's timeout, so with RequestStop set New refuses a StopGrace that

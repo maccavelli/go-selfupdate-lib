@@ -234,6 +234,50 @@ func TestStopTimeoutAtDefaultBound(t *testing.T) {
 	})
 }
 
+// TestStopBoundEndsInGrace: RequestStop runs inside Poll's timeout, so a
+// request that spends most of it leaves the grace to outlast the stop's
+// bound. Stop then reports that the task still runs, does not end it,
+// and enables it again
+// (docs/decisions/0040-MADR-close-four-open-items-after-v1-23-1.md
+// D3-A).
+func TestStopBoundEndsInGrace(t *testing.T) {
+	testproc.CheckNoLeak(t)
+	synctest.Test(t, func(t *testing.T) {
+		f := newFake()
+		ft := f.add(`\demo`, 4242)
+		ft.exitIn = -1 // never exits
+		const timeout, grace = 300 * time.Millisecond, 100 * time.Millisecond
+		var bound time.Time
+		task := testTask(t, f, Options{
+			Poll:      service.PollOptions{Timeout: timeout},
+			StopGrace: grace,
+			RequestStop: func(ctx context.Context, _ uint32) error {
+				bound, _ = ctx.Deadline()
+				time.Sleep(timeout - grace/2) // a request that takes most of the bound
+				return nil
+			},
+		})
+		start := time.Now()
+		err := task.Stop(context.Background(), "demo")
+		if !errors.Is(err, service.ErrTimeout) || !strings.Contains(err.Error(), `\demo still runs after it was stopped`) {
+			t.Fatalf("Stop = %v, want ErrTimeout saying the task still runs", err)
+		}
+		if want := start.Add(timeout); !bound.Equal(want) {
+			t.Errorf("RequestStop's deadline %s, want Poll's timeout from the start, %s", bound, want)
+		}
+		if took := time.Since(start); took != timeout {
+			t.Errorf("Stop took %s, want the bound, %s", took, timeout)
+		}
+		if want := []string{"enable false", "enable true"}; !slices.Equal(f.verbs(), want) {
+			t.Errorf("calls %q, want %q: the task is not ended, and is enabled again", f.verbs(), want)
+		}
+		if !ft.on || !f.alive[4242] || task.disabled[`\demo`] {
+			t.Errorf("enabled %t, program alive %t, recorded as disabled %t; want true, true, false",
+				ft.on, f.alive[4242], task.disabled[`\demo`])
+		}
+	})
+}
+
 // TestStopRequestFails: a RequestStop error ends the grace at once. When
 // ending the task then works, Stop succeeds; when it fails, both errors
 // are reported (0021-MADR D4).
