@@ -7,10 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/redact"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 )
 
@@ -60,6 +62,11 @@ type ExecState struct {
 }
 
 // ExecOptions configure an ExecReconciler.
+//
+// Formatting ExecOptions with fmt or log/slog prints each Env entry's
+// name, never its value, and RestoreFunc and Runner only as <set> or <nil>.
+// encoding/json cannot encode them, since they hold a function
+// (0040-MADR D2-A).
 type ExecOptions struct {
 	// Reconcile are the arguments that make the new binary reconcile its
 	// definition and print a Receipt, such as
@@ -77,6 +84,30 @@ type ExecOptions struct {
 	Env []string
 	// Runner runs the child. Nil means ExecRunner.
 	Runner Runner
+}
+
+// String implements fmt.Stringer, with Env as Command's String prints it,
+// and RestoreFunc and Runner as <set> or <nil>.
+func (o ExecOptions) String() string {
+	return "ExecOptions{Reconcile:" + redact.Quoted(o.Reconcile) + " Restore:" + redact.Quoted(o.Restore) +
+		" RestoreFunc:" + redact.SetOrNil(o.RestoreFunc != nil) + " Env:" + redact.EnvText(o.Env) +
+		" Runner:" + redact.SetOrNil(o.Runner != nil) + "}"
+}
+
+// GoString implements fmt.GoStringer. It is String.
+func (o ExecOptions) GoString() string { return o.String() }
+
+// Format implements fmt.Formatter: every verb prints String, so no
+// directive reaches an Env value.
+func (o ExecOptions) Format(f fmt.State, _ rune) {
+	_, _ = io.WriteString(f, o.String()) //nolint:errcheck // fmt.Formatter has no error to return; fmt drops write errors
+}
+
+// LogValue implements slog.LogValuer, as String prints the options.
+func (o ExecOptions) LogValue() slog.Value {
+	return slog.GroupValue(slog.Any("reconcile", o.Reconcile), slog.Any("restore", o.Restore),
+		slog.String("restore_func", redact.SetOrNil(o.RestoreFunc != nil)), redact.EnvAttr(o.Env),
+		slog.String("runner", redact.SetOrNil(o.Runner != nil)))
 }
 
 // ExecReconciler is a selfupdate.Reconciler that asks the product's own

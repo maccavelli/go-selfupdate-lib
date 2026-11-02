@@ -43,7 +43,12 @@ process still runs (`Alive`;
 A2); `internal/procfs` reads a Linux process's parent, start time, state
 and binary for `service.Supervised`
 (`docs/decisions/0035-MADR-serve-supervisors-through-a-supervised-adapter.md`
-D13-C); `internal/testproc` is test support that only `_test.go` files
+D13-C); `internal/redact` hides an environment's values, and stands in
+for what a formatter does not print, for the formatters of
+`service.Command`, `service.HandOff`, `service.ExecOptions` and
+`ghattest.Options`
+(`docs/decisions/0040-MADR-close-four-open-items-after-v1-23-1.md` D2-A);
+`internal/testproc` is test support that only `_test.go` files
 import (`docs/decisions/0023-MADR-robust-test-fixtures-and-process-waits.md`).
 Requires Go 1.26.10; built
 and tested with Go 1.27.3, the `toolchain` line in `go.mod`
@@ -75,8 +80,8 @@ pre-add check and CI fail on a breach
   `service-taskscheduler`,
   `selfupdate-archive`, `selfupdate-codesign`, `selfupdate-releasespec`,
   `selfupdate-verify-ghattest`, `selfupdate-verify-signednote`,
-  `internal-cmd-selfupdate-note`, `internal-winproc`, `internal-procfs`
-  and `internal-testproc` allow each package, outside its tests, only the
+  `internal-cmd-selfupdate-note`, `internal-winproc`, `internal-procfs`,
+  `internal-redact` and `internal-testproc` allow each package, outside its tests, only the
   imports its record names;
 - `other-packages` allows any other package, an `internal/` helper with
   no rule of its own included (`internal/cmd/selfupdate-release` today),

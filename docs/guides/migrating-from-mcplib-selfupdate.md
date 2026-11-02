@@ -1851,3 +1851,54 @@ in them. Why it moved them is in
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
 - `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.23.1`.
+
+## 24. From v1.23 to v1.24
+
+```bash
+go get github.com/maccavelli/go-selfupdate-lib@v1.24.0
+```
+
+`v1.24.0` stops `fmt` and `log/slog` printing an environment's values when
+a program formats one of four option types. `make apicheck` reports it
+compatible with `v1.23.1`: its one exported change is 16 added methods.
+Why, and how, is in
+[0040-MADR](../decisions/0040-MADR-close-four-open-items-after-v1-23-1.md)
+D2, executed by
+[0040-PLAN](../decisions/0040-PLAN-redact-env-in-formatted-values.md).
+What each change does is in the [changelog](../../CHANGELOG.md).
+
+### What is new
+
+- `String`, `GoString`, `Format` and `LogValue` on `service.Command`,
+  `service.HandOff`, `service.ExecOptions` and `ghattest.Options`.
+
+### Behaviour you may notice
+
+- **`fmt` prints these four types in a new form.** Each `Env` entry
+  prints as its name and `<redacted>`, as `<empty>` for an empty value,
+  or as `<redacted>` alone for an entry with no `=`; a nil `Env` prints
+  as `<nil>`. `%v` of a `service.Command` now prints, for example,
+  `Command{Path:"/usr/bin/gh" Args:["attestation"] Env:["GH_TOKEN=<redacted>"] Stdin:<nil>}`.
+  `Command.Stdin` prints as its length, and functions and runners as
+  `<set>` or `<nil>`. Every verb prints the same, `%#v` and `%x`
+  included.
+- **`log/slog` logs them as a group** of the same fields, with `Env`
+  redacted the same way. slog's JSON handler can now log an
+  `ExecOptions`, which it could not encode before.
+- **`encoding/json` is unchanged.** It prints `Env` whole, and slog's JSON
+  handler encodes one of these values held inside another, such as a
+  struct field, with `encoding/json`. Log the value itself.
+- `Run`'s events, call order and output are as in `v1.23.1`.
+
+### Adopting it
+
+- Nothing is required.
+- A test that matched the old `%v` output of these types, which no
+  document offered, matches the new form.
+- A `Runner` of your own that logs its `Command` now logs it without its
+  environment's values.
+
+### Check
+
+- `go build ./...`, `go vet ./...` and `go test ./...` pass.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.24.0`.

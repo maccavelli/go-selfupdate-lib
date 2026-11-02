@@ -454,7 +454,9 @@ cfg.ManifestVerifiers = append(cfg.ManifestVerifiers, v)
   itself instead.
 - **What it needs:** `gh`, by an absolute path, logged in even for a public
   repository. `Options.Env` is `gh`'s environment (nil: this process's),
-  and `Options.Timeout` bounds each run (default 2 minutes).
+  and `Options.Timeout` bounds each run (default 2 minutes). Since
+  `v1.24.0`, `fmt` and `log/slog` print `Options` with each `Env` value
+  as `<redacted>`, though `encoding/json` does not.
 - **It fails closed:** a missing or logged-out `gh`, a verification that
   fails, a timeout, or an attestation that does not meet the whole policy
   each fail the update with `ErrIntegrity`.
@@ -731,8 +733,10 @@ for Task Scheduler,
     environment leaves out your unit's or job's own variables, as a
     handoff's does
     ([Updating from inside the service](#updating-from-inside-the-service)),
-    and `ExecOptions.Env` passes on whatever it names. Since `v1.10.1`, a
-    rewrite:
+    and `ExecOptions.Env` passes on whatever it names. Since `v1.24.0`,
+    `fmt` and `log/slog` print `ExecOptions`, `service.Command` and
+    `service.HandOff` with each `Env` value as `<redacted>`, though
+    `encoding/json` does not. Since `v1.10.1`, a rewrite:
     - on systemd, checks the unit's effective `ExecStart` after the
       reload; a drop-in that loads later and sets it again, such as an
       `override.conf`, is an error, and recovery removes this package's

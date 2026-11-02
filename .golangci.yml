@@ -90,6 +90,15 @@ linters:
             - "!$test"
           allow:
             - $gostd
+        # The formatters' shared redaction: the standard library only
+        # (docs/decisions/0040-MADR-close-four-open-items-after-v1-23-1.md D2-A).
+        internal-redact:
+          list-mode: strict
+          files:
+            - "**/internal/redact/*.go"
+            - "!$test"
+          allow:
+            - $gostd
         # Linux /proc reads for service.Supervised: the standard library
         # only, and nothing in this module
         # (docs/decisions/0035-MADR-serve-supervisors-through-a-supervised-adapter.md D13-C).
@@ -143,6 +152,7 @@ linters:
             - github.com/maccavelli/go-selfupdate-lib/selfupdate$
             - github.com/maccavelli/go-selfupdate-lib/internal/winproc$
             - github.com/maccavelli/go-selfupdate-lib/internal/procfs$
+            - github.com/maccavelli/go-selfupdate-lib/internal/redact$
         service-launchd:
           list-mode: strict
           files:
@@ -248,6 +258,7 @@ linters:
             - $gostd
             - github.com/maccavelli/go-selfupdate-lib/selfupdate$
             - github.com/maccavelli/go-selfupdate-lib/selfupdate/service$
+            - github.com/maccavelli/go-selfupdate-lib/internal/redact$
         # selfupdate/verify/signednote: the standard library, x/mod's semver
         # and sumdb/note, and selfupdate
         # (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D10).
@@ -302,6 +313,7 @@ linters:
             - "!**/internal/winproc/*.go"
             - "!**/internal/testproc/*.go"
             - "!**/internal/procfs/*.go"
+            - "!**/internal/redact/*.go"
           allow:
             - $gostd
             - github.com/maccavelli/go-selfupdate-lib

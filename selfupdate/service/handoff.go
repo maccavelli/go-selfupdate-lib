@@ -8,11 +8,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/redact"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 )
 
@@ -38,6 +41,10 @@ type Detacher interface {
 
 // HandOff is the command a detached run executes: the same program, with
 // the same arguments, outside the service.
+//
+// Formatting a HandOff with fmt or log/slog prints each Env entry's name,
+// never its value; encoding/json prints it, as for Command (0040-MADR
+// D2-A).
 type HandOff struct {
 	// ID names the handoff. Empty means a random one.
 	ID string
@@ -51,6 +58,27 @@ type HandOff struct {
 	// ResultPath is where the detached run writes its HandOffResult. Empty
 	// means .<base>.selfupdate.handoff beside Executable.
 	ResultPath string
+}
+
+// String implements fmt.Stringer, with Env as Command's String prints it.
+func (h HandOff) String() string {
+	return "HandOff{ID:" + strconv.Quote(h.ID) + " Executable:" + strconv.Quote(h.Executable) +
+		" Args:" + redact.Quoted(h.Args) + " Env:" + redact.EnvText(h.Env) + " ResultPath:" + strconv.Quote(h.ResultPath) + "}"
+}
+
+// GoString implements fmt.GoStringer. It is String.
+func (h HandOff) GoString() string { return h.String() }
+
+// Format implements fmt.Formatter: every verb prints String, so no
+// directive reaches an Env value.
+func (h HandOff) Format(f fmt.State, _ rune) {
+	_, _ = io.WriteString(f, h.String()) //nolint:errcheck // fmt.Formatter has no error to return; fmt drops write errors
+}
+
+// LogValue implements slog.LogValuer, with Env as String prints it.
+func (h HandOff) LogValue() slog.Value {
+	return slog.GroupValue(slog.String("id", h.ID), slog.String("executable", h.Executable),
+		slog.Any("args", h.Args), redact.EnvAttr(h.Env), slog.String("result_path", h.ResultPath))
 }
 
 // Detached describes a started handoff.

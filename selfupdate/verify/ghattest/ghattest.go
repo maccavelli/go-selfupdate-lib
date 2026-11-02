@@ -9,14 +9,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/redact"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
 )
@@ -68,6 +71,12 @@ type Policy struct {
 }
 
 // Options configure a verifier. GH is required.
+//
+// Formatting Options with fmt or log/slog prints each Env entry's name,
+// never its value, and Runner only as <set> or <nil>. encoding/json prints
+// Env, and slog's JSON handler encodes a value that holds Options, such as
+// a struct field, with encoding/json too, so log the Options themselves
+// (0040-MADR D2-A).
 type Options struct {
 	// Policy is what the attestation must say.
 	Policy Policy
@@ -83,6 +92,38 @@ type Options struct {
 	Timeout time.Duration
 	// TempDir holds the file gh reads. Empty means os.TempDir.
 	TempDir string
+}
+
+// String implements fmt.Stringer. It prints each Env entry as its name and
+// <redacted>, or <empty> for an empty value, an entry with no "=" as
+// <redacted>, a nil Env as <nil>, and Runner as <set> or <nil>.
+func (o Options) String() string {
+	p := o.Policy
+	return "Options{Policy:{Repository:" + strconv.Quote(p.Repository.Owner+"/"+p.Repository.Name) +
+		" SignerWorkflow:" + strconv.Quote(p.SignerWorkflow) + " SignerDigests:" + redact.Quoted(p.SignerDigests) +
+		" AllowSelfHostedRunners:" + strconv.FormatBool(p.AllowSelfHostedRunners) + "}" +
+		" GH:" + strconv.Quote(o.GH) + " Env:" + redact.EnvText(o.Env) + " Runner:" + redact.SetOrNil(o.Runner != nil) +
+		" Timeout:" + o.Timeout.String() + " TempDir:" + strconv.Quote(o.TempDir) + "}"
+}
+
+// GoString implements fmt.GoStringer. It is String.
+func (o Options) GoString() string { return o.String() }
+
+// Format implements fmt.Formatter: every verb prints String, so no
+// directive reaches an Env value.
+func (o Options) Format(f fmt.State, _ rune) {
+	_, _ = io.WriteString(f, o.String()) //nolint:errcheck // fmt.Formatter has no error to return; fmt drops write errors
+}
+
+// LogValue implements slog.LogValuer, as String prints the options.
+func (o Options) LogValue() slog.Value {
+	p := o.Policy
+	return slog.GroupValue(
+		slog.Group("policy", slog.String("repository", p.Repository.Owner+"/"+p.Repository.Name),
+			slog.String("signer_workflow", p.SignerWorkflow), slog.Any("signer_digests", p.SignerDigests),
+			slog.Bool("allow_self_hosted_runners", p.AllowSelfHostedRunners)),
+		slog.String("gh", o.GH), redact.EnvAttr(o.Env), slog.String("runner", redact.SetOrNil(o.Runner != nil)),
+		slog.Duration("timeout", o.Timeout), slog.String("temp_dir", o.TempDir))
 }
 
 // checker runs gh for one Options.

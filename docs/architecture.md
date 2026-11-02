@@ -123,6 +123,8 @@ internal/winproc/           the library's process starts: no console
                             the liveness check
 internal/procfs/            Linux /proc reads for service.Supervised:
                             parent, start time, state, binary
+internal/redact/            what the formatters of four option types
+                            share: an environment's values hidden
 internal/testproc/          test support: fixture builds that ignore the
                             git state around them, helper-process waits,
                             and the goroutine leak check
@@ -155,10 +157,10 @@ docs/
 | `selfupdate/selfupdatetest/` | `selfupdatetest` | 3 | 3 | none (`selfupdate` itself) |
 | `selfupdate/archive/` | `archive` | 3 | 8, including three fuzz targets, plus a real GoReleaser `testdata/` checksum file and 9 `testdata/fuzz/` seeds | none (`selfupdate`) |
 | `selfupdate/codesign/` | `codesign` | 2 | 4 | none (`selfupdate`, `service`) |
-| `selfupdate/verify/ghattest/` | `ghattest` | 2 | 3, plus a `testdata/` capture of `gh attestation verify --format json` | none (`selfupdate`, `service`) |
+| `selfupdate/verify/ghattest/` | `ghattest` | 2 | 4, plus a `testdata/` capture of `gh attestation verify --format json` | none (`selfupdate`, `service`, `internal/redact`) |
 | `selfupdate/verify/signednote/` | `signednote` | 3 | 4, including a fuzz target | `x/mod/semver`, `x/mod/sumdb/note` (and `selfupdate`) |
 | `selfupdate/releasespec/` | `releasespec` | 4 | 5, including a fuzz target, plus 4 `testdata/` specs and 3 `testdata/fuzz/` seeds | none (`selfupdate`, `archive`) |
-| `selfupdate/service/` | `service` | 22 | 29 | `x/sys/windows` (and `selfupdate`, `internal/winproc`, `internal/procfs`) |
+| `selfupdate/service/` | `service` | 22 | 30 | `x/sys/windows` (and `selfupdate`, `internal/winproc`, `internal/procfs`, `internal/redact`) |
 | `selfupdate/service/systemd/` | `systemd` | 9 | 19, plus 3 `testdata/` captures of `systemctl show` | none (`selfupdate`, `service`) |
 | `selfupdate/service/launchd/` | `launchd` | 7 | 15, plus 7 `testdata/` captures of `launchctl print` and `list` | none (`selfupdate`, `service`) |
 | `selfupdate/service/scm/` | `scm` | 7 | 14 | `x/sys/windows`, `x/sys/windows/svc`, `x/sys/windows/svc/mgr` (and `selfupdate`, `service`, `internal/winproc`) |
@@ -166,6 +168,7 @@ docs/
 | `selfupdate/service/taskscheduler/` | `taskscheduler` | 15 | 19, plus 12 `testdata/definitions/` captures of task XML as registered and as stored, and the one-shot handoff task as stored | `x/sys/windows` (and `selfupdate`, `service`, `internal/winproc`) |
 | `internal/winproc/` | `winproc` | 5 | 4 | `x/sys/windows` |
 | `internal/procfs/` | `procfs` | 3 | 4 | none |
+| `internal/redact/` | `redact` | 1 | 1 | none |
 | `internal/testproc/` | `testproc` | 1 | 1 | none |
 | `internal/cmd/selfupdate-note/` | `main` | 1 | 1 | `x/mod/sumdb/note` (and `signednote`) |
 | `internal/cmd/selfupdate-release/` | `main` | 12, plus the 2 `installer/` templates | 11, plus the `testdata/fixture/` module (2 programs, 2 specs, an extra) | none (`buildinfo`, `selfupdate`, `archive`, `releasespec`) |
@@ -221,7 +224,13 @@ docs/
   - **redaction:** `String`, `GoString`, `Format` and `LogValue` on
     `Credential` (`credentials.go`) and `GitHubOptions` (`github.go`),
     and `String`, `Format` and `LogValue` on `*GitHubSource`
-    (`github.go`), none of which prints a token.
+    (`github.go`), none of which prints a token. Since `v1.24.0`, the
+    same four methods on `service.Command` (`service/runner.go`),
+    `service.HandOff` (`service/handoff.go`), `service.ExecOptions`
+    (`service/execreconciler.go`) and `ghattest.Options`
+    (`verify/ghattest/ghattest.go`) print no `Env` value. They share
+    `internal/redact`
+    ([0040-MADR](decisions/0040-MADR-close-four-open-items-after-v1-23-1.md) D2-A).
 - The Phase 2 core API:
   - **per-run options:** `runoptions.go` (`RunOption`, `RunWith`,
     `WithReporter`, `WithConfirmer`, `WithCredentials`,
@@ -401,6 +410,12 @@ docs/
   ([0035-MADR](decisions/0035-MADR-serve-supervisors-through-a-supervised-adapter.md)
   D13-C). It parses after the command name's last `)`, counts a zombie as
   gone, and returns `ErrUnsupported` off Linux.
+- `internal/redact` is what the formatters of `service.Command`,
+  `service.HandOff`, `service.ExecOptions` and `ghattest.Options` share
+  ([0040-MADR](decisions/0040-MADR-close-four-open-items-after-v1-23-1.md)
+  D2-A). `Env` hides every value and keeps the names, and `EnvText`,
+  `EnvAttr`, `Quoted`, `Length` and `SetOrNil` are what `String` and
+  `LogValue` print. Its depguard rule allows the standard library only.
 - `internal/testproc` is test support, which only `_test.go` files
   import
   ([0023-MADR](decisions/0023-MADR-robust-test-fixtures-and-process-waits.md)):

@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: in-progress
 date: 2026-11-02
 associated-madr: "0040-MADR-close-four-open-items-after-v1-23-1.md"
 ---
@@ -398,4 +398,66 @@ Asked four questions, with three options each:
 * **Order:** "Records, then D4, D3, D2 (Recommended)". This plan runs last, and its tag carries D3's doc sentence. With the MADR's Amendment A1, D5's plan runs just before it, if the owner accepts D5.
 * **Host tests:** "As written (Recommended)": E1 step 8's Linux and Windows runs.
 
-This plan stays `proposed` until the owner approves its execution.
+This plan stayed `proposed` until the owner approved its execution.
+
+### Approval (2026-11-02)
+
+The owner committed and pushed D5's phase as `0db3575`, and said "committed, puashed, proceed". This plan ran last, as the order says, and is `in-progress`.
+
+### E1: the methods, the tests and the documents (2026-11-02)
+
+Files: as E1 lists them, and no others.
+
+1. **Baseline.**
+   * `git status --short` was clean, with `main` level with `origin` at `0db3575`.
+   * `git diff --stat 4a9ead5 HEAD` of the four types' files and `.golangci.yml` printed nothing (exit 0).
+   * `internal/redact` did not exist, and the `git grep` for `fixtureSecret` and `secretForms` exited 1, with no match.
+2. **Steps 2 to 5: the code, the package, the rules and the tests.** These were written by the pre-check's own `prototype()` (scratchpad `p40e1apply2.py`, reading `p40d2c.py`).
+   * After it, `cmp` found these nine files byte-identical to the copies the pre-check of 2026-11-02 linted, diffed and planted: `runner.go`, `handoff.go`, `execreconciler.go`, `ghattest.go`, both new `redact_test.go` files, `internal/redact/redact.go` and its test, and `.golangci.yml`.
+   * `gofmt` ran on the eight `.go` files.
+3. **Step 6: seen failing.** Each plant was made in a `scripts/plant-copy.sh` copy, and each copy was removed (scratchpad `p40e1plants.py`). All eleven exited 1:
+   * F1: `slice with %d prints the secret as "fixture-secret-0123"`;
+   * F2: `HandOff with %x does not name GH_TOKEN`, and `HandOff with %d prints the secret`;
+   * F3: `*ExecOptions with %x does not name GH_TOKEN`, and `%d prints the secret`;
+   * F4: `*Options with %x does not name GH_TOKEN`, and `%d prints the secret`;
+   * L1: `Command through slog's json handler prints the secret as "fixture-secret-0123"`;
+   * L2: `Options through slog's json handler does not name GH_TOKEN` (`!ERROR:json: unsupported type`);
+   * R1: `*Command with %v prints the secret as "fixture-secret-0123"`;
+   * N1: `Command with %v does not name GH_TOKEN`;
+   * E1: `FAIL` in all three packages, `internal/redact`'s line being `Env = [… "EMPTY=<redacted>" …], want [… "EMPTY=<empty>" …]`;
+   * G1: `import 'github.com/maccavelli/go-selfupdate-lib/internal/testproc' is not allowed from list 'internal-redact' (depguard)`;
+   * G2: `import 'github.com/maccavelli/go-selfupdate-lib/internal/redact' is not allowed from list 'service' (depguard)`, in `execreconciler.go`, `handoff.go` and `runner.go`.
+
+   The step-8 row plant, `internal/redact/`'s row removed, exited 1 under D5's check: `docs/architecture.md: internal/redact: 1 non-test and 1 test .go files, and no row in the table`.
+4. **Step 7: the documents,** written by the same script, each old string asserted once:
+   * `CHANGELOG.md`: `## v1.24.0 - 2026-11-02`, with Added, and Changed. Changed includes D3's `RequestStop` sentence, since D3's commit, `cb1234f`, is in the tree. It links §24, the MADR and this PLAN.
+   * The migration guide: `## 24. From v1.23 to v1.24` after §23, with its `go get …@v1.24.0` block, "What is new", "Behaviour you may notice", "Adopting it" and "Check".
+   * `docs/guides/extending-selfupdate.md`: one sentence in "Run as a service", after the `ExecOptions.Env` sentence, and one in "Check build provenance", after `Options.Timeout`'s.
+   * `docs/architecture.md`:
+     * the tree's `internal/redact/` entry;
+     * the redaction bullet;
+     * a bullet after `internal/procfs`'s;
+     * the package table: `selfupdate/service/` 22 / 30 with `internal/redact` among its imports, `selfupdate/verify/ghattest/` 2 / 4 with `internal/redact`, and the new `internal/redact/` row.
+   * `AGENTS.md`: `internal/redact` in the scope paragraph, and `internal-redact` in "Dependencies".
+5. **Step 8: checks.**
+   * **`make gate`:** `overall=0`. Every step was rc=0:
+     * `lint` 0 issues, on three GOOS;
+     * `tidy` clean;
+     * `apicheck` "compatible with v1.23.1";
+     * `fuzz` 11 targets clean;
+     * `vuln` "No vulnerabilities found.";
+     * `scripts` "all script tests passed";
+     * `links` 930 in 108 files, 0 broken;
+     * `arch` "21 rows in docs/architecture.md, 0 differ, 0 without a row";
+     * `ids` 16 files, 0 findings.
+   * **`make pre-add-check`** on the eight `.go` files: "8 file(s) clean (gofmt, golangci-lint, go vet, go test, govulncheck)".
+   * **`apidiff`** from a `git archive` of `v1.23.1` to the tree (scratchpad `p40e1api.py`): 16 changes, each "added", the four methods on each of the four types. `-incompatible` listed nothing, and `internal/redact` is not reported.
+   * **The floor:** under `GOTOOLCHAIN=go1.26.10` (`go version go1.26.10 darwin/arm64`), `go vet ./...` exit 0, and `go test -count=1 ./...` exit 0.
+   * **The test hosts:** `go test -race -count=1 ./selfupdate/service/ ./selfupdate/verify/ghattest/ ./internal/redact/`, with `CGO_ENABLED=1`, on a copy of the tree. The Linux test host: `ok` for the three, `go-test-exit=0`. The Windows test host: `ok` for the three, `go-test-exit=0`. Afterwards each holds 0 `sulib-*` copies.
+   * **Documents:**
+     * `make markdownlint`: 0 issues;
+     * `make check-records`: 95 records, 0 findings;
+     * `make docs-check`: 930 links, 0 broken; `arch` "21 rows …, 0 without a row";
+     * `--ids` on the 16 changed and new files: 0 findings.
+
+E1 ends here. The owner commits it, and the push runs full CI. E2, the tag, waits for the owner's word on the tag, after a green CI run.

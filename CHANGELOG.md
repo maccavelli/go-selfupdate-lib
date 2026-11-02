@@ -8,6 +8,29 @@ listed in the
 [migration guide](docs/guides/migrating-from-mcplib-selfupdate.md), one
 section per release, and each entry links its section and its records.
 
+## v1.24.0 - 2026-11-02
+
+### Added
+
+- `String`, `GoString`, `Format` and `LogValue` on `service.Command`,
+  `service.HandOff`, `service.ExecOptions` and `ghattest.Options`.
+
+### Changed
+
+- `fmt` and `log/slog` print those four with each `Env` value as
+  `<redacted>`, or `<empty>` for an empty value, so a program that logs
+  one no longer prints a token from its environment. `Command.Stdin`
+  prints as its length, and `RestoreFunc` and the runners as `<set>` or
+  `<nil>`. `encoding/json` is unchanged, and slog's JSON handler still
+  encodes such a value held inside another with it.
+- `taskscheduler.Options.RequestStop`'s documentation says its run is
+  spent inside `Poll`'s timeout, and what `Stop` does when that timeout
+  ends within the grace.
+
+See [the guide](docs/guides/migrating-from-mcplib-selfupdate.md#24-from-v123-to-v124),
+[0040-MADR](docs/decisions/0040-MADR-close-four-open-items-after-v1-23-1.md) and
+[0040-PLAN](docs/decisions/0040-PLAN-redact-env-in-formatted-values.md) E1.
+
 ## v1.23.1 - 2026-10-30
 
 ### Changed

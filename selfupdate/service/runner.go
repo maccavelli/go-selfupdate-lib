@@ -5,15 +5,25 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"time"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/redact"
 	"github.com/maccavelli/go-selfupdate-lib/internal/winproc"
 )
 
 // Command is one program run. Path must be absolute: a runner never looks a
 // tool up on PATH (0011-MADR §2).
+//
+// Formatting a Command with fmt or log/slog prints each Env entry's name,
+// never its value, and Stdin only as its length. encoding/json prints
+// both, and slog's JSON handler encodes a value that holds a Command, such
+// as a struct field, with encoding/json too, so log the Command itself
+// (0040-MADR D2-A).
 type Command struct {
 	// Path is the program's absolute path.
 	Path string
@@ -24,6 +34,30 @@ type Command struct {
 	Env []string
 	// Stdin, when non-nil, is written to the program's standard input.
 	Stdin []byte
+}
+
+// String implements fmt.Stringer. It prints each Env entry as its name and
+// <redacted>, or <empty> for an empty value, an entry with no "=" as
+// <redacted>, a nil Env as <nil>, and Stdin only as its length.
+func (c Command) String() string {
+	return "Command{Path:" + strconv.Quote(c.Path) + " Args:" + redact.Quoted(c.Args) +
+		" Env:" + redact.EnvText(c.Env) + " Stdin:" + redact.Length(c.Stdin) + "}"
+}
+
+// GoString implements fmt.GoStringer. It is String.
+func (c Command) GoString() string { return c.String() }
+
+// Format implements fmt.Formatter: every verb prints String, so no
+// directive reaches an Env value or Stdin.
+func (c Command) Format(f fmt.State, _ rune) {
+	_, _ = io.WriteString(f, c.String()) //nolint:errcheck // fmt.Formatter has no error to return; fmt drops write errors
+}
+
+// LogValue implements slog.LogValuer, with Env and Stdin as String
+// prints them.
+func (c Command) LogValue() slog.Value {
+	return slog.GroupValue(slog.String("path", c.Path), slog.Any("args", c.Args), redact.EnvAttr(c.Env),
+		slog.String("stdin", redact.Length(c.Stdin)))
 }
 
 // Output is what a program produced. A non-zero ExitCode is not an error:
