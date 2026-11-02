@@ -101,7 +101,7 @@ name, and the files they cite moved with the rename
 | 0040 | MADR | [Apply the deferred repository settings, redact `Env` in four formatted types, test Task Scheduler's stop when its bound ends within the grace, and record the host cleanup in 0038](decisions/0040-MADR-close-four-open-items-after-v1-23-1.md) | proposed |
 | 0040 | PLAN | [Implement D2: redact `Env` when `service.Command`, `service.HandOff`, `service.ExecOptions` and `ghattest.Options` are formatted, and release `v1.24.0`](decisions/0040-PLAN-redact-env-in-formatted-values.md) | proposed |
 | 0040 | PLAN | [Implement D3: test Task Scheduler's `Stop` when its bound ends within the `RequestStop` grace](decisions/0040-PLAN-test-task-scheduler-grace-timeout.md) | proposed |
-| 0040 | PLAN | [Implement D4: record in 0038-PLAN that the host leftovers were removed](decisions/0040-PLAN-record-host-cleanup-in-0038.md) | proposed |
+| 0040 | PLAN | [Implement D4: record in 0038-PLAN that the host leftovers were removed](decisions/0040-PLAN-record-host-cleanup-in-0038.md) | complete |
 | 0040 | PLAN | [Implement D5: make the architecture table check require a row for every directory Go builds](decisions/0040-PLAN-require-architecture-table-rows.md) | proposed |
 
 ## I want to…

@@ -1,6 +1,6 @@
 ---
 status: complete
-date: 2026-10-30
+date: 2026-11-02
 associated-madr: "0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md"
 ---
 <!-- markdownlint-disable MD004 MD013 MD024 MD060 -->
@@ -917,7 +917,7 @@ Not done here, as the plan's scope says, or as found:
 
 * The set-aside items stay out: `Availability.Plan` and a plan-returning `Checker`, a `StartPlan` stream, `Root.Chmod`, and `CheckNoLeak` per bubble.
 * The plant experiments were not rerun at closing. V2 to V7's "seen failing" rests on each phase's table, recorded when it ran.
-* Leftovers this plan's runs cannot be shown to have made stay on the hosts. This phase removes only what this plan's runs left. They are:
+* Leftovers this plan's runs cannot be shown to have made stay on the hosts. This phase removes only what this plan's runs left. They are: *Removed on 2026-10-30, after this plan closed: see "After closing (2026-10-30): the host leftovers removed", below.*
   * on the Windows test host's temporary directory: 509 empty `selfupdate-artifact-*` directories from 2026-09-17 to 2026-10-01; four test directories from 2026-10-12 to 2026-10-18; and 34 `sulib-*` remote-run copies from 2026-10-23 and 2026-10-24;
   * in the WSL: one `selfupdate-live-run-*` directory from 2026-10-04;
   * in this Mac's temporary directory: nine fixture directories of `internal/cmd/selfupdate-release`'s tests, from 2026-10-14 and 2026-10-27. Test runs that did not reach their exit cleanup left them; they cannot be traced to a phase.
@@ -925,3 +925,24 @@ Not done here, as the plan's scope says, or as found:
 * Programs adopt `v1.23.0` in their own repositories.
 
 The plan is complete.
+
+### After closing (2026-10-30): the host leftovers removed
+
+Recorded by [0040-PLAN-record-host-cleanup-in-0038.md](0040-PLAN-record-host-cleanup-in-0038.md), under [0040-MADR-close-four-open-items-after-v1-23-1.md](0040-MADR-close-four-open-items-after-v1-23-1.md) D4-A.
+
+This plan was committed `complete` as `833f49f`. Later that day, the owner said "proceed to item 1, cleanup.", and the leftovers that "Not done here" lists were removed. This was outside this plan's phases.
+
+1. **A look first, read-only.**
+   * The Windows test host's temporary directory held 509 `selfupdate-artifact-*` directories, none of them holding anything. It also held 34 `sulib-*` copies, 242 MB in all, the newest from 2026-10-24, and the four test directories.
+   * The WSL held the one `selfupdate-live-run-*` directory, with a test binary and its run script from 2026-10-04.
+   * This Mac's temporary directory held the nine fixture directories.
+2. **The removal,** which stopped on any difference from those counts:
+   * on the Windows test host, after checking the counts of 509 and 34 again: the artifact directories with `rmdir`, which removes only an empty directory; then the copies; then the four test directories, by name;
+   * in the WSL, after checking its test binary and run script were still there: the directory;
+   * on this Mac, after checking the count of nine again: the nine directories.
+3. **After.** Every step exited 0.
+   * The Windows test host's temporary directory holds 0 `selfupdate-artifact-*`, 0 `sulib-*` and 0 `selfupdate-*` entries.
+   * The WSL holds 0 `selfupdate-live-run-*` directories.
+   * This Mac's temporary directory holds 0 `selfupdate-*` entries.
+
+The launchd override entries of Q19 step 3 stay.

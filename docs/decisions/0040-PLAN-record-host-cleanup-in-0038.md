@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: complete
 date: 2026-11-02
 associated-madr: "0040-MADR-close-four-open-items-after-v1-23-1.md"
 ---
@@ -120,4 +120,52 @@ Files: `docs/decisions/0038-PLAN-pinned-plans-lifecycle-conformance-and-bubble-t
 * **Decisions:** "Accept D2-A, D3-A, D4-A (Recommended)". D4-A is the owner's decision.
 * **Order:** "Records, then D4, D3, D2 (Recommended)". The records commit comes first, then this plan's H1 as a commit of its own, on the owner's approval.
 
-This plan stays `proposed` until the owner approves its execution.
+This plan stayed `proposed` until the owner approved its execution.
+
+### Approval (2026-11-02)
+
+The owner committed the records as `3acd87f` and `f75bcb1`, and said "committed, proceed". This plan ran first, as the order says.
+
+### H1: the entry (2026-11-02)
+
+Files: 0038-PLAN, this PLAN and `docs/README.md` (this plan's row), as listed.
+
+1. **Baseline.**
+   * `git status --short` was clean at `f75bcb1`.
+   * `git diff --stat 833f49f HEAD` of 0038-PLAN printed nothing (exit 0).
+   * The file had 927 lines: line 920 was the "Leftovers … stay on the hosts" bullet, and line 927, the last, was "The plan is complete."
+2. **The annotation** was added to line 920, after one space, as step 2 gives it.
+3. **The entry** was appended after "The plan is complete.", with one blank line before it, as step 3 gives it.
+
+   Both texts were read from this PLAN's own two `markdown` blocks by the edit script (scratchpad `p40h1.py`), so they are verbatim. The script asserted the two lines and the file's end before writing.
+4. **The front matter:** `date: 2026-10-30` became `date: 2026-11-02`, and `status: complete` is unchanged.
+5. **The diff** (scratchpad `p40h1diff.py`, exit 0):
+   * hunks `(3,1→3,1)`, `(920,1→920,1)` and `(927,0→928,21)`;
+   * the only removed lines are the old `date:` line and line 920;
+   * the new line 920 starts with the old line's whole text;
+   * the 21 added lines, a blank line and the entry's 20, all come after line 927.
+6. **Checks:** in the PLAN's Verification below.
+7. **Seen failing:** this phase adds no test and no gate, so nothing was planted.
+
+### Verification, at closing (2026-11-02)
+
+* **V1 (the correction):** line 920 carries the annotation, and the entry follows "The plan is complete.", by step 5's assertions.
+* **V2 (the facts):** each figure in the entry was checked against the scratch record of 2026-10-30, the look's and the removal's output:
+  * 509 artifact directories, 0 of them non-empty;
+  * 34 copies, `242M` in all, the newest 2026-10-24;
+  * the four test directories;
+  * the WSL directory's two files, dated 2026-10-04;
+  * nine entries on this Mac;
+  * every step `exit=0`, and the counts after, 0 on each host.
+
+  The owner's words are from the session transcript, at 2026-10-30 12:52 UTC.
+* **V3 (the identifiers):** `scripts/check-docs.sh --ids`, with the deny list, on 0038-PLAN, this PLAN and `docs/README.md`: 3 files, 16 deny-list rules, 0 findings. It checked for the local account name, the hostnames and home directory paths.
+* **V4 (the records):**
+  * `make markdownlint`: 0 issues;
+  * `make check-records`: 95 records, 0 findings;
+  * `make docs-check`: 918 links in 108 files, 0 broken, and 20 rows, 0 differ;
+  * `--links` on 0038-PLAN and this PLAN: 7 links, 0 broken.
+
+  The Docs run on the push is the owner's to report.
+
+Not done here, as the plan's scope says: no host was touched or read, and 0038-PLAN stays `complete`.
