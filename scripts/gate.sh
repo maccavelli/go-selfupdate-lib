@@ -24,7 +24,9 @@
 #
 # The arch step runs scripts/check-docs.sh --arch on docs/architecture.md:
 # its package table's file counts against the tree's files
-# (docs/decisions/0022-MADR-documentation-pass-after-v1-14-0.md D2).
+# (docs/decisions/0022-MADR-documentation-pass-after-v1-14-0.md D2), and a
+# row for every directory Go builds
+# (docs/decisions/0040-MADR-close-four-open-items-after-v1-23-1.md D5-A).
 # shellcheck disable=SC2329 # the step functions run through step's "$@"
 set -uo pipefail
 

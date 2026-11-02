@@ -133,10 +133,12 @@ if [ "$rc" -eq 2 ]; then ok "an unknown mode is a usage error"; else bad "usage:
 
 # --arch runs in a throwaway repository: pkg holds one file and one test,
 # pkg/sub one tracked file and one untracked, which counts, and
-# pkg/ignored.go, which .gitignore excludes, does not.
+# pkg/ignored.go, which .gitignore excludes, does not. pkg/testdata/fix,
+# pkg/_old, .tools and vendor/v hold .go files in directories ./... leaves out,
+# which need no row.
 A="$WORK/arch"
-mkdir -p "$A/pkg/sub" "$A/docs"
-for f in pkg/a.go pkg/a_test.go pkg/sub/b.go; do printf 'package x\n' >"$A/$f"; done
+mkdir -p "$A/pkg/sub" "$A/docs" "$A/pkg/testdata/fix" "$A/pkg/_old" "$A/.tools" "$A/vendor/v"
+for f in pkg/a.go pkg/a_test.go pkg/sub/b.go pkg/testdata/fix/main.go pkg/_old/x.go .tools/x.go vendor/v/x.go; do printf 'package x\n' >"$A/$f"; done
 printf 'pkg/ignored.go\n' >"$A/.gitignore"
 git -C "$A" init -q
 git -C "$A" add .
@@ -156,14 +158,15 @@ table gone.md "1 1" "2 0"
 table untracked.md "1 1" "1 0"
 sed 's#pkg/sub/#pkg/none/#' "$A/docs/gone.md" >"$A/docs/nodir.md"
 printf '%s\n' '# Architecture' '' 'No table here.' >"$A/docs/notable.md"
+grep -v 'pkg/sub/' "$A/docs/good.md" >"$A/docs/missing.md"
 runarch() {
 	rc=0
 	out=$(cd "$A" && bash "$SCRIPT" --arch "$@" 2>&1) || rc=$?
 }
 
 runarch docs/good.md
-if [ "$rc" -eq 0 ] && has '2 rows in docs/good.md, 0 differ'; then
-	ok "--arch: a table that matches the files passes, an untracked one counted and an ignored one not"
+if [ "$rc" -eq 0 ] && has '2 rows in docs/good.md, 0 differ, 0 without a row'; then
+	ok "--arch: a table that matches the files passes, an untracked one counted, an ignored one not, and directories ./... leaves out need no row"
 else
 	bad "arch good: rc=$rc out=[$out]"
 fi
@@ -180,6 +183,14 @@ if [ "$rc" -eq 1 ] && has 'docs/untracked.md:8: pkg/sub: table 1/0, tree 2/0'; t
 	ok "--arch: an untracked file a row leaves out fails, before its first commit"
 else
 	bad "arch untracked: rc=$rc out=[$out]"
+fi
+
+runarch docs/missing.md
+if [ "$rc" -eq 1 ] && has 'docs/missing.md: pkg/sub: 2 non-test and 0 test .go files, and no row in the table' &&
+	has '1 rows in docs/missing.md, 0 differ, 1 without a row'; then
+	ok "--arch: a directory of .go files with no row fails, its untracked file counted"
+else
+	bad "arch missing: rc=$rc out=[$out]"
 fi
 
 runarch docs/notable.md

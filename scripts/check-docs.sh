@@ -35,9 +35,13 @@
 #                    untracked and not ignored, as a commit would hold them
 #                    (docs/decisions/0022-MADR-documentation-pass-after-v1-14-0.md
 #                    D2). A row that differs prints the file, the line and
-#                    both counts. A missing table or a directory with no
-#                    .go file exits 2. Run it from inside the
-#                    repository.
+#                    both counts. A directory that holds a .go file and has
+#                    no row prints the file, the directory and its counts,
+#                    unless a part of its path is testdata or vendor, or
+#                    starts with "." or "_", which go's ./... leaves out
+#                    (docs/decisions/0040-MADR-close-four-open-items-after-v1-23-1.md
+#                    D5-A). A missing table or a row for a directory with no
+#                    .go file exits 2. Run it from inside the repository.
 #
 # Exit 0 when clean, 1 on a finding, 2 on a usage, deny-list or table error.
 set -euo pipefail
@@ -280,14 +284,24 @@ def check_arch():
         got = counts[d]
         if got != want:
             bad.append(f"{f}:{n}: {d}: table {want[0]}/{want[1]}, tree {got[0]}/{got[1]}")
+    # Every directory Go builds needs a row: one that holds a .go file,
+    # unless a part of its path is testdata or vendor, or starts with "."
+    # or "_": go's ./... leaves those out
+    # (docs/decisions/0040-MADR-close-four-open-items-after-v1-23-1.md D5-A).
+    listed = {d for _, d, _ in rows}
+    missing = []
+    for d, (plain, test) in sorted(counts.items()):
+        if d in listed or any(p in ("testdata", "vendor") or p.startswith((".", "_")) for p in d.split("/")):
+            continue
+        missing.append(f"{f}: {d or '.'}: {plain} non-test and {test} test .go files, and no row in the table")
     for b in broken:
         print(b, file=sys.stderr)
-    for b in bad:
+    for b in bad + missing:
         print(b)
-    print(f"check-docs: {len(rows)} rows in {f}, {len(bad)} differ")
+    print(f"check-docs: {len(rows)} rows in {f}, {len(bad)} differ, {len(missing)} without a row")
     if broken:
         return 2
-    return 1 if bad else 0
+    return 1 if bad or missing else 0
 
 
 try:

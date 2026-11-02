@@ -501,7 +501,7 @@ Proposed: "D1-B, D2-A, D3-A and D4-A".
 
 ## Amendment A1 (2026-11-02): D5, the architecture table check
 
-The D2 PLAN's pre-check removed the new `internal/redact/` row from `docs/architecture.md`'s package table, and the check still passed. On 2026-11-02 the owner asked to fix that ("fix this"). This amendment adds D5. It is `proposed`, and the owner's decisions of the same day (Decision Outcome) do not cover it.
+The D2 PLAN's pre-check removed the new `internal/redact/` row from `docs/architecture.md`'s package table, and the check still passed. On 2026-11-02 the owner asked to fix that ("fix this"). This amendment adds D5. It was proposed, apart from the owner's decisions of the same day (Decision Outcome), and the owner chose D5-A later that day (D5 outcome).
 
 ### D5 facts
 
@@ -537,7 +537,7 @@ The D2 PLAN's pre-check removed the new `internal/redact/` row from `docs/archit
 
 ### D5 outcome
 
-Proposed: "D5-A".
+Chosen option: "D5-A", by the owner on 2026-11-02 ("Accept D5-A and run it"). It was proposed here the same day.
 
 * **Why.**
   * It closes the gap the plant found (F5.2) with the file list the check already reads, so it needs no Go and runs the same in `docs.yml` (F5.4).

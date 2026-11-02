@@ -247,7 +247,9 @@ with the pre-push guard's deny list (`DISCLOSURE_DENY`, or
 `~/.config/git/disclosure-deny`). The architecture table step runs
 `scripts/check-docs.sh --arch docs/architecture.md`: a change that adds or
 removes a `.go` file updates that page's package table in the same commit
-(`docs/decisions/0022-MADR-documentation-pass-after-v1-14-0.md` D2). To see
+(`docs/decisions/0022-MADR-documentation-pass-after-v1-14-0.md` D2), and a
+directory that `go`'s `./...` builds needs a row
+(`docs/decisions/0040-MADR-close-four-open-items-after-v1-23-1.md` D5-A). To see
 a new test fail without dirtying
 the tree, `scripts/plant-copy.sh FILE OLD NEW` makes a scratch copy with one
 planted break

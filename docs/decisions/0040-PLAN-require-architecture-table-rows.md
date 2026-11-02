@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: complete
 date: 2026-11-02
 associated-madr: "0040-MADR-close-four-open-items-after-v1-23-1.md"
 ---
@@ -8,7 +8,7 @@ associated-madr: "0040-MADR-close-four-open-items-after-v1-23-1.md"
 # Implement D5: make the architecture table check require a row for every directory Go builds
 
 Associated MADR: [0040-MADR-close-four-open-items-after-v1-23-1.md](0040-MADR-close-four-open-items-after-v1-23-1.md)
-(Amendment A1, D5-A, proposed).
+(Amendment A1, D5-A, as the owner chose on 2026-11-02).
 
 ## Goal
 
@@ -134,4 +134,53 @@ Files: `scripts/check-docs.sh`, `scripts/check-docs_test.sh`, `AGENTS.md`, `scri
 
 ### Asked (2026-11-02)
 
-The owner asked to fix the gap that the D2 PLAN's pre-check found ("fix this"). This plan, and the MADR's Amendment A1, are the answer for review. The MADR's D5 is proposed, and nothing is executed.
+The owner asked to fix the gap that the D2 PLAN's pre-check found ("fix this"). This plan, and the MADR's Amendment A1, were the answer for review. The owner committed them as `f75bcb1`.
+
+### The owner's answer and approval (2026-11-02)
+
+After D3's commit, `cb1234f`, the owner said "committed, proceed". Asked how D5 should go, with three options, the owner chose "Accept D5-A and run it (Recommended)".
+* The MADR's D5 outcome now records the choice, in this phase's commit, as step 3 of A0 says.
+* This plan became `in-progress`.
+
+### A1: the check (2026-11-02)
+
+Files: `scripts/check-docs.sh`, `scripts/check-docs_test.sh`, `AGENTS.md`, `scripts/gate.sh`, `docs/architecture.md`, this PLAN and `docs/README.md` (this plan's row), as listed. The MADR's decision line is also in this commit.
+
+1. **Baseline.**
+   * `git status --short` was clean at `cb1234f`, which was not yet pushed.
+   * `git diff --stat 3acd87f HEAD` of the two scripts printed nothing (exit 0).
+   * `make docs-check` exited 0: its tests reported `19 passed, 0 failed`, and `--arch` reported `20 rows in docs/architecture.md, 0 differ`.
+2. **The check, the header and the tests (steps 2 to 4)** were applied with the pre-check's own patch strings (scratchpad `p40a1apply.py`, reading `p40d5.py`). Each old string was asserted to occur once. After the edit, `cmp` found `scripts/check-docs.sh` and `scripts/check-docs_test.sh` byte-identical to the pre-check's copies.
+3. **Seen failing (step 5),** scratchpad `p40a1plant.py`:
+   * the new tests with the new script: `20 passed, 0 failed`;
+   * T1, the new tests with HEAD's script: exit 1, `18 passed, 2 failed`. The failures were `arch good` (`out=[check-docs: 2 rows in docs/good.md, 0 differ]`) and `arch missing` (`rc=0`);
+   * P1, on a `plant-copy.sh` copy given a git index: exit 1, `docs/architecture.md: internal/procfs: 3 non-test and 4 test .go files, and no row in the table`;
+   * P2, an untracked `internal/redact/redact.go` in such a copy: exit 1, `internal/redact: 1 non-test and 0 test .go files, and no row in the table`. HEAD's script exited 0 on the same copy;
+   * P3, the exemption planted out: exit 1, with `arch good` and `arch missing` failing. They named `.tools`, `pkg/_old`, `pkg/testdata/fix` and `vendor/v`; the last is the `vendor` fixture of step 4, which step 5's list did not name;
+   * every copy was removed.
+4. **The descriptions (step 6):**
+   * `AGENTS.md`'s architecture table sentence gains "and a directory that `go`'s `./...` builds needs a row", citing 0040-MADR D5-A;
+   * `scripts/gate.sh`'s comment gains "and a row for every directory Go builds";
+   * `docs/architecture.md`'s gate bullet reads "against the tracked `.go` files and their directories", citing 0040-MADR D5-A.
+5. **Checks (step 7):**
+   * `make docs-check`: exit 0. `check-docs_test: 20 passed, 0 failed`, 922 links in 108 files, 0 broken, and `20 rows in docs/architecture.md, 0 differ, 0 without a row`.
+   * `make gate`: `overall=0`, every step rc=0:
+     * `lint` 0 issues;
+     * `apicheck` "compatible with v1.23.1";
+     * `vuln` "No vulnerabilities found.";
+     * `scripts` "all script tests passed", `check-docs_test` 20 of 20 among them;
+     * `shellcheck` clean;
+     * `arch` "20 rows in docs/architecture.md, 0 differ, 0 without a row";
+     * `ids` 8 files, 0 findings.
+   * `shellcheck` on the three scripts: exit 0.
+   * `make markdownlint`: 0 issues. `make check-records`: 95 records, 0 findings.
+   * `scripts/check-docs.sh --ids` on the eight changed files, with the deny list: 0 findings. It checked for the local account name, the hostnames and home directory paths.
+
+### Verification, at closing (2026-11-02)
+
+* **V1 (the gap closed):** P1 and P2 each exit 1 with the directory named, where HEAD's script passed P2. The `missing` test case runs in every `make docs-check`.
+* **V2 (no false finding):** the real page passes with `0 without a row`, in `make docs-check` and the gate. The `testdata` fixture programs and the test's exempt directories need no row.
+* **V3 (seen failing):** T1 fails exactly the two new cases. P3 fails both cases with the four exempt directories named.
+* **V4 (the gates):** `make docs-check` and `make gate` exit 0. The push's CI and Docs runs are the owner's to report.
+
+Not done here, as the plan's scope says: no row of the table changed, nested modules and `ignore` directives are not exempted, and there is no release.

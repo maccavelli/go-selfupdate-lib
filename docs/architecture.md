@@ -854,9 +854,10 @@ D9; the threat analysis is
   -shuffle=on -count=2`, `go mod tidy -diff`, `make apicheck`, `make fuzz`,
   `make vuln`, every script test but the gate's own, `shellcheck`, the cross-target `go vet`,
   the link check over every tracked Markdown file, the check of this page's
-  package table against the tracked `.go` files
+  package table against the tracked `.go` files and their directories
   ([0022-MADR](decisions/0022-MADR-documentation-pass-after-v1-14-0.md)
-  D2), and the identifier check on the changed and untracked files. Each step's output goes to `GATE_OUT`, and it prints
+  D2; [0040-MADR](decisions/0040-MADR-close-four-open-items-after-v1-23-1.md)
+  D5-A), and the identifier check on the changed and untracked files. Each step's output goes to `GATE_OUT`, and it prints
   one `<step> rc=<N>` line; `GATE_SKIP` skips named steps. Records cite it
   in place of the session gate the 0010–0014 PLANs ran
   ([0015-PLAN](decisions/0015-PLAN-remediate-third-debugging-pass-findings.md)
