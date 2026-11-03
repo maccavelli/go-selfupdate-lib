@@ -1,6 +1,6 @@
 ---
-status: in-progress
-date: 2026-11-02
+status: complete
+date: 2026-11-03
 associated-madr: "0040-MADR-close-four-open-items-after-v1-23-1.md"
 ---
 <!-- markdownlint-disable MD004 MD013 MD024 MD060 -->
@@ -526,3 +526,46 @@ E1 ends here, with its commit on `main` and its CI green. E2 waited for the owne
 
   No file is added to the phase. The MADR asserts nothing about this check, so it is unchanged.
 * **Also allowed.** Read-only `gh` calls for the tag's CI run ("Yes, read-only gh").
+
+### E3: closing (2026-11-03)
+
+The owner committed and pushed the pin commit as `d752e65`, then said "proceed".
+
+1. **Host state:** a read-only look found 0 `sulib-*` copies of the tree in the Linux test host's `/var/tmp` and in the Windows test host's temporary directory. E1 step 8's runs removed theirs.
+2. **The tree:** `git status --short` printed nothing, with `main` level with `origin` at `d752e65`.
+3. **The Docs run** on `d752e65` was not read. The owner's word on `gh` covered only the tag's CI, so its result is the owner's to report.
+4. This PLAN is `complete`, and its row in `docs/README.md` matches. The MADR stays `proposed`. D2 to D5 are decided and complete, but D1 is open, and the record takes one status (MADR, Decision Outcome).
+
+### Verification, at closing (2026-11-03)
+
+* **V1 (redaction):** `TestEnvNeverFormats`, `TestEnvFormatText`, `TestOptionsEnvNeverFormats`, and `internal/redact`'s `TestEnv` and `TestText` pass:
+  * in the gate's race and shuffle steps on this Mac (E1 step 8);
+  * under `-race` on the Linux test host and the Windows test host (E1 step 8);
+  * on every job of CI run 41540437098 for `74ab5dd` and tag run 41545281504 (E1 step 6, E2 step 3).
+
+  Probe E1's seven forms are among them (MADR F2.5), and none prints the secret.
+* **V2 (seen failing):** the eleven plants each exited 1 with the failure in E1 step 6's table (E1 step 3).
+* **V2a (the package):** `internal/redact` is named in:
+  * `.golangci.yml`: its rule, the allows in `service` and `selfupdate-verify-ghattest`, and the `other-packages` exclusion;
+  * `AGENTS.md`;
+  * `docs/architecture.md`: its tree, its table row, and the bullets.
+
+  G1 and G2 show the rule and the allow are live, and the row plant shows D5's check covers the row (E1 step 3).
+* **V3 (the API):** `apidiff` from a `git archive` of `v1.23.1` to `74ab5dd`, the tag's commit, lists the 16 methods, each "added", and nothing incompatible (E2 step 1). `make apicheck`: "compatible with v1.23.1".
+* **V4 (the gates):**
+  * `make gate`: `overall=0` (E1 step 8);
+  * `make pre-add-check`: 8 files clean;
+  * the documentation checks exit 0 (E1 step 8, E2 step 4);
+  * the floor's `go vet` and `go test` pass under `go1.26.10` (E1 step 8, E2 step 1).
+* **V5 (the release):**
+  * the tag's CI is green, and its ten identity legs print `"v1.24.0 (release) 74ab5dd376a4"` (E2 step 3);
+  * the proxy serves `v1.24.0` at `74ab5dd376a4c864debb32b2d8abfc7856059ba3`, `Ref refs/tags/v1.24.0`, as `@latest`;
+  * `go doc` finds the new methods (E2 step 5).
+
+Not done here, as the plan's scope says, or as found:
+
+* `encoding/json` still prints `Env`, and slog's JSON handler prints it for a value held inside another, as each type's doc says.
+* `selfupdate`'s own `redacted` and `setOrNil` stay in `credentials.go`.
+* `ghattest.Policy` gains no method.
+* Programs adopt `v1.24.0` in their own repositories.
+* The step-4 check was narrowed, as the deviation above records.
