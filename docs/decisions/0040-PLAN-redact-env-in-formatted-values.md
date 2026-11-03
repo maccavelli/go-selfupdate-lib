@@ -351,7 +351,7 @@ As [0039-PLAN-refresh-golang-x-requirements.md](0039-PLAN-refresh-golang-x-requi
    * With `main` level with `origin`, the disclosure guard passes.
 2. **The tag:** the owner makes the annotated tag `v1.24.0`, message `v1.24.0` as the earlier tags. It goes on E1's commit, or on a later commit that changes only records or D3's or D4's files, and the owner pushes it.
 3. **The tag's CI** completes `success`, every job. Its identity legs print `v1.24.0 (release) <12-hex>`.
-4. **The pin commit.** `git diff --stat v1.23.1 v1.24.0 -- .github internal/cmd scripts` must be empty, so the workflows are unchanged and only the pins move. They move to `v1.24.0` and its commit, as 0039-PLAN R2 step 4 moved them:
+4. **The pin commit.** ~~`git diff --stat v1.23.1 v1.24.0 -- .github internal/cmd scripts` must be empty~~ `git diff --stat v1.23.1 v1.24.0 -- .github internal/cmd` and the four scripts the release workflows run (`check-release-tag.sh`, `verify-selfupdate-release.sh`, `refuse-existing-release.sh`, `release-latest-flag.sh`) must be empty (deviation of 2026-11-02, below), so the workflows are unchanged and only the pins move. They move to `v1.24.0` and its commit, as 0039-PLAN R2 step 4 moved them:
    * `README.md`'s current release, `go get` line and publish pin;
    * `docs/architecture.md`'s current release and commit;
    * `docs/guides/building-releases.md`'s "examples below pin", three workflow pins and `git ls-remote` example;
@@ -459,5 +459,70 @@ Files: as E1 lists them, and no others.
      * `make check-records`: 95 records, 0 findings;
      * `make docs-check`: 930 links, 0 broken; `arch` "21 rows …, 0 without a row";
      * `--ids` on the 16 changed and new files: 0 findings.
+6. **The push.** The owner committed E1 as `74ab5dd` and pushed it.
+   * Asked how CI should be confirmed, the owner allowed read-only `gh` calls for this step ("You may read it with gh"), and said "i will tag and push".
+   * CI run 41540437098 was `success`, 18 of 18 jobs, with no `--- FAIL` line in its log.
+   * Its live tests:
+     * `validate (ubuntu-24.04)`: 24 PASS, `TestLiveConformance` twice and `TestLiveSupervisedS6/conformance` among them;
+     * `validate (macos-15)`: 14 PASS and 1 SKIP, `TestLiveSignIdentity`, which needs a signing identity the runner lacks;
+     * `validate (windows-2025)`: 18 PASS, the SCM's `TestLiveConformance` and `TestLiveTaskConformance` among them.
+   * `go126` ran `go1.26.10`.
+   * Docs run 41540437040: `success`.
 
-E1 ends here. The owner commits it, and the push runs full CI. E2, the tag, waits for the owner's word on the tag, after a green CI run.
+E1 ends here, with its commit on `main` and its CI green. E2 waited for the owner's tag.
+
+### E2: `v1.24.0` (2026-11-02)
+
+1. **Before the tag,** at `74ab5dd`, with `main` level with `origin`:
+   * `make apicheck`: "compatible with v1.23.1";
+   * `apidiff` from a `git archive` of `v1.23.1` to the tree: 16 changes, each "added", and `-incompatible` lists nothing (scratchpad `p40e1api.py`, run again). The floor's `go vet ./...` and `go test ./...` exit 0 under `go1.26.10`;
+   * `scripts/check-release-tag.sh v1.24.0`: exit 0;
+   * `git tag -l v1.24.0` prints nothing, so the tag is new;
+   * the disclosure guard: exit 0.
+
+   The tag is the owner's to make and push, on `74ab5dd`, as step 2 says.
+
+2. **The tag:** the owner made the annotated tag `v1.24.0` on `74ab5dd`, message `v1.24.0` as the earlier tags, tagged 2026-11-02 17:25 −0600, and pushed it. The changelog's date, 2026-11-02, stands.
+3. **The tag's CI,** run 41545281504: `success`, 18 of 18 jobs, with no `--- FAIL` in its log.
+   * The ten identity legs each print `"v1.24.0 (release) 74ab5dd376a4"`.
+   * Live tests:
+     * `validate (ubuntu-24.04)`: 24 PASS, `TestLiveConformance` twice and `TestLiveSupervisedS6` among them;
+     * `validate (macos-15)`: 14 PASS and 1 SKIP, `TestLiveSignIdentity`;
+     * `validate (windows-2025)`: 18 PASS, `TestLiveConformance` and `TestLiveTaskConformance` among them.
+   * `go126` ran `go1.26.10`.
+4. **The pin commit.** The narrowed check of the deviation below, `git diff --stat v1.23.1 v1.24.0 -- .github internal/cmd` and the four workflow scripts, printed nothing (exit 0). The pins moved to `v1.24.0` and `74ab5dd…` (scratchpad `p40pin.py`, each old string asserted at its counted number):
+   * `README.md`: the current release, the `go get` line and the publish pin;
+   * `docs/architecture.md`: the current release and its commit;
+   * `docs/guides/building-releases.md`: "examples below pin", the three workflow pins and the `git ls-remote` example;
+   * the migration guide:
+     * the 19 `go get …@v1.23.1` and 17 `go list -m` … `v1.23.1` lines, counted before the edit;
+     * "is the current release", §3's workflow pin, "the example pins" and its range, now `v1.17.2` to `v1.24.0`, `git ls-remote`, and §5's "Require go-selfupdate-lib";
+     * §2's release list, which gains `v1.24.0` and links §24.
+
+   After the edit, no file holds `c24f591…`, and the four hold the new commit 1, 1, 3 and 1 times. Lines that name `v1.23.1` as history stay: §2's entry for it, "From v1.23.0 to v1.23.1", and §24's "compatible with `v1.23.1`" and "as in `v1.23.1`".
+
+   Checks:
+   * `make markdownlint`: 0 issues;
+   * `make docs-check`: 931 links in 108 files, 0 broken, and 21 rows, 0 differ, 0 without a row;
+   * `--ids` on the five changed files: 0 findings;
+   * `make check-records`: 95 records, 0 findings.
+5. **The proxy** (scratchpad `p40proxy.py`, which reads `proxy.golang.org`):
+   * `go list -m -json github.com/maccavelli/go-selfupdate-lib@v1.24.0` gives `Version v1.24.0`, `GoVersion 1.26.10` and an `Origin` of `Hash 74ab5dd376a4c864debb32b2d8abfc7856059ba3`, `Ref refs/tags/v1.24.0`;
+   * `@latest` resolves to `v1.24.0`;
+   * in a scratch module that requires it, `go doc` finds `func (c Command) String() string` in `selfupdate/service` and `func (o Options) LogValue() slog.Value` in `selfupdate/verify/ghattest`.
+**Waiting:** the owner's commit and push of this change, whose Docs run must pass. E3 closes the plan on the owner's word.
+
+### Deviation: E2 step 4's diff check (2026-11-02)
+
+* **Found.** After the owner tagged `v1.24.0` on `74ab5dd`, `git diff --stat v1.23.1 v1.24.0 -- .github internal/cmd scripts` printed three files: `scripts/check-docs.sh`, `scripts/check-docs_test.sh` and `scripts/gate.sh`, 39 insertions and 12 deletions. D5's commit, `0db3575`, changed them. D5 was added after this step was written, which named `scripts` whole.
+* **Why it does not touch the pins.**
+  * `.github` and `internal/cmd` are unchanged (the same diff, exit 0, empty).
+  * The build and publish workflows run four scripts from the pinned tag: `check-release-tag.sh`, `verify-selfupdate-release.sh`, `refuse-existing-release.sh` and `release-latest-flag.sh`. None of the three changed scripts appears in either workflow.
+  * So a workflow pinned to `v1.24.0` runs exactly what one pinned to `v1.23.1` runs, which is what the check is for.
+* **Decision.** The owner chose "Narrow the check, record it":
+  * step 4 checks `.github`, `internal/cmd` and those four scripts;
+  * every pin moves;
+  * the migration guide's range reads `v1.17.2` to `v1.24.0`.
+
+  No file is added to the phase. The MADR asserts nothing about this check, so it is unchanged.
+* **Also allowed.** Read-only `gh` calls for the tag's CI run ("Yes, read-only gh").
