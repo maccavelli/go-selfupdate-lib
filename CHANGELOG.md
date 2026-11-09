@@ -8,6 +8,34 @@ listed in the
 [migration guide](docs/guides/migrating-from-mcplib-selfupdate.md), one
 section per release, and each entry links its section and its records.
 
+## v1.25.0 - 2026-11-09
+
+### Added
+
+- `ErrSymlinkInvocation`, which the refusal to update a program started
+  through a symlink wraps, and the `failed` event's class
+  `symlink-invocation` for it.
+
+### Changed
+
+- The refusal message names the link and its target, and says to run the
+  target or set `TargetPolicy.ExecutablePath` to it. It keeps its old text,
+  `selfupdate: refusing to update through a symlink`, as its prefix.
+- `TargetPolicy`, `NewStandaloneInstaller` and the package documentation
+  describe the refusal, which no document described before.
+
+### Fixed
+
+- A program started through a symlink to its binary is refused on Linux,
+  as it already was on macOS and Windows (issue #9). `os.Executable` there
+  returns the resolved path, so the check never saw the link; the path in
+  `os.Args[0]` is now checked too. A Linux program that updated through a
+  link before is now refused.
+
+See [the guide](docs/guides/migrating-from-mcplib-selfupdate.md#25-from-v124-to-v125),
+[0041-MADR](docs/decisions/0041-MADR-refuse-symlink-invocation-on-every-platform.md) and
+[0041-PLAN](docs/decisions/0041-PLAN-refuse-symlink-invocation-on-every-platform.md).
+
 ## v1.24.0 - 2026-11-02
 
 ### Added

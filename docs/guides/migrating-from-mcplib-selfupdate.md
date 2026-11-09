@@ -1905,3 +1905,62 @@ What each change does is in the [changelog](../../CHANGELOG.md).
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
 - `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.24.0`.
+
+## 25. From v1.24 to v1.25
+
+```bash
+go get github.com/maccavelli/go-selfupdate-lib@v1.25.0
+```
+
+`v1.25.0` refuses, on Linux too, an update of a program started through a
+symlink to its binary, as `v1.24.0` and earlier already did on macOS and
+Windows (issue #9). `make apicheck` reports it compatible with `v1.24.0`:
+its one exported change is the added `ErrSymlinkInvocation`. Why, and how,
+is in
+[0041-MADR](../decisions/0041-MADR-refuse-symlink-invocation-on-every-platform.md),
+executed by
+[0041-PLAN](../decisions/0041-PLAN-refuse-symlink-invocation-on-every-platform.md).
+What each change does is in the [changelog](../../CHANGELOG.md).
+
+### What is new
+
+- `ErrSymlinkInvocation`, which the refusal wraps, so
+  `errors.Is(err, selfupdate.ErrSymlinkInvocation)` tells it from any
+  other failure.
+- The `failed` event's class `symlink-invocation`, where this refusal was
+  `error`.
+
+### Behaviour you may notice
+
+- **On Linux, a program started through a symlink is refused.** Before,
+  Linux's `os.Executable` returned the resolved path, so the check never
+  saw the link, and the link's target was replaced. The path in
+  `os.Args[0]` is now checked too: made absolute when it has a separator,
+  and searched on `PATH` when it has none. The update is refused only when
+  that path is a symlink to the running binary. A symlinked directory on
+  the way is still followed. On macOS and Windows the result is as in
+  `v1.24.0`.
+- **The message names the link and its target,** and says what to do:
+  `selfupdate: refusing to update through a symlink: <link> links to <target>; run <target>, or set TargetPolicy.ExecutablePath to it`.
+  It keeps the old text as its prefix.
+- **The `failed` event's detail** for this refusal is
+  `symlink-invocation`, not `error`.
+
+### Adopting it
+
+- Nothing is required by a program whose users run the binary itself.
+- A Linux program whose users start it through a link, from a shell, a
+  unit file or a launcher, now fails its update there. Tell them to run
+  the target the message names. To update through the link on purpose,
+  set `TargetPolicy.ExecutablePath` to the resolved path, such as
+  `filepath.EvalSymlinks` of `os.Executable()`'s result; `os.Args[0]` is
+  then not read.
+- A program that matched the refusal's text keeps matching its prefix.
+  Match `ErrSymlinkInvocation` instead.
+- A consumer of the JSON Lines events that treated this refusal's
+  `error` class as its own case gets `symlink-invocation`.
+
+### Check
+
+- `go build ./...`, `go vet ./...` and `go test ./...` pass.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.25.0`.
