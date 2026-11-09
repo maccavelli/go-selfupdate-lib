@@ -27,7 +27,9 @@ type StandaloneInstaller struct {
 }
 
 // NewStandaloneInstaller returns a binary-only installer. LockTimeout zero
-// selects DefaultLockTimeout. A negative duration is invalid.
+// selects DefaultLockTimeout. A negative duration is invalid. It refuses
+// to update a program started through a symlink to its binary, with
+// ErrSymlinkInvocation; TargetPolicy says how to update one on purpose.
 func NewStandaloneInstaller(opts InstallOptions) (*StandaloneInstaller, error) {
 	timeout := opts.LockTimeout
 	if timeout == 0 {

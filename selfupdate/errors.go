@@ -59,6 +59,16 @@ var (
 	// (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
 	// D1-A).
 	ErrPlanStale = errors.New("selfupdate: the plan is stale")
+	// ErrSymlinkInvocation is returned, wrapped, when the program was
+	// started through a symlink to its binary: the path os.Executable
+	// returns is one, or os.Args[0] names one that leads to the running
+	// binary. The update is refused on every platform, so a link into a
+	// tree another tool manages is never followed and overwritten. Set
+	// TargetPolicy.ExecutablePath to the resolved path to update it on
+	// purpose
+	// (docs/decisions/0041-MADR-refuse-symlink-invocation-on-every-platform.md
+	// D1-A, D2-A).
+	ErrSymlinkInvocation = errors.New("selfupdate: refusing to update through a symlink")
 	// ErrBatchFile is returned, wrapped, on Windows when the program to
 	// start is a .bat or .cmd file, in any spelling Windows resolves to
 	// one: a trailing dot or space, an alternate data stream, or no

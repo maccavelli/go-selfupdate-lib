@@ -608,6 +608,7 @@ var failureClasses = []struct {
 	{ErrUnsupportedPlatform, "unsupported-platform"},
 	{ErrConcurrentUpdate, "concurrent-update"},
 	{ErrManagedInstall, "managed-install"},
+	{ErrSymlinkInvocation, "symlink-invocation"},
 	{ErrIntegrity, "integrity"},
 }
 

@@ -600,6 +600,24 @@ again.
 
 - `selfupdate/lifecycle_test.go`, `selfupdate/lifecycle_windows_test.go`
 
+## Update a program started through a symlink
+
+A program started through a symlink to its binary is refused with
+`ErrSymlinkInvocation`, on every platform, so a link into a tree another
+tool manages, such as a Homebrew prefix, is never followed and overwritten.
+Both the path `os.Executable` returns and the one `os.Args[0]` names are
+checked: on Linux `os.Executable` has already resolved the link. The
+error names the link and its target, and the CLI's `failed` event has the
+class `symlink-invocation`. A symlinked directory on the way is followed,
+and a hard link cannot be told apart.
+
+To update the target on purpose, set `TargetPolicy.ExecutablePath` to the
+resolved path, such as `filepath.EvalSymlinks` of `os.Executable()`'s
+result. `os.Args[0]` is then not read
+([0041-MADR](../decisions/0041-MADR-refuse-symlink-invocation-on-every-platform.md)).
+
+- `selfupdate/target_test.go`
+
 ## Write your own installer
 
 `Installer` and `InstallSession` are the whole contract for a single-step

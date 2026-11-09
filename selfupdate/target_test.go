@@ -1,12 +1,16 @@
 package selfupdate
 
 import (
+	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 )
 
 func TestResolveTargetHomeRoot(t *testing.T) {
@@ -32,8 +36,152 @@ func TestResolveTargetRejectsSymlink(t *testing.T) {
 	if err := os.Symlink(exe, link); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := homeFS(home).resolveTarget(TargetPolicy{ExecutablePath: link}); err == nil {
-		t.Fatal("accepted symlink invocation")
+	if _, err := homeFS(home).resolveTarget(TargetPolicy{ExecutablePath: link}); !errors.Is(err, ErrSymlinkInvocation) {
+		t.Fatalf("err = %v, want ErrSymlinkInvocation", err)
+	}
+}
+
+// TestResolveTargetInvokedSymlink: with no ExecutablePath, os.Executable's
+// result is the binary itself, as on Linux, and os.Args[0] decides. A link
+// to the running binary, by absolute, relative or bare name, is refused;
+// anything else os.Args[0] names is ignored
+// (docs/decisions/0041-MADR-refuse-symlink-invocation-on-every-platform.md
+// D1-A).
+func TestResolveTargetInvokedSymlink(t *testing.T) {
+	t.Parallel()
+	home, exe := tempTarget(t)
+	link := filepath.Join(home, "alias")
+	symlinkOrSkip(t, exe, link)
+	other := filepath.Join(home, "other")
+	if err := os.WriteFile(other, []byte("other-bytes"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	otherLink := filepath.Join(home, "other-alias")
+	symlinkOrSkip(t, other, otherLink)
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	relLink, err := filepath.Rel(wd, link)
+	if err != nil {
+		t.Skipf("no relative path from %s to the link: %v", wd, err)
+	}
+	want, err := filepath.EvalSymlinks(exe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := func(string) (string, error) { return link, nil }
+	unused := func(name string) (string, error) {
+		t.Errorf("lookPath(%q) called", name)
+		return "", exec.ErrNotFound
+	}
+	notFound := func(string) (string, error) { return "", exec.ErrNotFound }
+	dot := func(string) (string, error) { return "", exec.ErrDot }
+	for _, c := range []struct {
+		name       string
+		arg0       string
+		lookPath   func(string) (string, error)
+		executable string
+		refused    bool
+	}{
+		{"absolute link", link, unused, "", true},
+		{"relative link", relLink, unused, "", true},
+		{"bare name", "alias", found, "", true},
+		{"bare name not found", "alias", notFound, "", false},
+		{"bare name ErrDot", "alias", dot, "", false},
+		{"link to another file", otherLink, unused, "", false},
+		{"missing path", filepath.Join(home, "missing"), unused, "", false},
+		{"empty", "", unused, "", false},
+		{"real path", exe, unused, "", false},
+		{"override", link, unused, exe, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			fx := homeFS(home)
+			fx.osExecutable = func() (string, error) { return exe, nil }
+			fx.osArgs0 = func() string { return c.arg0 }
+			fx.lookPath = c.lookPath
+			got, err := fx.resolveTarget(TargetPolicy{ExecutablePath: c.executable})
+			if c.refused {
+				if !errors.Is(err, ErrSymlinkInvocation) {
+					t.Fatalf("err = %v, want ErrSymlinkInvocation", err)
+				}
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("err = %v, want it to name %s", err, want)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Path != want {
+				t.Fatalf("Path = %s, want %s", got.Path, want)
+			}
+		})
+	}
+}
+
+// TestResolveTargetRealExecutableThroughSymlink runs a copy of this test
+// binary through a symlink, and it resolves its target with the real
+// os.Executable and os.Args[0]. On Linux os.Executable has resolved the
+// link, so only the os.Args[0] check refuses it; the test written with
+// ExecutablePath could not see that (0041-MADR F4, D1-A).
+func TestResolveTargetRealExecutableThroughSymlink(t *testing.T) {
+	t.Parallel()
+	src, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := "demo"
+	if runtime.GOOS == goosWindows {
+		name += ".exe"
+	}
+	realDir, linkDir := filepath.Join(root, "real"), filepath.Join(root, "link")
+	for _, d := range []string{realDir, linkDir} {
+		if err := os.Mkdir(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	exe, link := filepath.Join(realDir, name), filepath.Join(linkDir, name)
+	in, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(exe, in, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	symlinkOrSkip(t, exe, link)
+	env := append(os.Environ(),
+		"SELFUPDATE_TEST_RESOLVE_TARGET=1",
+		"SELFUPDATE_TEST_ROOT="+root,
+		"PATH="+linkDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	for _, c := range []struct {
+		name, path, arg0, dir, want string
+	}{
+		{"real path", exe, exe, "", "ok"},
+		{"absolute link", link, link, "", "symlink"},
+		{"relative link", link, "." + string(os.PathSeparator) + name, linkDir, "symlink"},
+		{"bare name on PATH", link, name, "", "symlink"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			ctx, cancel := context.WithTimeout(context.Background(), testproc.Budget(t))
+			defer cancel()
+			cmd := exec.CommandContext(ctx, c.path)
+			cmd.Args = []string{c.arg0}
+			cmd.Dir = c.dir
+			cmd.Env = env
+			out, err := cmd.Output()
+			if err != nil {
+				t.Fatalf("helper: %v: %s", err, out)
+			}
+			if got := strings.TrimSpace(string(out)); got != c.want {
+				t.Fatalf("helper printed %q, want %q", got, c.want)
+			}
+		})
 	}
 }
 

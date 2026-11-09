@@ -9,6 +9,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"strconv"
 	"syscall"
 	"time"
@@ -35,9 +36,13 @@ type fsOps struct {
 	keptRenameFn   func(*os.Root, string, string) error
 	leftoverRemove func(*os.Root, string) error
 	// osExecutable and userHomeDir locate the target and its default
-	// allowed root.
+	// allowed root. osArgs0 and lookPath find the path the program was
+	// started by, which resolveTarget checks for a symlink as well (0041-MADR
+	// D1-A).
 	osExecutable func() (string, error)
 	userHomeDir  func() (string, error)
+	osArgs0      func() string
+	lookPath     func(string) (string, error)
 	// lockOpenHook runs at each stage of openLockFile, afterLockHook
 	// right after beginSession takes the lock, and afterCheckHook right
 	// after a replacement checks the directory; tests use them to change
@@ -63,6 +68,8 @@ func realFS() *fsOps {
 		leftoverRemove: (*os.Root).Remove,
 		osExecutable:   os.Executable,
 		userHomeDir:    os.UserHomeDir,
+		osArgs0:        osArgs0,
+		lookPath:       exec.LookPath,
 		lockOpenHook:   func(string) {},
 		afterLockHook:  func() {},
 		afterCheckHook: func() {},
@@ -70,6 +77,14 @@ func realFS() *fsOps {
 	fx.replacePath = fx.replacePathOS
 	fx.writeJournalFn = fx.writeJournal
 	return fx
+}
+
+// osArgs0 is os.Args[0], or "" when os.Args is empty.
+func osArgs0() string {
+	if len(os.Args) == 0 {
+		return ""
+	}
+	return os.Args[0]
 }
 
 // maxTempTries bounds the search for a free name, as os.CreateTemp's does.

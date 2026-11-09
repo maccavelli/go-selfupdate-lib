@@ -483,10 +483,15 @@ docs/
   `canceled`, `deadline-exceeded`, `confirmation-required`,
   `force-required`, `latest-older`, `plan-stale`, `mutable-release`,
   `no-release`, `rate-limited`, `unsupported-platform`,
-  `concurrent-update`, `managed-install` and `integrity` that the error
-  matches, or `error`.
+  `concurrent-update`, `managed-install`, `symlink-invocation` and
+  `integrity` that the error matches, or `error`.
 - The install path (`session.go`, `replace_*.go`, `lock*.go`, `cleanup*.go`,
   `managed.go`):
+  - refuses a target when the program was started through a symlink to
+    it, checked on `os.Executable`'s result and on the path `os.Args[0]`
+    names, since Linux's `os.Executable` has already resolved the link
+    (`resolveTarget`, `ErrSymlinkInvocation`;
+    [0041-MADR](decisions/0041-MADR-refuse-symlink-invocation-on-every-platform.md));
   - locks the target directory through `os.Root`, refusing a symlinked lock
     (`openLockFile`);
   - resolves every name of the replacement through that `os.Root`, so a

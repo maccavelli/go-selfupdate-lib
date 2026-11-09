@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -165,19 +166,20 @@ func TestFailureClass(t *testing.T) {
 	t.Parallel()
 	for err, want := range map[error]string{
 		context.Canceled: "canceled",
-		errors.Join(context.Canceled, ErrIntegrity):  "canceled",
-		context.DeadlineExceeded:                     "deadline-exceeded",
-		ErrConfirmationRequired:                      "confirmation-required",
-		ErrForceRequired:                             "force-required",
-		ErrLatestOlder:                               "latest-older",
-		ErrMutableRelease:                            "mutable-release",
-		ErrNoRelease:                                 "no-release",
-		&RateLimitError{StatusCode: 429}:             "rate-limited",
-		ErrUnsupportedPlatform:                       "unsupported-platform",
-		ErrConcurrentUpdate:                          "concurrent-update",
-		errors.Join(ErrManagedInstall, ErrIntegrity): "managed-install",
-		ErrIntegrity:                                 "integrity",
-		errors.New("anything else"):                  "error",
+		errors.Join(context.Canceled, ErrIntegrity):     "canceled",
+		context.DeadlineExceeded:                        "deadline-exceeded",
+		ErrConfirmationRequired:                         "confirmation-required",
+		ErrForceRequired:                                "force-required",
+		ErrLatestOlder:                                  "latest-older",
+		ErrMutableRelease:                               "mutable-release",
+		ErrNoRelease:                                    "no-release",
+		&RateLimitError{StatusCode: 429}:                "rate-limited",
+		ErrUnsupportedPlatform:                          "unsupported-platform",
+		ErrConcurrentUpdate:                             "concurrent-update",
+		errors.Join(ErrManagedInstall, ErrIntegrity):    "managed-install",
+		fmt.Errorf("resolve: %w", ErrSymlinkInvocation): "symlink-invocation",
+		ErrIntegrity:                                    "integrity",
+		errors.New("anything else"):                     "error",
 	} {
 		if got := failureClass(err); got != want {
 			t.Errorf("%v: %q, want %q", err, got, want)

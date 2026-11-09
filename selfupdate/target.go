@@ -18,7 +18,7 @@ func (fx *fsOps) resolveTarget(policy TargetPolicy) (Target, error) {
 		return Target{}, fmt.Errorf("selfupdate: stat target: %w", err)
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
-		return Target{}, fmt.Errorf("selfupdate: refusing to update through a symlink")
+		return Target{}, symlinkRefusal(raw)
 	}
 	if !info.Mode().IsRegular() {
 		return Target{}, fmt.Errorf("selfupdate: target is not a regular file")
@@ -37,6 +37,11 @@ func (fx *fsOps) resolveTarget(policy TargetPolicy) (Target, error) {
 	}
 	if resolvedInfo.Mode()&os.ModeSymlink != 0 || !resolvedInfo.Mode().IsRegular() {
 		return Target{}, fmt.Errorf("selfupdate: resolved target is not a regular file")
+	}
+	if policy.ExecutablePath == "" {
+		if invoked, ok := fx.invokedSymlink(resolvedInfo); ok {
+			return Target{}, symlinkRefusalTo(invoked, resolved)
+		}
 	}
 	if resolvedInfo.Mode()&(os.ModeSetuid|os.ModeSetgid) != 0 && !policy.AllowSpecialModeBits {
 		return Target{}, fmt.Errorf("selfupdate: target %s has the setuid or setgid bit; "+
@@ -65,6 +70,68 @@ func (fx *fsOps) resolveTarget(policy TargetPolicy) (Target, error) {
 		},
 		allowSpecial: policy.AllowSpecialModeBits,
 	}, nil
+}
+
+// invokedSymlink reports the path the program was started by, and true,
+// when that path is a symlink to the running binary, whose resolved
+// FileInfo is running. Linux's os.Executable reads /proc/self/exe, which
+// the kernel has already resolved, so its result is never the link; the
+// path in os.Args[0] still is
+// (docs/decisions/0041-MADR-refuse-symlink-invocation-on-every-platform.md
+// F2, F3, D1-A). It is made absolute against the working directory when it
+// has a separator, and searched on PATH when it has none.
+//
+// os.Args[0] is whatever the parent passed, so it can only add a refusal:
+// a path that does not exist, is not a symlink, or leads to a file other
+// than the running binary is ignored, and the result is what
+// os.Executable's own check gave. A parent that passes the resolved path
+// hides the link (0041-MADR Consequences).
+func (fx *fsOps) invokedSymlink(running os.FileInfo) (string, bool) {
+	arg0 := fx.osArgs0()
+	if arg0 == "" {
+		return "", false
+	}
+	invoked := arg0
+	if !strings.ContainsRune(arg0, os.PathSeparator) && !strings.ContainsRune(arg0, '/') {
+		found, err := fx.lookPath(arg0)
+		if err != nil {
+			return "", false
+		}
+		invoked = found
+	}
+	invoked, err := filepath.Abs(invoked)
+	if err != nil {
+		return "", false
+	}
+	info, err := os.Lstat(invoked)
+	if err != nil || info.Mode()&os.ModeSymlink == 0 {
+		return "", false
+	}
+	through, err := os.Stat(invoked)
+	if err != nil || !os.SameFile(through, running) {
+		return "", false
+	}
+	return invoked, true
+}
+
+// symlinkRefusal is ErrSymlinkInvocation for link, naming the file it
+// resolves to when that can be found (0041-MADR D2-A).
+func symlinkRefusal(link string) error {
+	resolved, err := filepath.EvalSymlinks(link)
+	if err != nil {
+		return fmt.Errorf("%w: %s", ErrSymlinkInvocation, link)
+	}
+	if abs, err := filepath.Abs(resolved); err == nil {
+		resolved = abs
+	}
+	return symlinkRefusalTo(link, resolved)
+}
+
+// symlinkRefusalTo is ErrSymlinkInvocation for link, which resolves to
+// target, with what to do instead.
+func symlinkRefusalTo(link, target string) error {
+	return fmt.Errorf("%w: %s links to %s; run %s, or set TargetPolicy.ExecutablePath to it",
+		ErrSymlinkInvocation, link, target, target)
 }
 
 func (fx *fsOps) rawExecutablePath(explicit string) (string, error) {

@@ -103,6 +103,8 @@ name, and the files they cite moved with the rename
 | 0040 | PLAN | [Implement D3: test Task Scheduler's `Stop` when its bound ends within the `RequestStop` grace](decisions/0040-PLAN-test-task-scheduler-grace-timeout.md) | complete |
 | 0040 | PLAN | [Implement D4: record in 0038-PLAN that the host leftovers were removed](decisions/0040-PLAN-record-host-cleanup-in-0038.md) | complete |
 | 0040 | PLAN | [Implement D5: make the architecture table check require a row for every directory Go builds](decisions/0040-PLAN-require-architecture-table-rows.md) | complete |
+| 0041 | MADR | [Refuse an update started through a symlink on every platform, by checking the invoked path as well as `os.Executable`](decisions/0041-MADR-refuse-symlink-invocation-on-every-platform.md) | accepted |
+| 0041 | PLAN | [Implement the refusal of an update started through a symlink on every platform](decisions/0041-PLAN-refuse-symlink-invocation-on-every-platform.md) | in-progress |
 
 ## I want to…
 
