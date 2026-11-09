@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 date: 2026-11-09
 associated-madr: "0041-MADR-refuse-symlink-invocation-on-every-platform.md"
 ---
@@ -101,6 +101,8 @@ Out of scope:
 4. Run Phase 1 step 12's checks, then commit with `git commit --no-edit`. Set this PLAN to `complete` in that commit. (The MADR was set to `accepted` when the owner accepted it, before Phase 1.)
 5. Run the pre-push disclosure guard (AGENTS.md "Identifiers") over the outgoing commits, and report the result. Do not push or tag unless the owner asks in the same turn.
 
+*Deviation 4 split steps 2 to 4 in two. Phase 3a, step 1 and step 2's section, was the commit the owner tagged. Phase 3b, after the tag and its green CI, is step 2's other references, step 3, and step 4's status change.*
+
 ## Verification
 
 * Unit tests: every row of Phase 1 step 7's table gives the result it names.
@@ -178,10 +180,26 @@ The owner accepted the MADR and approved this plan on 2026-11-09. Phase 1 and Ph
 * Step 2, its first half: the guide has `## 25. From v1.24 to v1.25`, in §24's form, with "What is new", "Behaviour you may notice", "Adopting it" and "Check". Its second half, the guide's other version references and the release-history line, waits for the pin commit (Deviation 4).
 * Step 3 waits for the pin commit (Deviation 4).
 * Checks on the tree: `scripts/check-release-tag.sh v1.25.0` exit 0; `git tag -l v1.25.0` prints nothing; `make markdownlint` 0 issues; `make docs-check` `943 links in 110 files, 0 broken`, the new `#25-from-v124-to-v125` anchor included; `scripts/check-docs.sh --ids` on the changelog and the guide, 0 findings.
+* Phase 3a: the owner committed and pushed it as `875dec3`. Its Docs run (42671188899) failed on attempts 1 and 2 with no job started. The run page's one annotation was "Internal server error" with a GitHub correlation ID, and the same workflow had passed on `b8a5bd0` at 17:53Z. So the cause was GitHub's, not the tree's. Attempt 3, re-run at the owner's ask, passed at 19:50:39Z: markdownlint, records and index, links and architecture table, home paths.
+* The owner tagged `v1.25.0` on `875dec3c9d475ca47c4b012ca43742de832ef626` (annotated, 2026-11-09, the changelog's date), pushed it, and approved Deviation 4. Tag CI run 42687360803 on `875dec3`: `success` at 20:06:21Z, with all 18 jobs passing. They include `validate` on ubuntu-24.04, macos-15 and windows-2025, `go126`, `installer-containers`, and both release rehearsals.
+
+### Phase 3b
+
+* `git diff --name-only v1.24.0 v1.25.0` lists nothing under `.github`, `internal/cmd`, or `scripts/*release*` (the four release scripts and their tests), so the `v1.24.0` guide's statements about the workflows hold for `v1.25.0`.
+* Pins, moved from `v1.24.0` and `74ab5dd` to `v1.25.0` and `875dec3c9d475ca47c4b012ca43742de832ef626` by a script that asserts each count before it replaces:
+  * `README.md`: the current release, the `go get` line, and the publish pin (1 each).
+  * `docs/architecture.md`: the current release and its commit.
+  * `docs/guides/building-releases.md`: "examples below pin", the three workflow pins, and the `ls-remote` ref.
+  * `docs/guides/migrating-from-mcplib-selfupdate.md`: §2's `go get` line and "current release", §3's publish pin, "`v1.17.2` to `v1.25.0` nothing" and its example pin, the `ls-remote` ref, §5's `go.mod` requirement, the `go get` lines of §6 to §24 (20 in all with §2's) and the `go list` checks of §7 to §24 (18).
+  * The guide's release history gains a `v1.25.0` line linking §25.
+* Kept as history: `docs/architecture.md`'s "Since `v1.24.0`" (redaction), the guide's `v1.24.0` release-history line, §24's prose, and §25's three mentions of `v1.24.0`.
+* Checks on the tree: `make markdownlint` 0 issues; `make check-records` 97 records, 0 findings; `make docs-check` 944 links in 110 files, 0 broken, 21 architecture rows, 0 differ; `make disclosure-check` 739 files, 0 findings; `scripts/check-docs.sh --ids` on the four changed guides and pages, 0 findings.
+* Step 5: no commit existed for the guard to scan, since the owner commits Phase 3b and the guard runs on their push. `scripts/check-docs.sh --ids`, which applies the guard's deny list, over the six changed files, including this PLAN and `docs/README.md`'s index row, which now reads `complete`: 0 findings.
+* The commit follows Deviation 3: the owner commits and pushes.
 
 ### Deviations
 
 * **Deviation 1 (2026-11-09), Phase 1 step 7, the relative case.** The step said the relative case would use `t.Chdir`, and so could not be parallel. Instead it takes `filepath.Rel` from the working directory to the link. The code path is the same, a relative `os.Args[0]` made absolute against the working directory, and the test stays parallel. No decision changes.
 * **Deviation 2 (2026-11-09), Phase 1 step 8, Windows.** The step left the relative and bare-name runs out on Windows, citing MADR F3, where Python's `CreateProcess` could not start them. The test sets `cmd.Path` to the link and `cmd.Args[0]` to the relative path or bare name, so the start does not depend on how a name is searched. All four runs passed on the Windows test host. MADR F3 describes the probe and stays true.
 * **Deviation 3 (2026-11-09), Phase 1 step 12, the commit.** Step 12 had the agent commit with `git commit --no-edit`. The `enforcing-git-branch-gates` policy forbids an agent commit on `main` without a `feature/` branch and a Jira key. The owner chose the `sysadmin-git-branch-gates` policy instead, which needs neither, and chose to commit and push Phase 1 to `main` themselves. The agent ran `make pre-add-check` on the changed Go files and left the tree uncommitted. Phase 3's commit follows the same arrangement unless the owner says otherwise.
-* **Deviation 4 (2026-11-09), Phase 3 steps 2 to 4, the pins. Proposed; awaiting the owner.** Steps 2 and 3 put the version references in the same commit as the changelog. Those references pin the full SHA of the commit the tag is on (`README.md`'s publish pin, `docs/architecture.md`'s "annotated tag on commit", `docs/guides/building-releases.md`'s three workflow pins, the guide's §3 pin). A commit cannot name its own SHA. The `v1.24.0` release split the work in two (0040-PLAN-redact-env-in-formatted-values.md E1 and E2): the changelog and the guide's section went into the commit that was tagged (`74ab5dd`), and a pin commit after the tag (`d752e65`) moved the references and added the release-history line. The proposed resolution is the same split. Phase 3a is steps 1 and 2's section, in the commit to be tagged. Phase 3b, after the owner's tag and its green CI, checks that `.github`, `internal/cmd` and the four release scripts are unchanged since `v1.24.0`, moves every pin to `v1.25.0` and the tag's commit, adds the release-history line, and sets this PLAN to `complete`.
+* **Deviation 4 (2026-11-09), Phase 3 steps 2 to 4, the pins. Approved by the owner on 2026-11-09, after they tagged `v1.25.0`.** Steps 2 and 3 put the version references in the same commit as the changelog. Those references pin the full SHA of the commit the tag is on (`README.md`'s publish pin, `docs/architecture.md`'s "annotated tag on commit", `docs/guides/building-releases.md`'s three workflow pins, the guide's §3 pin). A commit cannot name its own SHA. The `v1.24.0` release split the work in two (0040-PLAN-redact-env-in-formatted-values.md E1 and E2): the changelog and the guide's section went into the commit that was tagged (`74ab5dd`), and a pin commit after the tag (`d752e65`) moved the references and added the release-history line. The proposed resolution is the same split. Phase 3a is steps 1 and 2's section, in the commit to be tagged. Phase 3b, after the owner's tag and its green CI, checks that `.github`, `internal/cmd` and the four release scripts are unchanged since `v1.24.0`, moves every pin to `v1.25.0` and the tag's commit, adds the release-history line, and sets this PLAN to `complete`.
