@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 date: 2026-11-10
 associated-madr: "0043-MADR-name-the-package-once-in-wrapped-errors.md"
 ---
@@ -302,7 +302,30 @@ The owner accepted the MADR and approved this PLAN on 2026-11-10 ("accept the ma
   * `make docs-check`: `997 links in 115 files, 0 broken`, the new `#from-v1260-to-v1261` anchor included, with 22 architecture rows and 0 differing.
   * `make check-records`: `102 records, 0 findings`. `make disclosure-check`: `746 files, 20 deny-list rules, 0 findings`.
   * `scripts/check-docs.sh --ids` on `CHANGELOG.md` and the guide: `2 files, 20 deny-list rules, 0 findings`.
-* The owner commits, pushes, tags `v1.26.1` and pushes the tag.
+* The owner committed Phase C3a as `9fc9dd7` and pushed it. They tagged `v1.26.1` on `9fc9dd7265c305caf995083663dd0df5b2a0ad39` (annotated, 2026-11-10, the changelog's date) and pushed the tag.
+
+### Phase C3b
+
+* **The tag's CI.** Run 42897931015 on `9fc9dd7`: `success` on its first attempt, with all 18 jobs passing. They include `validate` on ubuntu-24.04, macos-15 and windows-2025, `go126`, `installer-containers`, and both release rehearsals with their identity legs. The push to `main` (CI run 42897881484 and Docs run 42897881136) also passed. `git ls-remote origin 'refs/tags/v1.26.1^{}'` gave `9fc9dd7265c305caf995083663dd0df5b2a0ad39`.
+* **Step 1.** `git diff --name-only v1.26.0 v1.26.1 -- .github internal/cmd 'scripts/*release*'` printed nothing, so the guides' statements about the workflows hold for `v1.26.1`.
+* **Step 2.** The scratchpad's `pin1261.py` moved the pins from `v1.26.0` and `7c677842dface4b14b65b2e8b46aa0a7543bed13` to `v1.26.1` and `9fc9dd7265c305caf995083663dd0df5b2a0ad39`.
+  * It asserts each count before it replaces, and asserts afterwards that no old commit remains and what `v1.26.0` mentions are left. It ran first on scratch copies of the four files, where every count matched, and the tree's result was byte-identical to the copies.
+  * The pins it moved:
+    * `README.md`: the current release, the `go get` line, and the publish pin (1 each);
+    * `docs/architecture.md`: the current release and its commit;
+    * `docs/guides/building-releases.md`: "examples below pin", the three workflow pins, and the `ls-remote` ref;
+    * the migration guide: the current release, §3's publish pin, "`v1.17.2` to `v1.26.1` nothing" and its example pin, the `ls-remote` ref, §5's `go.mod` requirement, the `go get` lines (22, §2's to §26's) and the `go list` checks (20, §7's to §26's).
+  * Kept as history, 8 in the guide: the intro's `v1.26.0` line, the `v1.26.1` line's link text, §26's prose, the old-text headers of §26's two tables, and the `v1.26.1` section's heading, prose and table header.
+* **Step 3.** The release-history line, the guide's intro line for `v1.26.1`, was added in Phase C3a (its step 2), so nothing was left to add here.
+* **Step 4.** This PLAN is `complete`, with its row in `docs/README.md`.
+* **Step 5: checks.**
+  * `make markdownlint`: `0 issues`.
+  * `make check-records`: `102 records, 0 findings`.
+  * `make docs-check`: `997 links in 115 files, 0 broken`, with 22 architecture rows and 0 differing.
+  * `make disclosure-check`: `746 files, 20 deny-list rules, 0 findings`.
+  * `scripts/check-docs.sh --ids` on the six changed files: `6 files, 20 deny-list rules, 0 findings`.
+* **Step 6.** Closing issue #11, with one comment, waits for the owner's word.
+* The owner commits and pushes this phase.
 
 ### Deviations
 
