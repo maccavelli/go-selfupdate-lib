@@ -99,6 +99,8 @@ through a symlink to its binary: see
 `v1.26.0` types the symlink refusal, and takes Go identifiers out of
 the messages a program's user meets at run time: see
 [26. From v1.25 to v1.26](#26-from-v125-to-v126).
+`v1.26.1` changes no API: an error names the package once; see
+[From v1.26.0 to v1.26.1](#from-v1260-to-v1261).
 
 Replace every `github.com/maccavelli/mcplib/selfupdate` import with
 `github.com/maccavelli/go-selfupdate-lib/selfupdate`. No identifier or signature
@@ -2093,6 +2095,44 @@ What each change does is in the [changelog](../../CHANGELOG.md).
   name.
 - A consumer of the JSON Lines events that treated `error` as the class
   of a setuid target, or of a missing root, gets the new classes.
+
+### From v1.26.0 to v1.26.1
+
+`v1.26.1` changes no exported API: `make apicheck` reports it compatible
+with `v1.26.0`. §26's `go get` above takes the current release. What
+changed, and why, is in
+[0043-MADR](../decisions/0043-MADR-name-the-package-once-in-wrapped-errors.md).
+
+- **An error names the package once.** A run's error put
+  `selfupdate: <product>:` in front of an error that already began with
+  the `selfupdate:` prefix, and a wrapped sentinel added one more. Each wrap now
+  drops the wrapped error's own leading `selfupdate:` prefix:
+
+  | Case | `v1.26.0` | `v1.26.1` |
+  | :--- | :--- | :--- |
+  | a refused confirmation | `selfupdate: demo: selfupdate: pass --yes to apply without prompting: selfupdate: confirmation required` | `selfupdate: demo: pass --yes to apply without prompting: confirmation required` |
+  | a staged digest the manifest does not list | `selfupdate: demo: selfupdate: staged digest does not match SHA256SUMS: selfupdate: integrity check failed` | `selfupdate: demo: staged digest does not match SHA256SUMS: integrity check failed` |
+  | a program started through a link | `selfupdate: demo: selfupdate: refusing to update through a symlink: <link> links to <target>; …` | `selfupdate: demo: refusing to update through a symlink: <link> links to <target>; …` |
+
+  The same holds for every error this module wraps behind a literal
+  prefix, such as `selfupdate: archive: …` and `selfupdate: service: …`,
+  and for `ErrCheckDeferred`, which reads `selfupdate: check deferred by
+  an earlier rate limit: rate limited`. The `--json` result's `error`
+  field changes with it.
+- **What stays.** A sentinel printed alone keeps its prefix, and
+  `errors.Is` and `errors.As` match every sentinel and
+  `*SymlinkInvocationError` as before. A wrap whose prefix holds text it
+  computes keeps its wrapped text whole, so a backend's binary-mismatch
+  refusal still ends `: selfupdate: service: binary mismatch`. A joined
+  error drops the prefix of its first part only.
+
+Adopting it:
+
+- Nothing is required by a program that matches errors with `errors.Is`
+  or `errors.As`.
+- A program, or a test, that matched a whole message's text, or a
+  repeated `selfupdate:` prefix in it, loses the match. Match the sentinel
+  instead.
 
 ### Check
 

@@ -8,6 +8,31 @@ listed in the
 [migration guide](docs/guides/migrating-from-mcplib-selfupdate.md), one
 section per release, and each entry links its section and its records.
 
+## v1.26.1 - 2026-11-10
+
+### Changed
+
+- An error names the package once. A run's error was
+  `selfupdate: <product>: selfupdate: <reason>`, and a wrapped sentinel
+  repeated the `selfupdate:` prefix once more, so a refused confirmation read
+  `selfupdate: demo: selfupdate: pass --yes to apply without prompting:
+  selfupdate: confirmation required`. It now reads `selfupdate: demo:
+  pass --yes to apply without prompting: confirmation required`. Every
+  error this module wraps behind a literal prefix drops the wrapped
+  error's own leading `selfupdate:` the same way, `ErrCheckDeferred`'s
+  text among them. A sentinel printed alone keeps its prefix, and
+  `errors.Is` and `errors.As` match as before. A wrap whose prefix holds
+  text it computes, such as a backend's binary-mismatch refusal, is
+  unchanged.
+
+### Fixed
+
+- The repeated package name in a run's error (issue #11).
+
+See [the guide](docs/guides/migrating-from-mcplib-selfupdate.md#from-v1260-to-v1261),
+[0043-MADR](docs/decisions/0043-MADR-name-the-package-once-in-wrapped-errors.md) and
+[0043-PLAN](docs/decisions/0043-PLAN-name-the-package-once-in-wrapped-errors.md).
+
 ## v1.26.0 - 2026-11-09
 
 ### Added

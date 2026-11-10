@@ -280,7 +280,29 @@ The owner accepted the MADR and approved this PLAN on 2026-11-10 ("accept the ma
   * `make pre-add-check FILES="internal/errprefix/errprefix.go"`: `1 file(s) clean (gofmt, golangci-lint, go vet, go test, govulncheck)`.
   * `go test -count=1` of `internal/errprefix`, `selfupdate`, `selfupdate/cli`, `selfupdate/archive` and `internal/testproc` gave `ok` on all three hosts. On the Linux and Windows test hosts, the changed file was copied into the `a92d319` clone.
   * All six plants were run again on the changed tree, and each failed as the table says.
-* The owner commits Deviation 2's change and this record.
+* The owner committed Deviation 2's change and this record as `16d0ed2`.
+
+### Phase C3a
+
+* **Step 1.** `CHANGELOG.md` has `## v1.26.1 - 2026-11-10`:
+  * **Changed:** an error names the package once, with the refused confirmation's old and new text, `ErrCheckDeferred`, and what stays;
+  * **Fixed:** issue #11.
+
+  It links the guide's new section, the MADR and this PLAN.
+* **Step 2.** The migration guide:
+  * `### From v1.26.0 to v1.26.1` comes at the end of §26, before its `### Check`, in the form of `### From v1.22.0 to v1.22.1`;
+  * it has a table of MADR F2's two cases and the symlink refusal, each old and new, then what stays, and "Adopting it";
+  * the intro gains `v1.26.1`'s line after `v1.26.0`'s.
+
+  The guide's other `v1.26.0` references wait for Phase C3b, as in `v1.26.0`'s release.
+* **Step 3.**
+  * `scripts/check-release-tag.sh v1.26.1`: exit 0. `git tag -l v1.26.1` printed nothing.
+  * `make apicheck` at `16d0ed2` with these changes: `check-api-compat: compatible with v1.26.0`, and no other line but the ignored internal packages.
+  * `make markdownlint` first refused four code spans ending in a space (`MD038/no-space-in-code`), one in `CHANGELOG.md` and three in the guide. After rewording it gave `0 issues`.
+  * `make docs-check`: `997 links in 115 files, 0 broken`, the new `#from-v1260-to-v1261` anchor included, with 22 architecture rows and 0 differing.
+  * `make check-records`: `102 records, 0 findings`. `make disclosure-check`: `746 files, 20 deny-list rules, 0 findings`.
+  * `scripts/check-docs.sh --ids` on `CHANGELOG.md` and the guide: `2 files, 20 deny-list rules, 0 findings`.
+* The owner commits, pushes, tags `v1.26.1` and pushes the tag.
 
 ### Deviations
 
