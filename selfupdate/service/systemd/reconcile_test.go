@@ -2,12 +2,14 @@ package systemd
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
+	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
 )
 
 // Tests for docs/decisions/0011-PLAN-reference-service-lifecycles.md V2
@@ -30,9 +32,12 @@ func TestReconcileMismatchNeedsRewritePath(t *testing.T) {
 	f := newFake()
 	f.props["ExecStart"] = "{ path=/opt/old/demo ; argv[]=/opt/old/demo ; }"
 	u := testUnit(t, f, Options{})
-	if _, err := u.Reconcile(context.Background(), "demo", "/opt/new/demo"); err == nil ||
-		!strings.Contains(err.Error(), "RewritePath") {
-		t.Fatalf("err = %v", err)
+	// 0042-MADR D1-A, D2-A: the mismatch wraps service.ErrBinaryMismatch,
+	// and names no option.
+	const mismatch = "selfupdate: systemd: demo.service runs /opt/old/demo, not /opt/new/demo: selfupdate: service: binary mismatch"
+	if _, err := u.Reconcile(context.Background(), "demo", "/opt/new/demo"); !errors.Is(err, service.ErrBinaryMismatch) ||
+		err.Error() != mismatch {
+		t.Fatalf("err = %v, want %q", err, mismatch)
 	}
 	f.props["ExecStart"] = ""
 	if _, err := u.Reconcile(context.Background(), "demo", "/opt/new/demo"); err == nil {

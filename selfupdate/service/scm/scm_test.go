@@ -573,8 +573,11 @@ func TestReconcile(t *testing.T) {
 		svc := f.add("demo", 1)
 		svc.cfg.BinaryPathName = `"C:\Old Place\demo.exe" run --flag`
 		s := testService(t, f, Options{})
-		if _, err := s.Reconcile(ctx, "demo", exe); err == nil || !strings.Contains(err.Error(), "RewritePath") {
-			t.Fatalf("another binary without RewritePath: %v", err)
+		// 0042-MADR D1-A, D2-A: the mismatch wraps
+		// service.ErrBinaryMismatch, and names no option.
+		mismatch := `selfupdate: scm: demo runs C:\Old Place\demo.exe, not ` + exe + `: selfupdate: service: binary mismatch`
+		if _, err := s.Reconcile(ctx, "demo", exe); !errors.Is(err, service.ErrBinaryMismatch) || err.Error() != mismatch {
+			t.Fatalf("another binary without RewritePath: %v, want %q", err, mismatch)
 		}
 		if len(svc.paths) != 0 {
 			t.Fatal("rewrote without RewritePath")

@@ -55,9 +55,9 @@ type Options struct {
 	// the unit's TimeoutStopUSec plus 30 s.
 	Poll service.PollOptions
 	// RewritePath lets Reconcile point the unit at a binary that moved, with
-	// a drop-in. Without it, a unit running another binary is an error. A
-	// drop-in that loads later and sets ExecStart again makes the rewrite
-	// an error.
+	// a drop-in. Without it, a unit running another binary is an error
+	// wrapping service.ErrBinaryMismatch. A drop-in that loads later and
+	// sets ExecStart again makes the rewrite an error.
 	RewritePath bool
 	// DropInDir is where Reconcile writes its drop-in directory. Empty means
 	// /etc/systemd/system, or $XDG_CONFIG_HOME/systemd/user (by default

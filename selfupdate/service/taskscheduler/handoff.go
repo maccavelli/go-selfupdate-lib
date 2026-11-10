@@ -69,7 +69,10 @@ func (t *Task) detachTask(ctx context.Context, spec service.HandOff) (service.De
 		return service.Detached{}, err
 	}
 	if p.LogonType != logonInteractiveToken {
-		return service.Detached{}, fmt.Errorf("selfupdate: taskscheduler: %s logs on with %s; the one-shot handoff is measured only for an interactive token, and Options.HopDetach starts a hop instead (0032-MADR D8-A)", path, logonName(p.LogonType))
+		// The one-shot handoff was measured only for an interactive token;
+		// Options.HopDetach starts a hop instead (0032-MADR D8-A). The
+		// remedy is in ErrLogonType's godoc (0042-MADR D1-A).
+		return service.Detached{}, fmt.Errorf("selfupdate: taskscheduler: %s logs on with %s, and the one-shot handoff is supported only for an interactive token: %w", path, logonName(p.LogonType), ErrLogonType)
 	}
 	dir, err := t.handOffDir()
 	if err != nil {

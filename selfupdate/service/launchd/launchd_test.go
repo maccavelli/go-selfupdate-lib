@@ -530,8 +530,11 @@ func TestReconcile(t *testing.T) {
 	if res, err := j.Reconcile(ctx, "demo", "/opt/demo/demo"); err != nil || res.Changed {
 		t.Fatalf("Program: %+v, %v", res, err)
 	}
-	if _, err := j.Reconcile(ctx, "demo", "/opt/new/demo"); err == nil || !strings.Contains(err.Error(), "RewritePath") {
-		t.Fatalf("moved binary without RewritePath: %v", err)
+	// 0042-MADR D1-A, D2-A: the mismatch wraps service.ErrBinaryMismatch,
+	// and names no option.
+	mismatch := "selfupdate: launchd: " + j.o.Plist + " runs /opt/demo/demo, not /opt/new/demo: selfupdate: service: binary mismatch"
+	if _, err := j.Reconcile(ctx, "demo", "/opt/new/demo"); !errors.Is(err, service.ErrBinaryMismatch) || err.Error() != mismatch {
+		t.Fatalf("moved binary without RewritePath: %v, want %q", err, mismatch)
 	}
 	f.keys = map[string]string{}
 	if _, err := j.Reconcile(ctx, "demo", "/opt/new/demo"); err == nil {

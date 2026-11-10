@@ -307,8 +307,11 @@ docs/
   requires `ByTag` to return `Latest`'s release and asset IDs.
 - The reference service lifecycles
   ([0011-MADR](decisions/0011-MADR-reference-service-lifecycles.md)):
-  - **`service`:** the command runner (`runner.go`), the six sentinel
-    errors and `CommandError` (`errors.go`), `PollHealthy` (`poll.go`), `ExecReconciler` and its
+  - **`service`:** the command runner (`runner.go`), the eight sentinel
+    errors, `ErrBinaryMismatch` among them, which a reconciler returns
+    for a definition or process that runs another binary
+    ([0042-MADR](decisions/0042-MADR-keep-go-identifiers-out-of-run-time-messages.md)),
+    and `CommandError` (`errors.go`), `PollHealthy` (`poll.go`), `ExecReconciler` and its
     version 1 receipt (`execreconciler.go`), and the handoff: `Detacher`,
     `HandOffIfInside`, `HandOffFunc`, `ReportFunc` and the result file
     (`handoff.go`), `DetachProcess` (`detach*.go`), the private
@@ -431,7 +434,11 @@ docs/
   ([0025-MADR](decisions/0025-MADR-align-with-go-sdk-design-practices.md) D4,
   Amendment A6), and the tests of `selfupdate`, `cli`, `service` and its
   backends call it. `TestNoDirectFixtureBuild` refuses a direct
-  `go build` in any test file.
+  `go build` in any test file. `TestRunTimeMessagesNameNoGoIdentifier`
+  refuses a `fmt.Errorf` or `errors.New` message, outside the release
+  tools and test support, that cites a record or names a Go identifier,
+  except the configuration messages its allowlist names
+  ([0042-MADR](decisions/0042-MADR-keep-go-identifiers-out-of-run-time-messages.md)).
 - `cli.Options.HandOff` (`run.go`) runs `Detach`, or `DetachPlan` with a
   plan it made, before an apply, applies `Planned`'s plan in a detached
   run, and runs `Report` after an update that ran.
@@ -483,8 +490,9 @@ docs/
   `canceled`, `deadline-exceeded`, `confirmation-required`,
   `force-required`, `latest-older`, `plan-stale`, `mutable-release`,
   `no-release`, `rate-limited`, `unsupported-platform`,
-  `concurrent-update`, `managed-install`, `symlink-invocation` and
-  `integrity` that the error matches, or `error`.
+  `concurrent-update`, `managed-install`, `symlink-invocation`,
+  `special-mode-bits`, `no-allowed-root` and `integrity` that the error
+  matches, or `error`.
 - The install path (`session.go`, `replace_*.go`, `lock*.go`, `cleanup*.go`,
   `managed.go`):
   - refuses a target when the program was started through a symlink to
@@ -536,7 +544,10 @@ docs/
     update left beside the target (`leftovers.go`), but never a backup a
     cleanup receipt still lists, a kept backup, or anything that is not a
     regular file; a dry run removes nothing;
-  - refuses a setuid or setgid target unless
+  - refuses a target outside the home directory and
+    `TargetPolicy.AllowedRoots`; with no usable home directory and no
+    root, with `ErrNoAllowedRoot`;
+  - refuses a setuid or setgid target, with `ErrSpecialModeBits`, unless
     `TargetPolicy.AllowSpecialModeBits` allows it, and gives the new binary
     the old one's mode, sticky bit included, and on Unix its owner and
     group where permitted; a previous binary kept beside the target loses

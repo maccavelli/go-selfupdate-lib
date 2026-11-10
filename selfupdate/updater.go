@@ -609,6 +609,8 @@ var failureClasses = []struct {
 	{ErrConcurrentUpdate, "concurrent-update"},
 	{ErrManagedInstall, "managed-install"},
 	{ErrSymlinkInvocation, "symlink-invocation"},
+	{ErrSpecialModeBits, "special-mode-bits"},
+	{ErrNoAllowedRoot, "no-allowed-root"},
 	{ErrIntegrity, "integrity"},
 }
 

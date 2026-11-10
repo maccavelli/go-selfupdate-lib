@@ -473,12 +473,14 @@ type TargetPolicy struct {
 	// CleanupPending and KeptBackups included; otherwise it is the target.
 	ExecutablePath string
 	// AllowedRoots are additive canonical directories besides the user's
-	// home directory. An empty slice adds nothing.
+	// home directory. An empty slice adds nothing. When no home directory
+	// is usable, as for a service account, an entry must cover the target,
+	// or the update fails with ErrNoAllowedRoot (0042-MADR D2-A).
 	AllowedRoots []string
 	// AllowSpecialModeBits permits replacing a target with the setuid or
 	// setgid bit set, and carries those bits to the new binary. Without it
-	// such a target is refused, so an update never silently grants or drops
-	// privileges. The sticky bit is always carried over (0010-MADR Q6). A
+	// such a target is refused, with ErrSpecialModeBits, so an update never
+	// silently grants or drops privileges. The sticky bit is always carried over (0010-MADR Q6). A
 	// previous binary kept beside the target, by KeepPrevious or after a
 	// failed restore, loses setuid and setgid; a restore must set them
 	// again (0015-MADR B5).

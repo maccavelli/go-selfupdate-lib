@@ -187,8 +187,11 @@ func TestDetachOneShotRefuses(t *testing.T) {
 		f := newFake()
 		task, dir := oneShotTask(t, f, Options{})
 		f.tasks[`\demo`].logon = logonS4U
-		if _, err := task.Detach(ctx, oneShotSpec); err == nil || !strings.Contains(err.Error(), "HopDetach") {
-			t.Fatalf("S4U: %v, want a refusal naming HopDetach", err)
+		// 0042-MADR D1-A, D2-A: the refusal wraps ErrLogonType; its remedy,
+		// HopDetach, is in godoc.
+		const refusal = `selfupdate: taskscheduler: \demo logs on with S4U, and the one-shot handoff is supported only for an interactive token: selfupdate: taskscheduler: unsupported logon type`
+		if _, err := task.Detach(ctx, oneShotSpec); !errors.Is(err, ErrLogonType) || err.Error() != refusal {
+			t.Fatalf("S4U: %v, want %q", err, refusal)
 		}
 		f.tasks[`\demo`].logon = logonInteractiveToken
 		quoted := oneShotSpec

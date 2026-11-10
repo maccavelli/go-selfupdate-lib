@@ -48,8 +48,9 @@ func (fx *fsOps) resolveTarget(policy TargetPolicy) (Target, error) {
 		}
 	}
 	if resolvedInfo.Mode()&(os.ModeSetuid|os.ModeSetgid) != 0 && !policy.AllowSpecialModeBits {
-		return Target{}, fmt.Errorf("selfupdate: target %s has the setuid or setgid bit; "+
-			"TargetPolicy.AllowSpecialModeBits permits replacing it", resolved)
+		// The remedy, TargetPolicy.AllowSpecialModeBits, is in
+		// ErrSpecialModeBits' godoc, not the message (0042-MADR D1-A, D2-A).
+		return Target{}, fmt.Errorf("%w: %s", ErrSpecialModeBits, resolved)
 	}
 	dir := filepath.Dir(resolved)
 	base := filepath.Base(resolved)
@@ -174,7 +175,9 @@ func (fx *fsOps) allowedRoots(extra []string) ([]string, error) {
 		}
 	}
 	if len(roots) == 0 {
-		return nil, fmt.Errorf("selfupdate: no allowed self-update root: the home directory is unavailable, and TargetPolicy.AllowedRoots is empty")
+		// The remedy, an AllowedRoots entry, is in ErrNoAllowedRoot's godoc
+		// (0042-MADR D1-A, D2-A).
+		return nil, fmt.Errorf("%w: the home directory is unavailable", ErrNoAllowedRoot)
 	}
 	return roots, nil
 }

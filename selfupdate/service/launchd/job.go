@@ -100,7 +100,8 @@ type Options struct {
 	Poll service.PollOptions
 	// RewritePath lets Reconcile point the plist at a binary that moved.
 	// A job loaded but not running is reloaded so launchd reads it; a
-	// running job is refused.
+	// running job is refused. Without it, a plist that runs another binary
+	// is an error wrapping service.ErrBinaryMismatch.
 	RewritePath bool
 	// JobDir is where Detach writes its one-shot jobs' property lists and
 	// environment files. Empty means /Library/Application

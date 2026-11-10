@@ -43,8 +43,10 @@ func (j *Job) Reconcile(ctx context.Context, _ string, executable string) (selfu
 		return selfupdate.ReconcileResult{Detail: j.o.Plist + " runs " + current}, nil
 	}
 	if !j.o.RewritePath {
+		// Options.RewritePath is the remedy, in ErrBinaryMismatch's godoc
+		// (0042-MADR D1-A).
 		return selfupdate.ReconcileResult{}, fmt.Errorf(
-			"selfupdate: launchd: %s runs %s, not %s; Options.RewritePath allows rewriting it", j.o.Plist, current, executable)
+			"selfupdate: launchd: %s runs %s, not %s: %w", j.o.Plist, current, executable, service.ErrBinaryMismatch)
 	}
 	return j.rewrite(ctx, key, executable)
 }

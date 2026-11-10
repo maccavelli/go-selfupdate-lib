@@ -35,6 +35,15 @@ var (
 	// (docs/decisions/0035-MADR-serve-supervisors-through-a-supervised-adapter.md
 	// D10-A).
 	ErrNoSupervisor = errors.New("selfupdate: service: nothing supervises the service")
+	// ErrBinaryMismatch is returned, wrapped, by Reconcile when the
+	// service's definition, or the process it ran, names another binary
+	// than the one being updated. The message names both paths. A backend
+	// whose Options.RewritePath is set points the definition at the new
+	// binary instead; a Supervised service, which never rewrites, needs
+	// NewExecReconciler
+	// (docs/decisions/0042-MADR-keep-go-identifiers-out-of-run-time-messages.md
+	// D1-A, D2-A).
+	ErrBinaryMismatch = errors.New("selfupdate: service: binary mismatch")
 )
 
 // CommandError is a service manager command that exited non-zero: a

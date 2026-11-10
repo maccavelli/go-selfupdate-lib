@@ -179,6 +179,8 @@ func TestFailureClass(t *testing.T) {
 		errors.Join(ErrManagedInstall, ErrIntegrity):    "managed-install",
 		fmt.Errorf("resolve: %w", ErrSymlinkInvocation): "symlink-invocation",
 		fmt.Errorf("resolve: %w", &SymlinkInvocationError{Link: "/a", Target: "/b", Source: SymlinkSourceInvocation}): "symlink-invocation",
+		fmt.Errorf("resolve: %w: /t", ErrSpecialModeBits):                                                             "special-mode-bits",
+		fmt.Errorf("roots: %w", ErrNoAllowedRoot):                                                                     "no-allowed-root",
 		ErrIntegrity:                "integrity",
 		errors.New("anything else"): "error",
 	} {

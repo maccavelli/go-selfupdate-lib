@@ -2,12 +2,14 @@ package taskscheduler
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"strings"
 	"testing"
 	"testing/synctest"
 
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
+	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
 )
 
 // TestReconcileMatch: a task that already runs the executable, by any case,
@@ -35,8 +37,11 @@ func TestReconcileMoved(t *testing.T) {
 		f := newFake()
 		f.add(`\demo`, 0)
 		task := testTask(t, f, Options{})
-		if _, err := task.Reconcile(context.Background(), "demo", moved); err == nil || !strings.Contains(err.Error(), "Options.RewritePath") {
-			t.Fatalf("without RewritePath: %v", err)
+		// 0042-MADR D1-A, D2-A: the mismatch wraps
+		// service.ErrBinaryMismatch, and names no option.
+		const mismatch = `selfupdate: taskscheduler: \demo runs C:\Program Files\Demo\demo.exe, not ` + moved + `: selfupdate: service: binary mismatch`
+		if _, err := task.Reconcile(context.Background(), "demo", moved); !errors.Is(err, service.ErrBinaryMismatch) || err.Error() != mismatch {
+			t.Fatalf("without RewritePath: %v, want %q", err, mismatch)
 		}
 
 		task = testTask(t, f, Options{RewritePath: true})
@@ -99,6 +104,15 @@ func TestReconcileRefused(t *testing.T) {
 			if err == nil || !strings.Contains(err.Error(), c.about) || len(f.verbs()) != 0 {
 				t.Errorf("%s: %v, calls %q; want an error about %q and no change", c.name, err, f.verbs(), c.about)
 			}
+		}
+		// The logon-type refusal wraps ErrLogonType, and cites no record
+		// (0042-MADR D1-A, D2-A).
+		f := newFake()
+		f.add(`\demo`, 0).logon = logonS4U
+		task := testTask(t, f, Options{RewritePath: true})
+		const refusal = `selfupdate: taskscheduler: \demo logs on with S4U, and a rewrite is supported only for an interactive token: selfupdate: taskscheduler: unsupported logon type`
+		if _, err := task.Reconcile(context.Background(), "demo", moved); !errors.Is(err, ErrLogonType) || err.Error() != refusal {
+			t.Errorf("S4U: %v, want %q", err, refusal)
 		}
 	})
 }

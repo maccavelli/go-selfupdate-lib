@@ -59,7 +59,9 @@ func (s *Service) Reconcile(_ context.Context, product, executable string) (_ se
 		return selfupdate.ReconcileResult{Detail: name + " already runs " + executable}, nil
 	}
 	if !s.o.RewritePath {
-		return selfupdate.ReconcileResult{}, fmt.Errorf("selfupdate: scm: %s runs %s, not %s; Options.RewritePath allows rewriting it", name, args[0], executable)
+		// Options.RewritePath is the remedy, in ErrBinaryMismatch's godoc
+		// (0042-MADR D1-A).
+		return selfupdate.ReconcileResult{}, fmt.Errorf("selfupdate: scm: %s runs %s, not %s: %w", name, args[0], executable, service.ErrBinaryMismatch)
 	}
 	if strings.Contains(executable, `"`) {
 		return selfupdate.ReconcileResult{}, fmt.Errorf("selfupdate: scm: %q holds a quote, which a command line cannot carry", executable)

@@ -7,7 +7,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -45,8 +44,14 @@ func TestSpecialBitTargetRefused(t *testing.T) {
 				t.Fatal(err)
 			}
 			_, err = inst.ResolveTarget(context.Background())
-			if err == nil || !strings.Contains(err.Error(), "setuid or setgid") {
-				t.Fatalf("ResolveTarget = %v, want the special bit refused", err)
+			// 0042-MADR D1-A, D2-A: the refusal wraps ErrSpecialModeBits,
+			// and names the target, not the option.
+			want := "selfupdate: refusing to replace a setuid or setgid target: " + realPath(t, exe)
+			if !errors.Is(err, ErrSpecialModeBits) || err.Error() != want {
+				t.Fatalf("ResolveTarget = %v, want %q", err, want)
+			}
+			if got := failureClass(err); got != "special-mode-bits" {
+				t.Fatalf("class %q, want special-mode-bits", got)
 			}
 		})
 	}

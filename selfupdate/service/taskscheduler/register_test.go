@@ -123,8 +123,15 @@ func TestRegisterRefuses(t *testing.T) {
 				t.Errorf("%s: Task Scheduler was called: %q", name, v)
 			}
 		}
+		// The S4U refusal cites no record (0042-MADR D1-A).
 		f := newFake()
 		task := testTask(t, f, Options{})
+		if err := task.Register(context.Background(), "demo", withPrincipal(`<LogonType>S4U</LogonType>`)); err == nil ||
+			!strings.HasSuffix(err.Error(), "logon type S4U is refused to a user who is not an administrator") {
+			t.Fatalf("S4U: %v, want the refusal with no record cited", err)
+		}
+		f = newFake()
+		task = testTask(t, f, Options{})
 		if err := task.Register(context.Background(), "demo", withPrincipal(`<UserId>user</UserId>`)); err != nil {
 			t.Fatalf("an InteractiveToken principal with no logon type: %v", err)
 		}

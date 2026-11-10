@@ -139,8 +139,11 @@ func TestSupervisedReconcile(t *testing.T) {
 		}
 	}
 	s.binary = "/opt/other/demo"
-	if _, err := s.Reconcile(ctx, "demo", "/opt/demo/demo"); err == nil || !strings.Contains(err.Error(), "NewExecReconciler") {
-		t.Fatalf("another binary: %v, want an error naming NewExecReconciler", err)
+	// The mismatch wraps ErrBinaryMismatch and names no Go identifier; the
+	// remedy, NewExecReconciler, is in godoc (0042-MADR D1-A, D2-A).
+	const mismatch = "selfupdate: service: reconcile the service: the service ran /opt/other/demo, not /opt/demo/demo: selfupdate: service: binary mismatch"
+	if _, err := s.Reconcile(ctx, "demo", "/opt/demo/demo"); !errors.Is(err, ErrBinaryMismatch) || err.Error() != mismatch {
+		t.Fatalf("another binary: %v, want %q", err, mismatch)
 	}
 	if err := s.Restore(ctx, "demo", r); err != nil {
 		t.Fatalf("Restore: %v", err)

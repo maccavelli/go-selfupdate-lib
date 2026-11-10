@@ -243,12 +243,14 @@ func (t *Task) enableAgain(r registered, path string) error {
 }
 
 // requestError describes a failed Options.RequestStop, for Stop's error
-// when ending the task failed too.
+// when ending the task failed too. Its text calls it the program's stop
+// request, not the option, since a run-time message names no Go
+// identifier (0042-MADR D1-A).
 func requestError(err error) error {
 	if err == nil {
 		return nil
 	}
-	return fmt.Errorf("selfupdate: taskscheduler: Options.RequestStop: %w", err)
+	return fmt.Errorf("selfupdate: taskscheduler: the program's stop request: %w", err)
 }
 
 // waitGone waits, for at most limit and until ctx's deadline, until

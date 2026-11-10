@@ -121,8 +121,11 @@ func TestHomeUnavailableRoot(t *testing.T) {
 			if _, err := fx.resolveTarget(TargetPolicy{ExecutablePath: exe, AllowedRoots: []string{root}}); err != nil {
 				t.Fatalf("refused although AllowedRoots covers the target: %v", err)
 			}
-			if _, err := fx.resolveTarget(TargetPolicy{ExecutablePath: exe}); err == nil {
-				t.Fatal("resolved with no usable root")
+			// 0042-MADR D1-A, D2-A: the refusal wraps ErrNoAllowedRoot,
+			// and names no option.
+			const want = "selfupdate: no allowed self-update root: the home directory is unavailable"
+			if _, err := fx.resolveTarget(TargetPolicy{ExecutablePath: exe}); !errors.Is(err, ErrNoAllowedRoot) || err.Error() != want {
+				t.Fatalf("with no usable root: %v, want %q", err, want)
 			}
 		})
 	}

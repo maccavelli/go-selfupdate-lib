@@ -171,7 +171,16 @@ progress events either way.
 A failed run's `failed` event has the error's class as its `detail`, such
 as `integrity` or `rate-limited`; since `v1.23.0`, `plan-stale` is
 `ErrPlanStale`'s, and comes before `mutable-release` and `integrity`, so a
-changed `SHA256SUMS` entry, which is both, is `plan-stale`.
+changed `SHA256SUMS` entry, which is both, is `plan-stale`. Since
+`v1.26.0`, a setuid or setgid target is `special-mode-bits`, and no allowed
+root is `no-allowed-root`, where both were `error`.
+
+Since `v1.26.0` a message a user can meet at run time names no Go
+identifier: it states the fact, and the remedy for you is in godoc, beside
+a sentinel you can match with `errors.Is` to word it for your users. For example,
+`selfupdate.ErrSpecialModeBits`, `selfupdate.ErrNoAllowedRoot`,
+`service.ErrBinaryMismatch` and `taskscheduler.ErrLogonType`
+([0042-MADR](../decisions/0042-MADR-keep-go-identifiers-out-of-run-time-messages.md)).
 
 Since `v1.23.0`, `Plan.Document` is a plan's JSON form, a `PlanDocument`:
 `schema_version` 1 (`PlanSchema`); the request's `product`,
@@ -590,7 +599,8 @@ call it.
 
 ## Replace a setuid or setgid binary
 
-A target with the setuid or setgid bit is refused, so an update never
+A target with the setuid or setgid bit is refused, with an error that
+wraps `ErrSpecialModeBits` and names the target, so an update never
 silently grants or drops privileges. Set
 `TargetPolicy.AllowSpecialModeBits` to replace it: the new binary keeps the
 bits. The sticky bit is always kept. On Unix the new binary also gets the
@@ -766,7 +776,9 @@ for Task Scheduler,
     count is read after the start, so a start during a `RestartSec` wait,
     which systemd counts as a restart, is not a failure (since `v1.10.1`).
   - `Reconcile` checks that the definition still runs the binary, and
-    changes nothing. `Options.RewritePath` lets it point the definition at
+    changes nothing. A definition that runs another binary is an error
+    that wraps `service.ErrBinaryMismatch` and names both paths.
+    `Options.RewritePath` lets it point the definition at
     a binary that moved. A program that owns its definition through its own
     install command uses `service.NewExecReconciler` instead:
     `ExecOptions.Reconcile` are the arguments that make the new binary
@@ -874,8 +886,9 @@ Off Windows, `New` returns `service.ErrUnsupported`.
     `docs/decisions/0159-MADR-the-windows-service-path-is-half-wired.md`,
     probe 8);
   - an `InteractiveToken` principal, if you set `RewritePath`: a rewrite of
-    a task with any other logon type is refused, since only that one was
-    measured to keep its principal.
+    a task with any other logon type is refused, with an error wrapping
+    `taskscheduler.ErrLogonType`, since only that one was measured to keep
+    its principal.
 - **`Stop`** disables the task first, so the watchdog cannot start the
   program while its binary is replaced. It then calls
   `Options.RequestStop`, when set, and waits up to `Options.StopGrace` (10 s
@@ -1009,7 +1022,8 @@ Off Windows, `New` returns `service.ErrUnsupported`.
   the update is in none of your program's jobs: it survives the task's
   end, and a job of yours that kills its processes when it closes, which
   the old hop did not. The service task must log on with an interactive
-  token. `CleanupHandOffs` removes finished one-shot tasks; `Detach` calls
+  token; another logon type is refused with an error wrapping
+  `taskscheduler.ErrLogonType`. `CleanupHandOffs` removes finished one-shot tasks; `Detach` calls
   it first, and you may at start-up. `Options.HopDetach` restores the hop,
   a detached process in your program's jobs.
 - **The console window.** A console program run by a task has a visible

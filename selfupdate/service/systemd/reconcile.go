@@ -52,8 +52,10 @@ func (u *Unit) Reconcile(ctx context.Context, product, executable string) (selfu
 		return selfupdate.ReconcileResult{Detail: unit + " runs " + current}, nil
 	}
 	if !u.o.RewritePath {
+		// Options.RewritePath is the remedy, in ErrBinaryMismatch's godoc
+		// (0042-MADR D1-A).
 		return selfupdate.ReconcileResult{}, fmt.Errorf(
-			"selfupdate: systemd: %s runs %s, not %s; Options.RewritePath allows a drop-in", unit, current, executable)
+			"selfupdate: systemd: %s runs %s, not %s: %w", unit, current, executable, service.ErrBinaryMismatch)
 	}
 	return u.rewrite(ctx, unit, executable, p)
 }

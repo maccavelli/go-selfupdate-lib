@@ -161,7 +161,9 @@ func registrationLogon(body string) (int32, error) {
 	case "", "InteractiveToken":
 		return logonInteractiveToken, nil
 	case "S4U":
-		return 0, errors.New("logon type S4U is refused to a user who is not an administrator (0032-MADR Amendment A1, P1-2)")
+		// 0032-MADR Amendment A1, P1-2; a message cites no record
+		// (0042-MADR D1-A).
+		return 0, errors.New("logon type S4U is refused to a user who is not an administrator")
 	}
 	return 0, fmt.Errorf("logon type %s needs a password, which this package does not hold", p.LogonType)
 }

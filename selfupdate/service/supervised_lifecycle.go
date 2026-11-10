@@ -285,9 +285,10 @@ func describeState(name string, st SupervisedState) string {
 // binary the service ran when Stop recorded it must be executable, by
 // SameExecutable. With nothing recorded, because the service was not
 // running, it reports no change and a warning that it could not check. A
-// mismatch is an error: a program whose service runs another binary, or
-// which moves its binary, passes NewExecReconciler instead. Nothing is
-// ever rewritten, so Restore does nothing.
+// mismatch is an error that wraps ErrBinaryMismatch: a program whose
+// service runs another binary, or which moves its binary, passes
+// NewExecReconciler instead (0042-MADR D1-A, D2-A). Nothing is ever
+// rewritten, so Restore does nothing.
 func (s *Supervised) Reconcile(_ context.Context, _, executable string) (selfupdate.ReconcileResult, error) {
 	s.mu.Lock()
 	bin := s.binary
@@ -303,7 +304,7 @@ func (s *Supervised) Reconcile(_ context.Context, _, executable string) (selfupd
 	ran := strings.TrimSuffix(bin, " (deleted)")
 	if !SameExecutable(ran, executable) {
 		return selfupdate.ReconcileResult{}, s.fail("reconcile",
-			fmt.Errorf("the service ran %s, not %s; a program whose service runs another binary passes service.NewExecReconciler", ran, executable))
+			fmt.Errorf("the service ran %s, not %s: %w", ran, executable, ErrBinaryMismatch))
 	}
 	return selfupdate.ReconcileResult{Detail: s.name + " runs " + executable}, nil
 }

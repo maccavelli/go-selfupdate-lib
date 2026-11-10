@@ -46,6 +46,19 @@ const DefaultStopGrace = 10 * time.Second
 // A1).
 var ErrTaskDisabled = errors.New("selfupdate: taskscheduler: the task is disabled, and Task Scheduler does not run a disabled task")
 
+// ErrLogonType is returned, wrapped, when the task's principal logs on with
+// another type than an interactive token, where the operation was measured
+// only for one. Detach's one-shot handoff refuses it: set Options.HopDetach
+// to start a hop instead
+// (docs/decisions/0032-MADR-task-scheduler-registration-and-one-shot-handoff.md
+// D8-A). Reconcile's rewrite refuses it: register the task with an
+// interactive-token principal
+// (docs/decisions/0021-MADR-task-scheduler-lifecycle-and-windowless-children.md
+// Amendment A1, Q6). The message names the task and its logon type, and no
+// option (docs/decisions/0042-MADR-keep-go-identifiers-out-of-run-time-messages.md
+// D1-A, D2-A).
+var ErrLogonType = errors.New("selfupdate: taskscheduler: unsupported logon type")
+
 // Options configure a Task.
 type Options struct {
 	// Name is the task's name, without its folder. Empty means the
@@ -62,9 +75,10 @@ type Options struct {
 	// runs to Poll's timeout whatever the caller's context does.
 	Poll service.PollOptions
 	// RewritePath lets Reconcile point the task's Exec action at a binary
-	// that moved. Without it, a task running another binary is an error.
-	// Only a task whose principal logs on with an interactive token is
-	// rewritten (0021-MADR Amendment A1, Q6).
+	// that moved. Without it, a task running another binary is an error
+	// wrapping service.ErrBinaryMismatch. Only a task whose principal logs
+	// on with an interactive token is rewritten; another is an error
+	// wrapping ErrLogonType (0021-MADR Amendment A1, Q6).
 	RewritePath bool
 	// RequestStop, when set, asks the task's program to exit on its own
 	// before Stop ends it, such as by a shutdown request on its admin
@@ -89,7 +103,9 @@ type Options struct {
 	// when they refuse breakaway, so a job that kills its processes when it
 	// closes ends the update with it
 	// (docs/decisions/0032-MADR-task-scheduler-registration-and-one-shot-handoff.md
-	// D5-A).
+	// D5-A). Without it, a task whose principal does not log on with an
+	// interactive token refuses the one-shot handoff, with ErrLogonType
+	// (0042-MADR D2-A).
 	HopDetach bool
 	// HandOffDir is where Detach writes a one-shot run's private
 	// environment file, made private to this user (service.WriteHandOffEnv).

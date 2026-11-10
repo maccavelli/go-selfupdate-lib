@@ -269,6 +269,18 @@ it, uses `internal/testproc`: `GoBuild` builds with `-buildvcs=false`, so a
 the test's deadline and reports a helper that exits first at once
 (`docs/decisions/0023-MADR-robust-test-fixtures-and-process-waits.md`).
 `TestNoDirectFixtureBuild` refuses a direct `go build` in a test file.
+
+An error message a program's user can meet at run time, one whose cause
+is on the host, names no Go identifier (`pkg.Name`, `Type.Field`) and
+cites no record: it states the fact, and the remedy for the program's
+author goes in godoc, with a sentinel the program can match. A
+configuration message, which only the author meets, may name the option
+at fault. No error message cites a record; a comment beside it does.
+`TestRunTimeMessagesNameNoGoIdentifier` in `internal/testproc` holds this
+for every `fmt.Errorf` and `errors.New`, with an allowlist of the
+configuration messages
+(`docs/decisions/0042-MADR-keep-go-identifiers-out-of-run-time-messages.md`).
+
 `testproc.CheckNoLeak` is the leak check the tests of `selfupdate`,
 `selfupdate/cli`, `selfupdate/service` and its four backends share: a
 test calls it first, and it fails the test when a goroutine that started

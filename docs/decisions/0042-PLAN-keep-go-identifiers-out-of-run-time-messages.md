@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: in-progress
 date: 2026-11-09
 associated-madr: "0042-MADR-keep-go-identifiers-out-of-run-time-messages.md"
 ---
@@ -213,7 +213,76 @@ This phase replaces 0041's second PLAN's Phase A3b.
 
 ## Execution Record
 
-Not started. The owner chose the MADR's options on 2026-11-09. They have not yet approved this PLAN for execution, and the precondition does not hold yet.
+The owner chose the MADR's options on 2026-11-09. They committed 0041's second PLAN's Phases A1 and A2 as `df9f405`, which meets the precondition, and approved execution the same day ("committed proceed"). Phases B1 and B2 ran on a tree at `df9f405` plus the changes below, before any commit.
+
+### Phase B1
+
+* **Step 1, the scan, seen failing first.**
+  * `TestRunTimeMessagesNameNoGoIdentifier` was added after `directBuilds` in `internal/testproc/testproc_test.go`, with:
+    * the helper `errorMessages`, and the type `message`;
+    * the patterns `goIdentifier` and `recordCitation`;
+    * `allowedIdentifiers`. Its 21 (file, identifier) pairs cover MADR F1's 23 configuration call sites, because one pair covers every call in its file that names that identifier.
+  * Run on the tree before steps 2 to 10, it failed with 12 findings at exactly the 11 sites M1 to M10 and M12. M8 gave two findings: it named `Options.HopDetach`, and it cited `0032-MADR`. The sites were:
+    * `launchd/reconcile.go:46`, `scm/reconcile.go:62`, `systemd/reconcile.go:55` and `taskscheduler/reconcile.go:63` (`Options.RewritePath`);
+    * `supervised_lifecycle.go:306` (`service.NewExecReconciler`);
+    * `taskscheduler/handoff.go:72` (`0032-MADR` and `Options.HopDetach`);
+    * `taskscheduler/lifecycle.go:251` (`Options.RequestStop`);
+    * `taskscheduler/reconcile.go:70` (`0021-MADR`);
+    * `taskscheduler/register.go:164` (`0032-MADR`);
+    * `target.go:51` (`TargetPolicy.AllowSpecialModeBits`);
+    * `target.go:177` (`TargetPolicy.AllowedRoots`).
+
+    No allowlist entry was reported stale. `gofmt -w` realigned the allowlist.
+* **Steps 2 to 8,** as written.
+  * The four sentinels.
+  * The two classes, after `symlink-invocation`.
+  * The eleven texts of the MADR's table. Each record citation moved to a comment above its site.
+  * The godoc:
+    * `ErrSpecialModeBits`, `ErrNoAllowedRoot`, `ErrBinaryMismatch` and `ErrLogonType`, each with its remedy;
+    * `AllowedRoots`, `AllowSpecialModeBits` and `HopDetach`;
+    * the four `RewritePath` fields;
+    * `Supervised.Reconcile`.
+* **Step 9, tests.**
+  * The six tests of MADR F8 now check `errors.Is` and the exact text. So does `modebits_unix_test.go`, which also checks the class `special-mode-bits`, and so loses its `strings` import.
+  * New assertions:
+    * `TestHomeUnavailableRoot`: M2;
+    * `TestReconcileRefused`: M9, with an S4U principal and `RewritePath`;
+    * `TestStopRequestFails`: `requestError` and the full `Stop` error, for M10;
+    * `TestRegisterRefuses`: M12's text, with no citation;
+    * `TestFailureClass`: two rows.
+  * Halfway, with the messages changed and the tests not yet, exactly the six tests of F8 failed. The scan passed.
+* **Step 10, docs.**
+  * `AGENTS.md` gained a paragraph after `:271`.
+  * `docs/architecture.md`:
+    * the class list;
+    * the service sentinels. The page said "the six sentinel errors", where there were already seven. That count was wrong before this change, and is corrected to eight with `ErrBinaryMismatch`;
+    * a new allowed-root bullet. The page had none, so it is added beside the setuid bullet, which names `ErrSpecialModeBits`;
+    * the scan, beside `TestNoDirectFixtureBuild`.
+  * `docs/guides/extending-selfupdate.md`:
+    * "Read JSON output": the two classes and the rule;
+    * "Replace a setuid or setgid binary";
+    * "Run as a service": `ErrBinaryMismatch` and, twice, `ErrLogonType`.
+* **No `.go` file was added or removed.**
+* **Step 11, checks.**
+  * `make pre-add-check FILES="<the 29 changed .go files>"` printed `go-precheck: 29 file(s) clean (gofmt, golangci-lint, go vet, go test, govulncheck).` on its first run.
+  * `make markdownlint` 0 issues.
+  * `make check-records` 100 records, 0 findings.
+  * `make docs-check` 967 links in 113 files, 0 broken, 21 architecture rows, 0 differ, 0 without a row.
+  * `make disclosure-check` 742 files, 0 findings.
+  * `make gate` ended `overall=0`. Each of its steps exited 0: gofmt, lint (0 issues), vet, race, shuffle, tidy, apicheck (`compatible with v1.25.0`), fuzz, vuln (`No vulnerabilities found.`), scripts, shellcheck, crossvet, links, arch, and ids (34 files, 0 findings).
+  * The additions, listed with the scratchpad's `apiadds.py` (0041's second PLAN, Phase A1):
+    * against `HEAD` (`df9f405`): `ErrLogonType`, `ErrBinaryMismatch`, `ErrNoAllowedRoot` and `ErrSpecialModeBits`, each `added`, and nothing else;
+    * against `v1.25.0`: those four and 0041's five, nine in all, and nothing incompatible.
+
+### Phase B2
+
+* **Step 1, the hosts.**
+  * `go test -count=1 ./selfupdate/ ./selfupdate/service/... ./internal/testproc/` printed `ok` for all eight packages on the macOS development host and a Linux test host (`go1.27.3 linux/amd64`). Those packages are `selfupdate`, `service`, `launchd`, `scm`, `servicetest`, `systemd`, `taskscheduler` and `testproc`.
+  * `go test -count=1 ./selfupdate/service/scm/ ./selfupdate/service/taskscheduler/ ./selfupdate/ ./internal/testproc/` printed `ok` for all four on the Windows test host (`go1.27.3 windows/amd64`).
+* **Step 2, three planted copies on the Linux test host.** The scratchpad's `b2plants.py` made each with `scripts/plant-copy.sh`, ran `TestRunTimeMessagesNameNoGoIdentifier` in it, and removed it. The remote command ended in a pipe, so the failures were read from the output, which ends `FAIL` for each.
+  * **P1.** `scm/reconcile.go`'s text was given `; Options.RewritePath allows rewriting it` back. The scan failed with `selfupdate/service/scm/reconcile.go:64: names Options.RewritePath: "selfupdate: scm: %s runs %s, not %s; Options.RewritePath allows rewriting it: %w"`.
+  * **P2.** `register.go`'s text was given ` (0032-MADR Amendment A1, P1-2)` back. The scan failed with `selfupdate/service/taskscheduler/register.go:166: cites 0032-MADR: …`.
+  * **P3.** `plan.go`'s `use Checker.Check for a check` became `use a checker for a check`. The scan failed with `selfupdate/plan.go: allowedIdentifiers lists Checker.Check, which no message there names: remove the entry`.
 
 ### Owner decisions before execution
 

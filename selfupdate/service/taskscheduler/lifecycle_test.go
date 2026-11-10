@@ -304,6 +304,15 @@ func TestStopRequestFails(t *testing.T) {
 		if !errors.Is(err, refused) || !strings.Contains(err.Error(), "HRESULT 0x80004005") {
 			t.Fatalf("Stop: %v, want both errors", err)
 		}
+		// The request's failure is the program's stop request, not the
+		// option's name (0042-MADR D1-A).
+		const label = "selfupdate: taskscheduler: the program's stop request: admin socket refused"
+		if got := requestError(refused); !errors.Is(got, refused) || got.Error() != label {
+			t.Fatalf("requestError = %v, want %q", got, label)
+		}
+		if !strings.Contains(err.Error(), label) {
+			t.Fatalf("Stop: %v, want %q in it", err, label)
+		}
 	})
 }
 

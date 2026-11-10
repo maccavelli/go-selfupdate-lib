@@ -9,7 +9,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -348,4 +350,164 @@ func directBuilds(path string) ([]string, error) {
 		return true
 	})
 	return found, nil
+}
+
+// goIdentifier matches a Go identifier in a message, pkg.Name or
+// Type.Field; recordCitation matches a record number
+// (docs/decisions/0042-MADR-keep-go-identifiers-out-of-run-time-messages.md
+// F1).
+var (
+	goIdentifier   = regexp.MustCompile(`\b[A-Za-z][A-Za-z0-9]*\.[A-Z][A-Za-z0-9]*\b`)
+	recordCitation = regexp.MustCompile(`\b[0-9]{4}-(MADR|PLAN|REPORT|GATES)\b`)
+)
+
+// allowedIdentifiers are the configuration messages, which the program's
+// author meets on its first run, and which may name the option at fault,
+// by the file's slash path (0042-MADR D1-A, F1).
+var allowedIdentifiers = map[string][]string{
+	// cli.Run's checks of its Options.
+	"selfupdate/cli/run.go": {"Options.Stderr", "Options.Stdout", "Options.Timeout"},
+	// NewGitHubSource with no client.
+	"selfupdate/github.go": {"selfupdate.DefaultHTTPClient"},
+	// Updater.Plan asked for a check.
+	"selfupdate/plan.go": {"Checker.Check"},
+	// launchd.New's Options.
+	"selfupdate/service/launchd/job.go": {"Options.Domain"},
+	// PollOptions' validation.
+	"selfupdate/service/poll.go": {"Poll.Settle", "Poll.Timeout"},
+	// The handoff with no service name or unit.
+	"selfupdate/service/scm/detach.go":            {"Options.Name"},
+	"selfupdate/service/systemd/detach.go":        {"Options.Unit"},
+	"selfupdate/service/taskscheduler/detach.go":  {"Options.Name"},
+	"selfupdate/service/taskscheduler/handoff.go": {"Options.Name"},
+	// NewSupervised's SupervisedOptions.
+	"selfupdate/service/supervised.go": {
+		"SupervisedOptions.State", "SupervisedOptions.Up", "SupervisedOptions.Down",
+		"SupervisedOptions.KillAfter", "Poll.Timeout",
+	},
+	// The unit's name, from Options.Unit or the program's product.
+	"selfupdate/service/systemd/unit.go": {"Options.Unit"},
+	// taskscheduler.New's Options.
+	"selfupdate/service/taskscheduler/task.go": {"Options.StopGrace", "Options.HandOffDir", "Options.Poll"},
+}
+
+// TestRunTimeMessagesNameNoGoIdentifier: no fmt.Errorf or errors.New in the
+// module's non-test code names a Go identifier, except the configuration
+// messages allowedIdentifiers lists, and none cites a record. A run-time
+// message reaches a person who cannot change the program's configuration,
+// such as a CLI's user, so it states the fact; the remedy for the program's
+// author is in godoc (0042-MADR D1-A, D4-A). Release tools, test support
+// and test data are not scanned.
+func TestRunTimeMessagesNameNoGoIdentifier(t *testing.T) {
+	root := filepath.Join("..", "..")
+	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
+		t.Fatalf("no module root at %s: run the test from its package directory: %v", root, err)
+	}
+	skip := []string{"internal/cmd/", "internal/testproc/", "selfupdate/selfupdatetest/", "selfupdate/service/servicetest/"}
+	seen := map[string]bool{}
+	var found []string
+	files, calls := 0, 0
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if name := d.Name(); name == "testdata" || name == ".git" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		if !strings.HasSuffix(rel, ".go") || strings.HasSuffix(rel, "_test.go") {
+			return nil
+		}
+		for _, p := range skip {
+			if strings.HasPrefix(rel, p) {
+				return nil
+			}
+		}
+		files++
+		msgs, err := errorMessages(path)
+		if err != nil {
+			return err
+		}
+		for _, m := range msgs {
+			calls++
+			for _, c := range recordCitation.FindAllString(m.text, -1) {
+				found = append(found, fmt.Sprintf("%s:%d: cites %s: %q", rel, m.line, c, m.text))
+			}
+			for _, id := range goIdentifier.FindAllString(m.text, -1) {
+				if slices.Contains(allowedIdentifiers[rel], id) {
+					seen[rel+" "+id] = true
+					continue
+				}
+				found = append(found, fmt.Sprintf("%s:%d: names %s: %q", rel, m.line, id, m.text))
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if files < 100 || calls < 500 {
+		t.Fatalf("read %d files and %d calls; the module has more: is the root wrong?", files, calls)
+	}
+	for _, f := range found {
+		t.Errorf("%s: a run-time message names no Go identifier and cites no record; state the fact, and put the remedy in godoc (0042-MADR D1-A)", f)
+	}
+	for rel, ids := range allowedIdentifiers {
+		for _, id := range ids {
+			if !seen[rel+" "+id] {
+				t.Errorf("%s: allowedIdentifiers lists %s, which no message there names: remove the entry", rel, id)
+			}
+		}
+	}
+}
+
+// message is the joined string literals of one fmt.Errorf or errors.New
+// call, and its line.
+type message struct {
+	text string
+	line int
+}
+
+// errorMessages returns the text of each fmt.Errorf and errors.New call in
+// path.
+func errorMessages(path string) ([]message, error) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
+	if err != nil {
+		return nil, err
+	}
+	var out []message
+	ast.Inspect(f, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		pkg, ok := sel.X.(*ast.Ident)
+		if !ok || (pkg.Name != "fmt" || sel.Sel.Name != "Errorf") && (pkg.Name != "errors" || sel.Sel.Name != "New") {
+			return true
+		}
+		var b strings.Builder
+		ast.Inspect(call, func(m ast.Node) bool {
+			if lit, ok := m.(*ast.BasicLit); ok && lit.Kind == token.STRING {
+				if s, err := strconv.Unquote(lit.Value); err == nil {
+					b.WriteString(s)
+				}
+			}
+			return true
+		})
+		out = append(out, message{text: b.String(), line: fset.Position(call.Pos()).Line})
+		return true
+	})
+	return out, nil
 }

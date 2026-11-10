@@ -60,14 +60,18 @@ func (t *Task) Reconcile(_ context.Context, product, executable string) (_ selfu
 		return selfupdate.ReconcileResult{Detail: path + " already runs " + executable}, nil
 	}
 	if !t.o.RewritePath {
-		return selfupdate.ReconcileResult{}, fmt.Errorf("selfupdate: taskscheduler: %s runs %s, not %s; Options.RewritePath allows rewriting it", path, current, executable)
+		// Options.RewritePath is the remedy, in ErrBinaryMismatch's godoc
+		// (0042-MADR D1-A).
+		return selfupdate.ReconcileResult{}, fmt.Errorf("selfupdate: taskscheduler: %s runs %s, not %s: %w", path, current, executable, service.ErrBinaryMismatch)
 	}
 	logon, err := r.logonType()
 	if err != nil {
 		return selfupdate.ReconcileResult{}, mapError("query the principal of", path, err)
 	}
 	if logon != logonInteractiveToken {
-		return selfupdate.ReconcileResult{}, fmt.Errorf("selfupdate: taskscheduler: %s logs on with %s; a rewrite is measured only for an interactive token (0021-MADR Amendment A1, Q6)", path, logonName(logon))
+		// Only an interactive token was measured to keep its principal
+		// through a rewrite (0021-MADR Amendment A1, Q6; 0042-MADR D1-A).
+		return selfupdate.ReconcileResult{}, fmt.Errorf("selfupdate: taskscheduler: %s logs on with %s, and a rewrite is supported only for an interactive token: %w", path, logonName(logon), ErrLogonType)
 	}
 	if strings.Contains(executable, `"`) {
 		return selfupdate.ReconcileResult{}, fmt.Errorf("selfupdate: taskscheduler: %q holds a quote, which an Exec action's path cannot carry", executable)

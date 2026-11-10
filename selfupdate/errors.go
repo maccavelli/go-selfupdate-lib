@@ -76,6 +76,20 @@ var (
 	// (docs/decisions/0041-MADR-refuse-symlink-invocation-on-every-platform.md
 	// D1-A, D2-A, Amendment A1 D3-A, D5-A).
 	ErrSymlinkInvocation = errors.New("selfupdate: refusing to update through a symlink")
+	// ErrSpecialModeBits is returned, wrapped, when the target has the
+	// setuid or setgid bit and TargetPolicy.AllowSpecialModeBits is not
+	// set, so an update never silently grants or drops privileges. Set
+	// AllowSpecialModeBits to replace such a target; the new binary keeps
+	// the bits. The message names the target, and no option
+	// (docs/decisions/0042-MADR-keep-go-identifiers-out-of-run-time-messages.md
+	// D1-A, D2-A).
+	ErrSpecialModeBits = errors.New("selfupdate: refusing to replace a setuid or setgid target")
+	// ErrNoAllowedRoot is returned, wrapped, when no directory may hold the
+	// target: the home directory is unavailable (unset, the filesystem
+	// root, or missing), and TargetPolicy.AllowedRoots is empty. Add an
+	// AllowedRoots entry that covers the target, as a service account with
+	// no home needs (0042-MADR D1-A, D2-A).
+	ErrNoAllowedRoot = errors.New("selfupdate: no allowed self-update root")
 	// ErrBatchFile is returned, wrapped, on Windows when the program to
 	// start is a .bat or .cmd file, in any spelling Windows resolves to
 	// one: a trailing dot or space, an alternate data stream, or no
