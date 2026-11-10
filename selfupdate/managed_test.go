@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -293,6 +294,95 @@ func TestManagedStopFailsStillRunning(t *testing.T) {
 	}
 	if got := readString(t, exe); got != "old-bytes" {
 		t.Fatalf("target holds %q", got)
+	}
+}
+
+// TestManagedFailureNamesPhraseOnce: a managed install's failure, as Run
+// returns it, names "managed install failed" once on every path, and still
+// matches ErrManagedInstall and its cause. recover's phrase was the
+// sentinel's own text, and recoverStop joined the sentinel a second time
+// on the ReplaceBeforeStop path
+// (docs/decisions/0043-MADR-name-the-package-once-in-wrapped-errors.md
+// Amendment A1 D8-B).
+func TestManagedFailureNamesPhraseOnce(t *testing.T) {
+	t.Parallel()
+	install := func(t *testing.T, life *fakeLife, rec *fakeRec) error {
+		t.Helper()
+		_, _, sess, _ := managedEnv(t, life, rec)
+		_, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: stageNew(t, sess)}})
+		return err
+	}
+	unhealthy := errors.New("unhealthy")
+	partial := errors.New("partial write")
+	timedOut := errors.New("stop wait timed out")
+	refused := errors.New("refused inside the service")
+	stopRefused := errors.New("stop refused")
+	for _, tc := range []struct {
+		name  string
+		cause error
+		run   func(t *testing.T) error
+		want  string
+	}{
+		{
+			name:  "the health check fails",
+			cause: unhealthy,
+			run: func(t *testing.T) error {
+				return install(t, &fakeLife{installed: true, running: true, healthErr: unhealthy}, &fakeRec{changed: true})
+			},
+			want: "selfupdate: demo: managed install failed\nunhealthy\nunhealthy",
+		},
+		{
+			name:  "the reconcile fails",
+			cause: partial,
+			run: func(t *testing.T) error {
+				return install(t, &fakeLife{installed: true, running: true}, &fakeRec{changed: true, err: partial})
+			},
+			want: "selfupdate: demo: managed install failed\npartial write",
+		},
+		{
+			name:  "the stop fails, and the service went down",
+			cause: timedOut,
+			run: func(t *testing.T) error {
+				return install(t, &fakeLife{installed: true, running: true, stopErr: timedOut, stopTakesEffect: true}, &fakeRec{})
+			},
+			want: "selfupdate: demo: managed install failed\nselfupdate: stop service: stop wait timed out",
+		},
+		{
+			name:  "the stop fails, and the service still runs",
+			cause: refused,
+			run: func(t *testing.T) error {
+				return install(t, &fakeLife{installed: true, running: true, stopErr: refused}, &fakeRec{})
+			},
+			want: "selfupdate: demo: stop service: managed install failed\nrefused inside the service",
+		},
+		{
+			name:  "with ReplaceBeforeStop, the stop fails, and the service still runs",
+			cause: stopRefused,
+			run: func(t *testing.T) error {
+				life := &firstLife{running: true, stopErr: stopRefused}
+				_, _, err := replaceFirst(t, life, &fakeRec{}, early, func(p string) { life.target = p })
+				return err
+			},
+			want: "selfupdate: demo: managed install failed\nselfupdate: stop service: stop refused",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := wrapRun(Request{Product: "demo"}, tc.run(t))
+			if err == nil {
+				t.Fatal("Install succeeded; want a managed install failure")
+			}
+			got := err.Error()
+			if got != tc.want {
+				t.Errorf("text = %q, want %q", got, tc.want)
+			}
+			if n := strings.Count(got, "managed install failed"); n != 1 {
+				t.Errorf("%q names the phrase %d times, want once", got, n)
+			}
+			if !errors.Is(err, ErrManagedInstall) || !errors.Is(err, tc.cause) {
+				t.Errorf("errors.Is(ErrManagedInstall) = %t, errors.Is(%v) = %t; want both", errors.Is(err, ErrManagedInstall), tc.cause, errors.Is(err, tc.cause))
+			}
+		})
 	}
 }
 

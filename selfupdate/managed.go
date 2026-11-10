@@ -291,11 +291,13 @@ func (s *managedSession) recoverStop(parent context.Context, product string, app
 	running, rerr := s.life.Running(ctx, product)
 	cancel()
 	if rerr != nil || running {
-		err := errprefix.Wrap("selfupdate: stop service", errors.Join(ErrManagedInstall, stopErr, rerr))
 		if applied.Backup == "" {
-			return InstallResult{}, err
+			return InstallResult{}, errprefix.Wrap("selfupdate: stop service", errors.Join(ErrManagedInstall, stopErr, rerr))
 		}
-		return s.recover(parent, product, applied, ReconcileResult{}, false, false, err)
+		// recover joins ErrManagedInstall itself, so the stop's error goes
+		// to it without the sentinel (0043-MADR Amendment A1 D8-B).
+		return s.recover(parent, product, applied, ReconcileResult{}, false, false,
+			errprefix.Wrap("selfupdate: stop service", errors.Join(stopErr, rerr)))
 	}
 	return s.recover(parent, product, applied, ReconcileResult{}, true, false,
 		errprefix.Wrap("selfupdate: stop service", stopErr))
@@ -356,5 +358,7 @@ func (s *managedSession) recover(parent context.Context, product string, applied
 			recov = errors.Join(recov, err)
 		}
 	}
-	return result, errprefix.Wrap("selfupdate: managed install failed", errors.Join(ErrManagedInstall, origin, recov))
+	// The sentinel's text is the phrase, so no Wrap repeats it
+	// (0043-MADR Amendment A1 D8-B).
+	return result, errors.Join(ErrManagedInstall, origin, recov)
 }

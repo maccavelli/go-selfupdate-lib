@@ -395,7 +395,52 @@ The owner accepted the MADR and approved this PLAN on 2026-11-10 ("accept the ma
 
 ### Phases C4 to C5b
 
-* Proposed on 2026-11-10 with MADR Amendment A1. Nothing is executed until the owner approves.
+* Proposed on 2026-11-10 with MADR Amendment A1. The owner committed the amended records as `1b97acf`, and accepted Amendment A1 and approved these phases the same day ("committed accepted, approved to proceed").
+
+### Phase C4
+
+* **Precondition.** `git diff --name-only v1.26.1 HEAD -- '*.go'` printed nothing at `1b97acf`.
+* **Step 1: the test, seen failing on the tree.** `TestManagedFailureNamesPhraseOnce` is in `selfupdate/managed_test.go`, after `TestManagedStopFailsStillRunning`, and the file now imports `strings`. Before step 2, `go test -count=1 -run '^TestManagedFailureNamesPhraseOnce$' ./selfupdate/` failed four of its five cases. `the stop fails, and the service still runs` passed. The failures were:
+
+  ```text
+  --- FAIL: TestManagedFailureNamesPhraseOnce/the_stop_fails,_and_the_service_went_down
+      text = "selfupdate: demo: managed install failed: managed install failed\nselfupdate: stop service: stop wait timed out", want "selfupdate: demo: managed install failed\nselfupdate: stop service: stop wait timed out"
+  --- FAIL: TestManagedFailureNamesPhraseOnce/the_health_check_fails
+      text = "selfupdate: demo: managed install failed: managed install failed\nunhealthy\nunhealthy", want "selfupdate: demo: managed install failed\nunhealthy\nunhealthy"
+  --- FAIL: TestManagedFailureNamesPhraseOnce/the_reconcile_fails
+      text = "selfupdate: demo: managed install failed: managed install failed\npartial write", want "selfupdate: demo: managed install failed\npartial write"
+  --- FAIL: TestManagedFailureNamesPhraseOnce/with_ReplaceBeforeStop,_the_stop_fails,_and_the_service_still_runs
+      text = "selfupdate: demo: managed install failed: managed install failed\nselfupdate: stop service: managed install failed\nstop refused", want "selfupdate: demo: managed install failed\nselfupdate: stop service: stop refused"
+      "…" names the phrase 3 times, want once
+  ```
+
+  Each of the first three rows also failed the count check, with `names the phrase 2 times, want once`.
+* **Step 2.** `recover` returns `result, errors.Join(ErrManagedInstall, origin, recov)`, with a comment that cites D8-B.
+* **Step 3.** `recoverStop`:
+  * when nothing was replaced, it returns `errprefix.Wrap("selfupdate: stop service", errors.Join(ErrManagedInstall, stopErr, rerr))`, as before;
+  * otherwise it passes `recover` `errprefix.Wrap("selfupdate: stop service", errors.Join(stopErr, rerr))`, with a comment that cites D8-B.
+
+  The count of non-test `errprefix.Wrap(` calls stays 133.
+* **Step 4: tests.** `TestManagedFailureNamesPhraseOnce` passed all five cases. `go test -count=1 ./...` gave `ok` for all 22 packages, so no other test pinned the text, as MADR FA1.5 said. `TestLiteralPrefixWrapsUseWrap`, `TestRunTimeMessagesNameNoGoIdentifier` and `TestBatchErrorChain` passed.
+* **Step 5: the plants.** The scratchpad's `c4_plants.py` made each copy with `scripts/plant-copy.sh`, ran the test in it, and removed it. `git status --short` showed only `selfupdate/managed.go` and `selfupdate/managed_test.go` afterwards.
+
+  | Plant | Result |
+  | :--- | :--- |
+  | step 2's return back to `errprefix.Wrap("selfupdate: managed install failed", …)` | exit 1, failing the four rows through `recover`. For example: `text = "selfupdate: demo: managed install failed: managed install failed\nunhealthy\nunhealthy", want "selfupdate: demo: managed install failed\nunhealthy\nunhealthy"` |
+  | step 3's `errors.Join(stopErr, rerr)` back to `errors.Join(ErrManagedInstall, stopErr, rerr)` | exit 1, failing the `ReplaceBeforeStop` row alone: `text = "selfupdate: demo: managed install failed\nselfupdate: stop service: managed install failed\nstop refused", want …`, and `names the phrase 2 times, want once` |
+
+* **Step 6: checks.**
+  * `make pre-add-check FILES="selfupdate/managed.go selfupdate/managed_test.go"`: `go-precheck: 2 file(s) clean (gofmt, golangci-lint, go vet, go test, govulncheck).`
+  * `make gate` gave `overall=0`, with every step `rc=0`:
+    * gofmt, lint (`0 issues.`), vet, race, shuffle and tidy;
+    * apicheck: `check-api-compat: compatible with v1.26.1`, and no line but the internal packages it ignores;
+    * fuzz, vuln (`No vulnerabilities found.`), scripts, shellcheck and crossvet;
+    * links: `998 links in 115 files, 0 broken`;
+    * arch: `22 rows … 0 differ, 0 without a row`;
+    * ids: `2 files, 20 deny-list rules, 0 findings`.
+  * `make markdownlint`: `0 issues`. `make check-records`: `102 records, 0 findings`. `make docs-check`: `998 links in 115 files, 0 broken`, with 22 architecture rows and 0 differing. `make disclosure-check`: `746 files, 20 deny-list rules, 0 findings`.
+  * `scripts/check-docs.sh --ids` on this PLAN and the two `.go` files: `3 files, 20 deny-list rules, 0 findings`.
+* The owner commits Phase C4.
 
 ### Deviations
 
