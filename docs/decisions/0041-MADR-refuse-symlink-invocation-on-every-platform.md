@@ -2,7 +2,7 @@
 status: accepted
 date: 2026-11-09
 decision-makers: go-selfupdate-lib maintainers
-consulted: "issue #9, opened 2026-11-09; selfupdate/target.go, replace.go, types.go, standalone.go, doc.go, updater.go, spawn_test.go and target_test.go at c0bfb54; Go 1.27.3's os/executable*.go; probe P1, run on 2026-11-09 on the macOS development host, a Linux test host and the Windows test host"
+consulted: "issue #9, opened 2026-11-09; selfupdate/target.go, replace.go, types.go, standalone.go, doc.go, updater.go, spawn_test.go and target_test.go at c0bfb54; Go 1.27.3's os/executable*.go; probe P1, run on 2026-11-09 on the macOS development host, a Linux test host and the Windows test host; for Amendment A1: issue #10, opened 2026-11-09; selfupdate/target.go, errors.go, standalone.go, managed.go, session.go, updater.go, doc.go, types.go and cli/run.go at 01e7c13, whose Go code is v1.25.0's; the guides and example_test.go at 01e7c13; the fleet checkouts on the development host; probe A1-P1, run on 2026-11-09 on the macOS development host and a Linux test host"
 informed: the fleet's programs, which require this module and call its workflows
 ---
 <!-- markdownlint-disable MD004 MD013 MD024 MD060 -->
@@ -99,7 +99,7 @@ When `TargetPolicy.ExecutablePath` is set, `os.Args[0]` is not read: the caller 
 ### D2-A in detail
 
 * `selfupdate/errors.go` adds `ErrSymlinkInvocation = errors.New("selfupdate: refusing to update through a symlink")`. The message keeps today's text as its prefix.
-* Both refusals, of `raw` and of the invoked path, wrap it: `%w: <link> links to <target>; run <target>, or set TargetPolicy.ExecutablePath to it`.
+* Both refusals, of `raw` and of the invoked path, wrap it: `%w: <link> links to <target>; run <target>, or set TargetPolicy.ExecutablePath to it`. Shipped in `v1.25.0`. Amendment A1 (D3-A, D4-A, chosen 2026-11-09) replaces this text and makes the refusal a typed error, keeping the sentinel and the class.
 * `failureClasses` gains `{ErrSymlinkInvocation, "symlink-invocation"}` after `managed-install`. The `failed` event's detail for this refusal changes from `error` to `symlink-invocation`.
 
 ### Consequences
@@ -172,6 +172,191 @@ When `TargetPolicy.ExecutablePath` is set, `os.Args[0]` is not read: the caller 
 ## More Information
 
 * Issue #9: "StandaloneInstaller: a symlink invocation is not refused on Linux, because os.Executable resolves it".
-* Plan: [0041-PLAN-refuse-symlink-invocation-on-every-platform.md](0041-PLAN-refuse-symlink-invocation-on-every-platform.md).
+* Plan: [0041-PLAN-refuse-symlink-invocation-on-every-platform.md](0041-PLAN-refuse-symlink-invocation-on-every-platform.md), released as `v1.25.0`.
+* Amendment A1's plan: [0041-PLAN-type-the-symlink-refusal-and-spare-startup-maintenance.md](0041-PLAN-type-the-symlink-refusal-and-spare-startup-maintenance.md).
+* Issue #10: "ErrSymlinkInvocation: the refusal names a Go field to CLI users, gives wrong advice for an explicit ExecutablePath, and fails CleanupPending/KeptBackups". Its proposal P4, the same rule for the other run-time messages, is decided separately in [0042-MADR-keep-go-identifiers-out-of-run-time-messages.md](0042-MADR-keep-go-identifiers-out-of-run-time-messages.md).
 * A directory symlink in the path (`~/bin` → `~/.local/bin`) is not refused today on any platform: `os.Lstat` reports only the final component. D1-A keeps that.
 * A hard link cannot be told from the file it names, and is not refused on any platform. This record does not change that.
+
+## Amendment A1 (2026-11-09): D3 to D5, the refusal's type, its message and startup maintenance
+
+Issue #10, opened on 2026-11-09 against `v1.25.0`, found three flaws in what D2-A shipped:
+
+* the message names a Go field to the person running a CLI;
+* it gives the wrong advice when `TargetPolicy.ExecutablePath` is the link;
+* `CleanupPending` and `KeptBackups` fail with it, although neither updates anything.
+
+It also asked for the link and the target as fields. On 2026-11-09 the owner asked for the records to be amended. This amendment adds D3 (the type), D4 (the message) and D5 (startup maintenance). It was proposed, and the owner chose D3-A, D4-A and D5-A the same day (Amendment A1 outcome). D1-A, the sentinel and the `symlink-invocation` class stay as decided. Only D2-A's message text is replaced (D4).
+
+The issue's proposal P4, the same rule for the library's other run-time messages, is not decided here. It reaches four packages beyond the symlink refusal, so it has its own record: [0042-MADR-keep-go-identifiers-out-of-run-time-messages.md](0042-MADR-keep-go-identifiers-out-of-run-time-messages.md).
+
+Facts are tagged as above. **[probed]** here means probe A1-P1 (FA1.4). The tree read is `01e7c13`, whose Go code is `v1.25.0`'s: no `.go` file has changed since `b8a5bd0`.
+
+### Amendment A1 facts
+
+* **FA1.1 [read]. One message for three sources.**
+  * `symlinkRefusalTo` (`selfupdate/target.go:132-135`) builds `%w: <link> links to <target>; run <target>, or set TargetPolicy.ExecutablePath to it`.
+  * It is reached in two places:
+    * from `symlinkRefusal` (`:119-128`), for the path `rawExecutablePath` gave (`:20-21`). That path is `TargetPolicy.ExecutablePath` when it is set, and `os.Executable()` otherwise (`:137-157`). When `filepath.EvalSymlinks` fails, the message is `%w: <link>` (`:122`).
+    * directly, for the path `invokedSymlink` found from `os.Args[0]` (`:41-44`). That runs only when `ExecutablePath` is empty.
+  * So the link is found in one of three ways: `os.Executable` returned it (macOS, Windows); `TargetPolicy.ExecutablePath` is it; or `os.Args[0]` named it (Linux, and any OS whose `os.Executable` resolves links). The message cannot tell them apart.
+* **FA1.2 [read]. Who reads the message.**
+  * `cli.Exit` prints any error as `update failed: <message>` (`selfupdate/cli/run.go:357-363`). The `--json` result's `error` carries the same text.
+  * The library's other run-time hints speak in the canonical command's flags: `pass --yes to apply without prompting` (`selfupdate/adapters.go:98`, `confirmer.go:89`), `pass --yes to apply without a TTY` (`confirmer.go:62`), and `ErrForceRequired`'s `replacing a local build requires --force` (`errors.go:49`).
+  * The person at a terminal cannot set `TargetPolicy.ExecutablePath`. Only the program's author can.
+* **FA1.3 [read]. Who calls `CleanupPending` and `KeptBackups`.**
+  * Both begin with `resolveTarget` (`selfupdate/standalone.go:83-93`, `:113-122`). `ManagedInstaller.KeptBackups` delegates to its inner installer's (`managed.go:86-94`).
+  * The package documentation says `CleanupPending` is "called at startup" (`doc.go:159`). The extending guide says the same (`docs/guides/extending-selfupdate.md:561-563`), and to call `KeptBackups` after it (`:578-579`). The migration guide does too (`:929`, `:958`). `ExampleStandaloneInstaller_CleanupPending` (`selfupdate/example_test.go:630-639`) prints any error that is not `ErrConcurrentUpdate`.
+  * Nothing in the library calls either method. Only programs do.
+* **FA1.4 [probed]. Probe A1-P1.**
+  * **What it was.** A program built against the tree calls `ResolveTarget`, `KeptBackups` and `CleanupPending` on `NewStandaloneInstaller` with `TargetPolicy{ExecutablePath: argv[1], AllowedRoots: [<tmp>]}`. A Python script runs it by its real path and through a symlink in a sibling directory, in a new temporary directory that it removes afterwards. A kept backup, `.msgprobe.selfupdate-kept-1`, is planted beside the real binary. The script lists the real binary's directory before and after each run.
+  * **Results.** The macOS development host and a Linux test host printed the same:
+
+    | Case | Started as | `ExecutablePath` | `ResolveTarget` | `KeptBackups` | `CleanupPending` |
+    | :--- | :--- | :--- | :--- | :--- | :--- |
+    | 1 | `<tmp>/real/msgprobe` | empty | ok | ok, 1 backup | ok; `.msgprobe.selfupdate.lock` created |
+    | 2 | `<tmp>/link/msgprobe` → real | empty | refused | refused | refused; nothing changed |
+    | 3 | `<tmp>/real/msgprobe` | `<tmp>/link/msgprobe` | refused | refused | refused; nothing changed |
+    | 4 | `<tmp>/link/msgprobe` | `<tmp>/real/msgprobe` | ok | ok, 1 backup | ok |
+
+  * **What the refusals said.** Every refusal was `errors.Is(err, ErrSymlinkInvocation)`, with the text `selfupdate: refusing to update through a symlink: <tmp>/link/msgprobe links to <tmp>/real/msgprobe; run <tmp>/real/msgprobe, or set TargetPolicy.ExecutablePath to it`.
+    * In case 3 that text tells a process that is already running `<tmp>/real/msgprobe` to run it.
+    * Case 2 is found through `os.Executable` on macOS, and through `os.Args[0]` on Linux (F3).
+  * **What this confirms.** It matches issue #10's macOS table, and extends it to Linux and to the success path.
+* **FA1.5 [read]. What `CleanupPending` writes, and what `KeptBackups` reads.**
+  * `CleanupPending` runs `beginSession`. That takes the lock, `.<base>.selfupdate.lock`, in the target's directory (`session.go:592`). Under the lock it:
+    * processes a cleanup receipt;
+    * recovers an interrupted update's journal, keeping its backup (`journal.go:88-96`);
+    * sweeps the leftovers of a crashed update.
+
+    Then it releases the lock. The lock file stays (FA1.4, case 1). Every write is in the target's directory.
+  * `KeptBackups` takes no lock and writes nothing. It opens the target's directory with `os.OpenRoot`, and lists regular files named `.<base>.selfupdate-kept-<digits>`, never through a symlink (`standalone.go:109-112`, `:124-127`).
+* **FA1.6 [derived]. Where a leftover beside the target can come from.**
+  * Since `v1.25.0` an update through a link is refused on every platform (D1-A). So a leftover beside a link's target comes from a run that resolved the target itself:
+    * the program started by the target's own path;
+    * the program with `ExecutablePath` set to the target;
+    * on Linux, an update through the link by `v1.24.0` or earlier, which F8 describes.
+  * On Windows, a receipt is left for the old image, which the running process holds open after a direct update. The next `CleanupPending` removes it once that process has exited (`docs/architecture.md:830-833`).
+* **FA1.7 [read]. Precedents for the shape.**
+  * `RateLimitError` (`selfupdate/errors.go:84-108`) is a pointer-receiver error whose `Unwrap` returns its sentinel, and whose `Error` handles a nil receiver.
+  * `HTTPError` (`:113-131`) and `service.CommandError` are typed errors with exported fields. None of the three has JSON tags.
+  * The module's enums are string-backed, such as `archive.Format` and `releasespec.Packaging`.
+  * `failureClass` matches with `errors.Is` (`selfupdate/updater.go:615-619`). So an error that unwraps to `ErrSymlinkInvocation` keeps the class `symlink-invocation` (`:611`).
+* **FA1.8 [read]. What matches the text today.**
+  * No test in this module asserts the message after its prefix.
+  * Of the fleet checkouts on the development host, `gobble-cli` requires `v1.25.0`. Its `internal/cli/update_test.go:347-348` asserts `refusing to update through a symlink` and `<link> links to ` in its stderr. Its `internal/cli/update.go:198-205` calls `CleanupPending` only after `ResolveTarget` succeeds.
+  * `prepare-commit-msg` requires `v1.25.0` and calls neither method.
+  * `magic-cli-remote` requires `v1.24.0`. It neither matches the refusal nor calls either method.
+* **FA1.9 [not established].** Whether any program calls `CleanupPending` or `KeptBackups` at startup and is started through a link. The development host's checkouts do not (FA1.8), and fleet programs outside them were not read.
+
+### Amendment A1 options
+
+D3, the refusal's type:
+
+* **D3-A.** `*SymlinkInvocationError`, with exported fields `Link`, `Target` and `Source`, each with a JSON tag. It unwraps to `ErrSymlinkInvocation`. `Source` is a string-backed `SymlinkSource`, whose three constants are `SymlinkSourceExecutable` (`"executable"`), `SymlinkSourceInvocation` (`"invocation"`) and `SymlinkSourcePolicy` (`"policy"`).
+* **D3-B.** The same type, with `SymlinkSource` an `int` from `iota + 1`, as issue #10 proposed.
+* **D3-C.** No type. A function `SymlinkPaths(err error) (link, target string, ok bool)` reads the paths from the error.
+* **D3-D.** Three sentinels, one for each source, each wrapping `ErrSymlinkInvocation`.
+
+D4, the message:
+
+* **D4-A.** One message for each case. Each keeps today's prefix, `selfupdate: refusing to update through a symlink`, and names no Go identifier:
+
+  | Case | Text after the prefix |
+  | :--- | :--- |
+  | `SymlinkSourceExecutable` or `SymlinkSourceInvocation`, target resolved | `: <link> links to <target>; start <target> itself to update it` |
+  | `SymlinkSourcePolicy`, target resolved | `: the configured executable path <link> links to <target>` |
+  | any source, target not resolved | `: <link> is a symlink` |
+
+  The author's remedy moves to godoc: set `TargetPolicy.ExecutablePath` to the resolved path to update through a link on purpose. It goes on `SymlinkInvocationError`, `ErrSymlinkInvocation` and `TargetPolicy`, and in the extending guide.
+* **D4-B.** D4-A, with `; fix the configured path` after the `SymlinkSourcePolicy` text.
+* **D4-C.** Drop only `, or set TargetPolicy.ExecutablePath to it` from today's text.
+* **D4-D.** Leave the text, and have `cli.Exit` and `cli.Run` reword it when `errors.Is(err, ErrSymlinkInvocation)`.
+
+D5, `CleanupPending` and `KeptBackups` when the program was started through a link:
+
+* **D5-A.** For `SymlinkSourceExecutable` and `SymlinkSourceInvocation` only:
+  * `CleanupPending` returns nil, without taking the lock or touching any file.
+  * `KeptBackups` resolves the target again with `ExecutablePath` set to the error's `Target`, so the regular-file, setuid and allowed-root checks still apply. It then lists the backups beside that target. When `Target` is empty it returns the refusal.
+
+  With `SymlinkSourcePolicy`, both are refused as today: an explicit `ExecutablePath` that is a link is a configuration error. `ResolveTarget`, `Begin` and the update path refuse exactly as today.
+* **D5-B.** Both follow the link. `CleanupPending` takes the lock and processes the leftovers beside the resolved target.
+* **D5-C.** Both return nothing. `CleanupPending` returns nil, and `KeptBackups` returns nil, nil.
+* **D5-D.** No change. The documentation tells programs to ignore `ErrSymlinkInvocation` from either method.
+
+### Amendment A1 outcome
+
+Chosen options: "D3-A", "D4-A" and "D5-A", by the owner on 2026-11-09, as proposed, each from three options put to them: D3-A, D3-B and D3-D; D4-A, D4-B and D4-C; D5-A, D5-B and D5-D.
+
+* **Why D3-A.**
+  * A program with its own UI gets both paths, and the way the link was found, with `errors.As`, and does not parse the string (FA1.1). `errors.Is` and the class still work (FA1.7).
+  * The shape follows `RateLimitError`'s (FA1.7). Its fields carry JSON tags, and its `Source` marshals as a name, so the type can appear in a JSON document, as the module prefers for exported types.
+  * The source tells D4 and D5 which case they are in, without a second error path through `resolveTarget`.
+* **Why D4-A.**
+  * "Start" fits a shell, a unit file and a launcher, which "run" does not for the second two.
+  * The `SymlinkSourcePolicy` text states a fact, because the remedy belongs to whoever configured the path, and only the program knows who that is (FA1.4, case 3). A program that reads the path from its own setting can wrap the error with that setting's name.
+  * The text keeps `<link> links to `, which is the part a fleet test matches (FA1.8).
+* **Why D5-A.**
+  * A program started through a link stops failing its startup maintenance (FA1.3, FA1.4).
+  * Nothing is written in the link target's tree, which D1-A keeps out of reach (F8, FA1.5).
+  * `KeptBackups` is read-only and takes no lock (FA1.5), so following the link to list them writes nothing.
+  * An explicit `ExecutablePath` link stays an error under every call. A misconfiguration is then reported where the program can see it.
+* **Rejected.**
+  * D3-B marshals as a number, which says nothing to a reader of JSON.
+  * D3-C hides a typed value behind a parser of the module's own string.
+  * D3-D multiplies sentinels for one refusal, and gives no paths.
+  * D4-B gives an instruction that only some programs' users can follow.
+  * D4-C leaves FA1.4's case 3 wrong, and the paths in the string only.
+  * D4-D fixes `cli` users alone, and the two texts can drift.
+  * D5-B writes a lock file and removes files in a tree that another tool may manage, which is the harm D1-A refuses for an update (F8). The only gain is a cleanup that the next direct start or update does anyway.
+  * D5-C hides kept backups that exist, which `KeptBackups` exists to report.
+  * D5-D pushes the same check into every program, and the example and guides would have to teach it.
+* **Consequences.**
+  * Good, because a CLI's user reads an instruction they can follow, and the program's author finds the override in godoc.
+  * Good, because a program with an `ExecutablePath` that is a link is told the fact, not given an instruction that cannot work.
+  * Good, because a program started through a link no longer fails `CleanupPending` and `KeptBackups` at every start. That was new on Linux in `v1.25.0`, and older on macOS and Windows (FA1.4).
+  * Good, because a program can read `Link`, `Target` and `Source` without parsing.
+  * Neutral, because `errors.Is(err, ErrSymlinkInvocation)`, the class and the prefix are unchanged.
+  * Bad, because the text after the prefix changes again, one release after `v1.25.0` changed it. The `v1.25.0` changelog already says to match the sentinel, not the text.
+  * Bad, because `CleanupPending`'s nil does not say it skipped. A leftover beside the target waits for the next start by the target's own path, or the next update. On Windows that includes the old image a direct update left (FA1.6). `KeptBackups` still reports a kept backup meanwhile.
+  * Bad, because `KeptBackups` now succeeds through a link where it failed. A program that relied on the failure to detect a link start gets a listing. `ResolveTarget` still reports it.
+* **Release.** The type and constants are additions, so the release is a minor one. On 2026-11-09 the owner chose one `v1.26.0` for this amendment and [0042-MADR-keep-go-identifiers-out-of-run-time-messages.md](0042-MADR-keep-go-identifiers-out-of-run-time-messages.md) together, over `v1.26.0` and then `v1.27.0`. So the release phases are in 0042's PLAN. `make apicheck` must report additions only.
+
+### Amendment A1 confirmation
+
+* `selfupdate/target_test.go`:
+  * for each source, `errors.As` gives `Link`, `Target` and `Source`, and `Error()` is exactly D4-A's text;
+  * no message contains `TargetPolicy`;
+  * a dangling link gives the unresolved text;
+  * FA1.4's case 3 gives `SymlinkSourcePolicy` and no "start".
+* An error test:
+  * a nil `*SymlinkInvocationError` prints the sentinel's text and unwraps to it;
+  * `json.Marshal` of a value gives the keys `link`, `target` and `source`, with `source` a name.
+* `selfupdate/events_test.go`'s class table: a wrapped `*SymlinkInvocationError` is `symlink-invocation`.
+* Unit tests of `CleanupPending` and `KeptBackups`, using `fsOps` fakes for the executable and invocation sources:
+  * `CleanupPending` returns nil, and the target's directory listing is unchanged: no lock file;
+  * `KeptBackups` lists a planted kept backup;
+  * with `SymlinkSourcePolicy`, both are refused.
+* The process test that 0041-PLAN added runs `CleanupPending` and `KeptBackups` too, with the real `os.Executable` and `os.Args[0]`. Those come from Linux's `os.Args[0]` and from macOS's and Windows's `os.Executable`.
+* Each new assertion is seen to fail on a copy with one change planted by `scripts/plant-copy.sh`:
+  * the old message;
+  * `CleanupPending` without D5-A;
+  * `KeptBackups` without D5-A;
+  * `SymlinkSourcePolicy` treated as followable.
+* The changed tests pass on the macOS development host, a Linux test host and the Windows test host.
+* `make gate` ends `overall=0`. `make apicheck` reports `SymlinkInvocationError`, `SymlinkSource` and its three constants as additions, and nothing incompatible.
+
+### Amendment A1 pros and cons
+
+* **D3-A:** Good, because it follows `RateLimitError` and the module's JSON preference. Bad, because it adds a type and three constants to the API.
+* **D3-B:** Good, because a compact enum. Bad, because a JSON reader sees a number.
+* **D3-C:** Good, because no new type. Bad, because it parses the module's own text, and breaks when the text changes.
+* **D3-D:** Good, because `errors.Is` alone tells the source. Bad, because three more sentinels, and no paths.
+* **D4-A:** Good, because each reader gets a true statement, and the user an instruction they can follow. Bad, because the text changes again after `v1.25.0`.
+* **D4-B:** Good, because the policy case gets a direction. Bad, because "the configured path" may be one that the reader cannot change.
+* **D4-C:** Good, because it is the smallest change. Bad, because case 3 stays wrong.
+* **D4-D:** Good, because the core text is unchanged. Bad, because only `cli` users are helped, and the texts drift.
+* **D5-A:** Good, because startup stops failing, and nothing is written through the link. Bad, because a skipped cleanup is silent.
+* **D5-B:** Good, because leftovers are cleaned at once. Bad, because it writes in the link target's tree.
+* **D5-C:** Good, because it is the simplest. Bad, because kept backups go unreported.
+* **D5-D:** Good, because no library change. Bad, because every program must handle it, and the docs must teach it.
