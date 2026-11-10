@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 date: 2026-11-09
 associated-madr: "0042-MADR-keep-go-identifiers-out-of-run-time-messages.md"
 ---
@@ -304,6 +304,22 @@ The owner chose the MADR's options on 2026-11-09. They committed 0041's second P
   * `make check-records` `100 records, 0 findings`; `make disclosure-check` `742 files, 20 deny-list rules, 0 findings`.
   * `scripts/check-docs.sh --ids` on the four changed files: `4 files, 20 deny-list rules, 0 findings`.
 * The owner commits, pushes, tags `v1.26.0` and pushes the tag.
+
+### Phase B3b
+
+* **Phase B3a's commit and tag.** The owner committed and pushed Phase B3a as `7c67784`; its Docs run (42756558914) passed. They tagged `v1.26.0` on `7c677842dface4b14b65b2e8b46aa0a7543bed13` (annotated, 2026-11-09, the changelog's date) and pushed it. Tag CI run 42756693188 on `7c67784`: `success`, with all 18 jobs passing. They include `validate` on ubuntu-24.04, macos-15 and windows-2025, `go126` and `installer-containers`. The owner then said "proceed".
+* **Step 1.**
+  * `git diff --name-only v1.25.0 v1.26.0 -- .github internal/cmd 'scripts/*release*'` printed nothing, so the guide's statements about the workflows hold for `v1.26.0`.
+  * Pins moved from `v1.25.0` and `875dec3` to `v1.26.0` and `7c677842dface4b14b65b2e8b46aa0a7543bed13` by the scratchpad's `pin126.py`, which asserts each count before it replaces. It was first run on scratch copies of the four files, where every count matched.
+    * `README.md`: the current release, the `go get` line, and the publish pin (1 each).
+    * `docs/architecture.md`: the current release and its commit.
+    * `docs/guides/building-releases.md`: "examples below pin", the three workflow pins, and the `ls-remote` ref.
+    * The migration guide: §2's "current release", §3's publish pin, "`v1.17.2` to `v1.26.0` nothing" and its example pin, the `ls-remote` ref, §5's `go.mod` requirement, the `go get` lines (21, §2's to §25's) and the `go list` checks (19, §7's to §25's).
+  * The guide's release history gains a `v1.26.0` line linking §26.
+  * Kept as history: the guide's `v1.25.0` release-history line, §25's prose, and §26's four mentions of `v1.25.0` (two in its prose, and the headers of its two old-text columns).
+* **Step 2.** This PLAN and 0041-PLAN-type-the-symlink-refusal-and-spare-startup-maintenance.md are `complete`, with their rows in `docs/README.md`.
+* **Checks on the tree.** `make markdownlint` 0 issues; `make check-records` 100 records, 0 findings; `make docs-check` 978 links in 113 files, 0 broken, 21 architecture rows, 0 differ; `make disclosure-check` 742 files, 0 findings; `scripts/check-docs.sh --ids` on the seven changed files, both PLANs and `docs/README.md` included, 0 findings.
+* **Step 3.** Closing issue #10 waits for the owner's word.
 
 ### Owner decisions before execution
 

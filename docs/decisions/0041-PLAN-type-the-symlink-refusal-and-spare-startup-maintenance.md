@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 date: 2026-11-09
 associated-madr: "0041-MADR-refuse-symlink-invocation-on-every-platform.md"
 ---
@@ -276,6 +276,13 @@ The owner chose Amendment A1's options on 2026-11-09. They committed Phase A0 an
   * Fixed: issue #10's points, startup maintenance through a link included, noting that it was new on Linux in `v1.25.0`.
   * The entry links §26, the MADR's Amendment A1 and this PLAN.
   * `scripts/check-release-tag.sh v1.26.0` exit 0, `git tag -l v1.26.0` empty, and the Markdown checks pass.
+
+### Phase A3b, done as 0042's Phase B3b
+
+* 0042-PLAN-keep-go-identifiers-out-of-run-time-messages.md Phase B3b did each step of Phase A3b for `v1.26.0`, tagged on `7c677842dface4b14b65b2e8b46aa0a7543bed13` with green tag CI. Its record holds the output.
+  * Step 1: nothing under `.github`, `internal/cmd` or `scripts/*release*` changed since `v1.25.0`.
+  * Step 2: the pins in `README.md`, `docs/architecture.md`, `docs/guides/building-releases.md` and the migration guide moved by an asserted script, and the guide gained the `v1.26.0` release-history line.
+  * Step 3: this PLAN is `complete`, with its row in `docs/README.md`, and the four documentation checks pass.
 
 ### Owner decisions before execution
 

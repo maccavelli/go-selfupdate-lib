@@ -105,9 +105,9 @@ name, and the files they cite moved with the rename
 | 0040 | PLAN | [Implement D5: make the architecture table check require a row for every directory Go builds](decisions/0040-PLAN-require-architecture-table-rows.md) | complete |
 | 0041 | MADR | [Refuse an update started through a symlink on every platform, by checking the invoked path as well as `os.Executable`](decisions/0041-MADR-refuse-symlink-invocation-on-every-platform.md) | accepted |
 | 0041 | PLAN | [Implement the refusal of an update started through a symlink on every platform](decisions/0041-PLAN-refuse-symlink-invocation-on-every-platform.md) | complete |
-| 0041 | PLAN | [Implement Amendment A1: a typed symlink refusal, a message for each source, and startup maintenance through a link](decisions/0041-PLAN-type-the-symlink-refusal-and-spare-startup-maintenance.md) | in-progress |
+| 0041 | PLAN | [Implement Amendment A1: a typed symlink refusal, a message for each source, and startup maintenance through a link](decisions/0041-PLAN-type-the-symlink-refusal-and-spare-startup-maintenance.md) | complete |
 | 0042 | MADR | [Keep Go identifiers and record citations out of run-time error messages, give each refusal whose remedy leaves the message a sentinel, and hold the rule with a source scan](decisions/0042-MADR-keep-go-identifiers-out-of-run-time-messages.md) | accepted |
-| 0042 | PLAN | [Implement the rule that run-time error messages name no Go identifier and cite no record, with four sentinels, two failure classes and a source scan](decisions/0042-PLAN-keep-go-identifiers-out-of-run-time-messages.md) | in-progress |
+| 0042 | PLAN | [Implement the rule that run-time error messages name no Go identifier and cite no record, with four sentinels, two failure classes and a source scan](decisions/0042-PLAN-keep-go-identifiers-out-of-run-time-messages.md) | complete |
 
 ## I want to…
 
