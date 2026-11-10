@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 	"github.com/maccavelli/go-selfupdate-lib/internal/winproc"
 )
 
@@ -150,6 +151,12 @@ func TestErrBatchFileIsWinproc(t *testing.T) {
 	}
 	if !errors.Is(fmt.Errorf("site: %w", winproc.ErrBatchFile), ErrBatchFile) {
 		t.Fatal("errors.Is does not find ErrBatchFile in a wrapped winproc error")
+	}
+	// The walk accepts errprefix.Wrap as it accepts %w
+	// (docs/decisions/0043-PLAN-name-the-package-once-in-wrapped-errors.md
+	// Deviation 1).
+	if !errors.Is(errprefix.Wrap("selfupdate: site", winproc.ErrBatchFile), ErrBatchFile) {
+		t.Fatal("errors.Is does not find ErrBatchFile through errprefix.Wrap")
 	}
 }
 
@@ -420,6 +427,13 @@ func chainReturn(r *ast.ReturnStmt, e string, imports map[string]string) (bool, 
 			return true, ""
 		case chainFunc{"fmt", "Errorf"}:
 			return chainVerb(c, e)
+		case chainFunc{chainModule + "/internal/errprefix", "Wrap"}:
+			// Wrap(op, e) unwraps to e itself; any other second argument
+			// is a form the walk does not follow (0043-PLAN Deviation 1).
+			if len(c.Args) == 2 && chainIsIdent(c.Args[1], e) {
+				return true, ""
+			}
+			return false, "errprefix.Wrap's error is not err itself"
 		}
 		return false, "err is returned through a call the walk does not follow"
 	}

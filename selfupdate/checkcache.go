@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"time"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 )
 
 // Cached, rate-limit-aware checks for startup banners
@@ -126,7 +128,7 @@ var (
 	ErrNoCheckRecord = errors.New("selfupdate: no cached check record")
 	// ErrCheckDeferred is returned by CheckCached while an earlier rate
 	// limit still defers checks. It matches ErrRateLimited.
-	ErrCheckDeferred = fmt.Errorf("selfupdate: check deferred by an earlier rate limit: %w", ErrRateLimited)
+	ErrCheckDeferred = errprefix.Wrap("selfupdate: check deferred by an earlier rate limit", ErrRateLimited)
 )
 
 // CheckCached answers from store when its record is for the same request
@@ -194,7 +196,7 @@ func (c *Checker) CheckCached(ctx context.Context, cr CheckRequest, store CheckS
 	if cerr == nil {
 		fresh := CheckRecord{Request: key, Availability: avail, CheckedAt: now}
 		if serr := store.Save(ctx, fresh); serr != nil {
-			return fresh, fmt.Errorf("selfupdate: save check record: %w", serr)
+			return fresh, errprefix.Wrap("selfupdate: save check record", serr)
 		}
 		return fresh, nil
 	}
@@ -206,7 +208,7 @@ func (c *Checker) CheckCached(ctx context.Context, cr CheckRequest, store CheckS
 			CheckedAt:    now,
 		}
 		if serr := store.Save(ctx, fresh); serr != nil {
-			return fresh, errors.Join(cerr, fmt.Errorf("selfupdate: save check record: %w", serr))
+			return fresh, errors.Join(cerr, errprefix.Wrap("selfupdate: save check record", serr))
 		}
 		return fresh, cerr
 	}
@@ -215,7 +217,7 @@ func (c *Checker) CheckCached(ctx context.Context, cr CheckRequest, store CheckS
 		saved.Request = key
 		saved.NotBefore = notBefore(now, rl)
 		if serr := store.Save(ctx, saved); serr != nil {
-			return saved, errors.Join(cerr, fmt.Errorf("selfupdate: save check record: %w", serr))
+			return saved, errors.Join(cerr, errprefix.Wrap("selfupdate: save check record", serr))
 		}
 		return saved, cerr
 	}

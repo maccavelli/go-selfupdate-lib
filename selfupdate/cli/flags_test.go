@@ -125,7 +125,8 @@ func TestRequestContradictions(t *testing.T) {
 		req := selfupdate.Request{Product: "demo", CurrentVersion: "v1.0.0", CurrentBuild: selfupdate.ReleaseBuild,
 			CheckOnly: f.Check, Yes: f.Yes, Force: f.Force, DryRun: f.DryRun}
 		_, runErr := u.Run(context.Background(), req)
-		if runErr == nil || runErr.Error() != "selfupdate: demo: "+reqErr.Error() {
+		// The run names the package once (0043-MADR D4-A).
+		if runErr == nil || runErr.Error() != "selfupdate: demo: "+strings.TrimPrefix(reqErr.Error(), "selfupdate: ") {
 			t.Fatalf("%+v: Request says %q, Run says %v", f, reqErr, runErr)
 		}
 	}

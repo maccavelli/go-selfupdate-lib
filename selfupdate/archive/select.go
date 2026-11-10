@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 )
 
@@ -75,7 +76,7 @@ type selector struct {
 func NewSelector(o SelectorOptions) (selfupdate.AssetSelector, error) {
 	exact, err := selfupdate.NewExactAssetSelector(o.Platforms)
 	if err != nil {
-		return nil, fmt.Errorf("selfupdate: archive: %w", err)
+		return nil, errprefix.Wrap("selfupdate: archive", err)
 	}
 	s := &selector{exact: exact, format: o.Format, name: o.Name, manifest: o.Manifest}
 	if s.format == nil {
@@ -114,11 +115,11 @@ func (s *selector) Select(rel selfupdate.Release, product string, p selfupdate.P
 	}
 	name, err := s.name(product, rel.Tag, p, f)
 	if err != nil {
-		return selfupdate.Selection{}, fmt.Errorf("selfupdate: archive: %w", err)
+		return selfupdate.Selection{}, errprefix.Wrap("selfupdate: archive", err)
 	}
 	manifest, err := s.manifest(product, rel.Tag)
 	if err != nil {
-		return selfupdate.Selection{}, fmt.Errorf("selfupdate: archive: %w", err)
+		return selfupdate.Selection{}, errprefix.Wrap("selfupdate: archive", err)
 	}
 	for _, n := range []string{name, manifest} {
 		if !assetNameRe.MatchString(n) {

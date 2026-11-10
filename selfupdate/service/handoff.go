@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 	"github.com/maccavelli/go-selfupdate-lib/internal/redact"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 )
@@ -130,7 +131,7 @@ func HandOffIfInside(ctx context.Context, d Detacher, spec HandOff) (Detached, b
 	}
 	inside, err := d.Inside(ctx)
 	if err != nil {
-		return Detached{}, false, fmt.Errorf("selfupdate: service: cannot tell whether this process runs inside the service: %w", err)
+		return Detached{}, false, errprefix.Wrap("selfupdate: service: cannot tell whether this process runs inside the service", err)
 	}
 	if !inside {
 		return Detached{}, false, nil
@@ -141,7 +142,7 @@ func HandOffIfInside(ctx context.Context, d Detacher, spec HandOff) (Detached, b
 	}
 	det, err := d.Detach(ctx, spec)
 	if err != nil {
-		return Detached{}, false, fmt.Errorf("selfupdate: service: hand the update off: %w", err)
+		return Detached{}, false, errprefix.Wrap("selfupdate: service: hand the update off", err)
 	}
 	return det, true, nil
 }
@@ -150,7 +151,7 @@ func HandOffIfInside(ctx context.Context, d Detacher, spec HandOff) (Detached, b
 func complete(spec HandOff) (HandOff, error) {
 	exe, err := absExecutable(spec.Executable)
 	if err != nil {
-		return HandOff{}, fmt.Errorf("selfupdate: service: locate the executable: %w", err)
+		return HandOff{}, errprefix.Wrap("selfupdate: service: locate the executable", err)
 	}
 	spec.Executable = exe
 	if spec.ID == "" {
@@ -192,10 +193,10 @@ func HandOffFunc(d Detacher, spec HandOff) func(context.Context, selfupdate.Requ
 		if !req.Yes && d != nil && os.Getenv(EnvHandOff) == "" {
 			inside, err := d.Inside(ctx)
 			if err != nil {
-				return false, "", fmt.Errorf("selfupdate: service: cannot tell whether this process runs inside the service: %w", err)
+				return false, "", errprefix.Wrap("selfupdate: service: cannot tell whether this process runs inside the service", err)
 			}
 			if inside {
-				return false, "", fmt.Errorf("selfupdate: service: an update from inside the service runs detached and cannot ask; pass --yes: %w",
+				return false, "", errprefix.Wrap("selfupdate: service: an update from inside the service runs detached and cannot ask; pass --yes",
 					selfupdate.ErrConfirmationRequired)
 			}
 		}
@@ -311,7 +312,7 @@ func ReadHandOffResult(path string) (HandOffResult, error) {
 	}
 	var r HandOffResult
 	if err := json.Unmarshal(body, &r); err != nil {
-		return HandOffResult{}, fmt.Errorf("selfupdate: service: malformed handoff result: %w", err)
+		return HandOffResult{}, errprefix.Wrap("selfupdate: service: malformed handoff result", err)
 	}
 	return r, nil
 }

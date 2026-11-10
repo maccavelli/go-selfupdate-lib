@@ -2,13 +2,14 @@ package selfupdate
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"time"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 )
 
 // The one-call common path
@@ -49,7 +50,7 @@ type GitHubUpdaterOptions struct {
 // with the same parts, to change any of them.
 func NewGitHubUpdater(o GitHubUpdaterOptions) (*Updater, error) {
 	if err := validateProduct(o.Product); err != nil {
-		return nil, fmt.Errorf("selfupdate: github updater: %w", err)
+		return nil, errprefix.Wrap("selfupdate: github updater", err)
 	}
 	if o.Version == "" {
 		return nil, errors.New("selfupdate: github updater: version is required")
@@ -77,15 +78,15 @@ func NewGitHubUpdater(o GitHubUpdaterOptions) (*Updater, error) {
 		Limits:     DefaultLimits(),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("selfupdate: github updater: %w", err)
+		return nil, errprefix.Wrap("selfupdate: github updater", err)
 	}
 	assets, err := NewExactAssetSelector(platforms)
 	if err != nil {
-		return nil, fmt.Errorf("selfupdate: github updater: %w", err)
+		return nil, errprefix.Wrap("selfupdate: github updater", err)
 	}
 	installer, err := NewStandaloneInstaller(InstallOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("selfupdate: github updater: %w", err)
+		return nil, errprefix.Wrap("selfupdate: github updater", err)
 	}
 	return New(Config{
 		Source:    src,

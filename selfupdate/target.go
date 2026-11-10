@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 )
 
 func (fx *fsOps) resolveTarget(policy TargetPolicy) (Target, error) {
@@ -15,7 +17,7 @@ func (fx *fsOps) resolveTarget(policy TargetPolicy) (Target, error) {
 	}
 	info, err := os.Lstat(raw)
 	if err != nil {
-		return Target{}, fmt.Errorf("selfupdate: stat target: %w", err)
+		return Target{}, errprefix.Wrap("selfupdate: stat target", err)
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
 		source := SymlinkSourceExecutable
@@ -29,7 +31,7 @@ func (fx *fsOps) resolveTarget(policy TargetPolicy) (Target, error) {
 	}
 	resolved, err := filepath.EvalSymlinks(raw)
 	if err != nil {
-		return Target{}, fmt.Errorf("selfupdate: resolve target: %w", err)
+		return Target{}, errprefix.Wrap("selfupdate: resolve target", err)
 	}
 	resolved, err = filepath.Abs(resolved)
 	if err != nil {
@@ -37,7 +39,7 @@ func (fx *fsOps) resolveTarget(policy TargetPolicy) (Target, error) {
 	}
 	resolvedInfo, err := os.Lstat(resolved)
 	if err != nil {
-		return Target{}, fmt.Errorf("selfupdate: stat resolved target: %w", err)
+		return Target{}, errprefix.Wrap("selfupdate: stat resolved target", err)
 	}
 	if resolvedInfo.Mode()&os.ModeSymlink != 0 || !resolvedInfo.Mode().IsRegular() {
 		return Target{}, fmt.Errorf("selfupdate: resolved target is not a regular file")
@@ -138,7 +140,7 @@ func (fx *fsOps) rawExecutablePath(explicit string) (string, error) {
 		var err error
 		raw, err = fx.osExecutable()
 		if err != nil {
-			return "", fmt.Errorf("selfupdate: locate executable: %w", err)
+			return "", errprefix.Wrap("selfupdate: locate executable", err)
 		}
 	}
 	if raw == "" {
@@ -195,14 +197,14 @@ func canonicalizeRoot(path string) (string, error) {
 	}
 	info, err := os.Lstat(abs)
 	if err != nil {
-		return "", fmt.Errorf("selfupdate: stat allowed root: %w", err)
+		return "", errprefix.Wrap("selfupdate: stat allowed root", err)
 	}
 	if !info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
 		return "", fmt.Errorf("selfupdate: allowed root is not a directory")
 	}
 	resolved, err := filepath.EvalSymlinks(abs)
 	if err != nil {
-		return "", fmt.Errorf("selfupdate: resolve allowed root: %w", err)
+		return "", errprefix.Wrap("selfupdate: resolve allowed root", err)
 	}
 	dirInfo, err := os.Stat(resolved)
 	if err != nil {
@@ -294,7 +296,7 @@ func lockedTarget(root *os.Root, target Target) (os.FileInfo, error) {
 		return nil, err
 	}
 	if !sameTargetIdentity(target, info) {
-		return nil, fmt.Errorf("selfupdate: target changed during the update: %w", ErrConcurrentUpdate)
+		return nil, errprefix.Wrap("selfupdate: target changed during the update", ErrConcurrentUpdate)
 	}
 	return info, nil
 }
@@ -309,10 +311,10 @@ func (fx *fsOps) revalidateTarget(original Target, policy TargetPolicy) error {
 		return err
 	}
 	if fresh.Path != original.Path || fresh.Dir != original.Dir || fresh.Base != original.Base {
-		return fmt.Errorf("selfupdate: target changed during confirmation: %w", ErrConcurrentUpdate)
+		return errprefix.Wrap("selfupdate: target changed during confirmation", ErrConcurrentUpdate)
 	}
 	if !sameTargetIdentity(original, info) {
-		return fmt.Errorf("selfupdate: target changed during confirmation: %w", ErrConcurrentUpdate)
+		return errprefix.Wrap("selfupdate: target changed during confirmation", ErrConcurrentUpdate)
 	}
 	return nil
 }

@@ -3,13 +3,14 @@ package taskscheduler
 import (
 	"encoding/xml"
 	"errors"
-	"fmt"
 	"io"
 	"maps"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 )
 
 // DefinitionDiff is one difference DiffDefinitions found: an element path,
@@ -60,11 +61,11 @@ func SameDefinition(stored, wanted string) (bool, error) {
 func DiffDefinitions(stored, wanted string) ([]DefinitionDiff, error) {
 	s, err := flatten(stored)
 	if err != nil {
-		return nil, fmt.Errorf("selfupdate: taskscheduler: the stored definition: %w", err)
+		return nil, errprefix.Wrap("selfupdate: taskscheduler: the stored definition", err)
 	}
 	w, err := flatten(wanted)
 	if err != nil {
-		return nil, fmt.Errorf("selfupdate: taskscheduler: the wanted definition: %w", err)
+		return nil, errprefix.Wrap("selfupdate: taskscheduler: the wanted definition", err)
 	}
 	paths := map[string]bool{}
 	for p := range s {

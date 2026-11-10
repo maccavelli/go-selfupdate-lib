@@ -9,6 +9,8 @@ import (
 	"io"
 	"math"
 	"strings"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 )
 
 // Plans (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
@@ -160,7 +162,7 @@ func ParsePlan(data []byte) (Plan, error) {
 	dec.DisallowUnknownFields()
 	var d PlanDocument
 	if err := dec.Decode(&d); err != nil {
-		return Plan{}, fmt.Errorf("selfupdate: plan: %w", err)
+		return Plan{}, errprefix.Wrap("selfupdate: plan", err)
 	}
 	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		return Plan{}, errors.New("selfupdate: plan: data after the plan")
@@ -170,11 +172,11 @@ func ParsePlan(data []byte) (Plan, error) {
 	}
 	build, err := parseBuildKind(d.CurrentBuild)
 	if err != nil {
-		return Plan{}, fmt.Errorf("selfupdate: plan: current_build: %w", err)
+		return Plan{}, errprefix.Wrap("selfupdate: plan: current_build", err)
 	}
 	op, err := parseOperation(d.Operation)
 	if err != nil {
-		return Plan{}, fmt.Errorf("selfupdate: plan: operation: %w", err)
+		return Plan{}, errprefix.Wrap("selfupdate: plan: operation", err)
 	}
 	p := Plan{
 		Product:          d.Product,
@@ -210,7 +212,7 @@ func (p Plan) validate() error {
 		return fmt.Errorf("selfupdate: plan: %s: %s", field, reason)
 	}
 	if err := validateProduct(p.Product); err != nil {
-		return fmt.Errorf("selfupdate: plan: product: %w", err)
+		return errprefix.Wrap("selfupdate: plan: product", err)
 	}
 	switch {
 	case p.CurrentVersion == "":
@@ -239,7 +241,7 @@ func (p Plan) validate() error {
 		}
 	}
 	if err := validateChecksumName(p.Selection.ManifestName); err != nil {
-		return fmt.Errorf("selfupdate: plan: manifest_name: %w", err)
+		return errprefix.Wrap("selfupdate: plan: manifest_name", err)
 	}
 	if p.Operation == OperationNone {
 		if p.ManifestSHA256 != "" {

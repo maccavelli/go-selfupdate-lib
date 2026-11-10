@@ -23,6 +23,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
 )
@@ -170,7 +171,7 @@ func newJob(o Options, goos string, uid, euid int) (*Job, error) {
 		poll.Settle = throttleInterval
 	}
 	if err := poll.Validate(); err != nil {
-		return nil, fmt.Errorf("selfupdate: launchd: %w", err)
+		return nil, errprefix.Wrap("selfupdate: launchd", err)
 	}
 	j := &Job{o: o, uid: uid, euid: euid, groups: processGroups}
 	for _, t := range []struct {

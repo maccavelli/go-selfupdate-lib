@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 )
 
 // EnvHandOffEnv names a private file holding the rest of a detached run's
@@ -140,7 +142,7 @@ func applyHandOffEnv(path string) error {
 	}
 	var vars []string
 	if err := json.Unmarshal(body, &vars); err != nil {
-		return fmt.Errorf("selfupdate: service: malformed environment file: %w", err)
+		return errprefix.Wrap("selfupdate: service: malformed environment file", err)
 	}
 	for _, kv := range vars {
 		k, v, ok := strings.Cut(kv, "=")

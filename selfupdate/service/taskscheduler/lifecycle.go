@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
 )
 
@@ -250,7 +251,7 @@ func requestError(err error) error {
 	if err == nil {
 		return nil
 	}
-	return fmt.Errorf("selfupdate: taskscheduler: the program's stop request: %w", err)
+	return errprefix.Wrap("selfupdate: taskscheduler: the program's stop request", err)
 }
 
 // waitGone waits, for at most limit and until ctx's deadline, until

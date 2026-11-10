@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 )
 
 type installSession struct {
@@ -102,7 +104,7 @@ func (s *installSession) CreateStaging(ctx context.Context) (*os.File, string, e
 	// it now (0038-MADR F8).
 	f, base, err := rootCreateTemp(s.root, "."+s.target.Base+".selfupdate-", stagingSuffix())
 	if err != nil {
-		return nil, "", fmt.Errorf("selfupdate: create staging: %w", err)
+		return nil, "", errprefix.Wrap("selfupdate: create staging", err)
 	}
 	name := filepath.Join(s.target.Dir, base)
 	if s.staging == nil {
@@ -222,7 +224,7 @@ func (s *installSession) commitLocked(ctx context.Context, applied applyResult) 
 	if err := s.fs.clearSpecialBits(s.root, backup); err != nil {
 		// A privileged copy must not stay at a predictable path: the
 		// backup goes (0015-MADR B5).
-		return "", "", errors.Join(fmt.Errorf("selfupdate: keep previous: %w", err), s.root.Remove(backup))
+		return "", "", errors.Join(errprefix.Wrap("selfupdate: keep previous", err), s.root.Remove(backup))
 	}
 	if err := s.fs.replacePath(withRetryBudget(ctx, s.lockTimeout), s.root, backup, filepath.Base(previous)); err != nil {
 		// A .previous a running image holds cannot be replaced: on Windows
@@ -231,7 +233,7 @@ func (s *installSession) commitLocked(ctx context.Context, applied applyResult) 
 		if pending, ok, kerr := s.fs.keepAsPending(receiptCtx, s.root, s.target, applied, err); ok {
 			return pending, "", kerr
 		}
-		return "", "", fmt.Errorf("selfupdate: keep previous: %w", err)
+		return "", "", errprefix.Wrap("selfupdate: keep previous", err)
 	}
 	return "", previous, s.fs.syncRootFn(s.root)
 }
@@ -296,7 +298,7 @@ func (s *installSession) probeInstalled(ctx context.Context, req InstallRequest,
 	if perr == nil {
 		return nil
 	}
-	perr = fmt.Errorf("selfupdate: installed binary failed its probe: %w", perr)
+	perr = errprefix.Wrap("selfupdate: installed binary failed its probe", perr)
 	rctx := withRetryBudget(context.WithoutCancel(ctx), s.lockTimeout)
 	if rerr := s.fs.rollbackReplacement(rctx, s.root, s.target, applied); rerr != nil {
 		if errors.Is(rerr, errRestoredUnsynced) {
@@ -334,7 +336,7 @@ func (s *installSession) replaceLocked(ctx context.Context, req InstallRequest, 
 	staging := filepath.Base(path)
 	info, err := s.root.Lstat(staging)
 	if err != nil {
-		return applyResult{}, fmt.Errorf("selfupdate: stat staging: %w", err)
+		return applyResult{}, errprefix.Wrap("selfupdate: stat staging", err)
 	}
 	if !info.Mode().IsRegular() {
 		return applyResult{}, fmt.Errorf("selfupdate: staging is not a regular file")
@@ -346,7 +348,7 @@ func (s *installSession) replaceLocked(ctx context.Context, req InstallRequest, 
 	}
 	newDigest, err := stagedDigest(s.root, staging, info, req.Artifact)
 	if err != nil {
-		return applyResult{}, fmt.Errorf("selfupdate: hash staging: %w", err)
+		return applyResult{}, errprefix.Wrap("selfupdate: hash staging", err)
 	}
 	journal := func(backup, oldDigest string) error {
 		if err := s.fs.writeJournalFn(s.root, s.target, pendingJournal{
@@ -400,7 +402,7 @@ func (s *installSession) checkDir() error {
 	}
 	cur, err := os.Stat(s.target.Dir)
 	if err != nil || !os.SameFile(s.dirInfo, cur) {
-		return fmt.Errorf("selfupdate: target directory changed during the update: %w", ErrConcurrentUpdate)
+		return errprefix.Wrap("selfupdate: target directory changed during the update", ErrConcurrentUpdate)
 	}
 	return nil
 }
@@ -543,7 +545,7 @@ func (s *installSession) rollbackInRoot(applied applyResult) error {
 	}
 	backup := filepath.Base(applied.backup)
 	if err := s.root.Rename(backup, s.target.Base); err != nil {
-		return fmt.Errorf("selfupdate: restore backup: %w", err)
+		return errprefix.Wrap("selfupdate: restore backup", err)
 	}
 	dropSameBackup(s.root, backup, s.target.Base)
 	if err := s.fs.syncRootFn(s.root); err != nil {
@@ -587,7 +589,7 @@ func (fx *fsOps) beginSession(ctx context.Context, policy TargetPolicy, original
 	}
 	root, err := os.OpenRoot(original.Dir)
 	if err != nil {
-		return nil, fmt.Errorf("selfupdate: open target directory: %w", err)
+		return nil, errprefix.Wrap("selfupdate: open target directory", err)
 	}
 	lock, err := fx.acquireLock(ctx, root, original.Base, timeout)
 	if err != nil {
@@ -595,7 +597,7 @@ func (fx *fsOps) beginSession(ctx context.Context, policy TargetPolicy, original
 		if errors.Is(err, ErrConcurrentUpdate) {
 			return nil, err
 		}
-		return nil, fmt.Errorf("selfupdate: acquire lock: %w", err)
+		return nil, errprefix.Wrap("selfupdate: acquire lock", err)
 	}
 	fx.afterLockHook()
 	// The directory opened as root must be the one at the path before
@@ -603,11 +605,11 @@ func (fx *fsOps) beginSession(ctx context.Context, policy TargetPolicy, original
 	// The handle's identity is what later steps re-check (0004-MADR R3).
 	rootInfo, err := root.Stat(".")
 	if err != nil {
-		return nil, errors.Join(fmt.Errorf("selfupdate: stat target directory: %w", err), lock.release(), root.Close())
+		return nil, errors.Join(errprefix.Wrap("selfupdate: stat target directory", err), lock.release(), root.Close())
 	}
 	pathInfo, err := os.Stat(original.Dir)
 	if err != nil || !os.SameFile(rootInfo, pathInfo) {
-		return nil, errors.Join(fmt.Errorf("selfupdate: target directory changed while locking: %w", ErrConcurrentUpdate), lock.release(), root.Close())
+		return nil, errors.Join(errprefix.Wrap("selfupdate: target directory changed while locking", ErrConcurrentUpdate), lock.release(), root.Close())
 	}
 	// A dry run changes nothing beside the target, so it neither processes
 	// the receipt nor sweeps (0015-MADR B1).

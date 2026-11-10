@@ -403,34 +403,10 @@ func TestRunTimeMessagesNameNoGoIdentifier(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
 		t.Fatalf("no module root at %s: run the test from its package directory: %v", root, err)
 	}
-	skip := []string{"internal/cmd/", "internal/testproc/", "selfupdate/selfupdatetest/", "selfupdate/service/servicetest/"}
 	seen := map[string]bool{}
 	var found []string
-	files, calls := 0, 0
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			if name := d.Name(); name == "testdata" || name == ".git" {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		rel, err := filepath.Rel(root, path)
-		if err != nil {
-			return err
-		}
-		rel = filepath.ToSlash(rel)
-		if !strings.HasSuffix(rel, ".go") || strings.HasSuffix(rel, "_test.go") {
-			return nil
-		}
-		for _, p := range skip {
-			if strings.HasPrefix(rel, p) {
-				return nil
-			}
-		}
-		files++
+	calls := 0
+	files, err := walkScanned(root, nil, func(rel, path string) error {
 		msgs, err := errorMessages(path)
 		if err != nil {
 			return err
@@ -468,6 +444,118 @@ func TestRunTimeMessagesNameNoGoIdentifier(t *testing.T) {
 	}
 }
 
+// scanSkip are the trees the source scans do not read: release tools, and
+// test support, whose messages a workflow's author or a program's tests
+// read (0042-MADR More Information).
+var scanSkip = []string{"internal/cmd/", "internal/testproc/", "selfupdate/selfupdatetest/", "selfupdate/service/servicetest/"}
+
+// walkScanned calls fn for each non-test .go file under root that a source
+// scan reads: outside .git, testdata, scanSkip and extraSkip. It returns
+// the number of files it called fn for.
+func walkScanned(root string, extraSkip []string, fn func(rel, path string) error) (int, error) {
+	skip := slices.Concat(scanSkip, extraSkip)
+	files := 0
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if name := d.Name(); name == "testdata" || name == ".git" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		if !strings.HasSuffix(rel, ".go") || strings.HasSuffix(rel, "_test.go") {
+			return nil
+		}
+		for _, p := range skip {
+			if strings.HasPrefix(rel, p) {
+				return nil
+			}
+		}
+		files++
+		return fn(rel, path)
+	})
+	return files, err
+}
+
+// TestLiteralPrefixWrapsUseWrap: no fmt.Errorf in the scanned code wraps
+// an error behind a literal prefix, a format that begins "selfupdate: ",
+// ends ": %w" and has no other verb. Such a wrap uses errprefix.Wrap,
+// which drops the wrapped error's own leading "selfupdate: ", so the line
+// names the package once
+// (docs/decisions/0043-MADR-name-the-package-once-in-wrapped-errors.md
+// D1-A, D6-A). internal/procfs wraps only os errors from /proc, which
+// carry no prefix, and keeps its standard-library-only rule (0043-MADR
+// D5-A; 0035-MADR D13-C), so it is not read.
+func TestLiteralPrefixWrapsUseWrap(t *testing.T) {
+	root := filepath.Join("..", "..")
+	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
+		t.Fatalf("no module root at %s: run the test from its package directory: %v", root, err)
+	}
+	var found []string
+	wraps := 0
+	files, err := walkScanned(root, []string{"internal/procfs/"}, func(rel, path string) error {
+		fset := token.NewFileSet()
+		f, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
+		if err != nil {
+			return err
+		}
+		ast.Inspect(f, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok || len(call.Args) == 0 {
+				return true
+			}
+			switch {
+			case isCall(call, "errprefix", "Wrap"):
+				wraps++
+			case isCall(call, "fmt", "Errorf"):
+				lit, ok := call.Args[0].(*ast.BasicLit)
+				if !ok || lit.Kind != token.STRING {
+					return true
+				}
+				format, err := strconv.Unquote(lit.Value)
+				if err == nil && literalPrefixWrap(format) {
+					found = append(found, fmt.Sprintf("%s:%d: %q", rel, fset.Position(call.Pos()).Line, format))
+				}
+			}
+			return true
+		})
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range found {
+		t.Errorf("%s: a wrap behind a literal prefix uses errprefix.Wrap, so the line names the package once (0043-MADR D6-A)", f)
+	}
+	if files < 100 || wraps < 130 {
+		t.Errorf("read %d files and %d errprefix.Wrap calls; the module has more: is the root wrong?", files, wraps)
+	}
+}
+
+// literalPrefixWrap reports whether format is a literal prefix before one
+// wrapped error: it begins "selfupdate: ", ends ": %w", and its only verb
+// is that %w.
+func literalPrefixWrap(format string) bool {
+	return strings.HasPrefix(format, "selfupdate: ") && strings.HasSuffix(format, ": %w") && strings.Count(format, "%") == 1
+}
+
+// isCall reports whether call's function is the selector pkg.name.
+func isCall(call *ast.CallExpr, pkg, name string) bool {
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	id, ok := sel.X.(*ast.Ident)
+	return ok && id.Name == pkg && sel.Sel.Name == name
+}
+
 // message is the joined string literals of one fmt.Errorf or errors.New
 // call, and its line.
 type message struct {
@@ -476,7 +564,10 @@ type message struct {
 }
 
 // errorMessages returns the text of each fmt.Errorf and errors.New call in
-// path.
+// path, and of each errprefix.Wrap call's operation, its first argument,
+// which is the literal text a fmt.Errorf wrap held before
+// (docs/decisions/0043-MADR-name-the-package-once-in-wrapped-errors.md
+// D6-A).
 func errorMessages(path string) ([]message, error) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
@@ -489,16 +580,17 @@ func errorMessages(path string) ([]message, error) {
 		if !ok {
 			return true
 		}
-		sel, ok := call.Fun.(*ast.SelectorExpr)
-		if !ok {
-			return true
-		}
-		pkg, ok := sel.X.(*ast.Ident)
-		if !ok || (pkg.Name != "fmt" || sel.Sel.Name != "Errorf") && (pkg.Name != "errors" || sel.Sel.Name != "New") {
+		var text ast.Node
+		switch {
+		case isCall(call, "fmt", "Errorf"), isCall(call, "errors", "New"):
+			text = call
+		case isCall(call, "errprefix", "Wrap") && len(call.Args) > 0:
+			text = call.Args[0]
+		default:
 			return true
 		}
 		var b strings.Builder
-		ast.Inspect(call, func(m ast.Node) bool {
+		ast.Inspect(text, func(m ast.Node) bool {
 			if lit, ok := m.(*ast.BasicLit); ok && lit.Kind == token.STRING {
 				if s, err := strconv.Unquote(lit.Value); err == nil {
 					b.WriteString(s)

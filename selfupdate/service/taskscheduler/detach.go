@@ -3,8 +3,8 @@ package taskscheduler
 import (
 	"context"
 	"errors"
-	"fmt"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 	"github.com/maccavelli/go-selfupdate-lib/internal/winproc"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
 )
@@ -44,12 +44,12 @@ func (t *Task) insideTask(name, path string) (bool, error) {
 	}
 	procs, err := t.s.processes()
 	if err != nil {
-		return false, fmt.Errorf("selfupdate: taskscheduler: list processes: %w", err)
+		return false, errprefix.Wrap("selfupdate: taskscheduler: list processes", err)
 	}
 	for _, pid := range pids {
 		in, err := winproc.Descends(t.self(), pid, procs, t.s.created)
 		if err != nil {
-			return false, fmt.Errorf("selfupdate: taskscheduler: %w", err)
+			return false, errprefix.Wrap("selfupdate: taskscheduler", err)
 		}
 		if in {
 			return true, nil

@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 	"github.com/maccavelli/go-selfupdate-lib/internal/procfs"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 )
@@ -161,7 +162,7 @@ func supervisedOn(o SupervisedOptions, goos string) (*Supervised, error) {
 		return nil, errors.New("selfupdate: service: SupervisedOptions.Down is required")
 	}
 	if err := o.Poll.Validate(); err != nil {
-		return nil, fmt.Errorf("selfupdate: service: %w", err)
+		return nil, errprefix.Wrap("selfupdate: service", err)
 	}
 	timeout := o.Poll.withDefaults().Timeout
 	switch {

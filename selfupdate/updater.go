@@ -13,6 +13,8 @@ import (
 	"reflect"
 	"runtime"
 	"time"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 )
 
 // errNotCommitted reports an Installer that returned neither a committed
@@ -540,13 +542,13 @@ func (u *Updater) runProbes(ctx context.Context, req Request, rel Release, stage
 		return nil
 	}
 	if err := os.Chmod(stagedPath, 0o700); err != nil { //nolint:gosec // G302: the staged binary must be executable to probe it
-		return fmt.Errorf("selfupdate: make staging runnable: %w", err)
+		return errprefix.Wrap("selfupdate: make staging runnable", err)
 	}
 	for _, p := range u.probes {
 		if err := p.Probe(ctx, ProbeRequest{
 			Product: req.Product, TargetVersion: rel.Tag, Path: stagedPath, Phase: ProbeStaged,
 		}); err != nil {
-			return fmt.Errorf("selfupdate: staged binary failed a probe: %w", err)
+			return errprefix.Wrap("selfupdate: staged binary failed a probe", err)
 		}
 	}
 	return nil
@@ -765,9 +767,14 @@ func normalizePlatform(p, running Platform) Platform {
 	return p
 }
 
+// wrapRun names the run's product in front of err, and drops err's own
+// leading "selfupdate: ", so the line names the package once:
+// "selfupdate: <product>: <reason>"
+// (docs/decisions/0043-MADR-name-the-package-once-in-wrapped-errors.md
+// D2-A, D4-A).
 func wrapRun(req Request, err error) error {
 	if err == nil {
 		return nil
 	}
-	return fmt.Errorf("selfupdate: %s: %w", req.Product, err)
+	return errprefix.Wrap("selfupdate: "+req.Product, err)
 }

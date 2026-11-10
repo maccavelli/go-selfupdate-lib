@@ -48,6 +48,10 @@ for what a formatter does not print, for the formatters of
 `service.Command`, `service.HandOff`, `service.ExecOptions` and
 `ghattest.Options`
 (`docs/decisions/0040-MADR-close-four-open-items-after-v1-23-1.md` D2-A);
+`internal/errprefix` composes a wrapped error's prefix, so the line
+names the package once
+(`docs/decisions/0043-MADR-name-the-package-once-in-wrapped-errors.md`
+D2-A);
 `internal/testproc` is test support that only `_test.go` files
 import (`docs/decisions/0023-MADR-robust-test-fixtures-and-process-waits.md`).
 Requires Go 1.26.10; built
@@ -81,7 +85,7 @@ pre-add check and CI fail on a breach
   `selfupdate-archive`, `selfupdate-codesign`, `selfupdate-releasespec`,
   `selfupdate-verify-ghattest`, `selfupdate-verify-signednote`,
   `internal-cmd-selfupdate-note`, `internal-winproc`, `internal-procfs`,
-  `internal-redact` and `internal-testproc` allow each package, outside its tests, only the
+  `internal-redact`, `internal-errprefix` and `internal-testproc` allow each package, outside its tests, only the
   imports its record names;
 - `other-packages` allows any other package, an `internal/` helper with
   no rule of its own included (`internal/cmd/selfupdate-release` today),
@@ -280,6 +284,15 @@ at fault. No error message cites a record; a comment beside it does.
 for every `fmt.Errorf` and `errors.New`, with an allowlist of the
 configuration messages
 (`docs/decisions/0042-MADR-keep-go-identifiers-out-of-run-time-messages.md`).
+
+A wrap whose text is a literal prefix before one error, the format
+`"selfupdate: …: %w"` with no other verb, is
+`errprefix.Wrap("selfupdate: …", err)`. It drops the wrapped error's own
+leading `selfupdate:` prefix, so the line names the package once.
+`TestLiteralPrefixWrapsUseWrap` in `internal/testproc` refuses the
+`fmt.Errorf` form everywhere the 0042 scan reads but `internal/procfs`,
+whose wraps carry no prefix
+(`docs/decisions/0043-MADR-name-the-package-once-in-wrapped-errors.md`).
 
 `testproc.CheckNoLeak` is the leak check the tests of `selfupdate`,
 `selfupdate/cli`, `selfupdate/service` and its four backends share: a

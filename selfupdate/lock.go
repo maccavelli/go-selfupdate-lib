@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 )
 
 // openLockFile opens the lock file name inside root without following a
@@ -23,19 +25,19 @@ func (fx *fsOps) openLockFile(root *os.Root, name string) (*os.File, error) {
 				continue // created concurrently: examine what is there now
 			}
 			if cerr != nil {
-				return nil, fmt.Errorf("selfupdate: create lock: %w", cerr)
+				return nil, errprefix.Wrap("selfupdate: create lock", cerr)
 			}
 			return f, nil
 		}
 		if err != nil {
-			return nil, fmt.Errorf("selfupdate: stat lock: %w", err)
+			return nil, errprefix.Wrap("selfupdate: stat lock", err)
 		}
 		if !pre.Mode().IsRegular() {
 			return nil, fmt.Errorf("selfupdate: lock is not a regular file")
 		}
 		f, err := root.OpenFile(name, os.O_RDWR|lockOpenFlags, 0)
 		if err != nil {
-			return nil, fmt.Errorf("selfupdate: open lock: %w", err)
+			return nil, errprefix.Wrap("selfupdate: open lock", err)
 		}
 		post, err := f.Stat()
 		if err != nil {

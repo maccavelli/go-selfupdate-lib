@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"hash"
 	"io"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 )
 
 // Verification hooks around the SHA256SUMS manifest
@@ -55,7 +57,7 @@ func (u *run) runManifestVerifiers(ctx context.Context, req Request, rel Release
 			OpenAsset: u.openAsset(rel),
 		})
 		if err != nil {
-			return fmt.Errorf("selfupdate: manifest verification failed: %w", errors.Join(ErrIntegrity, err))
+			return errprefix.Wrap("selfupdate: manifest verification failed", errors.Join(ErrIntegrity, err))
 		}
 	}
 	return nil

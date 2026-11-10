@@ -3,12 +3,12 @@ package service
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 )
 
@@ -87,7 +87,7 @@ func hop(executable func() (string, error), args, environ []string, self int,
 	if err == nil {
 		return 0
 	}
-	err = fmt.Errorf("selfupdate: service: the handoff hop could not start the run: %w", err)
+	err = errprefix.Wrap("selfupdate: service: the handoff hop could not start the run", err)
 	if path := lookupEnv(environ, EnvHandOffResult); path != "" {
 		if werr := WriteHandOffResult(path, HandOffResult{
 			SchemaVersion: HandOffResultSchema,

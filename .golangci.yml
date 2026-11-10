@@ -99,6 +99,15 @@ linters:
             - "!$test"
           allow:
             - $gostd
+        # A wrapped error's prefix, composed once: the standard library only
+        # (docs/decisions/0043-MADR-name-the-package-once-in-wrapped-errors.md D2-A).
+        internal-errprefix:
+          list-mode: strict
+          files:
+            - "**/internal/errprefix/*.go"
+            - "!$test"
+          allow:
+            - $gostd
         # Linux /proc reads for service.Supervised: the standard library
         # only, and nothing in this module
         # (docs/decisions/0035-MADR-serve-supervisors-through-a-supervised-adapter.md D13-C).
@@ -120,6 +129,7 @@ linters:
             - golang.org/x/sys
             - golang.org/x/term
             - github.com/maccavelli/go-selfupdate-lib/internal/winproc$
+            - github.com/maccavelli/go-selfupdate-lib/internal/errprefix$
         selfupdate-cli:
           list-mode: strict
           files:
@@ -153,6 +163,7 @@ linters:
             - github.com/maccavelli/go-selfupdate-lib/internal/winproc$
             - github.com/maccavelli/go-selfupdate-lib/internal/procfs$
             - github.com/maccavelli/go-selfupdate-lib/internal/redact$
+            - github.com/maccavelli/go-selfupdate-lib/internal/errprefix$
         service-launchd:
           list-mode: strict
           files:
@@ -162,6 +173,7 @@ linters:
             - $gostd
             - github.com/maccavelli/go-selfupdate-lib/selfupdate$
             - github.com/maccavelli/go-selfupdate-lib/selfupdate/service$
+            - github.com/maccavelli/go-selfupdate-lib/internal/errprefix$
         service-scm:
           list-mode: strict
           files:
@@ -175,6 +187,7 @@ linters:
             - github.com/maccavelli/go-selfupdate-lib/selfupdate$
             - github.com/maccavelli/go-selfupdate-lib/selfupdate/service$
             - github.com/maccavelli/go-selfupdate-lib/internal/winproc$
+            - github.com/maccavelli/go-selfupdate-lib/internal/errprefix$
         # The Task Scheduler backend: as scm, without svc/mgr
         # (docs/decisions/0021-MADR-task-scheduler-lifecycle-and-windowless-children.md D1).
         service-taskscheduler:
@@ -188,6 +201,7 @@ linters:
             - github.com/maccavelli/go-selfupdate-lib/selfupdate$
             - github.com/maccavelli/go-selfupdate-lib/selfupdate/service$
             - github.com/maccavelli/go-selfupdate-lib/internal/winproc$
+            - github.com/maccavelli/go-selfupdate-lib/internal/errprefix$
         service-systemd:
           list-mode: strict
           files:
@@ -197,6 +211,7 @@ linters:
             - $gostd
             - github.com/maccavelli/go-selfupdate-lib/selfupdate$
             - github.com/maccavelli/go-selfupdate-lib/selfupdate/service$
+            - github.com/maccavelli/go-selfupdate-lib/internal/errprefix$
         # selfupdate/service/servicetest: the Lifecycle and Runner
         # conformance checks: the standard library, selfupdate and service
         # (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
@@ -222,6 +237,7 @@ linters:
           allow:
             - $gostd
             - github.com/maccavelli/go-selfupdate-lib/selfupdate$
+            - github.com/maccavelli/go-selfupdate-lib/internal/errprefix$
         # selfupdate/codesign: the standard library, selfupdate, and
         # selfupdate/service for its Runner
         # (docs/decisions/0012-MADR-archive-assets-and-macos-codesign.md §1).
@@ -234,6 +250,7 @@ linters:
             - $gostd
             - github.com/maccavelli/go-selfupdate-lib/selfupdate$
             - github.com/maccavelli/go-selfupdate-lib/selfupdate/service$
+            - github.com/maccavelli/go-selfupdate-lib/internal/errprefix$
         # selfupdate/releasespec: the standard library, selfupdate and
         # selfupdate/archive
         # (docs/decisions/0013-MADR-build-and-stage-release-workflow.md §3).
@@ -259,6 +276,7 @@ linters:
             - github.com/maccavelli/go-selfupdate-lib/selfupdate$
             - github.com/maccavelli/go-selfupdate-lib/selfupdate/service$
             - github.com/maccavelli/go-selfupdate-lib/internal/redact$
+            - github.com/maccavelli/go-selfupdate-lib/internal/errprefix$
         # selfupdate/verify/signednote: the standard library, x/mod's semver
         # and sumdb/note, and selfupdate
         # (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D10).
@@ -272,6 +290,7 @@ linters:
             - golang.org/x/mod/semver$
             - golang.org/x/mod/sumdb/note$
             - github.com/maccavelli/go-selfupdate-lib/selfupdate$
+            - github.com/maccavelli/go-selfupdate-lib/internal/errprefix$
         # internal/cmd/selfupdate-note, the release signer: the standard
         # library, x/mod's sumdb/note, and signednote, whose statement it
         # signs (0025-MADR D10).
@@ -314,6 +333,7 @@ linters:
             - "!**/internal/testproc/*.go"
             - "!**/internal/procfs/*.go"
             - "!**/internal/redact/*.go"
+            - "!**/internal/errprefix/*.go"
           allow:
             - $gostd
             - github.com/maccavelli/go-selfupdate-lib

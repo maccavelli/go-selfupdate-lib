@@ -19,6 +19,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 	"github.com/maccavelli/go-selfupdate-lib/internal/redact"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
@@ -268,18 +269,18 @@ func (c *checker) check(ctx context.Context, tag string, write func(io.Writer) (
 	ref := "refs/tags/" + tag
 	f, err := os.CreateTemp(c.tempDir, "selfupdate-ghattest-*")
 	if err != nil {
-		return fmt.Errorf("selfupdate: ghattest: %w", err)
+		return errprefix.Wrap("selfupdate: ghattest", err)
 	}
 	defer os.Remove(f.Name()) //nolint:errcheck // a private temporary file
 	digest, werr := write(f)
 	if err := errors.Join(werr, f.Close()); err != nil {
-		return fmt.Errorf("selfupdate: ghattest: %w", err)
+		return errprefix.Wrap("selfupdate: ghattest", err)
 	}
 	rctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 	out, err := c.runner.Run(rctx, service.Command{Path: c.gh, Args: c.args(f.Name(), ref), Env: c.environ()})
 	if err != nil {
-		return fmt.Errorf("selfupdate: ghattest: running gh: %w", err)
+		return errprefix.Wrap("selfupdate: ghattest: running gh", err)
 	}
 	switch out.ExitCode {
 	case 0:
@@ -349,7 +350,7 @@ type result struct {
 func (c *checker) recheck(stdout []byte, ref, digest string) error {
 	var results []result
 	if err := json.Unmarshal(stdout, &results); err != nil {
-		return fmt.Errorf("selfupdate: ghattest: gh's output is not the expected JSON: %w", err)
+		return errprefix.Wrap("selfupdate: ghattest: gh's output is not the expected JSON", err)
 	}
 	if len(results) == 0 {
 		return fmt.Errorf("selfupdate: ghattest: gh reported success, but no attestation matches the policy: it reported none")

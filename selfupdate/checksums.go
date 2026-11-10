@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"unicode"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 )
 
 const (
@@ -60,10 +62,10 @@ func ParseSHA256SUMS(data []byte) (map[string]string, error) {
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("selfupdate: SHA256SUMS is malformed: %w", err)
+		return nil, errprefix.Wrap("selfupdate: SHA256SUMS is malformed", err)
 	}
 	if len(entries) == 0 {
-		return nil, fmt.Errorf("selfupdate: SHA256SUMS has no entries: %w", ErrIntegrity)
+		return nil, errprefix.Wrap("selfupdate: SHA256SUMS has no entries", ErrIntegrity)
 	}
 	return entries, nil
 }

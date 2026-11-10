@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 )
 
 // Health is one observation of a service.
@@ -99,7 +101,7 @@ func PollHealthy(ctx context.Context, probe HealthProbe, o PollOptions) error {
 		h, err := probe(probeCtx)
 		cancel()
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return fmt.Errorf("selfupdate: service: health wait: %w", ctxErr)
+			return errprefix.Wrap("selfupdate: service: health wait", ctxErr)
 		}
 		now := time.Now()
 		switch {
@@ -123,7 +125,7 @@ func PollHealthy(ctx context.Context, probe HealthProbe, o PollOptions) error {
 		}
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("selfupdate: service: health wait: %w", ctx.Err())
+			return errprefix.Wrap("selfupdate: service: health wait", ctx.Err())
 		case <-time.After(min(o.Interval, deadline.Sub(now))):
 		}
 	}

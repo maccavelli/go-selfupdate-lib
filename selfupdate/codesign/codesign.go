@@ -10,6 +10,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
 )
@@ -97,7 +98,7 @@ func newTool(goos, toolPath string, r service.Runner) (tool, error) {
 func (t tool) run(ctx context.Context, args ...string) (service.Output, error) {
 	out, err := t.runner.Run(ctx, service.Command{Path: t.path, Args: args, Env: append([]string(nil), toolEnv...)})
 	if err != nil {
-		return service.Output{}, fmt.Errorf("selfupdate: codesign: %w", err)
+		return service.Output{}, errprefix.Wrap("selfupdate: codesign", err)
 	}
 	return out, nil
 }

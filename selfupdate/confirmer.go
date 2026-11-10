@@ -10,6 +10,8 @@ import (
 	"sync"
 
 	"golang.org/x/term"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 )
 
 // terminalConfirmer is the line confirmer behind both NewTerminalConfirmer
@@ -56,10 +58,10 @@ func terminalConfirmerFrom(in *os.File, out io.Writer, isTerminal func(fd int) b
 	}
 	c.allow = func() error {
 		if in == nil {
-			return fmt.Errorf("selfupdate: confirmation input is nil: %w", ErrConfirmationRequired)
+			return errprefix.Wrap("selfupdate: confirmation input is nil", ErrConfirmationRequired)
 		}
 		if !isTerminal(int(in.Fd())) {
-			return fmt.Errorf("selfupdate: pass --yes to apply without a TTY: %w", ErrConfirmationRequired)
+			return errprefix.Wrap("selfupdate: pass --yes to apply without a TTY", ErrConfirmationRequired)
 		}
 		return nil
 	}
@@ -83,10 +85,10 @@ func NewPromptConfirmer(in io.Reader, out io.Writer, interactive bool) Confirmer
 	}
 	c.allow = func() error {
 		if c.in == nil {
-			return fmt.Errorf("selfupdate: confirmation input is nil: %w", ErrConfirmationRequired)
+			return errprefix.Wrap("selfupdate: confirmation input is nil", ErrConfirmationRequired)
 		}
 		if !interactive {
-			return fmt.Errorf("selfupdate: pass --yes to apply without prompting: %w", ErrConfirmationRequired)
+			return errprefix.Wrap("selfupdate: pass --yes to apply without prompting", ErrConfirmationRequired)
 		}
 		return nil
 	}

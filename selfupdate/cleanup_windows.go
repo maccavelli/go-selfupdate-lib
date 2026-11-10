@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 )
 
 // cleanupEntry is one pending backup: its basename and the digest it had.
@@ -67,7 +69,7 @@ func receiptFor(entries []cleanupEntry) cleanupReceipt {
 func parseCleanupReceipt(target Target, data []byte) ([]cleanupEntry, error) {
 	var rec cleanupReceipt
 	if err := json.Unmarshal(data, &rec); err != nil {
-		return nil, fmt.Errorf("selfupdate: malformed cleanup receipt: %w", err)
+		return nil, errprefix.Wrap("selfupdate: malformed cleanup receipt", err)
 	}
 	entries, err := rec.entries()
 	if err != nil {
@@ -88,7 +90,7 @@ func (fx *fsOps) processCleanupReceipt(ctx context.Context, target Target, root 
 		if os.IsNotExist(err) {
 			return nil
 		}
-		return fmt.Errorf("selfupdate: stat cleanup receipt: %w", err)
+		return errprefix.Wrap("selfupdate: stat cleanup receipt", err)
 	}
 	if !info.Mode().IsRegular() {
 		return fmt.Errorf("selfupdate: cleanup receipt is not a regular file")
@@ -98,7 +100,7 @@ func (fx *fsOps) processCleanupReceipt(ctx context.Context, target Target, root 
 	}
 	data, err := root.ReadFile(name)
 	if err != nil {
-		return fmt.Errorf("selfupdate: read cleanup receipt: %w", err)
+		return errprefix.Wrap("selfupdate: read cleanup receipt", err)
 	}
 	entries, err := parseCleanupReceipt(target, data)
 	if err != nil {
@@ -121,11 +123,11 @@ func (fx *fsOps) processCleanupReceipt(ctx context.Context, target Target, root 
 		return nil
 	case len(kept) == 0:
 		if err := root.Remove(name); err != nil {
-			return fmt.Errorf("selfupdate: remove cleanup receipt: %w", err)
+			return errprefix.Wrap("selfupdate: remove cleanup receipt", err)
 		}
 	default:
 		if err := fx.writeCleanupEntries(ctx, root, target, kept); err != nil {
-			return fmt.Errorf("selfupdate: rewrite cleanup receipt: %w", err)
+			return errprefix.Wrap("selfupdate: rewrite cleanup receipt", err)
 		}
 	}
 	return fx.syncRootFn(root)
@@ -144,7 +146,7 @@ func removePendingBackup(target Target, root *os.Root, e cleanupEntry) (keep boo
 		return false, nil
 	}
 	if err != nil {
-		return false, fmt.Errorf("selfupdate: stat pending backup: %w", err)
+		return false, errprefix.Wrap("selfupdate: stat pending backup", err)
 	}
 	if !binfo.Mode().IsRegular() || isReparsePoint(backupPath) {
 		return false, fmt.Errorf("selfupdate: pending backup is not a regular file")
@@ -156,13 +158,13 @@ func removePendingBackup(target Target, root *os.Root, e cleanupEntry) (keep boo
 		return false, err
 	}
 	if got != e.Digest {
-		return false, fmt.Errorf("selfupdate: pending backup digest mismatch: %w", ErrIntegrity)
+		return false, errprefix.Wrap("selfupdate: pending backup digest mismatch", ErrIntegrity)
 	}
 	if err := root.Remove(e.Backup); err != nil {
 		if isBusyRunningImage(err) {
 			return true, nil
 		}
-		return false, fmt.Errorf("selfupdate: remove pending backup: %w", err)
+		return false, errprefix.Wrap("selfupdate: remove pending backup", err)
 	}
 	return false, nil
 }
@@ -188,14 +190,14 @@ func readCleanupEntries(target Target) ([]cleanupEntry, error) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("selfupdate: stat cleanup receipt: %w", err)
+		return nil, errprefix.Wrap("selfupdate: stat cleanup receipt", err)
 	}
 	if !info.Mode().IsRegular() || isReparsePoint(path) {
 		return nil, fmt.Errorf("selfupdate: cleanup receipt is not a regular file")
 	}
 	data, err := os.ReadFile(path) //nolint:gosec // the target's own receipt, under its lock
 	if err != nil {
-		return nil, fmt.Errorf("selfupdate: read cleanup receipt: %w", err)
+		return nil, errprefix.Wrap("selfupdate: read cleanup receipt", err)
 	}
 	return parseCleanupReceipt(target, data)
 }

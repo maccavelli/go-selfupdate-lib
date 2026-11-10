@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 )
 
 type applyResult struct {
@@ -60,19 +62,19 @@ func (fx *fsOps) replaceTarget(ctx context.Context, root *os.Root, target Target
 	}
 	name, err := fx.backupFile(root, target)
 	if err != nil {
-		return applyResult{}, fmt.Errorf("selfupdate: backup target: %w", err)
+		return applyResult{}, errprefix.Wrap("selfupdate: backup target", err)
 	}
 	backup := filepath.Join(target.Dir, name)
 	if beforeRename != nil {
 		if err := beforeRename(backup, oldDigest); err != nil {
-			return applyResult{}, joinRootRemove(fmt.Errorf("selfupdate: write the journal: %w", err), root, name)
+			return applyResult{}, joinRootRemove(errprefix.Wrap("selfupdate: write the journal", err), root, name)
 		}
 	}
 	if err := fx.replacePath(ctx, root, staging, target.Base); err != nil {
-		return applyResult{}, joinRootRemove(fmt.Errorf("selfupdate: replace target: %w", err), root, name)
+		return applyResult{}, joinRootRemove(errprefix.Wrap("selfupdate: replace target", err), root, name)
 	}
 	if err := fx.syncRootFn(root); err != nil {
-		syncErr := fmt.Errorf("selfupdate: sync directory: %w", err)
+		syncErr := errprefix.Wrap("selfupdate: sync directory", err)
 		// The restore is recovery: the caller's cancellation must not
 		// abandon it with the new binary live. moveFileReplace still bounds
 		// it by the retry budget (0004-MADR R4).
@@ -80,7 +82,7 @@ func (fx *fsOps) replaceTarget(ctx context.Context, root *os.Root, target Target
 			// The new binary is live and the backup is kept: report both
 			// (0003-MADR B1).
 			return applyResult{backup: backup, oldDigest: oldDigest, renamed: true},
-				errors.Join(syncErr, fmt.Errorf("selfupdate: restore backup: %w", rerr))
+				errors.Join(syncErr, errprefix.Wrap("selfupdate: restore backup", rerr))
 		}
 		// The previous binary is back (0015-MADR B4).
 		return applyResult{renamed: true}, errors.Join(syncErr, errRolledBack)
@@ -168,7 +170,7 @@ func (fx *fsOps) keepAsPending(ctx context.Context, root *os.Root, target Target
 		return "", false, nil
 	}
 	if werr := fx.writeCleanupReceipt(ctx, root, target, result); werr != nil {
-		return "", true, errors.Join(fmt.Errorf("selfupdate: keep previous: %w", err), werr)
+		return "", true, errors.Join(errprefix.Wrap("selfupdate: keep previous", err), werr)
 	}
 	return result.backup, true, fx.syncRootFn(root)
 }
@@ -180,11 +182,11 @@ func (fx *fsOps) commitReplacement(ctx context.Context, root *os.Root, target Ta
 	if err := fx.rootRemove(root, filepath.Base(result.backup)); err != nil {
 		if isBusyRunningImage(err) {
 			if werr := fx.writeCleanupReceipt(ctx, root, target, result); werr != nil {
-				return "", errors.Join(fmt.Errorf("selfupdate: remove backup: %w", err), werr)
+				return "", errors.Join(errprefix.Wrap("selfupdate: remove backup", err), werr)
 			}
 			return result.backup, nil
 		}
-		return "", fmt.Errorf("selfupdate: remove backup: %w", err)
+		return "", errprefix.Wrap("selfupdate: remove backup", err)
 	}
 	return "", fx.syncRootFn(root)
 }
@@ -195,7 +197,7 @@ func (fx *fsOps) rollbackReplacement(ctx context.Context, root *os.Root, target 
 	}
 	backup := filepath.Base(result.backup)
 	if err := fx.replacePath(ctx, root, backup, target.Base); err != nil {
-		return fmt.Errorf("selfupdate: restore backup: %w", err)
+		return errprefix.Wrap("selfupdate: restore backup", err)
 	}
 	dropSameBackup(root, backup, target.Base)
 	if err := fx.syncRootFn(root); err != nil {

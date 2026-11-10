@@ -643,3 +643,63 @@ func TestDiscoveryFailureResultNamesRun(t *testing.T) {
 		}
 	}
 }
+
+// TestRunErrorNamesPackageOnce: a run's error names the package once, then
+// the product, then the reason, with each sentinel still matched. These are
+// probe P1's two cases, a refused confirmation and a staged digest that the
+// manifest does not list
+// (docs/decisions/0043-MADR-name-the-package-once-in-wrapped-errors.md F2,
+// D1-A, D4-A).
+func TestRunErrorNamesPackageOnce(t *testing.T) {
+	t.Parallel()
+	t.Run("confirmation", func(t *testing.T) {
+		t.Parallel()
+		env := newContractEnv(t)
+		_, _, plats := fixtureRelease(t, "demo")
+		sel, err := NewExactAssetSelector(plats)
+		if err != nil {
+			t.Fatal(err)
+		}
+		u, err := New(Config{
+			Source: env.src, Versions: NewStrictVersionPolicy(), Assets: sel,
+			Installer: env.inst, Reporter: env.rep, Confirmer: NonInteractiveConfirmer(), Limits: env.lim,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = u.Run(context.Background(), applyReq())
+		const want = "selfupdate: demo: pass --yes to apply without prompting: confirmation required"
+		if err == nil || err.Error() != want || !errors.Is(err, ErrConfirmationRequired) {
+			t.Fatalf("Run = %v; want %q, matching ErrConfirmationRequired", err, want)
+		}
+	})
+	t.Run("digest", func(t *testing.T) {
+		t.Parallel()
+		env := newContractEnv(t)
+		// Same size, and a GitHub digest that matches, so only the manifest
+		// disagrees.
+		tampered := []byte("tampered!")
+		sum := sha256.Sum256(tampered)
+		env.src.bodies[2] = tampered
+		env.src.rel.Assets[0].Digest = "sha256:" + hex.EncodeToString(sum[:])
+		req := applyReq()
+		req.Yes = true
+		_, err := env.build(t).Run(context.Background(), req)
+		const want = "selfupdate: demo: staged digest does not match SHA256SUMS: integrity check failed"
+		if err == nil || err.Error() != want || !errors.Is(err, ErrIntegrity) {
+			t.Fatalf("Run = %v; want %q, matching ErrIntegrity", err, want)
+		}
+	})
+	t.Run("symlink refusal through wrapRun", func(t *testing.T) {
+		t.Parallel()
+		refusal := &SymlinkInvocationError{Link: "/opt/link/demo", Target: "/opt/demo/demo", Source: SymlinkSourceExecutable}
+		err := wrapRun(applyReq(), refusal)
+		var got *SymlinkInvocationError
+		if !errors.As(err, &got) || got != refusal || !errors.Is(err, ErrSymlinkInvocation) {
+			t.Fatalf("wrapRun(%v) = %v; want it to unwrap to the refusal", refusal, err)
+		}
+		if want := "selfupdate: demo: " + strings.TrimPrefix(refusal.Error(), "selfupdate: "); err.Error() != want {
+			t.Fatalf("wrapRun text = %q, want %q", err.Error(), want)
+		}
+	})
+}

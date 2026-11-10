@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 )
 
 // ManagedInstaller composes standalone replacement with consumer lifecycle
@@ -149,14 +151,14 @@ func (s *managedSession) Install(ctx context.Context, req InstallRequest) (Insta
 	product := req.Product
 	installed, err := s.life.Installed(ctx, product)
 	if err != nil {
-		return InstallResult{}, fmt.Errorf("selfupdate: probe installed: %w", errors.Join(ErrManagedInstall, err))
+		return InstallResult{}, errprefix.Wrap("selfupdate: probe installed", errors.Join(ErrManagedInstall, err))
 	}
 	if !installed {
 		return s.inner.Install(ctx, req)
 	}
 	running, err := s.life.Running(ctx, product)
 	if err != nil {
-		return InstallResult{}, fmt.Errorf("selfupdate: probe running: %w", errors.Join(ErrManagedInstall, err))
+		return InstallResult{}, errprefix.Wrap("selfupdate: probe running", errors.Join(ErrManagedInstall, err))
 	}
 	// A running service is started again. A stopped one is started only
 	// when it is configured to start, which only an EnabledLifecycle can
@@ -165,7 +167,7 @@ func (s *managedSession) Install(ctx context.Context, req InstallRequest) (Insta
 	if el, ok := s.life.(EnabledLifecycle); ok && !running {
 		enabled, err := el.Enabled(ctx, product)
 		if err != nil {
-			return InstallResult{}, fmt.Errorf("selfupdate: probe enabled: %w", errors.Join(ErrManagedInstall, err))
+			return InstallResult{}, errprefix.Wrap("selfupdate: probe enabled", errors.Join(ErrManagedInstall, err))
 		}
 		start = enabled
 	}
@@ -289,14 +291,14 @@ func (s *managedSession) recoverStop(parent context.Context, product string, app
 	running, rerr := s.life.Running(ctx, product)
 	cancel()
 	if rerr != nil || running {
-		err := fmt.Errorf("selfupdate: stop service: %w", errors.Join(ErrManagedInstall, stopErr, rerr))
+		err := errprefix.Wrap("selfupdate: stop service", errors.Join(ErrManagedInstall, stopErr, rerr))
 		if applied.Backup == "" {
 			return InstallResult{}, err
 		}
 		return s.recover(parent, product, applied, ReconcileResult{}, false, false, err)
 	}
 	return s.recover(parent, product, applied, ReconcileResult{}, true, false,
-		fmt.Errorf("selfupdate: stop service: %w", stopErr))
+		errprefix.Wrap("selfupdate: stop service", stopErr))
 }
 
 // recoveryTimeout bounds recovery. Recovery does not inherit the caller's
@@ -354,5 +356,5 @@ func (s *managedSession) recover(parent context.Context, product string, applied
 			recov = errors.Join(recov, err)
 		}
 	}
-	return result, fmt.Errorf("selfupdate: managed install failed: %w", errors.Join(ErrManagedInstall, origin, recov))
+	return result, errprefix.Wrap("selfupdate: managed install failed", errors.Join(ErrManagedInstall, origin, recov))
 }

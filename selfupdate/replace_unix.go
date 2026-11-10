@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 )
 
 // osFS are fsOps's Unix-only effects.
@@ -68,30 +70,30 @@ func (fx *fsOps) replaceTarget(ctx context.Context, root *os.Root, target Target
 	}
 	oldDigest, err := rootFileSHA256(root, target.Base, info)
 	if err != nil {
-		return applyResult{}, fmt.Errorf("selfupdate: hash target: %w", err)
+		return applyResult{}, errprefix.Wrap("selfupdate: hash target", err)
 	}
 	name, err := fx.backupFile(root, target)
 	if err != nil {
-		return applyResult{}, fmt.Errorf("selfupdate: backup target: %w", err)
+		return applyResult{}, errprefix.Wrap("selfupdate: backup target", err)
 	}
 	backup := filepath.Join(target.Dir, name)
 	if beforeRename != nil {
 		if err := beforeRename(backup, oldDigest); err != nil {
-			return applyResult{}, joinRootRemove(fmt.Errorf("selfupdate: write the journal: %w", err), root, name)
+			return applyResult{}, joinRootRemove(errprefix.Wrap("selfupdate: write the journal", err), root, name)
 		}
 	}
 	if err := fx.replacePath(ctx, root, staging, target.Base); err != nil {
-		return applyResult{}, joinRootRemove(fmt.Errorf("selfupdate: rename staging over target: %w", err), root, name)
+		return applyResult{}, joinRootRemove(errprefix.Wrap("selfupdate: rename staging over target", err), root, name)
 	}
 	if err := fx.syncRootFn(root); err != nil {
-		syncErr := fmt.Errorf("selfupdate: sync directory: %w", err)
+		syncErr := errprefix.Wrap("selfupdate: sync directory", err)
 		// The restore is recovery: the caller's cancellation must not
 		// abandon it with the new binary live (0004-MADR R4).
 		if rerr := fx.replacePath(context.WithoutCancel(ctx), root, name, target.Base); rerr != nil {
 			// The new binary is live and the backup is kept: report both, so
 			// neither the failed restore nor the backup is lost (0003-MADR B1).
 			return applyResult{backup: backup, renamed: true},
-				errors.Join(syncErr, fmt.Errorf("selfupdate: restore backup: %w", rerr))
+				errors.Join(syncErr, errprefix.Wrap("selfupdate: restore backup", rerr))
 		}
 		// The previous binary is back (0015-MADR B4).
 		return applyResult{renamed: true}, errors.Join(syncErr, errRolledBack)
@@ -110,7 +112,7 @@ func (fx *fsOps) commitReplacement(_ context.Context, root *os.Root, _ Target, r
 		return "", nil
 	}
 	if err := fx.rootRemove(root, filepath.Base(result.backup)); err != nil {
-		return "", fmt.Errorf("selfupdate: remove backup: %w", err)
+		return "", errprefix.Wrap("selfupdate: remove backup", err)
 	}
 	if err := fx.syncRootFn(root); err != nil {
 		return "", err
@@ -124,7 +126,7 @@ func (fx *fsOps) rollbackReplacement(ctx context.Context, root *os.Root, target 
 	}
 	backup := filepath.Base(result.backup)
 	if err := fx.replacePath(ctx, root, backup, target.Base); err != nil {
-		return fmt.Errorf("selfupdate: restore backup: %w", err)
+		return errprefix.Wrap("selfupdate: restore backup", err)
 	}
 	dropSameBackup(root, backup, target.Base)
 	if err := fx.syncRootFn(root); err != nil {

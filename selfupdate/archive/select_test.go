@@ -86,7 +86,10 @@ func TestGoReleaserNames(t *testing.T) {
 }
 
 // TestNewSelectorRefusesPlatforms: the platform list is refused exactly as
-// NewExactAssetSelector refuses it.
+// NewExactAssetSelector refuses it, behind "selfupdate: archive: ", which
+// names the package once
+// (docs/decisions/0043-MADR-name-the-package-once-in-wrapped-errors.md
+// D1-A).
 func TestNewSelectorRefusesPlatforms(t *testing.T) {
 	for name, ps := range map[string][]selfupdate.Platform{
 		"empty":     nil,
@@ -96,7 +99,7 @@ func TestNewSelectorRefusesPlatforms(t *testing.T) {
 	} {
 		_, want := selfupdate.NewExactAssetSelector(ps)
 		_, got := NewSelector(SelectorOptions{Platforms: ps})
-		if want == nil || got == nil || !strings.Contains(got.Error(), want.Error()) {
+		if want == nil || got == nil || got.Error() != "selfupdate: archive: "+strings.TrimPrefix(want.Error(), "selfupdate: ") {
 			t.Errorf("%s: NewSelector = %v; the exact selector says %v", name, got, want)
 		}
 	}

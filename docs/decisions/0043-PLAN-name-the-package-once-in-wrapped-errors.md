@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: in-progress
 date: 2026-11-10
 associated-madr: "0043-MADR-name-the-package-once-in-wrapped-errors.md"
 ---
@@ -197,8 +197,82 @@ Files that Phase C1 changes:
 
 ## Execution record
 
-Not started.
+The owner accepted the MADR and approved this PLAN on 2026-11-10 ("accept the madr, plan approved to proceed").
+
+### Phase C0
+
+* The owner committed the MADR, this PLAN and their rows as `9d44e04`.
+
+### Phase C1
+
+* **Precondition.** `git diff --name-only v1.26.0 HEAD -- '*.go'` printed nothing at `8b19f1d`.
+* **Steps 1 and 2.** `internal/errprefix/errprefix.go` holds `Error`, `Wrap`, `Strip` and the unexported `stripped`. `errprefix_test.go` holds:
+  * `TestWrapAndStrip`, over six cases: a prefixed sentinel, a wrapped sentinel, no prefix, a prefix later only, a join with both parts prefixed, and an error type of the test's own;
+  * `TestStripReturnsUnprefixedErrorItself`;
+  * `TestNil`.
+
+  `go test ./internal/errprefix/` gave `ok`. `golangci-lint`'s `errorlint` refused three identity comparisons. They are written `any(x) != any(y)`, as `spawn_test.go:148` writes its own.
+* **Step 3.** A scratchpad script made the depguard changes, asserting each anchor once, first on a copy of `.golangci.yml`:
+  * the `internal-errprefix` rule, after `internal-redact`;
+  * the `other-packages` exclusion;
+  * the allow line in the ten rules.
+
+  The copy's diff showed each line inside its own rule. The tree's result was byte-identical to the copy.
+* **Step 4: the scan, seen failing.**
+  * `TestLiteralPrefixWrapsUseWrap` and the helpers it shares with the 0042 scan, `walkScanned`, `scanSkip` and `isCall`, are in `internal/testproc/testproc_test.go`.
+  * On the tree before step 6 it failed. It named 132 sites, none under `internal/procfs/`, and its floor line read `read 134 files and 0 errprefix.Wrap calls; the module has more: is the root wrong?`. The first and last sites were:
+
+    ```text
+    selfupdate/adapters.go:98: "selfupdate: pass --yes to apply without prompting: %w": a wrap behind a literal prefix uses errprefix.Wrap, so the line names the package once (0043-MADR D6-A)
+    selfupdate/verify.go:16: "selfupdate: staged digest does not match github asset digest: %w": a wrap behind a literal prefix uses errprefix.Wrap, so the line names the package once (0043-MADR D6-A)
+    ```
+
+  * In the same run, `TestRunTimeMessagesNameNoGoIdentifier` passed.
+* **Step 5.** `errorMessages` reads `fmt.Errorf`, `errors.New`, and the first argument of `errprefix.Wrap`.
+* **Step 6: the sites.**
+  * The scratchpad's `convert_sites.py` took the 132 expected sites from step 4's output and asserted each file's count before writing.
+  * On a scratch copy of the tree, with no `.git`, it gave `files 41 sites 132`. `gofmt` re-sorted the new import in 17 files. `go vet ./...` passed for `GOOS=linux`, `darwin` and `windows` with `CGO_ENABLED=0`.
+  * On the tree it gave the same, and after `gofmt -w` on the same 17 files, every changed `.go` file was byte-identical to the copy.
+  * `service/handoff.go:198`, the multi-line format, became `errprefix.Wrap("selfupdate: service: an update from inside the service runs detached and cannot ask; pass --yes",` with its second line unchanged.
+  * **Found, out of scope:** `managed.go:357` wraps `ErrManagedInstall` behind its own phrase. It now reads `selfupdate: managed install failed: managed install failed` and the joined parts. Before, it read `selfupdate: managed install failed: selfupdate: managed install failed`. It is no worse, and a later record can reword it.
+* **Step 7.** `wrapRun` returns `errprefix.Wrap("selfupdate: "+req.Product, err)`, with a comment citing D2-A and D4-A.
+* **Step 8: tests.** The first full run after step 7 failed four tests:
+  * `TestBatchErrorChain`: Deviation 1, below. `chainReturn` now accepts `errprefix.Wrap(op, e)`, and `TestErrBatchFileIsWinproc` asserts `errors.Is` through `Wrap`.
+  * `selfupdate/archive`'s `TestNewSelectorRefusesPlatforms` pinned the repeat: `NewSelector = selfupdate: archive: duplicate platform linux/amd64; the exact selector says selfupdate: duplicate platform linux/amd64`. It now requires exactly `"selfupdate: archive: "` and the exact selector's text without its prefix. The old check was `strings.Contains`.
+  * `cli`'s `TestRequestContradictions` (`flags_test.go:128`) expects one prefix.
+  * `cli`'s `TestGolden` and `TestCommandGolden`. `go test ./selfupdate/cli/ -run Golden -update` rewrote exactly MADR F5's six files, one line each. A scratchpad check showed each new file equals `HEAD`'s with only the repeated prefixes removed.
+  * `TestRunErrorNamesPackageOnce` (`updater_contract_test.go`) passes its three cases, `confirmation`, `digest` and `symlink refusal through wrapRun`:
+    * `selfupdate: demo: pass --yes to apply without prompting: confirmation required`, matching `ErrConfirmationRequired`;
+    * `selfupdate: demo: staged digest does not match SHA256SUMS: integrity check failed`, matching `ErrIntegrity`;
+    * `errors.As` to the same `*SymlinkInvocationError`.
+
+  Then `go test -count=1 ./...` gave `ok` for all 22 packages.
+* **Step 9: docs.**
+  * `AGENTS.md`: the scope paragraph, the depguard list, and a paragraph after 0042's.
+  * `docs/architecture.md`: the tree block, the `internal/errprefix/` row, the ten packages' parentheticals, and the tooling paragraph.
+  * `GOOS=linux`, `darwin` and `windows` `go list` found exactly the ten packages of MADR F7 importing `internal/errprefix`.
+* **Step 10: checks.**
+  * `make pre-add-check` on the 48 changed and new `.go` files: `go-precheck: 48 file(s) clean (gofmt, golangci-lint, go vet, go test, govulncheck).`
+  * `make gate` gave `overall=0`, with every step `rc=0`. The steps were gofmt, lint (`0 issues.`), vet, race, shuffle, tidy, apicheck (`check-api-compat: compatible with v1.26.0`, and no line but the internal packages it ignores), fuzz, vuln (`No vulnerabilities found.`), scripts, shellcheck, crossvet, links (`992 links in 115 files, 0 broken`), arch (`22 rows … 0 differ, 0 without a row`) and ids (`59 files, 20 deny-list rules, 0 findings`).
+  * `make markdownlint` first refused `AGENTS.md:291`, `MD038/no-space-in-code`, on a code span ending in a space. After rewording it gave `0 issues`.
+  * `make check-records`: `102 records, 0 findings`. `make docs-check`: exit 0, with 22 architecture rows. `make disclosure-check`: `744 files, 20 deny-list rules, 0 findings`.
+* The owner commits Phase C1.
 
 ### Deviations
 
-None.
+* **Deviation 1 (2026-11-10), Phase C1 step 8: the 0022 H1 walk does not follow `Wrap`.**
+  * **Found.** After steps 6 and 7, `go test ./selfupdate/` failed `TestBatchErrorChain` (`selfupdate/spawn_test.go:194`), the static check that `errors.Is(err, ErrBatchFile)` holds at the exported entry points (0022-MADR H1):
+
+    ```text
+    spawn_test.go:215: service/detach.go:31:14: err is returned through a call the walk does not follow (0022-MADR H1: errors.Is(err, ErrBatchFile) must hold at the caller)
+    spawn_test.go:219: the walk did not reach github.com/maccavelli/go-selfupdate-lib/selfupdate/service.DetachProcess: it follows less than it should
+    ```
+
+    `chainReturn` (`:408-427`) follows only `errors.Join` and `fmt.Errorf` with `%w`. Step 6 had turned `service/detach.go:31` into `errprefix.Wrap(…, err)`. The failure is new with this PLAN, not pre-existing. The PLAN had not listed the test, because it checks the code's shape, not text.
+  * **Decided (owner, 2026-11-10),** from three options, the recommended one first: "Teach the walk Wrap".
+    * `chainReturn` accepts `errprefix.Wrap(op, e)` when `e` itself is the second argument, as it accepts `errors.Join`. It still refuses `Wrap(op, f(e))` and every other call.
+    * A run-time check beside `spawn_test.go:151` asserts that `errors.Is(errprefix.Wrap("x", winproc.ErrBatchFile), ErrBatchFile)` holds.
+    * Phase C2 gains a plant: `detach.go:31`'s argument changed to `fmt.Errorf("x: %v", err)`, which the walk must refuse.
+    * The options not chosen were "Teach Wrap and Strip" (no site uses `Strip`) and "Exempt the chain sites" (contradicts D1-A).
+  * **Files added to Phase C1:** `selfupdate/spawn_test.go`.
+  * No MADR decision or fact changes. `Wrap` keeps the chain, as its `Unwrap` and its table test show.

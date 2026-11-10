@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
 )
@@ -92,7 +93,7 @@ func newService(o Options, goos string, m manager) (*Service, error) {
 		}
 	}
 	if err := o.Poll.Validate(); err != nil {
-		return nil, fmt.Errorf("selfupdate: scm: %w", err)
+		return nil, errprefix.Wrap("selfupdate: scm", err)
 	}
 	return &Service{
 		o: o, m: m, self: currentPID,

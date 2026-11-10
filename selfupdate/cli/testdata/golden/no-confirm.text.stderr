@@ -2,4 +2,4 @@ selfupdate: resolving-target product=demo current=v1.0.0
 selfupdate: fetching-release product=demo current=v1.0.0
 selfupdate: selected product=demo current=v1.0.0 target=v1.1.0 asset={{asset}}
 selfupdate: failed product=demo current=v1.0.0 target=v1.1.0 asset={{asset}} confirmation-required
-update failed: selfupdate: demo: selfupdate: pass --yes to apply without prompting: selfupdate: confirmation required
+update failed: selfupdate: demo: pass --yes to apply without prompting: confirmation required

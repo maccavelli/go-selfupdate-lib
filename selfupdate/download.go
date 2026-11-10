@@ -12,6 +12,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 )
 
 func readBounded(r io.Reader, limit int64) ([]byte, error) {
@@ -31,7 +33,7 @@ func readBounded(r io.Reader, limit int64) ([]byte, error) {
 func decodeJSON(data []byte, dest any) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	if err := dec.Decode(dest); err != nil {
-		return fmt.Errorf("selfupdate: malformed github json: %w", err)
+		return errprefix.Wrap("selfupdate: malformed github json", err)
 	}
 	// Anything after the document, a lone closing delimiter included, is
 	// refused: dec.More() alone misses a trailing '}' or ']' (0003-MADR A6).
@@ -79,7 +81,7 @@ func isInvisibleControl(r rune) bool {
 
 func copyLimited(r io.Reader, w io.Writer, advertised, limit int64) (written int64, digest string, err error) {
 	if advertised <= 0 {
-		return 0, "", fmt.Errorf("selfupdate: advertised size must be positive: %w", ErrIntegrity)
+		return 0, "", errprefix.Wrap("selfupdate: advertised size must be positive", ErrIntegrity)
 	}
 	if advertised > limit {
 		return 0, "", fmt.Errorf("selfupdate: advertised size %d exceeds limit %d: %w", advertised, limit, ErrIntegrity)
@@ -121,7 +123,7 @@ func downloadAsset(ctx context.Context, src ReleaseSource, rel Release, asset As
 			return "", derr
 		}
 		if digest != want {
-			return "", fmt.Errorf("selfupdate: downloaded digest does not match github asset digest: %w", ErrIntegrity)
+			return "", errprefix.Wrap("selfupdate: downloaded digest does not match github asset digest", ErrIntegrity)
 		}
 	}
 	return digest, nil

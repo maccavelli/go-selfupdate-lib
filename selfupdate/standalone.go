@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 )
 
 // StandaloneInstaller owns target resolution, session construction, and
@@ -172,17 +174,17 @@ func linkTarget(err error) (string, bool) {
 func keptBackups(target Target) ([]KeptBackup, error) {
 	root, err := os.OpenRoot(target.Dir)
 	if err != nil {
-		return nil, fmt.Errorf("selfupdate: open target directory: %w", err)
+		return nil, errprefix.Wrap("selfupdate: open target directory", err)
 	}
 	defer func() { advisory(root.Close()) }()
 	dir, err := root.Open(".")
 	if err != nil {
-		return nil, fmt.Errorf("selfupdate: open target directory: %w", err)
+		return nil, errprefix.Wrap("selfupdate: open target directory", err)
 	}
 	names, err := dir.Readdirnames(-1)
 	advisory(dir.Close())
 	if err != nil {
-		return nil, fmt.Errorf("selfupdate: list target directory: %w", err)
+		return nil, errprefix.Wrap("selfupdate: list target directory", err)
 	}
 	slices.Sort(names)
 	prefix := "." + target.Base + ".selfupdate-kept-"

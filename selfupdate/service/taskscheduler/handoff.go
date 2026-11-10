@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 	"github.com/maccavelli/go-selfupdate-lib/internal/winproc"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
 )
@@ -33,7 +34,7 @@ func (t *Task) handOffDir() (string, error) {
 	}
 	local, err := os.UserCacheDir()
 	if err != nil {
-		return "", fmt.Errorf("selfupdate: taskscheduler: the handoff directory: %w", err)
+		return "", errprefix.Wrap("selfupdate: taskscheduler: the handoff directory", err)
 	}
 	return filepath.Join(local, "selfupdate", "handoff"), nil
 }

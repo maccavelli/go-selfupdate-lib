@@ -1,2 +1,2 @@
 selfupdate: failed product=demo current=v1.0.0 error
-update failed: selfupdate: demo: selfupdate: --check and --yes are contradictory
+update failed: selfupdate: demo: --check and --yes are contradictory

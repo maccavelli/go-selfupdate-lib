@@ -3,8 +3,9 @@ package selfupdate
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 )
 
 // Function adapters and small defaults for the seams
@@ -95,7 +96,7 @@ func (m multiReporter) Report(ctx context.Context, ev Event) error {
 type nonInteractiveConfirmer struct{}
 
 func (nonInteractiveConfirmer) Confirm(context.Context, Prompt) (bool, error) {
-	return false, fmt.Errorf("selfupdate: pass --yes to apply without prompting: %w", ErrConfirmationRequired)
+	return false, errprefix.Wrap("selfupdate: pass --yes to apply without prompting", ErrConfirmationRequired)
 }
 
 // NonInteractiveConfirmer returns a Confirmer that never prompts: every

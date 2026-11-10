@@ -28,6 +28,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
 )
@@ -183,7 +184,7 @@ func newTask(o Options, goos string, s scheduler) (*Task, error) {
 		return nil, fmt.Errorf("selfupdate: taskscheduler: Options.HandOffDir %q is not absolute", o.HandOffDir)
 	}
 	if err := o.Poll.Validate(); err != nil {
-		return nil, fmt.Errorf("selfupdate: taskscheduler: %w", err)
+		return nil, errprefix.Wrap("selfupdate: taskscheduler", err)
 	}
 	timeout := o.Poll.Timeout
 	if timeout <= 0 {

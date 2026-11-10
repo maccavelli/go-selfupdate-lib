@@ -21,6 +21,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 )
 
@@ -133,7 +134,7 @@ func (u *unpacker) Unpack(ctx context.Context, req selfupdate.UnpackRequest) err
 		err = cerr
 	}
 	if err != nil {
-		return fmt.Errorf("selfupdate: archive: %w", err)
+		return errprefix.Wrap("selfupdate: archive", err)
 	}
 	return nil
 }

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 )
 
 // DetachProcess starts spec as a process that outlives this one: on Windows
@@ -28,7 +30,7 @@ func DetachProcess(ctx context.Context, spec HandOff) (Detached, error) {
 	}
 	pid, err := startDetached(spec.Executable, spec.Args, passOn(spec.Env))
 	if err != nil {
-		return Detached{}, fmt.Errorf("selfupdate: service: start the detached run: %w", err)
+		return Detached{}, errprefix.Wrap("selfupdate: service: start the detached run", err)
 	}
 	return Detached{ID: spec.ID, Where: fmt.Sprintf("process %d", pid), ResultPath: spec.ResultPath}, nil
 }

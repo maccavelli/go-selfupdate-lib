@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
 )
 
@@ -32,7 +33,7 @@ func (u *Unit) Inside(ctx context.Context) (bool, error) {
 func (u *Unit) insideUnit(ctx context.Context, unit string) (bool, error) {
 	raw, err := readSelfCgroup()
 	if err != nil {
-		return false, fmt.Errorf("selfupdate: systemd: read this process's cgroup: %w", err)
+		return false, errprefix.Wrap("selfupdate: systemd: read this process's cgroup", err)
 	}
 	self, err := parseCgroup(raw)
 	if err != nil {

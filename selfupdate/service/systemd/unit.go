@@ -20,6 +20,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
 )
@@ -118,7 +119,7 @@ func newUnit(o Options, goos string, getenv func(string) string) (*Unit, error) 
 		return nil, fmt.Errorf("selfupdate: systemd: unknown scope %d", o.Scope)
 	}
 	if err := o.Poll.Validate(); err != nil {
-		return nil, fmt.Errorf("selfupdate: systemd: %w", err)
+		return nil, errprefix.Wrap("selfupdate: systemd", err)
 	}
 	u := &Unit{o: o, getenv: getenv, baseline: map[string]baseline{}}
 	var err error

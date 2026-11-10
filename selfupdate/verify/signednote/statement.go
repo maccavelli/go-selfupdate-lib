@@ -9,6 +9,8 @@ import (
 
 	"golang.org/x/mod/semver"
 	"golang.org/x/mod/sumdb/note"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 )
 
 const (
@@ -91,7 +93,7 @@ func ParseStatement(text string) (Statement, error) {
 			return Statement{}, fmt.Errorf("selfupdate: signednote: line %d must start %q", i+2, f.prefix)
 		}
 		if err := f.set(v); err != nil {
-			return Statement{}, fmt.Errorf("selfupdate: signednote: %w", err)
+			return Statement{}, errprefix.Wrap("selfupdate: signednote", err)
 		}
 	}
 	got, err := s.Text()
@@ -145,7 +147,7 @@ func Open(msg []byte, keys []string) (Statement, error) {
 	}
 	n, err := note.Open(msg, note.VerifierList(vs...))
 	if err != nil {
-		return Statement{}, fmt.Errorf("selfupdate: signednote: open note: %w", err)
+		return Statement{}, errprefix.Wrap("selfupdate: signednote: open note", err)
 	}
 	return ParseStatement(n.Text)
 }
@@ -160,7 +162,7 @@ func verifiers(keys []string) ([]note.Verifier, error) {
 	for _, k := range keys {
 		v, err := note.NewVerifier(k)
 		if err != nil {
-			return nil, fmt.Errorf("selfupdate: signednote: verifier key: %w", err)
+			return nil, errprefix.Wrap("selfupdate: signednote: verifier key", err)
 		}
 		id := fmt.Sprintf("%s+%08x", v.Name(), v.KeyHash())
 		if slices.Contains(seen, id) {

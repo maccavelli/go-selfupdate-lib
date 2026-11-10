@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"syscall"
 	"time"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 )
 
 // fsOps are the install path's effects on the file system, as function
@@ -225,17 +227,17 @@ func openChecked(root *os.Root, name string, info os.FileInfo) (*os.File, error)
 func (fx *fsOps) setStagingMode(root *os.Root, staging string, target Target, old os.FileInfo) error {
 	info, err := root.Lstat(staging)
 	if err != nil {
-		return fmt.Errorf("selfupdate: stat staging: %w", err)
+		return errprefix.Wrap("selfupdate: stat staging", err)
 	}
 	f, err := openChecked(root, staging, info)
 	if err != nil {
-		return fmt.Errorf("selfupdate: open staging: %w", err)
+		return errprefix.Wrap("selfupdate: open staging", err)
 	}
 	if err := fx.chownStaging(f, old); err != nil {
-		return joinClose(fmt.Errorf("selfupdate: chown staging: %w", err), f)
+		return joinClose(errprefix.Wrap("selfupdate: chown staging", err), f)
 	}
 	if err := fx.chmodStaging(f, target, old); err != nil {
-		return joinClose(fmt.Errorf("selfupdate: chmod staging: %w", err), f)
+		return joinClose(errprefix.Wrap("selfupdate: chmod staging", err), f)
 	}
 	return f.Close()
 }

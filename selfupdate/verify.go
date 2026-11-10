@@ -2,18 +2,19 @@ package selfupdate
 
 import (
 	"crypto/subtle"
-	"fmt"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 )
 
 func verifyIntegrity(v Verification) error {
 	if v.SHA256 == "" || v.ManifestSHA256 == "" {
-		return fmt.Errorf("selfupdate: missing digest: %w", ErrIntegrity)
+		return errprefix.Wrap("selfupdate: missing digest", ErrIntegrity)
 	}
 	if !equalDigest(v.SHA256, v.ManifestSHA256) {
-		return fmt.Errorf("selfupdate: staged digest does not match SHA256SUMS: %w", ErrIntegrity)
+		return errprefix.Wrap("selfupdate: staged digest does not match SHA256SUMS", ErrIntegrity)
 	}
 	if v.GitHubSHA256 != "" && !equalDigest(v.SHA256, v.GitHubSHA256) {
-		return fmt.Errorf("selfupdate: staged digest does not match github asset digest: %w", ErrIntegrity)
+		return errprefix.Wrap("selfupdate: staged digest does not match github asset digest", ErrIntegrity)
 	}
 	return nil
 }

@@ -125,6 +125,8 @@ internal/procfs/            Linux /proc reads for service.Supervised:
                             parent, start time, state, binary
 internal/redact/            what the formatters of four option types
                             share: an environment's values hidden
+internal/errprefix/         a wrapped error's prefix, composed so the
+                            line names the package once
 internal/testproc/          test support: fixture builds that ignore the
                             git state around them, helper-process waits,
                             and the goroutine leak check
@@ -152,23 +154,24 @@ docs/
 | Directory | Package | Non-test files | Test files | Non-standard imports |
 | :--- | :--- | :--- | :--- | :--- |
 | `buildinfo/` | `buildinfo` | 1 | 3 | none |
-| `selfupdate/` | `selfupdate` | 48 | 91, including six fuzz targets, plus `testdata/SHA256SUMS.{valid,invalid}`, 23 `testdata/manifest-parity/` cases, 15 `testdata/golden/` files and 1 `testdata/fuzz/` seed | `x/mod/semver`, `x/sys/unix`, `x/sys/windows`, `x/term` (and `internal/winproc`) |
+| `selfupdate/` | `selfupdate` | 48 | 91, including six fuzz targets, plus `testdata/SHA256SUMS.{valid,invalid}`, 23 `testdata/manifest-parity/` cases, 15 `testdata/golden/` files and 1 `testdata/fuzz/` seed | `x/mod/semver`, `x/sys/unix`, `x/sys/windows`, `x/term` (and `internal/winproc`, `internal/errprefix`) |
 | `selfupdate/cli/` | `cli` | 4 | 9, plus 53 `testdata/golden/` and 9 `testdata/migration/` files | `x/term` (and `selfupdate`, `buildinfo`) |
 | `selfupdate/selfupdatetest/` | `selfupdatetest` | 3 | 3 | none (`selfupdate` itself) |
-| `selfupdate/archive/` | `archive` | 3 | 8, including three fuzz targets, plus a real GoReleaser `testdata/` checksum file and 9 `testdata/fuzz/` seeds | none (`selfupdate`) |
-| `selfupdate/codesign/` | `codesign` | 2 | 4 | none (`selfupdate`, `service`) |
-| `selfupdate/verify/ghattest/` | `ghattest` | 2 | 4, plus a `testdata/` capture of `gh attestation verify --format json` | none (`selfupdate`, `service`, `internal/redact`) |
-| `selfupdate/verify/signednote/` | `signednote` | 3 | 4, including a fuzz target | `x/mod/semver`, `x/mod/sumdb/note` (and `selfupdate`) |
+| `selfupdate/archive/` | `archive` | 3 | 8, including three fuzz targets, plus a real GoReleaser `testdata/` checksum file and 9 `testdata/fuzz/` seeds | none (`selfupdate`, `internal/errprefix`) |
+| `selfupdate/codesign/` | `codesign` | 2 | 4 | none (`selfupdate`, `service`, `internal/errprefix`) |
+| `selfupdate/verify/ghattest/` | `ghattest` | 2 | 4, plus a `testdata/` capture of `gh attestation verify --format json` | none (`selfupdate`, `service`, `internal/redact`, `internal/errprefix`) |
+| `selfupdate/verify/signednote/` | `signednote` | 3 | 4, including a fuzz target | `x/mod/semver`, `x/mod/sumdb/note` (and `selfupdate`, `internal/errprefix`) |
 | `selfupdate/releasespec/` | `releasespec` | 4 | 5, including a fuzz target, plus 4 `testdata/` specs and 3 `testdata/fuzz/` seeds | none (`selfupdate`, `archive`) |
-| `selfupdate/service/` | `service` | 22 | 30 | `x/sys/windows` (and `selfupdate`, `internal/winproc`, `internal/procfs`, `internal/redact`) |
-| `selfupdate/service/systemd/` | `systemd` | 9 | 19, plus 3 `testdata/` captures of `systemctl show` | none (`selfupdate`, `service`) |
-| `selfupdate/service/launchd/` | `launchd` | 7 | 15, plus 7 `testdata/` captures of `launchctl print` and `list` | none (`selfupdate`, `service`) |
-| `selfupdate/service/scm/` | `scm` | 7 | 14 | `x/sys/windows`, `x/sys/windows/svc`, `x/sys/windows/svc/mgr` (and `selfupdate`, `service`, `internal/winproc`) |
+| `selfupdate/service/` | `service` | 22 | 30 | `x/sys/windows` (and `selfupdate`, `internal/winproc`, `internal/procfs`, `internal/redact`, `internal/errprefix`) |
+| `selfupdate/service/systemd/` | `systemd` | 9 | 19, plus 3 `testdata/` captures of `systemctl show` | none (`selfupdate`, `service`, `internal/errprefix`) |
+| `selfupdate/service/launchd/` | `launchd` | 7 | 15, plus 7 `testdata/` captures of `launchctl print` and `list` | none (`selfupdate`, `service`, `internal/errprefix`) |
+| `selfupdate/service/scm/` | `scm` | 7 | 14 | `x/sys/windows`, `x/sys/windows/svc`, `x/sys/windows/svc/mgr` (and `selfupdate`, `service`, `internal/winproc`, `internal/errprefix`) |
 | `selfupdate/service/servicetest/` | `servicetest` | 4 | 4 | none (`selfupdate`, `service`) |
-| `selfupdate/service/taskscheduler/` | `taskscheduler` | 15 | 19, plus 12 `testdata/definitions/` captures of task XML as registered and as stored, and the one-shot handoff task as stored | `x/sys/windows` (and `selfupdate`, `service`, `internal/winproc`) |
+| `selfupdate/service/taskscheduler/` | `taskscheduler` | 15 | 19, plus 12 `testdata/definitions/` captures of task XML as registered and as stored, and the one-shot handoff task as stored | `x/sys/windows` (and `selfupdate`, `service`, `internal/winproc`, `internal/errprefix`) |
 | `internal/winproc/` | `winproc` | 5 | 4 | `x/sys/windows` |
 | `internal/procfs/` | `procfs` | 3 | 4 | none |
 | `internal/redact/` | `redact` | 1 | 1 | none |
+| `internal/errprefix/` | `errprefix` | 1 | 1 | none |
 | `internal/testproc/` | `testproc` | 1 | 1 | none |
 | `internal/cmd/selfupdate-note/` | `main` | 1 | 1 | `x/mod/sumdb/note` (and `signednote`) |
 | `internal/cmd/selfupdate-release/` | `main` | 12, plus the 2 `installer/` templates | 11, plus the `testdata/fixture/` module (2 programs, 2 specs, an extra) | none (`buildinfo`, `selfupdate`, `archive`, `releasespec`) |
@@ -439,6 +442,11 @@ docs/
   tools and test support, that cites a record or names a Go identifier,
   except the configuration messages its allowlist names
   ([0042-MADR](decisions/0042-MADR-keep-go-identifiers-out-of-run-time-messages.md)).
+  It also reads each `errprefix.Wrap` call's literal.
+  `TestLiteralPrefixWrapsUseWrap` refuses a `fmt.Errorf` whose format
+  is a literal `selfupdate: …: %w`, outside `internal/procfs`: such a
+  wrap is `errprefix.Wrap`, so the line names the package once
+  ([0043-MADR](decisions/0043-MADR-name-the-package-once-in-wrapped-errors.md)).
 - `cli.Options.HandOff` (`run.go`) runs `Detach`, or `DetachPlan` with a
   plan it made, before an apply, applies `Planned`'s plan in a detached
   run, and runs `Report` after an update that ran.

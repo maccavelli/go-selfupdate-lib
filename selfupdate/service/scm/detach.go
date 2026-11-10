@@ -3,9 +3,9 @@ package scm
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 	"github.com/maccavelli/go-selfupdate-lib/internal/winproc"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
 )
@@ -39,11 +39,11 @@ func (s *Service) insideService(name string) (bool, error) {
 	}
 	procs, err := s.m.processes()
 	if err != nil {
-		return false, fmt.Errorf("selfupdate: scm: list processes: %w", err)
+		return false, errprefix.Wrap("selfupdate: scm: list processes", err)
 	}
 	inside, err := winproc.Descends(s.self(), st.ProcessID, procs, s.m.created)
 	if err != nil {
-		return false, fmt.Errorf("selfupdate: scm: %w", err)
+		return false, errprefix.Wrap("selfupdate: scm", err)
 	}
 	return inside, nil
 }

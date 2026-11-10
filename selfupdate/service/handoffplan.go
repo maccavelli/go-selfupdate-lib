@@ -3,9 +3,9 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/errprefix"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 )
 
@@ -32,7 +32,7 @@ func HandOffPlanFunc(d Detacher, spec HandOff) func(context.Context, selfupdate.
 	return func(ctx context.Context, req selfupdate.Request, p selfupdate.Plan) (bool, string, error) {
 		doc, err := json.Marshal(p.Document())
 		if err != nil {
-			return false, "", fmt.Errorf("selfupdate: service: encode the plan: %w", err)
+			return false, "", errprefix.Wrap("selfupdate: service: encode the plan", err)
 		}
 		withPlan := spec
 		withPlan.Env = append(append([]string(nil), spec.Env...), EnvHandOffPlan+"="+string(doc))
@@ -60,7 +60,7 @@ func LoadHandOffPlan() (p selfupdate.Plan, ok bool, err error) {
 	}
 	p, err = selfupdate.ParsePlan([]byte(doc))
 	if err != nil {
-		return selfupdate.Plan{}, false, fmt.Errorf("selfupdate: service: the handed-off plan: %w", err)
+		return selfupdate.Plan{}, false, errprefix.Wrap("selfupdate: service: the handed-off plan", err)
 	}
 	return p, true, nil
 }
