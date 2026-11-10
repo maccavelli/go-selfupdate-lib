@@ -256,7 +256,31 @@ The owner accepted the MADR and approved this PLAN on 2026-11-10 ("accept the ma
   * `make gate` gave `overall=0`, with every step `rc=0`. The steps were gofmt, lint (`0 issues.`), vet, race, shuffle, tidy, apicheck (`check-api-compat: compatible with v1.26.0`, and no line but the internal packages it ignores), fuzz, vuln (`No vulnerabilities found.`), scripts, shellcheck, crossvet, links (`992 links in 115 files, 0 broken`), arch (`22 rows … 0 differ, 0 without a row`) and ids (`59 files, 20 deny-list rules, 0 findings`).
   * `make markdownlint` first refused `AGENTS.md:291`, `MD038/no-space-in-code`, on a code span ending in a space. After rewording it gave `0 issues`.
   * `make check-records`: `102 records, 0 findings`. `make docs-check`: exit 0, with 22 architecture rows. `make disclosure-check`: `744 files, 20 deny-list rules, 0 findings`.
-* The owner commits Phase C1.
+* The owner committed Phase C1 as `a92d319`.
+
+### Phase C2
+
+* **Step 1: the hosts.** A bundle of `a92d319` was cloned on each test host and tested there natively, with go1.27.3 and `TMPDIR` inside the clone's directory:
+  * the macOS development host, `go test -count=1 ./...` on the tree: `ok` for all 22 packages;
+  * the Linux test host, `go test -count=1 ./...`: `ok` for all 22 packages;
+  * the Windows test host, `go test -count=1 ./selfupdate/... ./internal/...`: `ok` for all 21 packages.
+* **Step 2: the plants.** The scratchpad's `plants.py` made each copy with `scripts/plant-copy.sh`, ran the named test in it, and removed it. `git status --short` was empty after the run. Deviation 1's walk plant is the last row.
+
+  | Plant | Result |
+  | :--- | :--- |
+  | `target.go`'s `errprefix.Wrap("selfupdate: stat target", err)` back to `fmt.Errorf(…: %w", err)` | `TestLiteralPrefixWrapsUseWrap` failed with that line alone: `selfupdate/target.go:20: "selfupdate: stat target: %w": a wrap behind a literal prefix uses errprefix.Wrap, …` |
+  | the scan's `internal/procfs/` skip removed | it failed with exactly `procfs`'s four calls: `procfs.go:58` and `:62`, and `procfs_linux.go:19` and `:38` |
+  | `Strip` returning `err` | see Deviation 2 for the first run. After it: `TestWrapAndStrip` failed its four prefixed cases, `TestRunErrorNamesPackageOnce` its three, and the golden tests' `no-confirm` and `contradiction` cases (`no-confirm.text.stderr differs`; `contradiction.text.stderr differs`). For example, `Run = selfupdate: demo: selfupdate: pass --yes to apply without prompting: selfupdate: confirmation required` |
+  | `trim`'s `strings.TrimPrefix` as `strings.ReplaceAll(s, prefix, "")` | `TestWrapAndStrip` failed `prefix later only`, `wrapped sentinel` and `join, both prefixed`. For example, `Wrap text = "selfupdate: op: read x: integrity check failed", want "selfupdate: op: read x: selfupdate: integrity check failed"` |
+  | `target.go`'s `Wrap` literal given `TargetPolicy.ExecutablePath` | `TestRunTimeMessagesNameNoGoIdentifier` failed: `selfupdate/target.go:20: names TargetPolicy.ExecutablePath: "selfupdate: stat TargetPolicy.ExecutablePath": …` |
+  | `detach.go:31`'s argument as `fmt.Errorf("x: %v", err)` | `TestBatchErrorChain` failed: `service/detach.go:31:14: errprefix.Wrap's error is not err itself (0022-MADR H1: …)`, and `the walk did not reach …/selfupdate/service.DetachProcess` |
+
+* **Deviation 2's change.**
+  * `Error()` returns `e.Op + ": " + Strip(e.Err).Error()`.
+  * `make pre-add-check FILES="internal/errprefix/errprefix.go"`: `1 file(s) clean (gofmt, golangci-lint, go vet, go test, govulncheck)`.
+  * `go test -count=1` of `internal/errprefix`, `selfupdate`, `selfupdate/cli`, `selfupdate/archive` and `internal/testproc` gave `ok` on all three hosts. On the Linux and Windows test hosts, the changed file was copied into the `a92d319` clone.
+  * All six plants were run again on the changed tree, and each failed as the table says.
+* The owner commits Deviation 2's change and this record.
 
 ### Deviations
 
@@ -276,3 +300,14 @@ The owner accepted the MADR and approved this PLAN on 2026-11-10 ("accept the ma
     * The options not chosen were "Teach Wrap and Strip" (no site uses `Strip`) and "Exempt the chain sites" (contradicts D1-A).
   * **Files added to Phase C1:** `selfupdate/spawn_test.go`.
   * No MADR decision or fact changes. `Wrap` keeps the chain, as its `Unwrap` and its table test show.
+* **Deviation 2 (2026-11-10), Phase C2 step 2: `Wrap` was not built on `Strip`.**
+  * **Found.** In the `Strip`-returns-`err` plant, `errprefix`'s table test failed its four `Strip` cases, but `cli`'s golden tests passed (`ok … selfupdate/cli`). Step 2's table says the six golden files fail.
+    * Phase C1's `Error.Error()` called the unexported `trim` directly, and `Strip` called the same `trim`. So `Wrap` shared `Strip`'s removal but did not use `Strip`.
+    * That contradicts MADR D2-A ("`Strip(err error) error`, the primitive under it") and the owner's choice ("built on Strip").
+    * The other five plants failed as the table says.
+  * **Decided (owner, 2026-11-10),** from three options, the recommended one first: "Build Error on Strip".
+    * `Error()` returns `e.Op + ": " + Strip(e.Err).Error()`.
+    * The `Strip` plant is run again, and must fail the table test, `TestRunErrorNamesPackageOnce` and the six golden files.
+    * The options not chosen were "Amend the records" (keep the code, and change D2-A's wording) and "Both" (also a plant on `trim`).
+  * **Files added to Phase C2:** `internal/errprefix/errprefix.go`. It is a follow-up commit to Phase C1's code. The pre-add check and the affected packages' tests run again.
+  * The MADR is unchanged: the code now does what D2-A says.

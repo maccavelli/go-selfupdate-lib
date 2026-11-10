@@ -22,9 +22,10 @@ type Error struct {
 	Err error
 }
 
-// Error returns Op, ": ", and Err's text without its leading prefix.
+// Error returns Op, ": ", and Err's text without its leading prefix, as
+// Strip gives it: Wrap is built on Strip (0043-MADR D2-A).
 func (e *Error) Error() string {
-	return e.Op + ": " + trim(e.Err.Error())
+	return e.Op + ": " + Strip(e.Err).Error()
 }
 
 // Unwrap returns Err, so errors.Is and errors.As see through the wrap.
