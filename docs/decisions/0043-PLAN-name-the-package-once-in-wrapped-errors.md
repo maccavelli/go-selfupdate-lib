@@ -440,7 +440,26 @@ The owner accepted the MADR and approved this PLAN on 2026-11-10 ("accept the ma
     * ids: `2 files, 20 deny-list rules, 0 findings`.
   * `make markdownlint`: `0 issues`. `make check-records`: `102 records, 0 findings`. `make docs-check`: `998 links in 115 files, 0 broken`, with 22 architecture rows and 0 differing. `make disclosure-check`: `746 files, 20 deny-list rules, 0 findings`.
   * `scripts/check-docs.sh --ids` on this PLAN and the two `.go` files: `3 files, 20 deny-list rules, 0 findings`.
-* The owner commits Phase C4.
+* The owner committed Phase C4 as `a9f7c7d` and pushed it with `1b97acf`.
+
+### Phase C5a
+
+* **Step 1: the precondition.** The push's CI run 42916757677 on `a9f7c7d` passed, with all 18 jobs green: `validate` on ubuntu-24.04, macos-15 and windows-2025, `go126`, `installer-containers`, and both release rehearsals with their identity legs. Docs run 42916757659 passed too.
+* **Step 2.** `CHANGELOG.md` has `## v1.26.2 - 2026-11-10`, with one **Fixed** entry. It gives the old and new text, and says `errors.Is` matches as before. It links the guide's new section, the MADR's Amendment A1 and this PLAN.
+* **Step 3.** The migration guide:
+  * `### From v1.26.1 to v1.26.2` comes after `### From v1.26.0 to v1.26.1` and before §26's `### Check`, in the same form;
+  * it has the health check's row and the `ReplaceBeforeStop` row, each old and new, then what stays, and "Adopting it";
+  * the intro gains `v1.26.2`'s line after `v1.26.1`'s.
+
+  The guide's other `v1.26.1` references wait for Phase C5b.
+* **Step 4.**
+  * `scripts/check-release-tag.sh v1.26.2`: exit 0. `git tag -l v1.26.2` printed nothing.
+  * `make apicheck`: `check-api-compat: compatible with v1.26.1`, and no other line but the ignored internal packages.
+  * `make markdownlint`: `0 issues`. `make check-records`: `102 records, 0 findings`.
+  * `make docs-check`: `1003 links in 115 files, 0 broken`, the new `#from-v1261-to-v1262` anchor included, with 22 architecture rows and 0 differing.
+  * `make disclosure-check`: `746 files, 20 deny-list rules, 0 findings`.
+  * `scripts/check-docs.sh --ids` on `CHANGELOG.md` and the guide: `2 files, 20 deny-list rules, 0 findings`.
+* The owner commits Phase C5a, pushes it, tags `v1.26.2` on that commit, and pushes the tag.
 
 ### Deviations
 

@@ -101,6 +101,8 @@ the messages a program's user meets at run time: see
 [26. From v1.25 to v1.26](#26-from-v125-to-v126).
 `v1.26.1` changes no API: an error names the package once; see
 [From v1.26.0 to v1.26.1](#from-v1260-to-v1261).
+`v1.26.2` changes no API: a managed install's failure names its phrase
+once; see [From v1.26.1 to v1.26.2](#from-v1261-to-v1262).
 
 Replace every `github.com/maccavelli/mcplib/selfupdate` import with
 `github.com/maccavelli/go-selfupdate-lib/selfupdate`. No identifier or signature
@@ -2133,6 +2135,38 @@ Adopting it:
 - A program, or a test, that matched a whole message's text, or a
   repeated `selfupdate:` prefix in it, loses the match. Match the sentinel
   instead.
+
+### From v1.26.1 to v1.26.2
+
+`v1.26.2` changes no exported API: `make apicheck` reports it compatible
+with `v1.26.1`. §26's `go get` above takes the current release. What
+changed, and why, is in
+[0043-MADR](../decisions/0043-MADR-name-the-package-once-in-wrapped-errors.md)
+Amendment A1.
+
+- **A managed install's failure names its phrase once.** `v1.26.1` left
+  `managed install failed` twice in the error of a managed install that
+  failed and was recovered, and three times when a stop failed under
+  `ReplaceBeforeStop`. A line break in the error is shown here as ` ⏎ `:
+
+  | Case | `v1.26.1` | `v1.26.2` |
+  | :--- | :--- | :--- |
+  | the health check fails | `selfupdate: demo: managed install failed: managed install failed ⏎ unhealthy ⏎ unhealthy` | `selfupdate: demo: managed install failed ⏎ unhealthy ⏎ unhealthy` |
+  | with `ReplaceBeforeStop`, the stop fails and the service still runs | `selfupdate: demo: managed install failed: managed install failed ⏎ selfupdate: stop service: managed install failed ⏎ stop refused` | `selfupdate: demo: managed install failed ⏎ selfupdate: stop service: stop refused` |
+
+  A reconcile failure, and a stop that fails after the service went
+  down, change the same way. The `--json` result's `error` field changes
+  with it.
+- **What stays.** `errors.Is` matches `ErrManagedInstall` and each cause
+  as before. A stop that fails while the service still runs, with
+  nothing replaced, keeps its text:
+  `selfupdate: demo: stop service: managed install failed ⏎ <cause>`.
+
+Adopting it:
+
+- Nothing is required by a program that matches errors with `errors.Is`.
+- A program, or a test, that matched a managed install's whole message
+  loses the match. Match `ErrManagedInstall` instead.
 
 ### Check
 

@@ -8,6 +8,23 @@ listed in the
 [migration guide](docs/guides/migrating-from-mcplib-selfupdate.md), one
 section per release, and each entry links its section and its records.
 
+## v1.26.2 - 2026-11-10
+
+### Fixed
+
+- A managed install's failure names its phrase once. When the health
+  check, the reconcile or a stop failed, the error read
+  `selfupdate: demo: managed install failed: managed install failed`,
+  then its causes, and with `ReplaceBeforeStop` a failed stop named the
+  phrase three times. It now reads `selfupdate: demo: managed install
+  failed`, then its causes. `errors.Is` matches `ErrManagedInstall` and
+  each cause as before.
+
+See [the guide](docs/guides/migrating-from-mcplib-selfupdate.md#from-v1261-to-v1262),
+[0043-MADR](docs/decisions/0043-MADR-name-the-package-once-in-wrapped-errors.md)
+Amendment A1 and
+[0043-PLAN](docs/decisions/0043-PLAN-name-the-package-once-in-wrapped-errors.md).
+
 ## v1.26.1 - 2026-11-10
 
 ### Changed
