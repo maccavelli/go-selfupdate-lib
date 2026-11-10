@@ -59,15 +59,22 @@ var (
 	// (docs/decisions/0038-MADR-pinned-plans-lifecycle-conformance-and-bubble-tests.md
 	// D1-A).
 	ErrPlanStale = errors.New("selfupdate: the plan is stale")
-	// ErrSymlinkInvocation is returned, wrapped, when the program was
-	// started through a symlink to its binary: the path os.Executable
-	// returns is one, or os.Args[0] names one that leads to the running
-	// binary. The update is refused on every platform, so a link into a
-	// tree another tool manages is never followed and overwritten. Set
-	// TargetPolicy.ExecutablePath to the resolved path to update it on
-	// purpose
+	// ErrSymlinkInvocation is returned, as a *SymlinkInvocationError, when
+	// the program was started through a symlink to its binary: the path
+	// os.Executable returns is one, or os.Args[0] names one that leads to
+	// the running binary. It is also returned when
+	// TargetPolicy.ExecutablePath is a symlink. The update is refused on
+	// every platform, so a link into a tree another tool manages is never
+	// followed and overwritten. Set TargetPolicy.ExecutablePath to the
+	// resolved path to update it on purpose.
+	//
+	// StandaloneInstaller.CleanupPending and KeptBackups do not fail with
+	// it for a program started through a link: CleanupPending does
+	// nothing, and KeptBackups lists the backups beside the link's target.
+	// With an ExecutablePath that is a link they fail with it, as
+	// ResolveTarget does
 	// (docs/decisions/0041-MADR-refuse-symlink-invocation-on-every-platform.md
-	// D1-A, D2-A).
+	// D1-A, D2-A, Amendment A1 D3-A, D5-A).
 	ErrSymlinkInvocation = errors.New("selfupdate: refusing to update through a symlink")
 	// ErrBatchFile is returned, wrapped, on Windows when the program to
 	// start is a .bat or .cmd file, in any spelling Windows resolves to
@@ -129,6 +136,70 @@ func (e *HTTPError) Error() string {
 		return fmt.Sprintf("selfupdate: http %d: %s", e.StatusCode, e.Diagnostic)
 	}
 	return fmt.Sprintf("selfupdate: %s http %d: %s", e.Source, e.StatusCode, e.Diagnostic)
+}
+
+// SymlinkSource says how a refused symlink was found
+// (docs/decisions/0041-MADR-refuse-symlink-invocation-on-every-platform.md
+// Amendment A1 D3-A).
+type SymlinkSource string
+
+// The ways a refused symlink is found.
+const (
+	// SymlinkSourceExecutable: os.Executable returned the link, as it does
+	// on macOS and Windows.
+	SymlinkSourceExecutable SymlinkSource = "executable"
+	// SymlinkSourceInvocation: os.Args[0] named the link, and os.Executable
+	// had already resolved it, as it has on Linux and on any OS whose
+	// os.Executable resolves links.
+	SymlinkSourceInvocation SymlinkSource = "invocation"
+	// SymlinkSourcePolicy: TargetPolicy.ExecutablePath is the link.
+	SymlinkSourcePolicy SymlinkSource = "policy"
+)
+
+// SymlinkInvocationError is the refusal to update through a symlink.
+// errors.Is(err, ErrSymlinkInvocation) holds for it, and errors.As gives
+// the link, what it resolves to, and how it was found.
+//
+// Its message names no Go identifier, since a CLI prints it to a person who
+// cannot change the program's configuration. The remedy for the program's
+// author is here instead: to update through a link on purpose, set
+// TargetPolicy.ExecutablePath to Target. With SymlinkSourcePolicy the
+// configured ExecutablePath is itself the link, and the program, or
+// whoever set that path, must name the target instead
+// (docs/decisions/0041-MADR-refuse-symlink-invocation-on-every-platform.md
+// Amendment A1 D3-A, D4-A).
+type SymlinkInvocationError struct {
+	// Link is the symlink, as an absolute path.
+	Link string `json:"link"`
+	// Target is the file Link resolves to, as an absolute path, or empty
+	// when it does not resolve.
+	Target string `json:"target,omitempty"`
+	// Source is how Link was found.
+	Source SymlinkSource `json:"source"`
+}
+
+// Error implements the error interface. After ErrSymlinkInvocation's text it
+// is ": <link> is a symlink" when Target is empty; ": the configured
+// executable path <link> links to <target>" for SymlinkSourcePolicy; and
+// otherwise ": <link> links to <target>; start <target> itself to update
+// it".
+func (e *SymlinkInvocationError) Error() string {
+	prefix := ErrSymlinkInvocation.Error()
+	switch {
+	case e == nil:
+		return prefix
+	case e.Target == "":
+		return prefix + ": " + e.Link + " is a symlink"
+	case e.Source == SymlinkSourcePolicy:
+		return prefix + ": the configured executable path " + e.Link + " links to " + e.Target
+	default:
+		return prefix + ": " + e.Link + " links to " + e.Target + "; start " + e.Target + " itself to update it"
+	}
+}
+
+// Unwrap reports ErrSymlinkInvocation.
+func (e *SymlinkInvocationError) Unwrap() error {
+	return ErrSymlinkInvocation
 }
 
 // ExitCode maps a Run outcome to the canonical process status. It returns 10

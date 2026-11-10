@@ -457,16 +457,20 @@ type StagedArtifact struct {
 // TargetPolicy controls which executable path may be replaced.
 //
 // An update of a program started through a symlink to its binary is
-// refused with ErrSymlinkInvocation, on every platform: both the path
-// os.Executable returns and the one os.Args[0] names are checked, since
-// on Linux os.Executable has already resolved the link. A symlinked
-// directory on the way is followed, and a hard link cannot be told apart.
-// To update the link's target on purpose, set ExecutablePath to it
-// (docs/decisions/0041-MADR-refuse-symlink-invocation-on-every-platform.md).
+// refused on every platform, with a *SymlinkInvocationError that wraps
+// ErrSymlinkInvocation and names the link, its target and how it was
+// found: both the path os.Executable returns and the one os.Args[0] names
+// are checked, since on Linux os.Executable has already resolved the link.
+// A symlinked directory on the way is followed, and a hard link cannot be
+// told apart. To update the link's target on purpose, set ExecutablePath
+// to it
+// (docs/decisions/0041-MADR-refuse-symlink-invocation-on-every-platform.md,
+// Amendment A1).
 type TargetPolicy struct {
 	// ExecutablePath overrides os.Executable when non-empty. os.Args[0] is
 	// then not read: this path is refused when it is itself a symlink,
-	// and otherwise it is the target.
+	// with SymlinkSourcePolicy, by every StandaloneInstaller method,
+	// CleanupPending and KeptBackups included; otherwise it is the target.
 	ExecutablePath string
 	// AllowedRoots are additive canonical directories besides the user's
 	// home directory. An empty slice adds nothing.

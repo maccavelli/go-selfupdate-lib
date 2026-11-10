@@ -18,7 +18,11 @@ func (fx *fsOps) resolveTarget(policy TargetPolicy) (Target, error) {
 		return Target{}, fmt.Errorf("selfupdate: stat target: %w", err)
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
-		return Target{}, symlinkRefusal(raw)
+		source := SymlinkSourceExecutable
+		if policy.ExecutablePath != "" {
+			source = SymlinkSourcePolicy
+		}
+		return Target{}, symlinkError(raw, source)
 	}
 	if !info.Mode().IsRegular() {
 		return Target{}, fmt.Errorf("selfupdate: target is not a regular file")
@@ -40,7 +44,7 @@ func (fx *fsOps) resolveTarget(policy TargetPolicy) (Target, error) {
 	}
 	if policy.ExecutablePath == "" {
 		if invoked, ok := fx.invokedSymlink(resolvedInfo); ok {
-			return Target{}, symlinkRefusalTo(invoked, resolved)
+			return Target{}, &SymlinkInvocationError{Link: invoked, Target: resolved, Source: SymlinkSourceInvocation}
 		}
 	}
 	if resolvedInfo.Mode()&(os.ModeSetuid|os.ModeSetgid) != 0 && !policy.AllowSpecialModeBits {
@@ -114,24 +118,17 @@ func (fx *fsOps) invokedSymlink(running os.FileInfo) (string, bool) {
 	return invoked, true
 }
 
-// symlinkRefusal is ErrSymlinkInvocation for link, naming the file it
-// resolves to when that can be found (0041-MADR D2-A).
-func symlinkRefusal(link string) error {
-	resolved, err := filepath.EvalSymlinks(link)
-	if err != nil {
-		return fmt.Errorf("%w: %s", ErrSymlinkInvocation, link)
+// symlinkError is the refusal of link, found by source, naming the file it
+// resolves to when that can be found, and leaving Target empty when it
+// cannot (0041-MADR D2-A, Amendment A1 D3-A).
+func symlinkError(link string, source SymlinkSource) *SymlinkInvocationError {
+	e := &SymlinkInvocationError{Link: link, Source: source}
+	if resolved, err := filepath.EvalSymlinks(link); err == nil {
+		if abs, err := filepath.Abs(resolved); err == nil {
+			e.Target = abs
+		}
 	}
-	if abs, err := filepath.Abs(resolved); err == nil {
-		resolved = abs
-	}
-	return symlinkRefusalTo(link, resolved)
-}
-
-// symlinkRefusalTo is ErrSymlinkInvocation for link, which resolves to
-// target, with what to do instead.
-func symlinkRefusalTo(link, target string) error {
-	return fmt.Errorf("%w: %s links to %s; run %s, or set TargetPolicy.ExecutablePath to it",
-		ErrSymlinkInvocation, link, target, target)
+	return e
 }
 
 func (fx *fsOps) rawExecutablePath(explicit string) (string, error) {

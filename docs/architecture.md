@@ -489,9 +489,16 @@ docs/
   `managed.go`):
   - refuses a target when the program was started through a symlink to
     it, checked on `os.Executable`'s result and on the path `os.Args[0]`
-    names, since Linux's `os.Executable` has already resolved the link
-    (`resolveTarget`, `ErrSymlinkInvocation`;
-    [0041-MADR](decisions/0041-MADR-refuse-symlink-invocation-on-every-platform.md));
+    names, since Linux's `os.Executable` has already resolved the link.
+    The refusal is a `*SymlinkInvocationError`, wrapping
+    `ErrSymlinkInvocation`, that names the link, its target and its
+    `SymlinkSource`: `executable`, `invocation`, or `policy` for an
+    `ExecutablePath` that is a link. Its text names no Go identifier.
+    For a program started through a link, `CleanupPending` does nothing
+    and `KeptBackups` lists the backups beside the link's target
+    (`resolveTarget`, `linkTarget`;
+    [0041-MADR](decisions/0041-MADR-refuse-symlink-invocation-on-every-platform.md),
+    Amendment A1);
   - locks the target directory through `os.Root`, refusing a symlinked lock
     (`openLockFile`);
   - resolves every name of the replacement through that `os.Root`, so a

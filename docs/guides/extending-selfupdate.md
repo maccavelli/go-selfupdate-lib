@@ -564,7 +564,10 @@ called at startup, finishes
 what an earlier update left behind. Since `v1.6.0` that includes the staging
 files and backups of an update that crashed: under the lock they belong to
 no one. An `ErrConcurrentUpdate` from it means another update holds the
-lock, which is benign.
+lock, which is benign. Since `v1.26.0`, for a program started through a
+symlink to its binary, it returns nil and touches nothing, and
+`KeptBackups` lists the backups beside the link's target
+([below](#update-a-program-started-through-a-symlink)).
 
 When an update cannot restore the previous binary after the new one went
 live, it reports the backup in `Result.PendingBackup` as the only copy of
@@ -607,16 +610,40 @@ A program started through a symlink to its binary is refused with
 tool manages, such as a Homebrew prefix, is never followed and overwritten.
 Both the path `os.Executable` returns and the one `os.Args[0]` names are
 checked: on Linux `os.Executable` has already resolved the link. The
-error names the link and its target, and the CLI's `failed` event has the
-class `symlink-invocation`. A symlinked directory on the way is followed,
-and a hard link cannot be told apart.
+CLI's `failed` event has the class `symlink-invocation`. A symlinked
+directory on the way is followed, and a hard link cannot be told apart.
+
+Since `v1.26.0` the error is a `*SymlinkInvocationError`. `errors.As` gives
+its `Link`, its `Target`, and its `Source`, which says how the link was
+found:
+
+| `Source` | Found by | Text after `selfupdate: refusing to update through a symlink` |
+| :--- | :--- | :--- |
+| `executable` | `os.Executable` (macOS, Windows) | `: <link> links to <target>; start <target> itself to update it` |
+| `invocation` | `os.Args[0]` (Linux) | the same |
+| `policy` | `TargetPolicy.ExecutablePath` | `: the configured executable path <link> links to <target>` |
+
+A link that does not resolve is named alone: `: <link> is a symlink`. The
+text names no Go identifier, since a CLI prints it to a person who cannot
+change your configuration. To word it for your own users, match the error
+with `errors.As` and use the fields.
+
+For a program started through a link (`executable` or `invocation`),
+`StandaloneInstaller.CleanupPending` returns nil without taking the lock
+or touching a file. An update through the link is refused, so anything
+left beside the target came from a run of the target itself, and its next
+run, or the next update, cleans it up. `KeptBackups` lists the backups
+beside the link's target, under every other `TargetPolicy` check. An
+`ExecutablePath` that is a link (`policy`) is refused by both, as by
+`ResolveTarget`.
 
 To update the target on purpose, set `TargetPolicy.ExecutablePath` to the
 resolved path, such as `filepath.EvalSymlinks` of `os.Executable()`'s
 result. `os.Args[0]` is then not read
-([0041-MADR](../decisions/0041-MADR-refuse-symlink-invocation-on-every-platform.md)).
+([0041-MADR](../decisions/0041-MADR-refuse-symlink-invocation-on-every-platform.md),
+Amendment A1).
 
-- `selfupdate/target_test.go`
+- `selfupdate/target_test.go`, `selfupdate/keptbackups_test.go`
 
 ## Write your own installer
 

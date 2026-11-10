@@ -178,8 +178,9 @@ func TestFailureClass(t *testing.T) {
 		ErrConcurrentUpdate:                             "concurrent-update",
 		errors.Join(ErrManagedInstall, ErrIntegrity):    "managed-install",
 		fmt.Errorf("resolve: %w", ErrSymlinkInvocation): "symlink-invocation",
-		ErrIntegrity:                                    "integrity",
-		errors.New("anything else"):                     "error",
+		fmt.Errorf("resolve: %w", &SymlinkInvocationError{Link: "/a", Target: "/b", Source: SymlinkSourceInvocation}): "symlink-invocation",
+		ErrIntegrity:                "integrity",
+		errors.New("anything else"): "error",
 	} {
 		if got := failureClass(err); got != want {
 			t.Errorf("%v: %q, want %q", err, got, want)

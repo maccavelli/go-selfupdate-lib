@@ -165,7 +165,8 @@
 // StandaloneInstaller.KeptBackups lists it. A setuid or setgid target needs
 // TargetPolicy.AllowSpecialModeBits. A program started through a symlink
 // to its binary is refused with ErrSymlinkInvocation, unless
-// TargetPolicy.ExecutablePath names the target. NewManagedInstaller adds service lifecycle
+// TargetPolicy.ExecutablePath names the target; its CleanupPending and
+// KeptBackups do not fail for it. NewManagedInstaller adds service lifecycle
 // and definition reconciliation; NewManagedInstallerFor does the same for any
 // Installer whose sessions implement TwoPhaseSession. A managed update starts
 // the service only when it was running, or when the Lifecycle is an

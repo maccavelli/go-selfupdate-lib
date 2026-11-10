@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: in-progress
 date: 2026-11-09
 associated-madr: "0041-MADR-refuse-symlink-invocation-on-every-platform.md"
 ---
@@ -36,7 +36,7 @@ Files that Phase A1 changes:
 
 * `selfupdate/errors.go`: `SymlinkSource` and its constants, `SymlinkInvocationError`, and `ErrSymlinkInvocation`'s comment.
 * `selfupdate/target.go`: the two refusals build the typed error; `symlinkRefusal` and `symlinkRefusalTo` are removed.
-* `selfupdate/standalone.go`: `CleanupPending`, `KeptBackups` and their comments, and a helper `linkStart`.
+* `selfupdate/standalone.go`: `CleanupPending`, `KeptBackups` and their comments, and a helper ~~`linkStart`~~ `linkTarget` (Deviation 1).
 * `selfupdate/types.go`: `TargetPolicy`'s and `ExecutablePath`'s comments.
 * `selfupdate/doc.go`: the Installers section's sentence.
 * Tests: `selfupdate/target_test.go`, `selfupdate/keptbackups_test.go`, `selfupdate/events_test.go`, and `selfupdate/replace_native_test.go` (its `TestMain` helper).
@@ -107,9 +107,9 @@ No `.go` file is added or removed, so `docs/architecture.md`'s package table kee
    * At `:42-43`, return `&SymlinkInvocationError{Link: invoked, Target: resolved, Source: SymlinkSourceInvocation}`.
    * Replace `symlinkRefusal` and `symlinkRefusalTo` (`:117-135`) with `symlinkError(link string, source SymlinkSource) *SymlinkInvocationError`. It sets `Target` to `filepath.Abs(filepath.EvalSymlinks(link))`, or to "" when either fails.
 3. **`selfupdate/standalone.go`.**
-   * Add `linkStart(err error) (*SymlinkInvocationError, bool)`: true when `errors.As` finds a `*SymlinkInvocationError` whose `Source` is not `SymlinkSourcePolicy`. Its comment cites `0041-MADR Amendment A1 D5-A`.
-   * `CleanupPending`: when `resolveTarget` fails and `linkStart` is true, return nil before `beginSession`.
-   * `KeptBackups`: when `resolveTarget` fails, `linkStart` is true and `Target` is not empty, copy `s.policy`, set its `ExecutablePath` to `Target`, and resolve again. That second resolution runs every other check. Then list. Any other failure is returned as before.
+   * Add ~~`linkStart(err error) (*SymlinkInvocationError, bool)`: true when~~ `linkTarget(err error) (string, bool)` (Deviation 1): the refusal's `Target` and true when `errors.As` finds a `*SymlinkInvocationError` whose `Source` is not `SymlinkSourcePolicy`, and "", false otherwise. Its comment cites `0041-MADR Amendment A1 D5-A`.
+   * `CleanupPending`: when `resolveTarget` fails and `linkTarget` reports true, return nil before `beginSession`.
+   * `KeptBackups`: when `resolveTarget` fails, ~~`linkStart` is true and `Target` is~~ `linkTarget` reports true and the target it returns is not empty, copy `s.policy`, set its `ExecutablePath` to that target, and resolve again. That second resolution runs every other check. Then list. Any other failure is returned as before.
    * Both comments say what happens through a link, and why `CleanupPending` writes nothing there (FA1.5, FA1.6).
 4. **`selfupdate/types.go`.**
    * `TargetPolicy`'s paragraph (`:459-465`) names `*SymlinkInvocationError`.
@@ -153,9 +153,9 @@ No `.go` file is added or removed, so `docs/architecture.md`'s package table kee
 1. On the Linux test host and the Windows test host, run `go test -count=1 -run 'TestResolveTarget|TestSymlinkInvocationError|TestMaintenanceThroughSymlink|TestKeptBackups|TestFailureClass' ./selfupdate/` on a bundle of the Phase A1 tree, and the same on the macOS development host. Record each result, and which process subtests ran or skipped. On Windows a subtest may skip when `os.Symlink` needs a privilege.
 2. With `scripts/plant-copy.sh`, make four copies, each with one change. Run the tests from step 1 in each, on the Linux test host. Each copy must fail the named test:
    * `Error()`'s default text returned to `v1.25.0`'s: `TestResolveTargetInvokedSymlink` and `TestSymlinkInvocationErrorText`;
-   * `CleanupPending` without its `linkStart` branch: `TestMaintenanceThroughSymlink` and the process test's `cleanup` cases;
+   * `CleanupPending` without its ~~`linkStart`~~ `linkTarget` branch: `TestMaintenanceThroughSymlink` and the process test's `cleanup` cases;
    * `KeptBackups` without its branch: the same tests' `kept` cases;
-   * `linkStart` true for `SymlinkSourcePolicy`: `TestMaintenanceThroughSymlink`'s policy case.
+   * ~~`linkStart`~~ `linkTarget` true for `SymlinkSourcePolicy`: `TestMaintenanceThroughSymlink`'s policy case.
 
    The exact OLD and NEW strings come from the Phase A1 code, and each must occur once (the script's header). Record each failure's output.
 3. Run probe A1-P1 (MADR FA1.4) on the Phase A1 tree, on the macOS development host and the Linux test host, with each case in a fresh directory. Through the link, cases 2 and 3 must give D4-A's texts. Case 2 must give `KeptBackups` 1 and `CleanupPending` nil, and create no lock file. Case 3 must still refuse all three calls.
@@ -206,7 +206,66 @@ No `.go` file is added or removed, so `docs/architecture.md`'s package table kee
 
 ## Execution Record
 
-Not started. The owner chose Amendment A1's options on 2026-11-09. They have not yet approved this PLAN for execution.
+The owner chose Amendment A1's options on 2026-11-09. They committed Phase A0 and 0042's Phase B0 as `b7fdb3e`, and approved execution the same day ("committed, proceed"). Phases A1 and A2 ran on a tree at `b7fdb3e` plus the changes below, before any commit.
+
+### Phase A1
+
+* **Steps 1 to 10,** as written, except step 3's helper (Deviation 1).
+  * `selfupdate/errors.go` adds `SymlinkSource`, its three constants and `SymlinkInvocationError`, after `HTTPError`, and rewrites `ErrSymlinkInvocation`'s comment.
+  * `selfupdate/target.go` builds the typed error at both refusals. `symlinkError(link, source)` replaces `symlinkRefusal` and `symlinkRefusalTo`.
+  * `selfupdate/standalone.go` adds `linkTarget`. `CleanupPending` checks it before `if err != nil`, and `KeptBackups` resolves again with the returned target.
+  * Godoc changes in `selfupdate/types.go` and `selfupdate/doc.go`.
+  * `docs/architecture.md`'s install-path bullet changes.
+  * `docs/guides/extending-selfupdate.md` gains a table of the three sources' texts, and the maintenance behaviour in two sections.
+* **Tests.**
+  * `target_test.go`:
+    * `TestResolveTargetRejectsSymlink` and `TestResolveTargetInvokedSymlink` check the fields and the exact text;
+    * new `TestResolveTargetExecutableSymlink` and `TestSymlinkInvocationErrorText`;
+    * the helpers `wantSymlinkError`, `startText` and `realPath`;
+    * the process test runs `resolve`, `cleanup` and `kept`, each in its own copy, through `symlinkedCopy`, `runResolveHelper` and `dirNames`. Within each copy the link starts run before the real-path start.
+  * `keptbackups_test.go`: new `TestMaintenanceThroughSymlink`.
+  * `events_test.go`: a row for the typed error. `gofmt -w` realigned the table.
+  * `replace_native_test.go`: `resolveTargetHelper` reads `SELFUPDATE_TEST_OP`.
+* **No `.go` file was added or removed.**
+* **Step 11, checks.**
+  * `make pre-add-check FILES="<the 9 changed .go files>"` failed twice before passing, both times on `linkTarget`'s first two forms (Deviation 1). Its third run printed `go-precheck: 9 file(s) clean (gofmt, golangci-lint, go vet, go test, govulncheck).`
+  * `make markdownlint` 0 issues.
+  * `make check-records` 100 records, 0 findings.
+  * `make docs-check` 964 links in 113 files, 0 broken, 21 architecture rows, 0 differ, 0 without a row.
+  * `make disclosure-check` 742 files, 0 findings.
+  * `make gate` ended `overall=0`. Each of its steps exited 0: gofmt, lint (0 issues), vet, race, shuffle, tidy, apicheck (`compatible with v1.25.0`), fuzz, vuln (`No vulnerabilities found.`), scripts, shellcheck, crossvet, links, arch and ids.
+  * `make apicheck` reports incompatible changes only. So the additions were listed with the scratchpad's `apiadds.py`, which runs the same apidiff pin without `-incompatible` against a `git archive` of `v1.25.0`. It printed "Compatible changes:", then `SymlinkInvocationError`, `SymlinkSource`, `SymlinkSourceExecutable`, `SymlinkSourceInvocation` and `SymlinkSourcePolicy`, each `added`, and nothing else. apidiff lists a type's methods with the type.
+
+### Phase A2
+
+* **Step 1, the three hosts.** `go test -count=1 -v -run 'TestResolveTarget|TestSymlinkInvocationError|TestMaintenanceThroughSymlink|TestKeptBackups|TestFailureClass|TestManagedKeptBackups' ./selfupdate/` passed on all three, and no subtest skipped:
+  * the macOS development host;
+  * a Linux test host (`go1.27.3 linux/amd64`);
+  * the Windows test host (`go1.27.3 windows/amd64`, Git Bash). Its `os.Symlink` was permitted.
+
+  Every case of `TestResolveTargetInvokedSymlink`, `TestMaintenanceThroughSymlink` (`executable`, `invocation`, `policy`, `dangling`) and `TestResolveTargetRealExecutableThroughSymlink` (`resolve`, `cleanup`, `kept`) passed, with the rest of the set.
+* **Step 2, four planted copies on the Linux test host.** The scratchpad's `a2plants.py` made each copy with `scripts/plant-copy.sh`, ran step 1's tests in it, and removed it. The remote command ended in `| head`, so its exit was 0. The failures were read from the output, which ends `FAIL` for every copy. Paths are shown as `<tmp>`.
+  * **P1.** In `errors.go`, `"; start " + e.Target + " itself to update it"` became `"; run " + e.Target + ", or set TargetPolicy.ExecutablePath to it"`. Failed:
+    * `TestResolveTargetExecutableSymlink`;
+    * `TestSymlinkInvocationErrorText`, with `"…; run /b/real, or set TargetPolicy.ExecutablePath to it" names a Go identifier` for the executable and invocation sources;
+    * `TestResolveTargetInvokedSymlink`'s `absolute_link`, `relative_link` and `bare_name`.
+  * **P2.** In `standalone.go`, `if _, ok := linkTarget(err); ok {` became `linkTarget(nil)`. Failed:
+    * `TestMaintenanceThroughSymlink`'s `executable`, `invocation` and `dangling`, with `CleanupPending = selfupdate: refusing to update through a symlink: <tmp>/002/demo links to <tmp>/001/demo; start <tmp>/001/demo itself to update it, want nil`;
+    * `TestResolveTargetRealExecutableThroughSymlink/cleanup`, with `absolute link: helper printed "symlink invocation", want "ok"`.
+  * **P3.** `resolved, ok := linkTarget(err)` became `linkTarget(nil)`. Failed:
+    * `TestMaintenanceThroughSymlink`'s `executable` and `invocation`, with `KeptBackups = [], selfupdate: refusing …; want the one kept backup`;
+    * `…/kept`, with `helper printed "symlink invocation", want "ok 1"`.
+  * **P4.** `link.Source != SymlinkSourcePolicy` became `link.Source != ""`. Failed `TestMaintenanceThroughSymlink/policy`, with `CleanupPending = <nil>, want the policy's refusal`.
+* **Step 3, probe A1-P1 on the changed tree.** The scratchpad's `a1probe/run2.py` gave each case a fresh directory. The macOS development host and a Linux test host printed the same:
+
+  | Case | `ResolveTarget` | `KeptBackups` | `CleanupPending` | `real/` after |
+  | :--- | :--- | :--- | :--- | :--- |
+  | 1, real path | ok | ok, 1 | ok | `.msgprobe.selfupdate.lock` added |
+  | 2, link | `…: <tmp>/link/msgprobe links to <tmp>/real/msgprobe; start <tmp>/real/msgprobe itself to update it` | ok, 1 | ok | unchanged |
+  | 3, `ExecutablePath` = link | `…: the configured executable path <tmp>/link/msgprobe links to <tmp>/real/msgprobe` | the same refusal | the same refusal | unchanged |
+  | 4, link, `ExecutablePath` = real | ok | ok, 1 | ok | `.msgprobe.selfupdate.lock` added |
+
+  Before the change, case 2 refused all three calls with the `v1.25.0` text (MADR FA1.4). Now it gives D4-A's text and D5-A's behaviour, and writes nothing in `real/`.
 
 ### Owner decisions before execution
 
@@ -216,4 +275,25 @@ Not started. The owner chose Amendment A1's options on 2026-11-09. They have not
 
 ### Deviations
 
-None.
+* **Deviation 1 (2026-11-09), Phase A1 step 3, `linkStart`'s signature.**
+  * **What failed.** The first run of `make pre-add-check` on the changed Go files failed, on all three GOOS runs, with one finding: `selfupdate/standalone.go:97:6: Error return value is not checked (errcheck)` on `if _, ok := linkStart(err); ok {`. The signature this step gave, `(*SymlinkInvocationError, bool)`, returns an error type, and `CleanupPending` discarded it with `_`. The finding was new code's, not a pre-existing one.
+  * **The options put to the owner.**
+    * Return only the pointer, which was recommended.
+    * Keep the signature and add a redundant nil check in `CleanupPending`.
+    * Use a bool helper for `CleanupPending`, and a second `errors.As` in `KeptBackups`.
+
+    A `//nolint` was not offered, since it is a workaround.
+  * **The owner's first choice.** On 2026-11-09 they chose to return only the pointer, as `linkStart(err error) *SymlinkInvocationError`.
+  * **That choice failed too.** The next `make pre-add-check` failed with `selfupdate/standalone.go:98:4: error is not nil (line 97) but it returns nil (nilerr)`, on all three GOOS runs. `*SymlinkInvocationError` implements `error`, so `if linkStart(err) != nil { return nil }` reads as returning nil for a non-nil error. Checking `linkStart(err)` before `err != nil` failed the same way (`:99:3`, "line 96").
+  * **What was tried.** On a scratch copy of the tree, `linkTarget(err error) (string, bool)` returns the refusal's `Target` and whether it is a link start. It gave `golangci-lint` 0 issues for linux, darwin and windows, and `TestMaintenanceThroughSymlink`, `TestResolveTargetRealExecutableThroughSymlink` and `TestKeptBackups` passed.
+  * **The options put to the owner, a second time.**
+    * That form, which was recommended.
+    * A bool helper, with a second `errors.As` in `KeptBackups`.
+    * Inline `errors.As` in both methods.
+
+    A `//nolint` was not offered.
+  * **The owner's final choice.** On 2026-11-09 they chose `linkTarget(err error) (string, bool)`.
+    * `CleanupPending` returns nil when it reports true. The check comes before `if err != nil`.
+    * `KeptBackups` resolves again with the returned target when it reports true and the target is not empty.
+    * Behaviour and tests are unchanged.
+  * **What does not change.** The MADR: the helper is unexported, and D5-A's behaviour is the same.

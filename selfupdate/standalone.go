@@ -2,6 +2,7 @@ package selfupdate
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -80,8 +81,23 @@ func (s *StandaloneInstaller) Begin(ctx context.Context, target Target) (Install
 //
 // When another update holds the lock, the error matches
 // ErrConcurrentUpdate. That is benign: retry later.
+//
+// When the program was started through a symlink to its binary, it
+// returns nil and touches nothing: no lock is taken in the link target's
+// directory, which another tool may manage. An update through the link is
+// refused, so whatever is left beside the target came from a run that
+// reached it directly, and the next such run, or the next update, cleans
+// it. An ExecutablePath that is itself a link is still refused, with
+// ErrSymlinkInvocation
+// (docs/decisions/0041-MADR-refuse-symlink-invocation-on-every-platform.md
+// Amendment A1 D5-A).
 func (s *StandaloneInstaller) CleanupPending(ctx context.Context) error {
 	target, err := s.ops().resolveTarget(s.policy)
+	if _, ok := linkTarget(err); ok {
+		// Started through a link: nothing beside its target is this
+		// run's to clean (D5-A).
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -110,15 +126,44 @@ type KeptBackup struct {
 // nil when there are none. It takes no lock, so it never fails with
 // ErrConcurrentUpdate; call it after CleanupPending, which keeps an
 // interrupted update's backup first (0017-MADR 3B).
+//
+// When the program was started through a symlink to its binary, it lists
+// the backups beside the link's target: it reads, and writes nothing, and
+// the target must pass every other check of TargetPolicy. A link that does
+// not resolve, or an ExecutablePath that is itself a link, is refused with
+// ErrSymlinkInvocation
+// (docs/decisions/0041-MADR-refuse-symlink-invocation-on-every-platform.md
+// Amendment A1 D5-A).
 func (s *StandaloneInstaller) KeptBackups(ctx context.Context) ([]KeptBackup, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	target, err := s.ops().resolveTarget(s.policy)
 	if err != nil {
-		return nil, err
+		resolved, ok := linkTarget(err)
+		if !ok || resolved == "" {
+			return nil, err
+		}
+		policy := s.policy
+		policy.ExecutablePath = resolved
+		if target, err = s.ops().resolveTarget(policy); err != nil {
+			return nil, err
+		}
 	}
 	return keptBackups(target)
+}
+
+// linkTarget reports whether err refuses a program started through a
+// symlink, found by os.Executable or os.Args[0], and returns the file the
+// link resolves to, or "" when it does not resolve. A refusal of
+// TargetPolicy.ExecutablePath is not one: the program configured the link
+// (0041-MADR Amendment A1 D5-A).
+func linkTarget(err error) (string, bool) {
+	var link *SymlinkInvocationError
+	if errors.As(err, &link) && link.Source != SymlinkSourcePolicy {
+		return link.Target, true
+	}
+	return "", false
 }
 
 // keptBackups is KeptBackups for target: every regular file named

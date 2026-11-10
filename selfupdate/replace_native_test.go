@@ -41,17 +41,41 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// resolveTargetHelper resolves this binary as the default target, with the
-// real os.Executable and os.Args[0] and SELFUPDATE_TEST_ROOT as an allowed
-// root. It prints ok, symlink for ErrSymlinkInvocation, or err and the
-// error.
+// resolveTargetHelper runs SELFUPDATE_TEST_OP on a standalone installer of
+// this binary as the default target, with the real os.Executable and
+// os.Args[0] and SELFUPDATE_TEST_ROOT as an allowed root: resolve (the
+// default) calls ResolveTarget, cleanup CleanupPending, and kept
+// KeptBackups. It prints ok, or ok and the number of kept backups, or
+// symlink and the refusal's source, or err and the error
+// (0041-MADR-refuse-symlink-invocation-on-every-platform.md Amendment A1).
 func resolveTargetHelper() {
-	_, err := realFS().resolveTarget(TargetPolicy{AllowedRoots: []string{os.Getenv("SELFUPDATE_TEST_ROOT")}})
+	inst, err := NewStandaloneInstaller(InstallOptions{
+		TargetPolicy: TargetPolicy{AllowedRoots: []string{os.Getenv("SELFUPDATE_TEST_ROOT")}},
+	})
+	if err != nil {
+		fmt.Println("err", err)
+		return
+	}
+	ctx := context.Background()
+	ok := "ok"
+	switch op := os.Getenv("SELFUPDATE_TEST_OP"); op {
+	case "", "resolve":
+		_, err = inst.ResolveTarget(ctx)
+	case "cleanup":
+		err = inst.CleanupPending(ctx)
+	case "kept":
+		var kept []KeptBackup
+		kept, err = inst.KeptBackups(ctx)
+		ok = fmt.Sprintf("ok %d", len(kept))
+	default:
+		err = fmt.Errorf("unknown SELFUPDATE_TEST_OP %q", op)
+	}
+	var refusal *SymlinkInvocationError
 	switch {
 	case err == nil:
-		fmt.Println("ok")
-	case errors.Is(err, ErrSymlinkInvocation):
-		fmt.Println("symlink")
+		fmt.Println(ok)
+	case errors.As(err, &refusal):
+		fmt.Println("symlink", refusal.Source)
 	default:
 		fmt.Println("err", err)
 	}
