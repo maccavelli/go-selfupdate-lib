@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 date: 2026-11-10
 associated-madr: "0043-MADR-name-the-package-once-in-wrapped-errors.md"
 ---
@@ -459,7 +459,28 @@ The owner accepted the MADR and approved this PLAN on 2026-11-10 ("accept the ma
   * `make docs-check`: `1003 links in 115 files, 0 broken`, the new `#from-v1261-to-v1262` anchor included, with 22 architecture rows and 0 differing.
   * `make disclosure-check`: `746 files, 20 deny-list rules, 0 findings`.
   * `scripts/check-docs.sh --ids` on `CHANGELOG.md` and the guide: `2 files, 20 deny-list rules, 0 findings`.
-* The owner commits Phase C5a, pushes it, tags `v1.26.2` on that commit, and pushes the tag.
+* The owner committed Phase C5a as `e62d77c` and pushed it. They tagged `v1.26.2` on `e62d77cddaf264cc6ec7bbc4f39b90322542f752` (annotated, 2026-11-10, the changelog's date) and pushed the tag.
+
+### Phase C5b
+
+* **The tag's CI.** Run 42922736233 on `e62d77c`:
+  * attempt 1 failed `validate (ubuntu-24.04)` on a race in an existing test, and passed its 17 other jobs (Deviation 3);
+  * attempt 2, which re-ran the failed job, passed. All 18 jobs are `success`.
+
+  The push to `main` (Docs run 42921545645) also passed. `git ls-remote origin 'refs/tags/v1.26.2^{}'` gave `e62d77cddaf264cc6ec7bbc4f39b90322542f752`.
+* **Step 1.** `git diff --name-only v1.26.1 v1.26.2 -- .github internal/cmd 'scripts/*release*'` printed nothing.
+* **Step 2.** The scratchpad's `pin1262.py`, built on `pin1261.py`, moved the pins from `v1.26.1` and `9fc9dd7265c305caf995083663dd0df5b2a0ad39` to `v1.26.2` and `e62d77cddaf264cc6ec7bbc4f39b90322542f752`.
+  * It asserts each count before it replaces, and asserts afterwards that no old commit remains and what `v1.26.1` mentions are left. It ran first on scratch copies of the four files, where every count matched. The tree's result was byte-identical to the copies.
+  * The pins it moved are those of Phase C3b step 2, in the same four files: 1 each in `README.md`, the current release and its commit in `docs/architecture.md`, 5 in `docs/guides/building-releases.md`, and in the migration guide the current release, §3's pin, the example pin, the `ls-remote` ref, §5's requirement, 22 `go get` lines and 20 `go list` checks.
+  * Kept as history, 10 in the guide: the intro's `v1.26.1` line and its link text, `v1.26.2`'s intro line's link text, and the two "From …" sections' headings, prose and table headers.
+* **Step 3.** This PLAN is `complete`, with its row in `docs/README.md`.
+* **Step 4: checks.**
+  * `make markdownlint`: `0 issues`.
+  * `make check-records`: `104 records, 0 findings`.
+  * `make docs-check`: `1006 links in 115 files, 0 broken`, with 22 architecture rows and 0 differing.
+  * `make disclosure-check`: `746 files, 20 deny-list rules, 0 findings`.
+  * `scripts/check-docs.sh --ids` on the changed files: `8 files, 20 deny-list rules, 0 findings`.
+* The owner commits and pushes this phase.
 
 ### Deviations
 
@@ -490,3 +511,20 @@ The owner accepted the MADR and approved this PLAN on 2026-11-10 ("accept the ma
     * The options not chosen were "Amend the records" (keep the code, and change D2-A's wording) and "Both" (also a plant on `trim`).
   * **Files added to Phase C2:** `internal/errprefix/errprefix.go`. It is a follow-up commit to Phase C1's code. The pre-add check and the affected packages' tests run again.
   * The MADR is unchanged: the code now does what D2-A says.
+* **Deviation 3 (2026-11-10), Phase C5b: the `v1.26.2` tag's CI failed on a race in an existing test.**
+  * **Found.** Attempt 1 of CI run 42922736233, on `v1.26.2` (`e62d77c`), failed `validate (ubuntu-24.04)` and passed its 17 other jobs. In `go test -shuffle=on -count=2 ./...`:
+
+    ```text
+    --- FAIL: TestResolveTargetRealExecutableThroughSymlink/resolve (0.01s)
+        target_test.go:263: helper: fork/exec /tmp/TestResolveTargetRealExecutableThroughSymlinkresolve536157657/001/link/demo: text file busy:
+    ```
+
+    * The test writes a copy of the test binary and runs it from parallel subtests (`selfupdate/target_test.go:285-327`). A process that another goroutine forks while the file is open holds the write descriptor until it calls `exec`, and until then Linux refuses to run the file with `ETXTBSY` (go.dev/issue/22315).
+    * It is pre-existing. The test came in `df9f405` (`v1.26.0`), and this is the only failed CI run since. `git diff --name-only a9f7c7d e62d77c` lists three Markdown files only, and run 42916757677 on `a9f7c7d` passed the same job.
+    * Phase C5b step 1's precondition, a green tag CI, did not hold.
+  * **Decided (owner, 2026-11-10),** from two options, the recommended one first: "Rerun + fix in 0044".
+    * The tag's failed job is re-run (`gh run rerun 42922736233 --failed`). Phase C5b goes on when that attempt passes. The tag and `v1.26.2` do not change.
+    * The race is fixed under a new record, [0044-MADR-write-test-executables-under-the-fork-lock.md](0044-MADR-write-test-executables-under-the-fork-lock.md), which is test-only and needs no release.
+    * The option not chosen was "Fix first, then rerun": the same end state, with Phase C5b waiting behind 0044's whole cycle.
+  * **Files added:** none to this PLAN's phases. 0044's pair is its own work.
+  * The MADR is unchanged: no decision or fact of 0043 changes.
