@@ -1,6 +1,6 @@
 ---
 status: complete
-date: 2026-10-26
+date: 2026-11-10
 associated-madr: "0035-MADR-serve-supervisors-through-a-supervised-adapter.md"
 ---
 # Implement `service.Supervised`, `internal/procfs` and `ErrNoSupervisor`, and release `v1.22.0`
@@ -1140,6 +1140,7 @@ Not done here, as the plan's scope says:
   * `make gate`: `overall=0`, with `apicheck` "compatible with v1.22.0".
   * `make markdownlint`, `make check-records`, `make docs-check` and `make disclosure-check`: each exit 0; the last "699 files, 16 deny-list rules, 0 findings".
 * **Not changed:** the `scm` and `taskscheduler` backends also bound their stop with a deadline over `context.WithoutCancel`. Whether either restores on a spent context was not read here, and a finding there would be a record of its own.
+  * **2026-11-10.** Read since, and answered with no finding: neither restore uses that context. `scm`'s `Stop` has no restore, and `taskscheduler`'s `enableAgain` takes no context. The evidence is in [0004-MADR-evolve-selfupdate-api-and-tui-support.md](0004-MADR-evolve-selfupdate-api-and-tui-support.md#p3-2026-10-07-phase-4-is-built-the-open-work-in-one-place), Amendment P3, "Refreshed on 2026-11-10".
 * **Committed and pushed** by the owner as `685e0c2`. Its CI run failed one Windows job on a pre-existing flake: Deviation D4, below.
 
 ### Deviation D4 (2026-10-26): the health test's restart window runs on wall time

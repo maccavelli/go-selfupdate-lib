@@ -1157,6 +1157,7 @@ this record:
   | Package managers; signing the installers; system-wide installs; completion, MCP registration and service setup in the templates | 0014-MADR §7 (`:454-466`) |
   | Moving each program onto the build workflow and the installers | 0013-MADR §10, 0014-MADR §7: each repository's own records |
   | `queue: max` on the publish workflow's concurrency | 0017-MADR item 5: waits for an actionlint release that accepts `queue`, after `v1.7.12`; 0015-PLAN, Out of scope (`:57-68`) |
+  | A first-party s6 backend on `service.Supervised`, and any other supervisor backend, where the supervisor documents a stable interface and a second consumer or the owner asks (added 2026-11-10) | [0035-MADR-serve-supervisors-through-a-supervised-adapter.md](0035-MADR-serve-supervisors-through-a-supervised-adapter.md), D0-C (`:266-268`) and its outcome (`:482-484`) |
 
   Two items that 0012 §8 and 0013 §10 list are done:
   * publishing archives through the publish workflow, done in `v1.9.0`
@@ -1177,6 +1178,28 @@ this record:
 
   §6's prerelease channels were built under
   [0005-MADR-opt-in-prerelease-channels.md](0005-MADR-opt-in-prerelease-channels.md).
+
+  **Refreshed on 2026-11-10, after `v1.26.0`.** The s6 row was added
+  above. One question that a later record left open was answered by
+  reading, so it is not a row.
+  [0035-PLAN-serve-supervisors-through-a-supervised-adapter.md](0035-PLAN-serve-supervisors-through-a-supervised-adapter.md)
+  (`:1142`) did not read whether the `scm` and `taskscheduler` backends
+  restore on a spent context after a failed stop. Neither restore uses
+  that context:
+  * `scm`'s `Stop` has no restore. It sends the stop control and waits
+    (`selfupdate/service/scm/lifecycle.go:97-198`), and changes no
+    setting a restore would undo. Its conformance case does not set
+    `RestoresAfterFailedStop`. Dependents that `Options.StopDependents`
+    stopped stay stopped until `Start` starts them again
+    (`:87-88`, `:144-153`; 0015-MADR D6).
+  * `taskscheduler`'s restore, `enableAgain`, takes no context
+    (`selfupdate/service/taskscheduler/lifecycle.go:186-190`). The probe
+    in
+    [0040-MADR-close-four-open-items-after-v1-23-1.md](0040-MADR-close-four-open-items-after-v1-23-1.md)
+    F3.5 saw it enable the task again after the stop's bound had ended.
+    Its conformance case sets `RestoresAfterFailedStop`
+    (`selfupdate/service/taskscheduler/conformance_test.go:118`), and
+    0038-PLAN's plant that disables the restore fails that check.
 
 ### P4 (2026-10-19): release signing is built, opt-in, by 0025
 

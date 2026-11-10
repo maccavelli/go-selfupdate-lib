@@ -1,6 +1,6 @@
 ---
 status: complete
-date: 2026-11-09
+date: 2026-11-10
 associated-madr: "0042-MADR-keep-go-identifiers-out-of-run-time-messages.md"
 ---
 <!-- markdownlint-disable MD004 MD013 MD024 MD060 -->
@@ -320,6 +320,7 @@ The owner chose the MADR's options on 2026-11-09. They committed 0041's second P
 * **Step 2.** This PLAN and 0041-PLAN-type-the-symlink-refusal-and-spare-startup-maintenance.md are `complete`, with their rows in `docs/README.md`.
 * **Checks on the tree.** `make markdownlint` 0 issues; `make check-records` 100 records, 0 findings; `make docs-check` 978 links in 113 files, 0 broken, 21 architecture rows, 0 differ; `make disclosure-check` 742 files, 0 findings; `scripts/check-docs.sh --ids` on the seven changed files, both PLANs and `docs/README.md` included, 0 findings.
 * **Step 3.** Closing issue #10 waits for the owner's word.
+  * **2026-11-10.** Issue #10 was closed as completed at 14:07 UTC, with one comment for both PLANs. It begins "Fixed in `v1.26.0` (commits df9f405 and e698287; tag on 7c67784)."
 
 ### Owner decisions before execution
 
