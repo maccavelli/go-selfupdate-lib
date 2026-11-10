@@ -267,6 +267,16 @@ The owner chose Amendment A1's options on 2026-11-09. They committed Phase A0 an
 
   Before the change, case 2 refused all three calls with the `v1.25.0` text (MADR FA1.4). Now it gives D4-A's text and D5-A's behaviour, and writes nothing in `real/`.
 
+### Phase A3a, done as 0042's Phase B3a
+
+* 0042-PLAN-keep-go-identifiers-out-of-run-time-messages.md Phase B3a wrote one `## v1.26.0 - 2026-11-09` entry in `CHANGELOG.md`, and the migration guide's `## 26. From v1.25 to v1.26`, for both PLANs. Its record holds the checks.
+* Each step of Phase A3a is covered:
+  * Added: `SymlinkInvocationError`, `SymlinkSource` and its three constants.
+  * Changed: the refusal's text by source, with each old and new text in §26.
+  * Fixed: issue #10's points, startup maintenance through a link included, noting that it was new on Linux in `v1.25.0`.
+  * The entry links §26, the MADR's Amendment A1 and this PLAN.
+  * `scripts/check-release-tag.sh v1.26.0` exit 0, `git tag -l v1.26.0` empty, and the Markdown checks pass.
+
 ### Owner decisions before execution
 
 * **2026-11-09.** Three options were put to the owner for each decision, with the recommended one first.

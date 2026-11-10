@@ -1967,3 +1967,131 @@ What each change does is in the [changelog](../../CHANGELOG.md).
 
 - `go build ./...`, `go vet ./...` and `go test ./...` pass.
 - `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.25.0`.
+
+## 26. From v1.25 to v1.26
+
+```bash
+go get github.com/maccavelli/go-selfupdate-lib@v1.26.0
+```
+
+`v1.26.0` makes two changes, both from issue #10. It types the symlink
+refusal, rewords it, and stops it failing startup maintenance; and it
+takes Go identifiers and record citations out of every message a
+program's user can meet at run time, giving each refusal whose remedy
+left the message a sentinel. `make apicheck` reports it compatible with
+`v1.25.0`: its nine exported changes are additions. Why, and how, is in
+[0041-MADR](../decisions/0041-MADR-refuse-symlink-invocation-on-every-platform.md)
+Amendment A1, executed by
+[0041-PLAN](../decisions/0041-PLAN-type-the-symlink-refusal-and-spare-startup-maintenance.md),
+and in
+[0042-MADR](../decisions/0042-MADR-keep-go-identifiers-out-of-run-time-messages.md),
+executed by
+[0042-PLAN](../decisions/0042-PLAN-keep-go-identifiers-out-of-run-time-messages.md).
+What each change does is in the [changelog](../../CHANGELOG.md).
+
+### What is new
+
+- `*SymlinkInvocationError`, which the symlink refusal now is. Its
+  `Link` and `Target` are absolute paths, and `Target` is empty when the
+  link does not resolve. Its `Source` is a `SymlinkSource`:
+  `SymlinkSourceExecutable` when `os.Executable` returned the link
+  (macOS, Windows), `SymlinkSourceInvocation` when `os.Args[0]` named it
+  (Linux), and `SymlinkSourcePolicy` when `TargetPolicy.ExecutablePath`
+  is it. The fields carry JSON tags, and `Source` marshals as
+  `"executable"`, `"invocation"` or `"policy"`. It unwraps to
+  `ErrSymlinkInvocation`, so `errors.Is` matches as before:
+
+  ```go
+  var link *selfupdate.SymlinkInvocationError
+  if errors.As(err, &link) && link.Target != "" {
+      fmt.Fprintf(os.Stderr, "%s is a link to %s; start the program by %s\n",
+          link.Link, link.Target, link.Target)
+  }
+  ```
+
+- Four sentinels, each wrapped by the refusals below:
+
+  | Sentinel | Its text | Returned when |
+  | :--- | :--- | :--- |
+  | `selfupdate.ErrSpecialModeBits` | `selfupdate: refusing to replace a setuid or setgid target` | the target has the setuid or setgid bit, and `TargetPolicy.AllowSpecialModeBits` is false |
+  | `selfupdate.ErrNoAllowedRoot` | `selfupdate: no allowed self-update root` | no home directory is usable, and `TargetPolicy.AllowedRoots` is empty |
+  | `service.ErrBinaryMismatch` | `selfupdate: service: binary mismatch` | a service's definition, or the process a `Supervised` service ran, names another binary than the one being updated |
+  | `taskscheduler.ErrLogonType` | `selfupdate: taskscheduler: unsupported logon type` | a task's principal is not an interactive token, for the one-shot handoff or a rewrite |
+
+- The `failed` event's classes `special-mode-bits` and `no-allowed-root`.
+
+### Behaviour you may notice
+
+- **`CleanupPending` and `KeptBackups` succeed for a program started
+  through a link.** In `v1.25.0` both failed with the symlink refusal,
+  on every start through a link, on Linux as on macOS and Windows. Now,
+  when the link was found by `os.Executable` or `os.Args[0]`:
+  - `CleanupPending` returns nil, takes no lock and touches no file. A
+    leftover beside the target, such as the old image a direct update
+    left on Windows, waits for the next start by the target's own path,
+    or the next update.
+  - `KeptBackups` resolves the target again, with
+    `TargetPolicy.ExecutablePath` set to the link's target, so the
+    regular-file, setuid and allowed-root checks still apply, and lists
+    the backups beside it. When the link does not resolve, it returns
+    the refusal.
+
+  A link in `TargetPolicy.ExecutablePath` is a configuration error, and
+  both still refuse it. `ResolveTarget`, `Begin` and the update refuse
+  every link as before.
+- **The symlink refusal's text** after its unchanged prefix,
+  `selfupdate: refusing to update through a symlink`:
+
+  | Case | `v1.25.0` | `v1.26.0` |
+  | :--- | :--- | :--- |
+  | started through the link | `: <link> links to <target>; run <target>, or set TargetPolicy.ExecutablePath to it` | `: <link> links to <target>; start <target> itself to update it` |
+  | `ExecutablePath` is the link | as above | `: the configured executable path <link> links to <target>` |
+  | the link does not resolve | `: <link>` | `: <link> is a symlink` |
+
+- **Ten run-time messages state the fact, and name no Go identifier or
+  record.** The first nine wrap a sentinel. A backend's prefix, such as
+  `selfupdate: scm:` and a space, is left out of the table and is
+  unchanged.
+
+  | Message | `v1.25.0` | `v1.26.0` | Sentinel |
+  | :--- | :--- | :--- | :--- |
+  | setuid or setgid target | `selfupdate: target <p> has the setuid or setgid bit; TargetPolicy.AllowSpecialModeBits permits replacing it` | `selfupdate: refusing to replace a setuid or setgid target: <p>` | `ErrSpecialModeBits` |
+  | no allowed root | `selfupdate: no allowed self-update root: the home directory is unavailable, and TargetPolicy.AllowedRoots is empty` | `selfupdate: no allowed self-update root: the home directory is unavailable` | `ErrNoAllowedRoot` |
+  | `launchd` binary mismatch | `<plist> runs <current>, not <executable>; Options.RewritePath allows rewriting it` | `<plist> runs <current>, not <executable>: selfupdate: service: binary mismatch` | `service.ErrBinaryMismatch` |
+  | `systemd` binary mismatch | `<unit> runs <current>, not <executable>; Options.RewritePath allows a drop-in` | `<unit> runs <current>, not <executable>: selfupdate: service: binary mismatch` | `service.ErrBinaryMismatch` |
+  | `scm` binary mismatch | `<name> runs <current>, not <executable>; Options.RewritePath allows rewriting it` | `<name> runs <current>, not <executable>: selfupdate: service: binary mismatch` | `service.ErrBinaryMismatch` |
+  | `taskscheduler` binary mismatch | `<path> runs <current>, not <executable>; Options.RewritePath allows rewriting it` | `<path> runs <current>, not <executable>: selfupdate: service: binary mismatch` | `service.ErrBinaryMismatch` |
+  | `Supervised` binary mismatch | `the service ran <a>, not <b>; a program whose service runs another binary passes service.NewExecReconciler` | `the service ran <a>, not <b>: selfupdate: service: binary mismatch` | `service.ErrBinaryMismatch` |
+  | `taskscheduler` handoff logon type | `<path> logs on with <type>; the one-shot handoff is measured only for an interactive token, and Options.HopDetach starts a hop instead (0032-MADR D8-A)` | `<path> logs on with <type>, and the one-shot handoff is supported only for an interactive token: selfupdate: taskscheduler: unsupported logon type` | `taskscheduler.ErrLogonType` |
+  | `taskscheduler` rewrite logon type | `<path> logs on with <type>; a rewrite is measured only for an interactive token (0021-MADR Amendment A1, Q6)` | `<path> logs on with <type>, and a rewrite is supported only for an interactive token: selfupdate: taskscheduler: unsupported logon type` | `taskscheduler.ErrLogonType` |
+  | `taskscheduler` stop request | `Options.RequestStop: <the program's error>` | `the program's stop request: <the program's error>` | none; it wraps the program's error |
+
+- **The S4U refusal**, a configuration error that `taskscheduler` returns
+  for a non-administrator, drops its record citation: `logon type S4U is
+  refused to a user who is not an administrator`.
+- **The `failed` event's detail** for a setuid or setgid target is
+  `special-mode-bits`, and for no allowed root `no-allowed-root`, where
+  both were `error`.
+
+### Adopting it
+
+- Nothing is required by a program that matches no message's text.
+- A program that matched any text above, past the symlink refusal's
+  prefix, loses the match. Match the sentinel instead, with `errors.Is`,
+  and word the remedy for your users: each sentinel's godoc names it.
+  For the symlink refusal, `<link> links to <target>` still appears when
+  the target resolves.
+- A program that started through a link, and treated the failure of
+  `CleanupPending` or `KeptBackups` as its sign, gets nil from the first
+  and a listing from the second. Call `ResolveTarget`, which still
+  refuses, or read `SymlinkInvocationError`.
+- A program that reads `TargetPolicy.ExecutablePath` from its own
+  setting can wrap the `SymlinkSourcePolicy` refusal with that setting's
+  name.
+- A consumer of the JSON Lines events that treated `error` as the class
+  of a setuid target, or of a missing root, gets the new classes.
+
+### Check
+
+- `go build ./...`, `go vet ./...` and `go test ./...` pass.
+- `go list -m github.com/maccavelli/go-selfupdate-lib` gives `v1.26.0`.

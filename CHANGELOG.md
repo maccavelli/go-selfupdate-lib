@@ -8,6 +8,58 @@ listed in the
 [migration guide](docs/guides/migrating-from-mcplib-selfupdate.md), one
 section per release, and each entry links its section and its records.
 
+## v1.26.0 - 2026-11-09
+
+### Added
+
+- `SymlinkInvocationError`, the type of the refusal to update through a
+  symlink. Its fields `Link`, `Target` and `Source` carry JSON tags, and
+  it unwraps to `ErrSymlinkInvocation`.
+- `SymlinkSource`, which says how the link was found, with the constants
+  `SymlinkSourceExecutable` (`"executable"`), `SymlinkSourceInvocation`
+  (`"invocation"`) and `SymlinkSourcePolicy` (`"policy"`).
+- Four sentinels for refusals whose remedy is the program's to give:
+  `ErrSpecialModeBits` and `ErrNoAllowedRoot` in `selfupdate`,
+  `service.ErrBinaryMismatch`, and `taskscheduler.ErrLogonType`.
+- The `failed` event's classes `special-mode-bits` and `no-allowed-root`.
+
+### Changed
+
+- The symlink refusal's text after its prefix depends on how the link was
+  found, and names no Go field: `<link> links to <target>; start <target>
+  itself to update it` for a program started through the link, `the
+  configured executable path <link> links to <target>` for a link in
+  `TargetPolicy.ExecutablePath`, and `<link> is a symlink` when the target
+  cannot be resolved.
+- Ten other run-time messages state the fact, and name no Go identifier
+  or record; each remedy moves to godoc. Nine of them now wrap a
+  sentinel: the setuid refusal, the allowed-root refusal, the
+  binary-mismatch refusals of the four backends and of `Supervised`, and
+  the two `taskscheduler` logon-type refusals. The tenth, the
+  `taskscheduler` stop request's, changes its text only, and the S4U
+  configuration refusal drops its record citation. The guide lists each
+  old and new text.
+- The `failed` event's class for a setuid or setgid target, and for no
+  allowed root, is `special-mode-bits` or `no-allowed-root`, not `error`.
+
+### Fixed
+
+- `CleanupPending` and `KeptBackups` no longer fail for a program started
+  through a link (issue #10), which was new on Linux in `v1.25.0`.
+  `CleanupPending` returns nil and touches nothing; `KeptBackups` lists
+  the backups beside the link's target. A link in
+  `TargetPolicy.ExecutablePath` is still refused by both.
+- The symlink refusal no longer tells a CLI's user to set
+  `TargetPolicy.ExecutablePath`, or tells a program already running the
+  target to run it (issue #10).
+
+See [the guide](docs/guides/migrating-from-mcplib-selfupdate.md#26-from-v125-to-v126),
+[0041-MADR](docs/decisions/0041-MADR-refuse-symlink-invocation-on-every-platform.md)
+Amendment A1,
+[0041-PLAN](docs/decisions/0041-PLAN-type-the-symlink-refusal-and-spare-startup-maintenance.md),
+[0042-MADR](docs/decisions/0042-MADR-keep-go-identifiers-out-of-run-time-messages.md) and
+[0042-PLAN](docs/decisions/0042-PLAN-keep-go-identifiers-out-of-run-time-messages.md).
+
 ## v1.25.0 - 2026-11-09
 
 ### Added

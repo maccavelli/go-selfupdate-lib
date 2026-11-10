@@ -284,6 +284,27 @@ The owner chose the MADR's options on 2026-11-09. They committed 0041's second P
   * **P2.** `register.go`'s text was given ` (0032-MADR Amendment A1, P1-2)` back. The scan failed with `selfupdate/service/taskscheduler/register.go:166: cites 0032-MADR: …`.
   * **P3.** `plan.go`'s `use Checker.Check for a check` became `use a checker for a check`. The scan failed with `selfupdate/plan.go: allowedIdentifiers lists Checker.Check, which no message there names: remove the entry`.
 
+### Phase B3a
+
+* The owner committed Phases B1 and B2 as `e698287` and pushed it. CI and Docs on that commit passed. The owner then said "proceed".
+* **Step 1.** `CHANGELOG.md` has `## v1.26.0 - 2026-11-09`, with Added, Changed and Fixed for both PLANs. It links §26, 0041-MADR's Amendment A1, 0041's second PLAN, this MADR and this PLAN. The date moves if the tag is cut on another day.
+  * Changed names ten run-time messages, where step 1 says "the nine texts of this MADR's table". Nine are those that now wrap a sentinel, M1 to M9, the MADR's count (Consequences). M10 changes its text with no sentinel, and M12, a configuration message, drops its citation. All eleven changed in Phase B1, so the entry and the guide list them all. No decision changes.
+* **Step 2.** The migration guide has `## 26. From v1.25 to v1.26`, in §25's form, with "What is new", "Behaviour you may notice", "Adopting it" and "Check". It covers both PLANs:
+  * `SymlinkInvocationError` and its sources, with an `errors.As` example;
+  * the four sentinels, with their texts and when each is returned;
+  * what `CleanupPending` and `KeptBackups` do through a link;
+  * the symlink refusal's three texts, and M1 to M10's, each old and new, with its sentinel; M12's new text;
+  * the two classes.
+
+  The guide's other version references wait for Phase B3b, as in `v1.25.0`'s release.
+* **Step 3.**
+  * `scripts/check-release-tag.sh v1.26.0` exit 0; `git tag -l v1.26.0` printed nothing.
+  * `make markdownlint` first failed with two `MD038/no-space-in-code` findings in §26, on code spans ending in a space (`selfupdate: scm:` and `<link> links to`). Both were reworded, and it then gave 0 issues.
+  * `make docs-check` `977 links in 113 files, 0 broken`, the new `#26-from-v125-to-v126` anchor included; 21 architecture rows, 0 differ.
+  * `make check-records` `100 records, 0 findings`; `make disclosure-check` `742 files, 20 deny-list rules, 0 findings`.
+  * `scripts/check-docs.sh --ids` on the four changed files: `4 files, 20 deny-list rules, 0 findings`.
+* The owner commits, pushes, tags `v1.26.0` and pushes the tag.
+
 ### Owner decisions before execution
 
 * **2026-11-09.** Three options were put to the owner for each decision, with the recommended one first. They chose D1-A, D2-A, D3-A and D4-A, as proposed. D3-C, classes for all four sentinels, was added to the MADR as the third option put to them.
