@@ -108,6 +108,8 @@ name, and the files they cite moved with the rename
 | 0041 | PLAN | [Implement Amendment A1: a typed symlink refusal, a message for each source, and startup maintenance through a link](decisions/0041-PLAN-type-the-symlink-refusal-and-spare-startup-maintenance.md) | complete |
 | 0042 | MADR | [Keep Go identifiers and record citations out of run-time error messages, give each refusal whose remedy leaves the message a sentinel, and hold the rule with a source scan](decisions/0042-MADR-keep-go-identifiers-out-of-run-time-messages.md) | accepted |
 | 0042 | PLAN | [Implement the rule that run-time error messages name no Go identifier and cite no record, with four sentinels, two failure classes and a source scan](decisions/0042-PLAN-keep-go-identifiers-out-of-run-time-messages.md) | complete |
+| 0043 | MADR | [Name the package once in a wrapped error, through one `internal/errprefix` helper that every literal-prefix wrap and `wrapRun` use, held by a source scan](decisions/0043-MADR-name-the-package-once-in-wrapped-errors.md) | accepted |
+| 0043 | PLAN | [Implement one package name per wrapped error: `internal/errprefix`, 132 literal-prefix wraps and `wrapRun` through `Wrap`, a source scan, and `v1.26.1`](decisions/0043-PLAN-name-the-package-once-in-wrapped-errors.md) | proposed |
 
 ## I want to…
 
