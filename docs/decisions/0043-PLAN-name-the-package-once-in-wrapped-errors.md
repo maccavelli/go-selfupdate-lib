@@ -1,5 +1,5 @@
 ---
-status: complete
+status: in-progress
 date: 2026-11-10
 associated-madr: "0043-MADR-name-the-package-once-in-wrapped-errors.md"
 ---
@@ -17,6 +17,7 @@ Associated MADR: [0043-MADR-name-the-package-once-in-wrapped-errors.md](0043-MAD
   * MADR F2's lines read `update failed: selfupdate: demo: pass --yes to apply without prompting: confirmation required` and `update failed: selfupdate: demo: staged digest does not match SHA256SUMS: integrity check failed`.
 * **`TestLiteralPrefixWrapsUseWrap` holds the rule** (D6-A). It is seen to fail on the tree before the sites change, and on planted copies. 0042's scan reads `Wrap`'s literals.
 * **`v1.26.1` ships it** (D7-A). Issue #11 is closed on the owner's word.
+* **Amendment A1 (2026-11-10).** A managed install's failure names `managed install failed` once on every path (MADR Amendment A1 D8-B), and `v1.26.2` ships it.
 
 ## Scope
 
@@ -34,6 +35,9 @@ Associated MADR: [0043-MADR-name-the-package-once-in-wrapped-errors.md](0043-MAD
 | C2 | the runs on each host, and the planted failures; this PLAN's record | records only |
 | C3a | `CHANGELOG.md` `v1.26.1`, and the migration guide's "From v1.26.0 to v1.26.1"; this PLAN's record | the commit the owner tags |
 | C3b | the pins and the release-history line, after the tag's CI is green; this PLAN set to `complete` | records and guides |
+| C4 | Amendment A1: `managed.go`'s two returns, `TestManagedFailureNamesPhraseOnce`, the plants; this PLAN's record | one commit |
+| C5a | `CHANGELOG.md` `v1.26.2`, and the guide's "From v1.26.1 to v1.26.2"; this PLAN's record | the commit the owner tags |
+| C5b | the pins, after the tag's CI is green; this PLAN set to `complete` | records and guides |
 
 Files that Phase C1 changes:
 
@@ -178,6 +182,65 @@ Files that Phase C1 changes:
 5. Run the checks, and record them. The owner commits and pushes.
 6. Closing issue #11, with one comment, is the owner's, or the agent's when asked in that turn.
 
+### Phase C4: a managed install's failure names its phrase once (Amendment A1)
+
+MADR Amendment A1 D8-B. The owner chose D8-B on 2026-11-10. These phases wait for the owner's approval of this PLAN as amended.
+
+**Precondition.** `git diff --name-only v1.26.1 HEAD -- '*.go'` prints nothing. It held at `d7353b5`.
+
+1. **Write the test first, and see it fail on the tree.** `selfupdate/managed_test.go` gains `TestManagedFailureNamesPhraseOnce`, a table test over MADR FA1.2's five paths:
+   * four through `managedEnv` and `fakeLife`, with the injected errors probe A1-P2 used (`unhealthy`, `partial write`, `stop wait timed out` with `stopTakesEffect`, and `refused inside the service`);
+   * one through `replaceFirst`, `firstLife` and `early`, with `stop refused`.
+
+   Each case passes `Install`'s error through `wrapRun(Request{Product: "demo"}, err)`, as `Run` does. Then it asserts:
+   * the exact text of the Amendment A1 outcome's table;
+   * `errors.Is` against `ErrManagedInstall` and against the injected error;
+   * `strings.Count(text, "managed install failed") == 1`.
+
+   The test's comment cites `0043-MADR Amendment A1 D8-B`. Run it before step 2. It must fail exactly the four rows that pass through `recover`, and pass `the stop fails, and the service still runs`. Record the output.
+2. **`recover`** (`selfupdate/managed.go:359`) returns `result, errors.Join(ErrManagedInstall, origin, recov)`, with a comment that cites D8-B: the sentinel's text is the phrase.
+3. **`recoverStop`** (`:293-299`):
+   * when nothing was replaced, it returns `errprefix.Wrap("selfupdate: stop service", errors.Join(ErrManagedInstall, stopErr, rerr))`, as today;
+   * when `ReplaceBeforeStop` replaced the binary, it passes `recover` `errprefix.Wrap("selfupdate: stop service", errors.Join(stopErr, rerr))`, without the sentinel, which `recover` joins. A comment cites D8-B.
+4. **Tests.** `TestManagedFailureNamesPhraseOnce` passes. `go test -count=1 ./...` gives `ok` for every package. MADR FA1.5 found no other test that pins the text. A test that does fail is a deviation: the work stops, and it is recorded here.
+5. **Seen failing.** With `scripts/plant-copy.sh`, make these copies, each with one change, and run `TestManagedFailureNamesPhraseOnce` in each. Record each failure's output. `git status --short` is empty afterwards.
+
+   | Plant | Must fail with |
+   | :--- | :--- |
+   | step 2's return back to `errprefix.Wrap("selfupdate: managed install failed", errors.Join(ErrManagedInstall, origin, recov))` | the four rows through `recover` |
+   | step 3's `errors.Join(stopErr, rerr)` back to `errors.Join(ErrManagedInstall, stopErr, rerr)` | the `ReplaceBeforeStop` row alone |
+
+6. **Checks.**
+   * `make pre-add-check FILES="selfupdate/managed.go selfupdate/managed_test.go"`.
+   * `make gate`, ending `overall=0`.
+   * `make apicheck`: compatible with `v1.26.1`, and no addition.
+   * `make markdownlint`, `make check-records`, `make docs-check` and `make disclosure-check`.
+   * Record the output in this PLAN, in the same commit. The owner commits.
+
+   No `.go` file is added or removed, so `docs/architecture.md`'s package table and `AGENTS.md` do not change. The Linux and Windows test hosts are not run. `managed.go` and `managed_test.go` carry no build constraint, and the push's CI runs `validate` on Linux, macOS and Windows before Phase C5a's tag.
+
+### Phase C5a: prepare `v1.26.2`
+
+1. **Precondition.** The push of Phase C4's commit passed CI on `main`.
+2. `CHANGELOG.md`: `## v1.26.2 - <date>`.
+   * **Fixed:** a managed install's failure names `managed install failed` once, with the health check's old and new text from the MADR's tables.
+   * Links: the guide's new section, the MADR's Amendment A1 and this PLAN.
+3. The migration guide:
+   * `### From v1.26.1 to v1.26.2`, after `### From v1.26.0 to v1.26.1` and before §26's `### Check`, in the same form. It says:
+     * `make apicheck` reports `v1.26.2` compatible;
+     * the old and new text of the health check's row and the `ReplaceBeforeStop` row;
+     * that `ErrManagedInstall` and each cause match as before;
+     * that a program matching the full text should match the sentinel instead.
+   * The intro gains a `v1.26.2` line after `v1.26.1`'s.
+4. `scripts/check-release-tag.sh v1.26.2` exits 0, and `git tag -l v1.26.2` prints nothing. Run `make apicheck` and the Markdown checks, and `scripts/check-docs.sh --ids` on the two files. Record the results here. The owner commits, pushes, tags `v1.26.2` and pushes the tag.
+
+### Phase C5b: the pins, after `v1.26.2`'s CI is green
+
+1. Check that `.github`, `internal/cmd` and `scripts/*release*` are unchanged since `v1.26.1`.
+2. Move each pin from `v1.26.1` and `9fc9dd7265c305caf995083663dd0df5b2a0ad39` to `v1.26.2` and its commit, in the four files of Phase C3b step 2. Use a scratchpad script built on `pin1261.py`, which asserts each count before it replaces and runs first on scratch copies.
+3. Set this PLAN to `complete`, with its row in `docs/README.md`.
+4. Run the checks, and record them. The owner commits and pushes.
+
 ## Verification
 
 * `TestLiteralPrefixWrapsUseWrap` passes on the changed tree. It fails on the tree before step 6, naming the 132 sites, and on Phase C2's two scan plants.
@@ -185,6 +248,7 @@ Files that Phase C1 changes:
 * `TestRunTimeMessagesNameNoGoIdentifier` passes, and fails on the identifier plant. Its file and call counts stay above its floor.
 * `make gate` ends `overall=0`. `make apicheck` lists no addition. The four documentation checks are clean.
 * Phase C2's host runs pass on macOS, Linux and Windows.
+* Amendment A1: `TestManagedFailureNamesPhraseOnce` passes, and fails on the tree before Phase C4 step 2 and on Phase C4's two plants. `make gate` ends `overall=0`, and `make apicheck` lists no addition against `v1.26.1`. The push's CI passes on Linux, macOS and Windows.
 
 ## Rollout and Rollback
 
@@ -194,6 +258,7 @@ Files that Phase C1 changes:
 * **Rollback.**
   * Before the tag: revert Phase C1's commit.
   * After the tag: a program pins `v1.26.0`. A later patch could revert the change, but a published tag is never moved or deleted ([0004-PLAN-v1-3-1-ocp-login-pattern-rewording.md](0004-PLAN-v1-3-1-ocp-login-pattern-rewording.md), Out of scope).
+* **Rollback of Amendment A1.** Before `v1.26.2`'s tag, revert Phase C4's commit. After it, a program pins `v1.26.1`.
 
 ## Execution record
 
@@ -235,6 +300,7 @@ The owner accepted the MADR and approved this PLAN on 2026-11-10 ("accept the ma
   * On the tree it gave the same, and after `gofmt -w` on the same 17 files, every changed `.go` file was byte-identical to the copy.
   * `service/handoff.go:198`, the multi-line format, became `errprefix.Wrap("selfupdate: service: an update from inside the service runs detached and cannot ask; pass --yes",` with its second line unchanged.
   * **Found, out of scope:** `managed.go:357` wraps `ErrManagedInstall` behind its own phrase. It now reads `selfupdate: managed install failed: managed install failed` and the joined parts. Before, it read `selfupdate: managed install failed: selfupdate: managed install failed`. It is no worse, and a later record can reword it.
+    * *2026-11-10:* MADR Amendment A1 decides it (D8-B), and Phases C4 to C5b carry it out. Probe A1-P2 also found a second join of the sentinel, on the `ReplaceBeforeStop` path, that this entry missed.
 * **Step 7.** `wrapRun` returns `errprefix.Wrap("selfupdate: "+req.Product, err)`, with a comment citing D2-A and D4-A.
 * **Step 8: tests.** The first full run after step 7 failed four tests:
   * `TestBatchErrorChain`: Deviation 1, below. `chainReturn` now accepts `errprefix.Wrap(op, e)`, and `TestErrBatchFileIsWinproc` asserts `errors.Is` through `Wrap`.
@@ -325,7 +391,11 @@ The owner accepted the MADR and approved this PLAN on 2026-11-10 ("accept the ma
   * `make disclosure-check`: `746 files, 20 deny-list rules, 0 findings`.
   * `scripts/check-docs.sh --ids` on the six changed files: `6 files, 20 deny-list rules, 0 findings`.
 * **Step 6.** Closing issue #11, with one comment, waits for the owner's word.
-* The owner commits and pushes this phase.
+* The owner committed and pushed this phase as `d7353b5`. On the owner's word, issue #11 was given one comment and closed as completed on 2026-11-10.
+
+### Phases C4 to C5b
+
+* Proposed on 2026-11-10 with MADR Amendment A1. Nothing is executed until the owner approves.
 
 ### Deviations
 

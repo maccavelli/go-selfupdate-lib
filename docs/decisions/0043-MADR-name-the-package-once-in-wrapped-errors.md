@@ -2,7 +2,7 @@
 status: accepted
 date: 2026-11-10
 decision-makers: go-selfupdate-lib maintainers
-consulted: "issue #11, opened 2026-11-10; every non-test Go file under selfupdate/ and internal/ at 8b19f1d, whose Go code is v1.26.0's; the cli golden files; .golangci.yml's depguard rules; internal/testproc's source scan; probe P1, run on 2026-11-10 on the macOS development host"
+consulted: "issue #11, opened 2026-11-10; every non-test Go file under selfupdate/ and internal/ at 8b19f1d, whose Go code is v1.26.0's; the cli golden files; .golangci.yml's depguard rules; internal/testproc's source scan; probe P1, run on 2026-11-10 on the macOS development host; for Amendment A1, the tree at d7353b5, whose Go code is v1.26.1's, and probe A1-P2"
 informed: the fleet's programs, which require this module and print its errors
 ---
 <!-- markdownlint-disable MD004 MD013 MD024 MD060 -->
@@ -84,7 +84,7 @@ Facts are tagged by their source:
   * Two records quote the repeated form as output of their time. They are history:
     * `0025-PLAN-align-with-go-sdk-design-practices.md:2097`;
     * `0041-PLAN-refuse-symlink-invocation-on-every-platform.md:169`.
-* **F6 [read]. Joined errors.** `updater.go:277` joins errors that are each already wrapped. `updater.go:302` wraps `errors.Join(err, closeErr)`. Five `managed.go` calls wrap `errors.Join(ErrManagedInstall, …)`. A join's text is its parts separated by newlines. `cli`'s `oneLine` (`cli/run.go:372-379`) folds them into one line.
+* **F6 [read]. Joined errors.** `updater.go:277` joins errors that are each already wrapped. `updater.go:302` wraps `errors.Join(err, closeErr)`. Five `managed.go` calls wrap `errors.Join(ErrManagedInstall, …)` (four after Amendment A1, D8-B). A join's text is its parts separated by newlines. `cli`'s `oneLine` (`cli/run.go:372-379`) folds them into one line.
 * **F7 [read]. The import rules.**
   * A package under `internal/` with no rule of its own falls under `other-packages`, which allows this module (`.golangci.yml:292-320`). AGENTS.md requires a new package to get its own rule and be excluded from `other-packages`.
   * `internal-procfs` allows the standard library only (`.golangci.yml:105-111`; `0035-MADR-serve-supervisors-through-a-supervised-adapter.md` D13-C).
@@ -358,3 +358,117 @@ The owner chose every option on 2026-11-10, as AskUserQuestion answers, each fro
   * `internal/cmd/`'s release tools, `selfupdatetest` and `servicetest`, as in 0042-MADR;
   * `cli`'s `update failed: ` (D4-A);
   * any exported error type.
+
+## Amendment A1 (2026-11-10): D8, a managed install's failure names its phrase once
+
+0043-PLAN's Phase C1 step 6 found one site D1-A's conversion left repeating itself, and it recorded the site as out of scope. Its error, which `recover` returns in `selfupdate/managed.go`, names `managed install failed` twice, and on one path three times. On 2026-11-10 the owner asked for the site to be assessed, and then for this amendment with option D8-B. D1-A to D7-A stand. D7-A's release stays `v1.26.1`; this amendment ships as `v1.26.2` (D8-B).
+
+Facts are tagged as above. **[probed]** here means probe A1-P2 (FA1.2). The tree read is `d7353b5`, whose Go code is `v1.26.1`'s: `git diff --name-only v1.26.1 HEAD -- '*.go'` prints nothing.
+
+### Amendment A1 facts
+
+* **FA1.1 [read]. The site.**
+  * `recover` (`selfupdate/managed.go:313-360`) ends with `return result, errprefix.Wrap("selfupdate: managed install failed", errors.Join(ErrManagedInstall, origin, recov))` (`:359`).
+  * The phrase is exactly the text of `ErrManagedInstall`, `selfupdate: managed install failed` (`selfupdate/errors.go:28`).
+  * `Wrap` drops only the `selfupdate: ` prefix (D2-A), so the phrase stays twice.
+  * Before `v1.26.1` it read `selfupdate: managed install failed: selfupdate: managed install failed`.
+* **FA1.2 [probed]. Probe A1-P2: the text today.**
+  * It was run on 2026-11-10 on the macOS development host, with go1.27.3, in a scratch copy of the tree with no `.git`.
+  * A test file added to the copy's `selfupdate` drove `Install` through the fixtures of `managed_test.go` and `managed_replacefirst_test.go`. It printed each error through `wrapRun`, as `Run` returns it.
+  * The copy was then removed, and the tree's `git status --short` was empty.
+
+  Lines are separated by ` ⏎ `:
+
+  | Path | Text |
+  | :--- | :--- |
+  | the health check fails | `selfupdate: demo: managed install failed: managed install failed ⏎ unhealthy ⏎ unhealthy` |
+  | the reconcile fails | `selfupdate: demo: managed install failed: managed install failed ⏎ partial write` |
+  | the stop fails, and the service went down | `selfupdate: demo: managed install failed: managed install failed ⏎ selfupdate: stop service: stop wait timed out` |
+  | the stop fails, and the service still runs | `selfupdate: demo: stop service: managed install failed ⏎ refused inside the service` |
+  | with `ReplaceBeforeStop`, the stop fails, and the service still runs | `selfupdate: demo: managed install failed: managed install failed ⏎ selfupdate: stop service: managed install failed ⏎ stop refused` |
+
+  In the health check's row, the second `unhealthy` is the recovery's own health check of the restarted binary. The fixture fails every health check the same way.
+* **FA1.3 [read]. The second join.**
+  * `recoverStop` (`managed.go:289-302`) builds `errprefix.Wrap("selfupdate: stop service", errors.Join(ErrManagedInstall, stopErr, rerr))` (`:294`) when the stop failed and the service still runs, or cannot be asked.
+  * It returns that error as it is when nothing was replaced (`:295-297`).
+  * When `ReplaceBeforeStop` already replaced the binary, it passes that error to `recover` as `origin` (`:298`). `recover` joins `ErrManagedInstall` again. This is the last row of FA1.2.
+* **FA1.4 [read]. The same shape elsewhere.**
+  * A scratchpad scan of the 131 single-line `errprefix.Wrap` calls matched each one's literal against the text of every sentinel its argument names. It found `managed.go:359` alone.
+  * The other joins behind a phrase, such as `manifestverify.go:60`, read `<phrase>: <sentinel's text> ⏎ <cause>`. For example: `selfupdate: manifest verification failed: integrity check failed ⏎ <cause>`.
+* **FA1.5 [read]. Nothing pins the text.**
+  * No test, golden file, guide or changelog entry holds `managed install failed`. `git grep` finds it only in `errors.go:28`, `managed.go:359` and 0043-PLAN.
+  * The managed tests check `errors.Is(err, ErrManagedInstall)` and the cause. That is why D1-A's change to this message failed nothing.
+* **FA1.6 [read]. What a user sees.** `cli` folds a joined error onto one line by turning each control character into a space (`cli/run.go:372-379`, F6). The health check's row prints as `update failed: selfupdate: demo: managed install failed: managed install failed unhealthy unhealthy`.
+
+### Amendment A1 options
+
+#### D8: the managed install's failure
+
+* **D8-A.** `recover` returns `errors.Join(ErrManagedInstall, origin, recov)`, with no `Wrap`.
+* **D8-B.** D8-A, and `recoverStop` passes `recover` its stop error without `ErrManagedInstall`, so the sentinel is joined once. It keeps `:294`'s error, sentinel included, for the path that returns it as it is.
+* **D8-C.** An unexported error type that prints `managed install failed: <cause>; recovery: <recovery's errors>`, and whose `Unwrap() []error` returns the sentinel, the cause and the recovery's errors.
+
+### Amendment A1 outcome
+
+Chosen option: "D8-B", by the owner on 2026-11-10 ("yes with option b"), from the three options above, with D8-B recommended.
+
+* **Why D8-B.**
+  * Every path of FA1.2 names `managed install failed` once.
+  * `errors.Is` matches `ErrManagedInstall` and each cause as before: the sentinel is still in every chain, once.
+  * It changes two returns in `managed.go`, adds no exported identifier, and keeps the multi-line shape every other join has (F6, D3-A).
+* **Rejected.**
+  * D8-A leaves FA1.2's last row naming the phrase twice.
+  * D8-C changes the shape of a joined error from several lines to one. It is more code than the repeat needs. The labelling of the recovery's errors, FA1.2's second `unhealthy`, is a separate question that this amendment does not decide.
+* **The text after D8-B.**
+
+  | Path | Text |
+  | :--- | :--- |
+  | the health check fails | `selfupdate: demo: managed install failed ⏎ unhealthy ⏎ unhealthy` |
+  | the reconcile fails | `selfupdate: demo: managed install failed ⏎ partial write` |
+  | the stop fails, and the service went down | `selfupdate: demo: managed install failed ⏎ selfupdate: stop service: stop wait timed out` |
+  | the stop fails, and the service still runs | unchanged: `selfupdate: demo: stop service: managed install failed ⏎ refused inside the service` |
+  | with `ReplaceBeforeStop`, the stop fails, and the service still runs | `selfupdate: demo: managed install failed ⏎ selfupdate: stop service: stop refused` |
+
+  A later part of a join keeps its own prefix, as D3-A decided.
+* **The release.** `v1.26.2`, a patch, for D7-A's reasons: only error text changes, and no exported identifier is added.
+
+### Amendment A1 consequences
+
+* Good, because a managed install's failure names its phrase once on every path.
+* Good, because the text is pinned at last. A test asserts each path's exact text and its sentinel (Amendment A1 confirmation).
+* Neutral, because F6's count of `managed.go` calls that wrap `errors.Join(ErrManagedInstall, …)` drops from five to four. `recoverStop` gains a second `Wrap`, of its stop error alone, so `TestLiteralPrefixWrapsUseWrap`'s count of `Wrap` calls stays 133, above its floor of 130.
+* Neutral, because the recovery's errors stay unlabelled (D8-C, rejected).
+* Bad, because a program that matched the whole text sees it change again. The sentinel is the documented way to match.
+
+### Amendment A1 confirmation
+
+* **A table test in `selfupdate`** drives FA1.2's five paths through `wrapRun`. For each path it asserts:
+  * the exact text of the table above;
+  * `errors.Is` against `ErrManagedInstall` and against the injected cause;
+  * that `managed install failed` occurs once.
+* **Seen failing,** each in a scratch copy and never in the tree:
+  * `:359`'s `Wrap` restored: the four rows that pass through `recover` fail;
+  * `recoverStop`'s sentinel restored on the path to `recover`: the `ReplaceBeforeStop` row alone fails.
+* **The existing checks hold.** `TestLiteralPrefixWrapsUseWrap`, `TestRunTimeMessagesNameNoGoIdentifier` and `TestBatchErrorChain` pass. `make gate` ends `overall=0`. `make apicheck` is compatible with `v1.26.1` and lists no addition.
+
+### Amendment A1 pros and cons
+
+#### D8-A
+
+* Good, because it changes one line.
+* Bad, because the `ReplaceBeforeStop` path still names the phrase twice.
+
+#### D8-B
+
+* Good, because every path names the phrase once, and the sentinel stays in every chain once.
+* Neutral, because it changes two returns, not one.
+
+#### D8-C
+
+* Good, because the line says which error is the cause and which came from the recovery.
+* Bad, because it changes a joined error's shape, and is more code than the repeat needs.
+
+### Amendment A1 more information
+
+* Plan: [0043-PLAN-name-the-package-once-in-wrapped-errors.md](0043-PLAN-name-the-package-once-in-wrapped-errors.md), Phases C4 to C5b.
+* **Out of scope:** labelling the recovery's errors (D8-C), and `cli`'s folding of a joined error onto one line (FA1.6).
