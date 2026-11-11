@@ -111,7 +111,7 @@ name, and the files they cite moved with the rename
 | 0043 | MADR | [Name the package once in a wrapped error, through one `internal/errprefix` helper that every literal-prefix wrap and `wrapRun` use, held by a source scan](decisions/0043-MADR-name-the-package-once-in-wrapped-errors.md) | accepted |
 | 0043 | PLAN | [Implement one package name per wrapped error: `internal/errprefix`, 132 literal-prefix wraps and `wrapRun` through `Wrap`, a source scan, and `v1.26.1`](decisions/0043-PLAN-name-the-package-once-in-wrapped-errors.md) | complete |
 | 0044 | MADR | [Write a test's executable under `syscall.ForkLock`, through one `internal/testproc` helper, held by a source scan](decisions/0044-MADR-write-test-executables-under-the-fork-lock.md) | accepted |
-| 0044 | PLAN | [Implement test executables written under the fork lock: `testproc.WriteExecutable`, 74 sites, a source scan, and the race seen and removed](decisions/0044-PLAN-write-test-executables-under-the-fork-lock.md) | in-progress |
+| 0044 | PLAN | [Implement test executables written under the fork lock: `testproc.WriteExecutable`, 74 sites, a source scan, and the race seen and removed](decisions/0044-PLAN-write-test-executables-under-the-fork-lock.md) | complete |
 
 ## I want to…
 

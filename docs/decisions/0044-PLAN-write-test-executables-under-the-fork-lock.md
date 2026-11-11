@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 date: 2026-11-10
 associated-madr: "0044-MADR-write-test-executables-under-the-fork-lock.md"
 ---
@@ -188,4 +188,37 @@ The owner accepted the MADR and approved this PLAN on 2026-11-10 ("Accept the 00
     * arch: `22 rows … 0 differ, 0 without a row`;
     * ids: `43 files, 20 deny-list rules, 0 findings`.
   * `make markdownlint`: `0 issues`. `make check-records`: `104 records, 0 findings`. `make docs-check`: `1013 links in 117 files, 0 broken`, with 22 architecture rows and 0 differing. `make disclosure-check`: `748 files, 20 deny-list rules, 0 findings`.
-* Committed and pushed as this phase's commit, after the pre-push guard over it exited 0.
+* Committed as `cc21690` and pushed, after the pre-push guard over it exited 0. The push's CI run 42931313430 passed on its first attempt, with all 18 jobs green: `validate` on ubuntu-24.04, macos-15 and windows-2025, `go126`, `installer-containers`, and both release rehearsals with their identity legs. Docs run 42931313378 passed too.
+
+### Phase E2
+
+* **Step 1: the race, seen and removed.** The scratchpad's `etxtbsy` module was copied to a scratch directory on the Linux test host, a 4-CPU linux/amd64 machine. It was built and run there with go1.27.3. Each writer writes a copy of `/bin/true` with mode `0o755` and runs it, while 8 starter goroutines run `/bin/true` in a loop:
+
+  ```text
+  locked=false starters=8 writers=8 runs=4000 etxtbsy=402 other=0
+  locked=false starters=8 writers=8 runs=16000 etxtbsy=1641 other=0
+  locked=true starters=8 writers=8 runs=4000 etxtbsy=0 other=0
+  locked=true starters=8 writers=8 runs=16000 etxtbsy=0 other=0
+  ```
+
+  With `os.WriteFile`, about one run in ten failed with `ETXTBSY`. Under `syscall.ForkLock.RLock()`, as `WriteExecutable` writes, none did, for the same counts, and no run failed any other way. The counts did not need raising.
+* **Step 2: the hosts.** A bundle of `cc21690` was cloned on each test host, with the temporary directory inside the clone's directory:
+  * the macOS development host, `go test -count=1 ./...` on the tree: `ok` for all 22 packages;
+  * the Linux test host, `go test -count=1 ./...`: `ok` for all 22 packages. `go test -count=1 -shuffle=on ./selfupdate/...`: `ok` for all 14 packages;
+  * the Windows test host, `go test -count=1 ./selfupdate/... ./internal/...`: `ok` for all 21 packages.
+
+  The scratch directories on both test hosts were removed afterwards, the experiment's included, and each removal was confirmed.
+* **Step 3: the plants.** The scratchpad's `e2_plants.py` made each copy with `scripts/plant-copy.sh`, ran the named test in it, and removed it. `git status --short` was empty afterwards.
+
+  | Plant | Result |
+  | :--- | :--- |
+  | `target_test.go:301`'s `testproc.WriteExecutable(` back to `os.WriteFile(` | `TestExecutableWritesUseWriteExecutable` failed with that line alone: `selfupdate/target_test.go:301: write an executable with testproc.WriteExecutable, so no fork inherits its descriptor (0044-MADR D3-A)` |
+  | the scan's `Example` prefix changed to one no function has | it failed with `selfupdate/selfupdatetest/example_test.go:30` alone |
+  | `WriteExecutable` writing with `0o600` | `TestWriteExecutable` failed: `mode = -rw-------, want -rwxr-xr-x` |
+
+* **Step 4.** This PLAN is `complete`, with its row in `docs/README.md`.
+  * `make markdownlint`: `0 issues`. `make check-records`: `104 records, 0 findings`.
+  * `make docs-check`: `1013 links in 117 files, 0 broken`, with 22 architecture rows and 0 differing.
+  * `make disclosure-check`: `748 files, 20 deny-list rules, 0 findings`.
+  * `scripts/check-docs.sh --ids` on this PLAN and `docs/README.md`: `2 files, 20 deny-list rules, 0 findings`.
+* Committed and pushed after the pre-push guard over it exited 0.
