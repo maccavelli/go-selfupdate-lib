@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 )
 
 // Live tests for docs/decisions/0015-MADR-remediate-third-debugging-pass-findings.md
@@ -28,7 +30,7 @@ func oneShotLive(t *testing.T, runAtLoad string) (plist, marker, dir string) {
 	marker = filepath.Join(dir, "marker")
 	for _, word := range []string{"old", "new"} {
 		script := "#!/bin/sh\necho " + word + " >> \"$FAKE_MARKER\"\n"
-		if err := os.WriteFile(filepath.Join(dir, word+".sh"), []byte(script), 0o755); err != nil { //nolint:gosec // an executable fixture
+		if err := testproc.WriteExecutable(filepath.Join(dir, word+".sh"), []byte(script), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}

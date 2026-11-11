@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 )
 
 // Tests for docs/decisions/0017-PLAN-verify-build-provenance-and-close-0015-open-items.md
@@ -28,7 +30,7 @@ func TestKeptBackups(t *testing.T) {
 	}
 	write := func(name, body string) {
 		t.Helper()
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o755); err != nil {
+		if err := testproc.WriteExecutable(filepath.Join(dir, name), []byte(body), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -93,7 +95,7 @@ func TestMaintenanceThroughSymlink(t *testing.T) {
 	symlinkOrSkip(t, exe, link)
 	dangling := filepath.Join(t.TempDir(), "demo")
 	symlinkOrSkip(t, filepath.Join(dir, "missing"), dangling)
-	if err := os.WriteFile(filepath.Join(dir, ".demo.selfupdate-kept-1"), []byte("kept"), 0o755); err != nil {
+	if err := testproc.WriteExecutable(filepath.Join(dir, ".demo.selfupdate-kept-1"), []byte("kept"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	installer := func(policy TargetPolicy, executable, arg0 string) *StandaloneInstaller {
@@ -171,7 +173,7 @@ func TestManagedKeptBackups(t *testing.T) {
 		t.Fatal(err)
 	}
 	kept := filepath.Join(filepath.Dir(exe), ".demo.selfupdate-kept-9")
-	if err := os.WriteFile(kept, []byte("old-bytes"), 0o755); err != nil {
+	if err := testproc.WriteExecutable(kept, []byte("old-bytes"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	got, err := m.KeptBackups(context.Background())

@@ -149,7 +149,7 @@ func newE2E(t *testing.T, v1, served []byte, o e2eOptions) *e2e {
 		base = "demo.exe"
 	}
 	exe := filepath.Join(dir, base)
-	if err := os.WriteFile(exe, v1, 0o755); err != nil {
+	if err := testproc.WriteExecutable(exe, v1, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	spec := selfupdatetest.NewRelease("demo", "v1.1.0", []selfupdate.Platform{runtimePlatform},

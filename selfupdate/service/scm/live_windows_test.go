@@ -21,6 +21,7 @@ import (
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/mgr"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service/servicetest"
@@ -318,7 +319,7 @@ func buildTo(dst, marker string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(dst, append(body, marker...), 0o755) //nolint:gosec // an executable fixture
+	return testproc.WriteExecutable(dst, append(body, marker...), 0o755)
 }
 
 func requireLive(t *testing.T) {
@@ -685,7 +686,7 @@ func TestLiveHealthFailureRollsBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(cfg.New, whoami, 0o755); err != nil { //nolint:gosec // an executable fixture
+	if err := testproc.WriteExecutable(cfg.New, whoami, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	res, err := managedInstall(liveSvc(t, cfg), cfg.Target, cfg.New)
@@ -825,7 +826,7 @@ func TestLiveReplaceBeforeStopHealthFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(cfg.New, whoami, 0o755); err != nil { //nolint:gosec // an executable fixture
+	if err := testproc.WriteExecutable(cfg.New, whoami, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	c, res, err := replaceFirst(liveSvc(t, cfg), cfg.Target, cfg.New)

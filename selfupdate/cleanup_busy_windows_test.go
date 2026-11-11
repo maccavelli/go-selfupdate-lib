@@ -205,7 +205,7 @@ func TestWindowsKeepPreviousRunningPrevious(t *testing.T) {
 		t.Fatal(err)
 	}
 	exe := filepath.Join(home, "helper.exe")
-	if err := os.WriteFile(exe, in, 0o755); err != nil {
+	if err := testproc.WriteExecutable(exe, in, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	ready, done := filepath.Join(home, "ready"), filepath.Join(home, "done")

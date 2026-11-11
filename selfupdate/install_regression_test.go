@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 )
 
 // Regression tests for docs/decisions/0010-MADR-remediate-second-debugging-pass-findings.md
@@ -87,7 +89,7 @@ func TestProbeOutputCapped(t *testing.T) {
 	}
 	script := filepath.Join(t.TempDir(), "bin")
 	body := "#!/bin/sh\nhead -c 204800 /dev/zero | tr '\\0' 'x'\necho\necho v9.9.9\n"
-	if err := os.WriteFile(script, []byte(body), 0o755); err != nil { //nolint:gosec // an executable fixture
+	if err := testproc.WriteExecutable(script, []byte(body), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	p, err := NewVersionProber([]string{"--version"}, nil, 10*time.Second)
@@ -107,7 +109,7 @@ func TestHomeUnavailableRoot(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	exe := filepath.Join(root, "demo")
-	if err := os.WriteFile(exe, []byte("old-bytes"), 0o755); err != nil { //nolint:gosec // an executable fixture
+	if err := testproc.WriteExecutable(exe, []byte("old-bytes"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	for name, home := range map[string]func() (string, error){

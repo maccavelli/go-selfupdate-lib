@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 )
 
 // Tests for defences 0003 added that no earlier test reached
@@ -230,7 +232,7 @@ func TestRollbackReplacementFailures(t *testing.T) {
 	sess, exe := standaloneSession(t)
 	target := sess.Target()
 	backup := filepath.Join(filepath.Dir(exe), backupPrefix("demo")+"x")
-	if err := os.WriteFile(backup, []byte("old-bytes"), 0o755); err != nil {
+	if err := testproc.WriteExecutable(backup, []byte("old-bytes"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
@@ -258,7 +260,7 @@ func TestCopyFileFailuresRemoveTheCopy(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	src := filepath.Join(dir, "src")
-	if err := os.WriteFile(src, []byte("bytes"), 0o755); err != nil {
+	if err := testproc.WriteExecutable(src, []byte("bytes"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	injected := errors.New("injected")

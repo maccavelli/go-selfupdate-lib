@@ -114,7 +114,7 @@ func TestNativeReplaceRunningCopy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(exe, in, 0o755); err != nil {
+	if err := testproc.WriteExecutable(exe, in, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	ready := filepath.Join(home, "ready")

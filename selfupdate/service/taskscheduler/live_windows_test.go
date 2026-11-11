@@ -21,6 +21,7 @@ import (
 
 	"golang.org/x/sys/windows"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 	"github.com/maccavelli/go-selfupdate-lib/internal/winproc"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
@@ -531,7 +532,7 @@ func build(t *testing.T, dst, marker string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(dst, append(body, marker...), 0o755); err != nil { //nolint:gosec // an executable fixture
+	if err := testproc.WriteExecutable(dst, append(body, marker...), 0o755); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -876,7 +877,7 @@ func TestLiveTaskRollback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(cfg.New, whoami, 0o755); err != nil { //nolint:gosec // an executable fixture
+	if err := testproc.WriteExecutable(cfg.New, whoami, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	res, err := managedInstall(s, cfg.Target, cfg.New)

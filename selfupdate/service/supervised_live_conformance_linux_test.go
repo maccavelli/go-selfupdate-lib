@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service/servicetest"
 )
@@ -126,7 +127,7 @@ func (l *s6Lab) Arrange(_ context.Context, a servicetest.Arrangement) error {
 	if err := os.WriteFile(filepath.Join(l.svc, "down"), nil, 0o600); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(l.svc, "run"), []byte("#!/bin/sh\n"+script), 0o755); err != nil { //nolint:gosec // the service's run script
+	if err := testproc.WriteExecutable(filepath.Join(l.svc, "run"), []byte("#!/bin/sh\n"+script), 0o755); err != nil { //nolint:gosec // the service's run script
 		return err
 	}
 	if err := os.Symlink(l.svc, l.link); err != nil {

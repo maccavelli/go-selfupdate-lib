@@ -16,6 +16,8 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 )
 
 func TestVARIANTSize(t *testing.T) {
@@ -217,7 +219,7 @@ func rewriteAndRestore(t *testing.T, r registered, dir, exe, saved string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(copied, body, 0o700); err != nil {
+	if err := testproc.WriteExecutable(copied, body, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	if err := r.setPath(copied); err != nil {

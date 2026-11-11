@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/selfupdatetest"
 )
@@ -31,7 +32,7 @@ func tempTarget(t *testing.T) (string, selfupdate.TargetPolicy) {
 		t.Fatal(err)
 	}
 	exe := filepath.Join(dir, "demo")
-	if err := os.WriteFile(exe, []byte("old-bytes"), 0o755); err != nil {
+	if err := testproc.WriteExecutable(exe, []byte("old-bytes"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	return exe, selfupdate.TargetPolicy{ExecutablePath: exe, AllowedRoots: []string{dir}}

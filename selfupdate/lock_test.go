@@ -6,6 +6,8 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 )
 
 func TestLockConcurrentAndStaleUnlocked(t *testing.T) {
@@ -57,7 +59,7 @@ func TestBeginRejectsChangedTarget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(exe, []byte("changed-bytes"), 0o755); err != nil {
+	if err := testproc.WriteExecutable(exe, []byte("changed-bytes"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	_, err = inst.Begin(context.Background(), target)

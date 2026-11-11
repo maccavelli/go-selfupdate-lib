@@ -111,7 +111,7 @@ func TestLiveCheckerExitCodes(t *testing.T) {
 		t.Fatal(err)
 	}
 	stripped := filepath.Join(dir, "stripped")
-	if err := os.WriteFile(stripped, body, 0o700); err != nil { //nolint:gosec // an executable fixture
+	if err := testproc.WriteExecutable(stripped, body, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	if out, err := exec.Command("/usr/bin/codesign", "--remove-signature", stripped).CombinedOutput(); err != nil {
@@ -120,7 +120,7 @@ func TestLiveCheckerExitCodes(t *testing.T) {
 	tampered := filepath.Join(dir, "tampered")
 	changed := append([]byte(nil), body...)
 	changed[len(changed)/4] ^= 0xff
-	if err := os.WriteFile(tampered, changed, 0o700); err != nil { //nolint:gosec // an executable fixture
+	if err := testproc.WriteExecutable(tampered, changed, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	check := func(req, path string) error {

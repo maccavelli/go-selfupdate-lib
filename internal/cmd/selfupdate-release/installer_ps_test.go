@@ -238,7 +238,7 @@ func (c *psCase) stubGh(auth, verify int) string {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		c.t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "gh.cmd"), []byte(ghStubCmd), 0o755); err != nil {
+	if err := testproc.WriteExecutable(filepath.Join(dir, "gh.cmd"), []byte(ghStubCmd), 0o755); err != nil {
 		c.t.Fatal(err)
 	}
 	c.path = dir + string(os.PathListSeparator) + os.Getenv("PATH")

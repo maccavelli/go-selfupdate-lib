@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/selfupdatetest"
 )
@@ -65,7 +66,7 @@ func newTarget(t *testing.T) target {
 		name += ".exe"
 	}
 	tg := target{path: filepath.Join(dir, name), body: []byte("old binary\n")}
-	if err := os.WriteFile(tg.path, tg.body, 0o700); err != nil { //nolint:gosec // an executable fixture
+	if err := testproc.WriteExecutable(tg.path, tg.body, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	return tg

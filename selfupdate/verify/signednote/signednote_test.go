@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -16,6 +15,7 @@ import (
 
 	"golang.org/x/mod/sumdb/note"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/selfupdatetest"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/verify/signednote"
@@ -160,7 +160,7 @@ func TestUpdaterRefusesWrongKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	exe := filepath.Join(dir, "demo")
-	if err := os.WriteFile(exe, []byte("demo v1.0.0\n"), 0o755); err != nil { //nolint:gosec // a test executable
+	if err := testproc.WriteExecutable(exe, []byte("demo v1.0.0\n"), 0o755); err != nil { //nolint:gosec // a test executable
 		t.Fatal(err)
 	}
 	plats := []selfupdate.Platform{{OS: runtime.GOOS, Arch: runtime.GOARCH}}

@@ -273,6 +273,13 @@ it, uses `internal/testproc`: `GoBuild` builds with `-buildvcs=false`, so a
 the test's deadline and reports a helper that exits first at once
 (`docs/decisions/0023-MADR-robust-test-fixtures-and-process-waits.md`).
 `TestNoDirectFixtureBuild` refuses a direct `go build` in a test file.
+A test that writes a file with an execute bit writes it with
+`testproc.WriteExecutable`, which holds `syscall.ForkLock` so that no
+process started meanwhile inherits the open file and makes Linux refuse
+to run it ("text file busy"). `TestExecutableWritesUseWriteExecutable`
+refuses an `os.WriteFile` or `os.OpenFile` of such a file outside a
+godoc example's body
+(`docs/decisions/0044-MADR-write-test-executables-under-the-fork-lock.md`).
 
 An error message a program's user can meet at run time, one whose cause
 is on the host, names no Go identifier (`pkg.Name`, `Type.Field`) and

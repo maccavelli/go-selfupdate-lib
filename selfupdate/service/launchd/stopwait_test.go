@@ -11,6 +11,7 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
 )
@@ -88,7 +89,7 @@ func TestManagedStopTimeoutRestartsJob(t *testing.T) {
 			t.Fatal(err)
 		}
 		target := filepath.Join(dir, "demo")
-		if err := os.WriteFile(target, []byte("old-bytes"), 0o755); err != nil { //nolint:gosec // an executable fixture
+		if err := testproc.WriteExecutable(target, []byte("old-bytes"), 0o755); err != nil {
 			t.Fatal(err)
 		}
 		res, err := fakeManagedInstall(t, j, target)

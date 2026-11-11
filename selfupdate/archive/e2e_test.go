@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/maccavelli/go-selfupdate-lib/buildinfo"
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/cli"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/selfupdatetest"
@@ -49,7 +50,7 @@ func newE2E(t *testing.T, opts SelectorOptions, spec selfupdatetest.ReleaseSpec)
 	if hostPlatform.OS == "windows" {
 		exe += ".exe"
 	}
-	if err := os.WriteFile(exe, []byte("old"), 0o700); err != nil { //nolint:gosec // a stand-in for the installed program
+	if err := testproc.WriteExecutable(exe, []byte("old"), 0o700); err != nil { //nolint:gosec // a stand-in for the installed program
 		t.Fatal(err)
 	}
 	opts.Platforms = []selfupdate.Platform{hostPlatform}

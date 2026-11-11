@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 )
 
 // backupsIn lists the selfupdate backups left in dir.
@@ -241,7 +243,7 @@ func TestBeginChecksDirectoryBeforeReceipt(t *testing.T) {
 			return
 		}
 		for name, body := range map[string]string{"demo": "old-bytes", receipt: "{}"} {
-			if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o755); err != nil {
+			if err := testproc.WriteExecutable(filepath.Join(dir, name), []byte(body), 0o755); err != nil {
 				t.Error(err)
 			}
 		}

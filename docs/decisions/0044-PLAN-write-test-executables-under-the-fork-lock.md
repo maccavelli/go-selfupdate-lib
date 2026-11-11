@@ -147,4 +147,45 @@ The owner accepted the MADR and approved this PLAN on 2026-11-10 ("Accept the 00
 
 ### Phase E0
 
-* The MADR is `accepted` and this PLAN `in-progress`, with their rows in `docs/README.md`. The records are committed with 0043-PLAN's Phase C5b.
+* The MADR is `accepted` and this PLAN `in-progress`, with their rows in `docs/README.md`. The records were committed with 0043-PLAN's Phase C5b as `c4bf7ca`. The pre-push guard over it exited 0, and it was pushed.
+
+### Phase E1
+
+* **Precondition.** `HEAD` was `c4bf7ca`, which changes only Markdown since `e62d77c`.
+* **Step 1.** `WriteExecutable` is in `internal/testproc/testproc.go`, after `Build`, as the PLAN gives it, and the file imports `syscall`. Its godoc cites `0044-MADR D1-A`, and the package comment names it.
+* **Step 2.** `TestWriteExecutable` passed. It checks the content, the mode `-rwxr-xr-x` where the platform is not Windows, and `fs.ErrNotExist` for a missing directory.
+* **Step 3: the scan, seen failing.**
+  * `TestExecutableWritesUseWriteExecutable` and its helper, `executableWrites`, are after `TestNoDirectFixtureBuild`'s helpers.
+  * It skips `internal/testproc/` as a whole, so it counts `testproc.WriteExecutable` calls only. The PLAN's count of `WriteExecutable` inside package `testproc` would never apply.
+  * Its first run stopped at the floor before it listed a site: `read 254 files and 0 testproc.WriteExecutable calls; …`. It now lists the sites first and then checks the floor, as 0043's scan does.
+  * On the tree before step 4 it failed. It named 74 sites, and `selfupdate/selfupdatetest/example_test.go:30` was not among them. A comparison with the scratchpad inventory of MADR F4 differed by that line alone. The floor line read `read 254 files and 0 testproc.WriteExecutable calls; the module has more: is the root wrong?`. The first and last sites were:
+
+    ```text
+    internal/cmd/selfupdate-release/build_test.go:169: write an executable with testproc.WriteExecutable, so no fork inherits its descriptor (0044-MADR D3-A)
+    selfupdate/verify/signednote/signednote_test.go:163: write an executable with testproc.WriteExecutable, so no fork inherits its descriptor (0044-MADR D3-A)
+    ```
+
+* **Step 4: the sites.**
+  * The scratchpad's `convert_writes.py` took the 74 sites from step 3's output, in 39 files, and asserted each line before it wrote.
+  * Its first two runs on the scratch copy stopped on an assertion before writing. Both cases were already in the PLAN's step:
+    * four rewritten lines carry a `//nolint:gosec` with another reason, so the script drops only the exact `an executable fixture` comment, as the step says;
+    * `signednote_test.go` used `os` only for its write, so the script drops that import, as the step says.
+
+    gosec does not run on `_test.go` files (`.golangci.yml:395-401`), so the four kept comments change nothing.
+  * On the scratch copy it gave `files 39 sites 74 nolint-dropped 27 imports-added 31 os-dropped ['selfupdate/verify/signednote/signednote_test.go']`.
+    * `gofmt -w` re-sorted the new import in 19 files, and `gofmt -l` was empty after.
+    * `go vet ./...` passed for `GOOS=linux`, `darwin` and `windows` with `CGO_ENABLED=0`.
+    * The scan and `TestWriteExecutable` passed.
+  * On the tree it gave the same line. After `gofmt -w` on the same 39 files, each was byte-identical to the copy's.
+* **Step 5: docs.** `AGENTS.md`'s `internal/testproc` paragraph and `docs/architecture.md`'s `internal/testproc` bullet name `WriteExecutable` and the scan.
+* **Step 6: checks.**
+  * `make pre-add-check` on the 41 changed `.go` files: `go-precheck: 41 file(s) clean (gofmt, golangci-lint, go vet, go test, govulncheck).`
+  * `make gate` gave `overall=0`, with every step `rc=0`:
+    * gofmt, lint (`0 issues.`), vet, race, shuffle and tidy;
+    * apicheck: `check-api-compat: compatible with v1.26.2`, and no line but the internal packages it ignores;
+    * fuzz, vuln (`No vulnerabilities found.`), scripts, shellcheck and crossvet;
+    * links: `1013 links in 117 files, 0 broken`;
+    * arch: `22 rows … 0 differ, 0 without a row`;
+    * ids: `43 files, 20 deny-list rules, 0 findings`.
+  * `make markdownlint`: `0 issues`. `make check-records`: `104 records, 0 findings`. `make docs-check`: `1013 links in 117 files, 0 broken`, with 22 architecture rows and 0 differing. `make disclosure-check`: `748 files, 20 deny-list rules, 0 findings`.
+* Committed and pushed as this phase's commit, after the pre-push guard over it exited 0.

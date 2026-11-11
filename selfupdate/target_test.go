@@ -152,7 +152,7 @@ func TestResolveTargetInvokedSymlink(t *testing.T) {
 	link := filepath.Join(home, "alias")
 	symlinkOrSkip(t, exe, link)
 	other := filepath.Join(home, "other")
-	if err := os.WriteFile(other, []byte("other-bytes"), 0o755); err != nil {
+	if err := testproc.WriteExecutable(other, []byte("other-bytes"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	otherLink := filepath.Join(home, "other-alias")
@@ -248,7 +248,7 @@ func TestResolveTargetRealExecutableThroughSymlink(t *testing.T) {
 		t.Run(op.name, func(t *testing.T) {
 			t.Parallel()
 			c := symlinkedCopy(t, in)
-			if err := os.WriteFile(filepath.Join(c.realDir, "."+c.name+".selfupdate-kept-1"), []byte("kept"), 0o755); err != nil {
+			if err := testproc.WriteExecutable(filepath.Join(c.realDir, "."+c.name+".selfupdate-kept-1"), []byte("kept"), 0o755); err != nil {
 				t.Fatal(err)
 			}
 			before := dirNames(t, c.realDir)
@@ -298,7 +298,7 @@ func symlinkedCopy(t *testing.T, in []byte) symlinked {
 		}
 	}
 	c.exe, c.link = filepath.Join(c.realDir, c.name), filepath.Join(c.linkDir, c.name)
-	if err := os.WriteFile(c.exe, in, 0o755); err != nil {
+	if err := testproc.WriteExecutable(c.exe, in, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	symlinkOrSkip(t, c.exe, c.link)
@@ -344,7 +344,7 @@ func TestResolveTargetRejectsOutsideHome(t *testing.T) {
 	t.Parallel()
 	home, _ := tempTarget(t)
 	outside := filepath.Join(t.TempDir(), "other")
-	if err := os.WriteFile(outside, []byte("x"), 0o755); err != nil {
+	if err := testproc.WriteExecutable(outside, []byte("x"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := homeFS(home).resolveTarget(TargetPolicy{ExecutablePath: outside}); err == nil {
@@ -357,7 +357,7 @@ func TestResolveTargetExtraRoot(t *testing.T) {
 	home, _ := tempTarget(t)
 	extra := t.TempDir()
 	exe := filepath.Join(extra, "demo")
-	if err := os.WriteFile(exe, []byte("x"), 0o755); err != nil {
+	if err := testproc.WriteExecutable(exe, []byte("x"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	got, err := homeFS(home).resolveTarget(TargetPolicy{ExecutablePath: exe, AllowedRoots: []string{extra}})
@@ -403,7 +403,7 @@ func tempTarget(t *testing.T) (dir, exe string) {
 	t.Helper()
 	dir = t.TempDir()
 	exe = filepath.Join(dir, "demo")
-	if err := os.WriteFile(exe, []byte("old-bytes"), 0o755); err != nil {
+	if err := testproc.WriteExecutable(exe, []byte("old-bytes"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	return dir, exe

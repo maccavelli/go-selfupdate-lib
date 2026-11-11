@@ -447,6 +447,13 @@ docs/
   is a literal `selfupdate: …: %w`, outside `internal/procfs`: such a
   wrap is `errprefix.Wrap`, so the line names the package once
   ([0043-MADR](decisions/0043-MADR-name-the-package-once-in-wrapped-errors.md)).
+  `WriteExecutable` is `os.WriteFile` under `syscall.ForkLock`, so a
+  process another test starts cannot inherit the file's write
+  descriptor and make Linux refuse to run it with "text file busy".
+  `TestExecutableWritesUseWriteExecutable` refuses an `os.WriteFile` or
+  `os.OpenFile` in a test file whose mode sets an execute bit, outside
+  the body of a godoc example
+  ([0044-MADR](decisions/0044-MADR-write-test-executables-under-the-fork-lock.md)).
 - `cli.Options.HandOff` (`run.go`) runs `Detach`, or `DetachPlan` with a
   plan it made, before an apply, applies `Planned`'s plan in a detached
   run, and runs `Report` after an update that ran.

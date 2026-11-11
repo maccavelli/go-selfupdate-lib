@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/archive"
 )
@@ -187,17 +188,17 @@ func TestStageRefuses(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(filepath.Join(dir, linux), data, 0o755); err != nil {
+			if err := testproc.WriteExecutable(filepath.Join(dir, linux), data, 0o755); err != nil {
 				t.Fatal(err)
 			}
 		}, nil, `GOOS is "windows", want "linux"`},
 		{"an empty binary", func(t *testing.T, dir string) {
-			if err := os.WriteFile(filepath.Join(dir, linux), nil, 0o755); err != nil {
+			if err := testproc.WriteExecutable(filepath.Join(dir, linux), nil, 0o755); err != nil {
 				t.Fatal(err)
 			}
 		}, nil, "is empty"},
 		{"a file that is not a Go binary", func(t *testing.T, dir string) {
-			if err := os.WriteFile(filepath.Join(dir, linux), []byte("#!/bin/sh\necho relay\n"), 0o755); err != nil {
+			if err := testproc.WriteExecutable(filepath.Join(dir, linux), []byte("#!/bin/sh\necho relay\n"), 0o755); err != nil {
 				t.Fatal(err)
 			}
 		}, nil, "no Go build information"},
@@ -249,7 +250,7 @@ func TestStageExtras(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(hostBin, name), data, 0o755); err != nil {
+	if err := testproc.WriteExecutable(filepath.Join(hostBin, name), data, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	fromDir := map[string]string{"name": "relay-{tag}.apk"}

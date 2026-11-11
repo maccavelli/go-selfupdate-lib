@@ -1,6 +1,8 @@
 package testproc
 
 import (
+	"cmp"
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -389,6 +391,154 @@ var allowedIdentifiers = map[string][]string{
 	"selfupdate/service/systemd/unit.go": {"Options.Unit"},
 	// taskscheduler.New's Options.
 	"selfupdate/service/taskscheduler/task.go": {"Options.StopGrace", "Options.HandOffDir", "Options.Poll"},
+}
+
+// TestWriteExecutable: WriteExecutable writes the data with the mode asked
+// for, and returns os.WriteFile's error for a missing directory
+// (docs/decisions/0044-MADR-write-test-executables-under-the-fork-lock.md
+// D1-A).
+func TestWriteExecutable(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	name := filepath.Join(dir, "exe")
+	const body = "#!/bin/sh\nexit 0\n"
+	if err := WriteExecutable(name, []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(name)
+	if err != nil || string(got) != body {
+		t.Fatalf("content = %q, %v; want %q", got, err, body)
+	}
+	if runtime.GOOS != "windows" {
+		fi, err := os.Stat(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if perm := fi.Mode().Perm(); perm != 0o755 {
+			t.Fatalf("mode = %v, want -rwxr-xr-x", perm)
+		}
+	}
+	if err := WriteExecutable(filepath.Join(dir, "missing", "exe"), []byte(body), 0o755); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("a missing directory gave %v; want fs.ErrNotExist, as os.WriteFile returns", err)
+	}
+}
+
+// TestExecutableWritesUseWriteExecutable: no _test.go file writes a file
+// with an execute bit through os.WriteFile or os.OpenFile. It uses
+// testproc.WriteExecutable, which no fork can race. The body of a godoc
+// Example keeps the standard call, since a reader copies it and cannot
+// import an internal package
+// (docs/decisions/0044-MADR-write-test-executables-under-the-fork-lock.md
+// D2-A, D3-A, F6).
+func TestExecutableWritesUseWriteExecutable(t *testing.T) {
+	root := filepath.Join("..", "..")
+	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
+		t.Fatalf("no module root at %s: run the test from its package directory: %v", root, err)
+	}
+	var found []string
+	files, helpers := 0, 0
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		if d.IsDir() {
+			// This package holds the helper itself.
+			if name := d.Name(); name == "testdata" || name == ".git" || rel == "internal/testproc" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		files++
+		writes, n, err := executableWrites(path, rel)
+		found = append(found, writes...)
+		helpers += n
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(found)
+	for _, f := range found {
+		t.Errorf("%s: write an executable with testproc.WriteExecutable, so no fork inherits its descriptor (0044-MADR D3-A)", f)
+	}
+	if files < 100 || helpers < 70 {
+		t.Errorf("read %d files and %d testproc.WriteExecutable calls; the module has more: is the root wrong?", files, helpers)
+	}
+}
+
+// executableWrites returns "file:line" for each os.WriteFile or os.OpenFile
+// in path whose mode sets an execute bit, outside a godoc Example's body,
+// and the number of testproc.WriteExecutable calls.
+func executableWrites(path, rel string) ([]string, int, error) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
+	if err != nil {
+		return nil, 0, err
+	}
+	osName, tpName := "", ""
+	for _, imp := range f.Imports {
+		p, _ := strconv.Unquote(imp.Path.Value)
+		name := ""
+		if imp.Name != nil {
+			name = imp.Name.Name
+		}
+		switch p {
+		case "os":
+			osName = cmp.Or(name, "os")
+		case "github.com/maccavelli/go-selfupdate-lib/internal/testproc":
+			tpName = cmp.Or(name, "testproc")
+		}
+	}
+	execBit := func(e ast.Expr) bool {
+		set := false
+		ast.Inspect(e, func(n ast.Node) bool {
+			if lit, ok := n.(*ast.BasicLit); ok && lit.Kind == token.INT {
+				if v, err := strconv.ParseInt(lit.Value, 0, 64); err == nil && v&0o111 != 0 {
+					set = true
+				}
+			}
+			return !set
+		})
+		return set
+	}
+	var found []string
+	helpers := 0
+	for _, decl := range f.Decls {
+		if fd, ok := decl.(*ast.FuncDecl); ok && fd.Recv == nil && strings.HasPrefix(fd.Name.Name, "Example") {
+			continue
+		}
+		ast.Inspect(decl, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			sel, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok {
+				return true
+			}
+			id, ok := sel.X.(*ast.Ident)
+			if !ok {
+				return true
+			}
+			switch {
+			case tpName != "" && id.Name == tpName && sel.Sel.Name == "WriteExecutable":
+				helpers++
+			case osName != "" && id.Name == osName && (sel.Sel.Name == "WriteFile" || sel.Sel.Name == "OpenFile") &&
+				len(call.Args) > 0 && execBit(call.Args[len(call.Args)-1]):
+				found = append(found, fmt.Sprintf("%s:%d", rel, fset.Position(call.Pos()).Line))
+			}
+			return true
+		})
+	}
+	return found, helpers, nil
 }
 
 // TestRunTimeMessagesNameNoGoIdentifier: no fmt.Errorf or errors.New in the

@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/maccavelli/go-selfupdate-lib/buildinfo"
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/cli"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/selfupdatetest"
@@ -32,7 +33,7 @@ func exampleUpdater(product, latest string) (*selfupdate.Updater, func(), error)
 		return nil, nil, err
 	}
 	exe := filepath.Join(dir, product)
-	if err := os.WriteFile(exe, []byte("old\n"), 0o700); err != nil { //nolint:gosec // an executable fixture
+	if err := testproc.WriteExecutable(exe, []byte("old\n"), 0o700); err != nil {
 		cleanup()
 		return nil, nil, err
 	}

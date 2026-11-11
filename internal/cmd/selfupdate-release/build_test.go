@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 )
 
@@ -166,7 +167,7 @@ func TestFixtureMarksInstalled(t *testing.T) {
 	if host.OS == goosWindows {
 		exe += ".exe"
 	}
-	if err := os.WriteFile(exe, data, 0o755); err != nil {
+	if err := testproc.WriteExecutable(exe, data, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	want, err := exec.Command(exe, "version").Output()

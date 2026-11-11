@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 )
 
 // Tests for the install path, added by
@@ -316,12 +318,12 @@ func TestInstallDetectsSwappedDirectory(t *testing.T) {
 	if err := os.Mkdir(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(exe, []byte("other-bytes"), 0o755); err != nil {
+	if err := testproc.WriteExecutable(exe, []byte("other-bytes"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	// Plant a regular file at the staging name in the swapped-in directory,
 	// so only the directory identity check can refuse the install.
-	if err := os.WriteFile(path, []byte("planted-bytes"), 0o755); err != nil {
+	if err := testproc.WriteExecutable(path, []byte("planted-bytes"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	_, err := sess.Install(context.Background(), InstallRequest{Product: "demo", Artifact: StagedArtifact{Path: path}})
@@ -342,7 +344,7 @@ func TestStagingRejectsPlantedSymlink(t *testing.T) {
 	sess, exe := standaloneSession(t)
 	path := stageNew(t, sess)
 	other := filepath.Join(filepath.Dir(exe), "planted")
-	if err := os.WriteFile(other, []byte("planted-bytes"), 0o755); err != nil {
+	if err := testproc.WriteExecutable(other, []byte("planted-bytes"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Remove(path); err != nil {
@@ -593,7 +595,7 @@ func TestInstallRefusesTargetReplacedAfterBegin(t *testing.T) {
 		sess, exe := standaloneSession(t)
 		path := stageNew(t, sess)
 		other := exe + ".other"
-		if err := os.WriteFile(other, []byte("swapped-in"), 0o755); err != nil { //nolint:gosec // an executable fixture
+		if err := testproc.WriteExecutable(other, []byte("swapped-in"), 0o755); err != nil {
 			t.Fatal(err)
 		}
 		if err := os.Rename(other, exe); err != nil {

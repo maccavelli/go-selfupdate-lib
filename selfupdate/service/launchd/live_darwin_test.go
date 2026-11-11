@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service/servicetest"
@@ -227,7 +228,7 @@ func buildTo(dst, marker string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(dst, body, 0o755); err != nil { //nolint:gosec // an executable fixture
+	if err := testproc.WriteExecutable(dst, body, 0o755); err != nil {
 		return err
 	}
 	if out, err := exec.Command("/usr/bin/codesign", "--force", "--sign", "-", "--identifier", marker, dst).CombinedOutput(); err != nil {
@@ -392,7 +393,7 @@ func (l *liveLab) Arrange(ctx context.Context, a servicetest.Arrangement) error 
 		keys += fmt.Sprintf("<key>ExitTimeOut</key>\n\t<integer>%d</integer>\n\t", l.exitTimeOut)
 	case servicetest.Crashing:
 		crash := filepath.Join(l.dir, "crash")
-		if err := os.WriteFile(crash, []byte("#!/bin/sh\nexit 3\n"), 0o755); err != nil { //nolint:gosec // an executable fixture
+		if err := testproc.WriteExecutable(crash, []byte("#!/bin/sh\nexit 3\n"), 0o755); err != nil {
 			return err
 		}
 		argv = []string{crash}
@@ -718,7 +719,7 @@ func TestLiveHealthFailureRollsBack(t *testing.T) {
 	e := newLiveJob(t)
 	waitRunning(t, e)
 	bad := filepath.Join(e.dir, "bad")
-	if err := os.WriteFile(bad, []byte("#!/bin/sh\nexit 3\n"), 0o755); err != nil { //nolint:gosec // an executable fixture
+	if err := testproc.WriteExecutable(bad, []byte("#!/bin/sh\nexit 3\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	j, err := liveJobFor(e)
@@ -785,7 +786,7 @@ func TestLiveHandOffHealthFailureReportsRollback(t *testing.T) {
 	requireLive(t)
 	e := newLiveJob(t)
 	waitRunning(t, e)
-	if err := os.WriteFile(filepath.Join(e.dir, "new"), []byte("#!/bin/sh\nexit 3\n"), 0o755); err != nil { //nolint:gosec // an executable fixture
+	if err := testproc.WriteExecutable(filepath.Join(e.dir, "new"), []byte("#!/bin/sh\nexit 3\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(e.dir, "trigger"), nil, 0o600); err != nil {
@@ -888,7 +889,7 @@ func TestLiveReplaceBeforeStopHealthFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	bad := filepath.Join(e.dir, "bad")
-	if err := os.WriteFile(bad, []byte("#!/bin/sh\nexit 3\n"), 0o755); err != nil { //nolint:gosec // an executable fixture
+	if err := testproc.WriteExecutable(bad, []byte("#!/bin/sh\nexit 3\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	j, err := liveJobFor(e)

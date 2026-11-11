@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/releasespec"
 )
@@ -78,7 +79,7 @@ func shells(t *testing.T) []shell {
 func runsStub(t *testing.T, sh shell) bool {
 	t.Helper()
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "uname"), []byte("#!/bin/sh\necho stub\n"), 0o755); err != nil {
+	if err := testproc.WriteExecutable(filepath.Join(dir, "uname"), []byte("#!/bin/sh\necho stub\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	cmd := exec.Command(sh.argv[0], append(slices.Clone(sh.argv[1:]), "-c", "uname")...)
@@ -132,7 +133,7 @@ func newShCase(t *testing.T, sh shell, r installReleases) *shCase {
 // stub puts a script named name ahead of PATH.
 func (c *shCase) stub(name, body string) {
 	c.t.Helper()
-	if err := os.WriteFile(filepath.Join(c.stubs, name), []byte("#!/bin/sh\n"+body+"\n"), 0o755); err != nil {
+	if err := testproc.WriteExecutable(filepath.Join(c.stubs, name), []byte("#!/bin/sh\n"+body+"\n"), 0o755); err != nil {
 		c.t.Fatal(err)
 	}
 }
@@ -159,7 +160,7 @@ func (c *shCase) place(name string, data []byte) {
 	if err := os.MkdirAll(c.dir, 0o755); err != nil {
 		c.t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(c.dir, name), data, 0o755); err != nil {
+	if err := testproc.WriteExecutable(filepath.Join(c.dir, name), data, 0o755); err != nil {
 		c.t.Fatal(err)
 	}
 }

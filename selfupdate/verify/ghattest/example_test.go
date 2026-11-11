@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/selfupdatetest"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
@@ -54,7 +55,7 @@ func TestUpdaterRefusesUnattested(t *testing.T) {
 	}
 	dir := t.TempDir()
 	exe := filepath.Join(dir, "demo")
-	if err := os.WriteFile(exe, []byte("demo v1.0.0\n"), 0o755); err != nil {
+	if err := testproc.WriteExecutable(exe, []byte("demo v1.0.0\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	inst, err := selfupdate.NewStandaloneInstaller(selfupdate.InstallOptions{

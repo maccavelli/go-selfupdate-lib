@@ -15,6 +15,7 @@ import (
 
 	"golang.org/x/sys/windows/svc/mgr"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
 )
 
@@ -105,7 +106,7 @@ func TestLiveHandOffHealthFailureReportsRollback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(cfg.New, whoami, 0o755); err != nil { //nolint:gosec // an executable fixture
+	if err := testproc.WriteExecutable(cfg.New, whoami, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(cfg.Dir, "trigger"), nil, 0o644); err != nil { //nolint:gosec // read by the service

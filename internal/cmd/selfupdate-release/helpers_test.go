@@ -15,6 +15,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 )
 
@@ -228,7 +229,7 @@ func copyDir(t *testing.T, src string) string {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(dst, e.Name()), data, 0o755); err != nil {
+		if err := testproc.WriteExecutable(filepath.Join(dst, e.Name()), data, 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}

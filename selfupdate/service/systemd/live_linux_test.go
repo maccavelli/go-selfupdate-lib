@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/service/servicetest"
@@ -333,7 +334,7 @@ func newLiveEnv(scope Scope) (*liveEnv, error) {
 	if err != nil {
 		return nil, errors.Join(err, os.RemoveAll(dir))
 	}
-	if err := os.WriteFile(e.target, body, 0o755); err != nil { //nolint:gosec // an executable fixture
+	if err := testproc.WriteExecutable(e.target, body, 0o755); err != nil {
 		return nil, errors.Join(err, os.RemoveAll(dir))
 	}
 	unitDir := "/etc/systemd/system"
@@ -551,7 +552,7 @@ func copyFile(t *testing.T, src, dst string, suffix []byte) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(dst, append(body, suffix...), 0o755); err != nil { //nolint:gosec // an executable fixture
+	if err := testproc.WriteExecutable(dst, append(body, suffix...), 0o755); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -599,7 +600,7 @@ func TestLiveHealthFailureRollsBack(t *testing.T) {
 		t.Setenv(scopeEnv, "user")
 	}
 	bad := filepath.Join(e.dir, "bad")
-	if err := os.WriteFile(bad, []byte("#!/bin/sh\nexit 3\n"), 0o755); err != nil { //nolint:gosec // an executable fixture
+	if err := testproc.WriteExecutable(bad, []byte("#!/bin/sh\nexit 3\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	u, err := liveUnit()
@@ -736,7 +737,7 @@ func TestLiveReplaceBeforeStopHealthFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	bad := filepath.Join(e.dir, "bad")
-	if err := os.WriteFile(bad, []byte("#!/bin/sh\nexit 3\n"), 0o755); err != nil { //nolint:gosec // an executable fixture
+	if err := testproc.WriteExecutable(bad, []byte("#!/bin/sh\nexit 3\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	u, err := liveUnit()

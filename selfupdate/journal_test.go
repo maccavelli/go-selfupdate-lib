@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 )
 
 // Tests for docs/decisions/0017-PLAN-verify-build-provenance-and-close-0015-open-items.md
@@ -352,7 +354,7 @@ func plantFile(t *testing.T, path, body string, mode os.FileMode) {
 func plantRecovery(t *testing.T, exe string, p recoveryPlant) {
 	t.Helper()
 	dir := filepath.Dir(exe)
-	if err := os.WriteFile(exe, []byte(p.target), 0o755); err != nil {
+	if err := testproc.WriteExecutable(exe, []byte(p.target), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	plantFile(t, filepath.Join(dir, ".demo.selfupdate.pending"), p.journal, 0o600)
@@ -466,10 +468,10 @@ func TestJournalRecoveryReceiptListed(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, ".demo.selfupdate.pending"), b, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, backup), []byte("old-bytes"), 0o755); err != nil {
+	if err := testproc.WriteExecutable(filepath.Join(dir, backup), []byte("old-bytes"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(exe, []byte("new-bytes"), 0o755); err != nil {
+	if err := testproc.WriteExecutable(exe, []byte("new-bytes"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	root, err := os.OpenRoot(dir)

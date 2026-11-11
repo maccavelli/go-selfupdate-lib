@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/maccavelli/go-selfupdate-lib/buildinfo"
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate"
 	"github.com/maccavelli/go-selfupdate-lib/selfupdate/selfupdatetest"
 )
@@ -431,7 +432,7 @@ func exampleUpdater() (*selfupdate.Updater, func()) {
 		panic(err)
 	}
 	exe := filepath.Join(dir, "demo")
-	if err := os.WriteFile(exe, []byte("old\n"), 0o755); err != nil {
+	if err := testproc.WriteExecutable(exe, []byte("old\n"), 0o755); err != nil {
 		panic(err)
 	}
 	// An apply must be for the running platform (Request.Platform).

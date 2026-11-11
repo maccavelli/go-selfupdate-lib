@@ -4,7 +4,10 @@
 // (docs/decisions/0023-MADR-robust-test-fixtures-and-process-waits.md).
 // CheckNoLeak fails a test that leaves a goroutine running
 // (docs/decisions/0025-MADR-align-with-go-sdk-design-practices.md D4,
-// Amendment A6). Only _test.go files import it.
+// Amendment A6). WriteExecutable writes a file a test may run without a
+// fork inheriting it
+// (docs/decisions/0044-MADR-write-test-executables-under-the-fork-lock.md).
+// Only _test.go files import it.
 //
 // A fixture built in a temporary directory with Go's default -buildvcs=auto
 // fails when a .git above that directory cannot be read, though no fixture
@@ -23,6 +26,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -54,6 +58,20 @@ func Build(dir, out string, env []string, args ...string) error {
 		return fmt.Errorf("go %s in %s: %w\n%s", strings.Join(full, " "), dir, err, b)
 	}
 	return nil
+}
+
+// WriteExecutable is os.WriteFile for a file a test may run. It writes
+// while holding syscall.ForkLock for reading, which a fork holds for
+// writing, so no process starts while the file is open. A process forked
+// then would inherit the write descriptor, and until it called exec,
+// Linux would refuse to run the file with ETXTBSY, "text file busy"
+// (go.dev/issue/22315;
+// docs/decisions/0044-MADR-write-test-executables-under-the-fork-lock.md
+// D1-A).
+func WriteExecutable(name string, data []byte, perm os.FileMode) error {
+	syscall.ForkLock.RLock()
+	defer syscall.ForkLock.RUnlock()
+	return os.WriteFile(name, data, perm)
 }
 
 // Proc is a helper process Start started.

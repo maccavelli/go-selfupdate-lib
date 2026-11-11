@@ -16,6 +16,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 )
 
 // The live test of the supervised adapter over a real s6 tree
@@ -201,7 +203,7 @@ func replace(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(dst+".tmp", body, 0o755); err != nil { //nolint:gosec // an executable fixture
+	if err := testproc.WriteExecutable(dst+".tmp", body, 0o755); err != nil {
 		return err
 	}
 	return os.Rename(dst+".tmp", dst)
@@ -219,7 +221,7 @@ func copyBuild(t *testing.T, dst, marker string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(dst, append(body, marker...), 0o755); err != nil { //nolint:gosec // an executable fixture
+	if err := testproc.WriteExecutable(dst, append(body, marker...), 0o755); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -276,7 +278,7 @@ func TestLiveSupervisedS6(t *testing.T) {
 	target := filepath.Join(dir, "demo")
 	copyBuild(t, target, "\nold build\n")
 	run := fmt.Sprintf("#!/bin/sh\nexec env %s=s6service FAKE_DIR=%s %s\n", fakeEnv, dir, target)
-	if err := os.WriteFile(filepath.Join(svc, "run"), []byte(run), 0o755); err != nil { //nolint:gosec // the service's run script
+	if err := testproc.WriteExecutable(filepath.Join(svc, "run"), []byte(run), 0o755); err != nil { //nolint:gosec // the service's run script
 		t.Fatal(err)
 	}
 	tree := exec.Command(svscan, scan) //nolint:gosec // s6-svscan at its installed path, over the test's scan directory

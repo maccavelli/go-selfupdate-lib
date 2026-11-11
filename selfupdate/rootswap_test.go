@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 )
 
 // Tests that the install path resolves every name through the session's
@@ -57,7 +59,7 @@ func swapToDecoy(t *testing.T, dir string, names ...string) *decoy {
 		t.Fatal(err)
 	}
 	for _, name := range append([]string{"demo"}, names...) {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte("decoy "+name), 0o755); err != nil {
+		if err := testproc.WriteExecutable(filepath.Join(dir, name), []byte("decoy "+name), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -305,7 +307,7 @@ func TestClearSpecialBitsThroughRoot(t *testing.T) {
 	skipSwapOnWindows(t)
 	dir := t.TempDir()
 	kept := filepath.Join(dir, ".demo.selfupdate-kept-1")
-	if err := os.WriteFile(kept, []byte("old-bytes"), 0o755); err != nil {
+	if err := testproc.WriteExecutable(kept, []byte("old-bytes"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Chmod(kept, os.ModeSetuid|0o755); err != nil {
@@ -314,7 +316,7 @@ func TestClearSpecialBitsThroughRoot(t *testing.T) {
 	root := testRoot(t, dir)
 	d := swapToDecoy(t, dir)
 	decoyKept := filepath.Join(dir, filepath.Base(kept))
-	if err := os.WriteFile(decoyKept, []byte("decoy"), 0o755); err != nil {
+	if err := testproc.WriteExecutable(decoyKept, []byte("decoy"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Chmod(decoyKept, os.ModeSetuid|0o755); err != nil {

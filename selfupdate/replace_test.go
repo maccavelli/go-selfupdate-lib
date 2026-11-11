@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"syscall"
 	"testing"
+
+	"github.com/maccavelli/go-selfupdate-lib/internal/testproc"
 )
 
 func TestStandaloneReplaceAndRollbackMaterial(t *testing.T) {
@@ -68,7 +70,7 @@ func TestChmodStagingCopiesPerm(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	old := filepath.Join(dir, "old")
-	if err := os.WriteFile(old, []byte("old"), 0o755); err != nil {
+	if err := testproc.WriteExecutable(old, []byte("old"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	info, err := os.Stat(old)
