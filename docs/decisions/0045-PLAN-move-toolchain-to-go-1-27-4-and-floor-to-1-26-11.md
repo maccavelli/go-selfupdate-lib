@@ -594,8 +594,15 @@ itself is made by the coordinator, not by this phase.
      may publish, and it runs before the tag exists, as 0043-PLAN ran it);
      `git tag -l v1.26.3` printed nothing.
 
-**Not yet done at that point:** step 3, the tag; step 4, the tag's CI run;
-step 5, the pin commit; step 6, the proxy. They follow below.
+**Not yet done:** step 3, the tag (the owner's word is given; the
+coordinator tags the pre-tag commit after its push and a green Docs run);
+step 4, the tag's CI run; step 5, the pin commit; step 6, the proxy.
+
+*(2026-11-17, later: all four are done; see "P5 steps 3 to 6 and P6"
+below: the pre-tag commit `1dffdc9`, the tag `v1.26.3`, and the pin commit
+`5b48b09`. The paragraph above was committed in `1dffdc9`, removed in
+error by `5b48b09`, and restored by the correction recorded at the end of
+the execution record.)*
 
 ### P5 steps 3 to 6 and P6 (2026-11-17)
 
@@ -722,7 +729,27 @@ tagged commit (`v1.26.2^{}` was `e62d77c…`); the peeled `v1.26.3` is
 **Open, outside this plan:** the three consumers' pins (table above), the
 govulncheck pin (`v1.8.0`), and this plan's push of the pin commit.
 
+### A correction to this record (2026-11-17)
+
+Commit `5b48b09` (the pin commit and this plan's closing) removed two
+statements that `1dffdc9` and earlier commits had put in this record: the
+"**Not yet done:**" paragraph at the end of "P5, steps 1 and 2", which it
+replaced with a reworded one, and "None yet." under Deviations. A committed
+record is changed by dated annotation, not by removal. This correction
+restores both word for word, each with a dated note beside it. It is the
+coordinator's and the agent's joint slip: the coordinator committed in the
+same step in which it printed the removed lines, and the agent made the
+edit. Nothing else in `9801a4a`, `d623ec1`, `da5a8bb`, `1dffdc9` or
+`5b48b09` removed or rewrote a line of a record that an earlier commit had
+put there, apart from the intended front-matter `status:` change and the
+index row's status, and `1dffdc9`'s rename of the changelog's `## Unreleased`
+heading to the release's, which the release procedure prescribes.
+
 ## Deviations
+
+None yet.
+
+*(2026-11-17, later: superseded by the dated entry below.)*
 
 ### 2026-11-17: the tag's CI, attempt 1
 
