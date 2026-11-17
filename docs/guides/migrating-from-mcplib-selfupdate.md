@@ -107,6 +107,8 @@ the messages a program's user meets at run time: see
 [From v1.26.0 to v1.26.1](#from-v1260-to-v1261).
 `v1.26.2` changes no API: a managed install's failure names its phrase
 once; see [From v1.26.1 to v1.26.2](#from-v1261-to-v1262).
+`v1.26.3` changes no API either, and raises the Go floor to 1.26.11 and
+the toolchain to 1.27.4: see [From v1.26.2 to v1.26.3](#from-v1262-to-v1263).
 
 Replace every `github.com/maccavelli/mcplib/selfupdate` import with
 `github.com/maccavelli/go-selfupdate-lib/selfupdate`. No identifier or signature
@@ -2171,6 +2173,33 @@ Adopting it:
 - Nothing is required by a program that matches errors with `errors.Is`.
 - A program, or a test, that matched a managed install's whole message
   loses the match. Match `ErrManagedInstall` instead.
+
+### From v1.26.2 to v1.26.3
+
+`v1.26.3` changes no exported API: `make apicheck` reports it compatible
+with `v1.26.2`. §26's `go get` above takes the current release. What
+changed, and why, is in
+[0045-MADR](../decisions/0045-MADR-move-toolchain-to-go-1-27-4-and-floor-to-1-26-11.md).
+
+- **The floor is Go 1.26.11.** Go 1.26.10 and 1.27.3 carry GO-2026-6859,
+  in `net/http`, which `govulncheck` reaches through `GitHubSource`'s
+  client. `go get` of `v1.26.3` raises a `go 1.26.10` line to
+  `go 1.26.11`.
+- **The toolchain is Go 1.27.4,** the `toolchain` line. CI builds with
+  it, and so do the publish workflow's release tools for a caller that
+  pins `v1.26.3`. CI's `go126` job tests the floor, 1.26.11.
+
+Adopting it:
+
+- **Build your program with Go 1.27.4 or 1.26.11.** The fix reaches your
+  binary only through your own toolchain: a `toolchain go1.27.4` line,
+  or your build host's Go.
+- **A program on exactly Go 1.26.10** with `GOTOOLCHAIN=local` moves to
+  1.26.11 or later to build against `v1.26.3`; the `go` command
+  otherwise selects it.
+- **Move your workflow pins to `v1.26.3`,** so that the publish workflow
+  builds its release tools with 1.27.4.
+- Nothing else is required.
 
 ### Check
 

@@ -515,6 +515,89 @@ job on Linux (P4). The `-race` and gate runs on the Linux machine used the
 installed 1.27.4. The `toolchain` line taking effect on a runner is not
 shown locally (MADR E3) and waits for P4.
 
+### P4 (2026-11-17)
+
+P1 to P3 were committed and pushed as `da5a8bb` ("Staged, not committed"
+above is history). Read-only: `gh run list` and `gh run view` for that
+commit, one bounded `gh run watch`, and the run's log.
+
+* **"CI" on `da5a8bb`: `completed`, `success`, 18 of 18 jobs.** Every job
+  reports `completed`, `success`; none failed, none was cancelled, and none
+  ran zero steps.
+* **"Docs" on `da5a8bb`: `completed`, `success`.**
+* **The `go.mod`-driven jobs print `go1.27.4`** (from the `setup-go` step,
+  `go-version-file: go.mod`):
+
+  | Job | Lines |
+  | :--- | :--- |
+  | `validate (ubuntu-24.04)` | "Setup go version spec 1.27.4"; "go version go1.27.4 linux/amd64" |
+  | `validate (macos-15)` | "Setup go version spec 1.27.4"; "go version go1.27.4 darwin/arm64" |
+  | `validate (windows-2025)` | "Setup go version spec 1.27.4"; "go version go1.27.4 windows/amd64" |
+  | `installer-containers` | "Setup go version spec 1.27.4"; "go version go1.27.4 linux/amd64" |
+  | `release-rehearsal-check` | "Setup go version spec 1.27.4"; "go version go1.27.4 linux/amd64" |
+
+* **The floor job prints `go1.26.11`:** `go126` shows "Setup go version
+  spec 1.26.11" and "go version go1.26.11 linux/amd64" (its step "the
+  floor toolchain", the `GOVERSION` test, passed).
+* **`govulncheck`, both steps:** `validate (ubuntu-24.04)`, step
+  "govulncheck": "No vulnerabilities found."; `go126`, step "govulncheck,
+  the floor toolchain": "No vulnerabilities found."
+* **The two rehearsal build jobs,** which build the stand-in caller from its
+  own `go.mod` (`go-version-file:
+  src/internal/cmd/selfupdate-release/testdata/fixture/go.mod`):
+  `release-rehearsal / build` and `release-rehearsal-archive / build` each
+  show "Setup go version spec 1.26.11" and "go version go1.26.11
+  linux/amd64".
+
+This is the first full CI run since 2026-11-11, and the red the MADR
+predicted (E5) did not occur: the `validate` and `go126` `govulncheck`
+steps are green on 1.27.4 and 1.26.11. That both tools pass shows
+`actions/setup-go` installs 1.27.4 and 1.26.11 (MADR "Not verified").
+Not shown by this run: CI's `govulncheck` v1.8.0 finding GO-2026-6859 on
+the old versions (only v1.9.0 ran there, locally).
+
+### P5, steps 1 and 2 (2026-11-17)
+
+Staged, not committed. The owner's word for the release, relayed by the
+coordinator: "you may tag and push: the go-selfupdate-lib v1.26.3 tag once
+its CI is green." Its CI condition for `da5a8bb` is met above; the tag
+itself is made by the coordinator, not by this phase.
+
+1. **The pre-tag change** (Markdown only; every line re-derived from
+   `da5a8bb` first), by one script that asserted each old string occurred
+   once and read the result back:
+   * `CHANGELOG.md:11` `## Unreleased` is now `## v1.26.3 - 2026-11-17`;
+     `:13` links the guide's new section
+     (`#from-v1262-to-v1263`), and `:14-15` still link 0045-MADR and
+     0045-PLAN by filename; the "Security" entry stays, with "this
+     release" and "a caller that pins `v1.26.3`" in place of "the next
+     release" (`:23-26`);
+   * `docs/guides/migrating-from-mcplib-selfupdate.md:110-111` the guide's
+     per-release list gains a `v1.26.3` line, as 0029's W2 did for
+     `v1.17.2` (a small addition beyond the plan's step 1, naming the
+     release where the guide names every release);
+   * the guide's new `### From v1.26.2 to v1.26.3`
+     (`:2177-2203`), before `### Check`: no exported API change (`make
+     apicheck` compatible with `v1.26.2`), the floor 1.26.11 and
+     GO-2026-6859, the toolchain 1.27.4 and the `go126` job, and under
+     "Adopting it" to build with 1.27.4 or 1.26.11, that a program on
+     exactly 1.26.10 with `GOTOOLCHAIN=local` moves, and to move workflow
+     pins to `v1.26.3` so the release tools build with 1.27.4.
+2. **Gate and tag check:**
+   * `make gate` through `run-heavy` on this Mac, `SELFUPDATE_REQUIRE_PYTHON=1`:
+     19:42:14 UTC queued, started 19:51:24, ended 19:58:59, exit 0, every
+     step `rc=0`, `apicheck` "compatible with v1.26.2", `vuln` "No
+     vulnerabilities found.", links "1032 links in 119 files, 0 broken",
+     `overall=0`;
+   * `scripts/check-release-tag.sh v1.26.3`: exit 0, printing nothing (it
+     checks that the tag name is a stable semver tag the release workflow
+     may publish, and it runs before the tag exists, as 0043-PLAN ran it);
+     `git tag -l v1.26.3` printed nothing.
+
+**Not yet done:** step 3, the tag (the owner's word is given; the
+coordinator tags the pre-tag commit after its push and a green Docs run);
+step 4, the tag's CI run; step 5, the pin commit; step 6, the proxy.
+
 ## Deviations
 
 None yet.
