@@ -366,6 +366,62 @@ the first draft, which records are amended, was not put to the owner: the
 coordinator applied the author's recommendation (MADR D4), and the owner
 is told.
 
+### P0 (2026-11-17)
+
+Staged, not committed. The pair itself was committed and pushed as
+`9801a4a`, on top of `bab09ae`, before this phase.
+
+1. **The hosts, read-only,** `go version` and `go env GOTOOLCHAIN`, by
+   role:
+
+   | Host | `go version` | `GOTOOLCHAIN` |
+   | :--- | :--- | :--- |
+   | this Mac | `go1.27.4 darwin/arm64` | `go1.27.4` |
+   | the Linux machine | `go1.27.4 linux/amd64` | `go1.27.4` |
+   | the Windows laptop | `go1.27.4 windows/amd64` | `go1.27.4` |
+   | the Windows laptop's WSL distribution | `go1.27.4 linux/amd64` | `go1.27.4` |
+
+   None is below 1.27.4, so the phase went on. Go 1.26.11 in each module
+   cache: this Mac yes (`toolchain@v0.0.1-go1.26.11.darwin-arm64`, beside
+   1.26.10, 1.27.3 and 1.27.4); the Linux machine no (1.26.6, 1.27.3 and
+   1.27.4); the Windows laptop no (1.26.10 is its newest 1.26). Nothing
+   was installed or downloaded.
+2. **The red re-run,** on this Mac, `govulncheck` v1.9.0, database
+   updated 2026-11-11 02:51:11 UTC, from the module cache. Each command
+   was `GOTOOLCHAIN=<version> GOFLAGS=-mod=mod GOPROXY=off govulncheck
+   ./...` in the repository root; the tree stayed clean.
+
+   | `GOTOOLCHAIN` | Exit | Output lines |
+   | :--- | :--- | :--- |
+   | `go1.27.3` | 3 | "Vulnerability #1: GO-2026-6859"; "Found in: net/http@go1.27.3"; "Fixed in: net/http@go1.27.4"; "Your code is affected by 1 vulnerability from the Go standard library." |
+   | `go1.27.4` | 0 | "No vulnerabilities found." |
+   | `go1.26.10` | 3 | "Vulnerability #1: GO-2026-6859"; "Found in: net/http@go1.26.10"; "Fixed in: net/http@go1.26.11"; "Your code is affected by 1 vulnerability from the Go standard library." |
+   | `go1.26.11` | 0 | "No vulnerabilities found." |
+
+   This is MADR E4's measurement, repeated, with the same four exits.
+3. **The amendments,** each a dated addition that rewrites nothing,
+   citing 0045-MADR by full filename:
+   * `0018-MADR-move-toolchain-to-go-1-27-2.md`: A3, "the toolchain line
+     is go1.27.4", after A2 (`:203`);
+   * `0029-MADR-move-toolchain-to-go-1-27-3-and-floor-to-1-26-10.md`: a
+     new `## Amendments` (`:240`) with A1, "the toolchain line is go1.27.4
+     and the floor is go 1.26.11" (`:242`);
+   * `0025-MADR-align-with-go-sdk-design-practices.md`: Amendment A8,
+     "the floor is go 1.26.11", after A7 (`:880`). It cites the owner's D1
+     label and says the text is the coordinator's application.
+
+   Each states that its text is the coordinator's application (MADR D4),
+   not the owner's ruling. `docs/README.md` needed no change: no row's
+   status moved.
+4. **Not done, and why:** no commit, push or tag (the coordinator commits
+   each phase). The checks of the plan's step 4 are recorded in this
+   phase's handoff, not here, because they run after this entry.
+5. **CI observation, read-only:** `gh run list --commit
+   9801a4a9d75cc3f7779d6e7c6269c7724c64fabb` lists one run, "Docs",
+   `success`. No "CI" run started, because the commit changed Markdown
+   only (0028-MADR); the red the MADR predicts (E5) is therefore not yet
+   observed in CI.
+
 ## Deviations
 
 None yet.

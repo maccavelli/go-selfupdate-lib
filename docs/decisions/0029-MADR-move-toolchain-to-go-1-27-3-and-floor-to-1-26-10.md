@@ -237,6 +237,25 @@ version CI tests.
 * Bad, because 0028's tag behaviour (V4) stays unproven until some later
   release.
 
+## Amendments
+
+### A1 (2026-11-17): the toolchain line is go1.27.4 and the floor is go 1.26.11
+
+*Status: accepted (2026-11-17), as
+[0045-MADR](0045-MADR-move-toolchain-to-go-1-27-4-and-floor-to-1-26-11.md).
+The amendment itself is the coordinator's application, following this
+record's practice (0018-MADR A2, 0025-MADR A7); the owner ruled on the
+toolchain and the floor.*
+
+GO-2026-6859, in `net/http`, is reported by `govulncheck` in Go 1.27.3
+and in 1.26.10, which this record chose as the toolchain and the floor,
+and in neither 1.27.4 nor 1.26.11. 0045-MADR sets `toolchain go1.27.4`
+and `go 1.26.11` in place of this record's outcome 1, and moves the
+`go126` job and the test fixtures with the floor, as outcomes 2 and 3
+here did. This record's reason for a floor on the older supported line,
+and its refusal of option B (a job on one version and a `go` line on
+another), stand. The rest of this record is kept as written.
+
 ## More Information
 
 * `govulncheck` outputs of 2026-10-21, per toolchain, quoted above.

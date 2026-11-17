@@ -200,6 +200,20 @@ go1.27.2`, for the reason this record gave: nothing this module builds
 ships on a toolchain with a published advisory. It also moves the floor
 to `go 1.26.10`. The rest of this record is kept as written.
 
+### A3 (2026-11-17): the toolchain line is go1.27.4
+
+*Status: accepted (2026-11-17), as
+[0045-MADR](0045-MADR-move-toolchain-to-go-1-27-4-and-floor-to-1-26-11.md).
+Applied by the coordinator, following the practice of A2; the owner ruled
+on the toolchain and the floor, not on this amendment.*
+
+GO-2026-6859, in `net/http`, is reported by `govulncheck` in Go 1.27.3
+and in 1.26.10, and in neither 1.27.4 nor 1.26.11. 0045-MADR sets
+`toolchain go1.27.4` in place of A2's `toolchain go1.27.3`, for the reason
+this record gave: nothing this module builds ships on a toolchain with a
+published advisory. It also moves the floor to `go 1.26.11`. The rest of
+this record is kept as written.
+
 ## More Information
 
 * `govulncheck ./...` output of 2026-10-08, in 0017 Q2's gate output: the

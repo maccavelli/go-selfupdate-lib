@@ -877,6 +877,30 @@ D8's reason for a 1.26 floor stands: the library needs nothing from
 1.27, and Go 1.26 is still supported. The rest of this record is kept
 as written.
 
+### Amendment A8 (2026-11-17): the floor is `go 1.26.11`
+
+Accepted by the owner as Chosen label "Raise the floor to 1.26.11
+(Recommended)", recorded in
+[0045-MADR](0045-MADR-move-toolchain-to-go-1-27-4-and-floor-to-1-26-11.md)
+D1. This amendment's text is the coordinator's application of that
+record, following Amendment A7's practice.
+
+GO-2026-6859, in `net/http`, is reported by `govulncheck` in Go 1.26.10
+and in 1.27.3, and in neither 1.26.11 nor 1.27.4. Amendment A7's reason
+for 1.26.10, that it was advisory-free, therefore no longer holds.
+
+Decided:
+
+* `go.mod`'s line becomes `go 1.26.11`, and the toolchain line
+  `toolchain go1.27.4`;
+* the `go126` job builds, vets, tests and runs `govulncheck` with
+  1.26.11;
+* the test fixtures' `go` lines follow, as Amendment A7's did.
+
+D8's reason for a 1.26 floor stands: the library needs nothing from
+1.27, and Go 1.26 is still supported. The rest of this record is kept
+as written.
+
 ### Consequences
 
 * Good, because a program that logs its updater, its options or a
