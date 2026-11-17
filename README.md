@@ -28,11 +28,11 @@ require 1.26.10, `v1.16.0` to `v1.17.1` 1.26.9, and `v1.15.2` and earlier
 1.27.1. It is built and tested with Go 1.27.4 (its `toolchain` line), and
 CI also tests it with 1.26.11; `govulncheck` v1.9.0 found no advisory in
 either on 2026-11-17, where 1.27.3 and 1.26.10 carry GO-2026-6859
-([0045-MADR](docs/decisions/0045-MADR-move-toolchain-to-go-1-27-4-and-floor-to-1-26-11.md)). Build your program with one of them. The current release is `v1.26.2`. `v1.5.0` was
+([0045-MADR](docs/decisions/0045-MADR-move-toolchain-to-go-1-27-4-and-floor-to-1-26-11.md)). Build your program with one of them. The current release is `v1.26.3`. `v1.5.0` was
 the first under this path:
 
 ```bash
-go get github.com/maccavelli/go-selfupdate-lib@v1.26.2
+go get github.com/maccavelli/go-selfupdate-lib@v1.26.3
 ```
 
 | Package | What it does |
@@ -178,7 +178,7 @@ release:
     contents: write
     id-token: write
     attestations: write
-  uses: maccavelli/go-selfupdate-lib/.github/workflows/publish-selfupdate-release.yml@e62d77cddaf264cc6ec7bbc4f39b90322542f752 # v1.26.2
+  uses: maccavelli/go-selfupdate-lib/.github/workflows/publish-selfupdate-release.yml@1dffdc9dee24a7534513dc51c9039408be37c09b # v1.26.3
   with:
     artifact-name: <the uploaded artifact holding the staged release>
     products-json: '["<product>"]'

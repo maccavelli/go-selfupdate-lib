@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 date: 2026-11-17
 associated-madr: "0045-MADR-move-toolchain-to-go-1-27-4-and-floor-to-1-26-11.md"
 ---
@@ -594,10 +594,141 @@ itself is made by the coordinator, not by this phase.
      may publish, and it runs before the tag exists, as 0043-PLAN ran it);
      `git tag -l v1.26.3` printed nothing.
 
-**Not yet done:** step 3, the tag (the owner's word is given; the
-coordinator tags the pre-tag commit after its push and a green Docs run);
-step 4, the tag's CI run; step 5, the pin commit; step 6, the proxy.
+**Not yet done at that point:** step 3, the tag; step 4, the tag's CI run;
+step 5, the pin commit; step 6, the proxy. They follow below.
+
+### P5 steps 3 to 6 and P6 (2026-11-17)
+
+The pre-tag change was committed and pushed by the coordinator as
+`1dffdc9` (its "Docs" run passed; no "CI" run started, since it changed
+Markdown only); the earlier "Staged, not committed" lines above are
+history. P1 to P3 had been committed as `da5a8bb`.
+
+**Step 3, the tag (the coordinator's, on the owner's word).** The owner's
+word, relayed by the coordinator: "you may tag and push: the
+go-selfupdate-lib v1.26.3 tag once its CI is green." The coordinator ran
+`scripts/check-release-tag.sh v1.26.3` (exit 0), made the annotated,
+unsigned tag `v1.26.3` (tag object `10316bca82c00aeefde4bc614d183d343ed5818e`,
+message exactly `v1.26.3`) on `1dffdc9dee24a7534513dc51c9039408be37c09b`,
+ran the disclosure guard over the outgoing tag (exit 0) and pushed it.
+`git ls-remote --tags origin 'refs/tags/v1.26.3*'` lists the tag object and
+the peeled commit `1dffdc9dee24a7534513dc51c9039408be37c09b`.
+
+**Step 4, the tag's CI.**
+
+* **Attempt 1** (created 20:02:13 UTC, `failure`): 17 of 18 jobs
+  `success`; `validate (macos-15)` ran **zero steps** and was `cancelled`,
+  started 20:02:14 and completed 20:17:14 UTC, exactly 15 minutes, with no
+  test run: the hosted-runner-capacity failure the coordinator had seen
+  four times that day across three repositories. The logs of that attempt
+  could not be fetched while it was `failure`.
+* **The coordinator's decision (not the owner's):** on those facts it
+  re-ran that one job once, `gh run rerun <run> --failed`, exit 0.
+* **Attempt 2:** `completed`, `success`; `validate (macos-15)` `completed`
+  `success`, 33 steps, started 20:21:24 UTC. All 18 jobs are green; no
+  "Docs" run started for the tag (the only "Docs" run on `1dffdc9` is the
+  one on `main`).
+* **Log lines (attempt 2, now readable):**
+  * the identity legs, each "selfupdate-release identity: <artifact>
+    reports "v1.26.3 (release) 1dffdc9dee24"" for `relay-linux-amd64`,
+    `relay-linux-arm64`, `relay-darwin-arm64`, `relay-windows-amd64.exe`
+    and `relay-windows-arm64.exe` (the `release-rehearsal` jobs) and for
+    the five archives (`.tar.gz`, `.gz`, `.zip`) of `release-rehearsal-archive`:
+    ten lines, one per platform and artifact kind;
+  * "Setup go version spec 1.27.4" and "go version go1.27.4" for
+    `validate` on `linux/amd64`, `darwin/arm64` and `windows/amd64`,
+    `installer-containers` and `release-rehearsal-check`; "Setup go
+    version spec 1.26.11" and "go version go1.26.11 linux/amd64" for
+    `go126` and both rehearsal `build` jobs;
+  * `govulncheck`: `validate (ubuntu-24.04)` and `go126`, each "No
+    vulnerabilities found."
+
+**Step 5, the pin commit (Markdown only).** One script, `assert` on each
+old string's count, each result read back. The earlier practice pins the
+tagged commit (`v1.26.2^{}` was `e62d77c…`); the peeled `v1.26.3` is
+`1dffdc9dee24a7534513dc51c9039408be37c09b`.
+
+* `README.md`: `:31` "The current release is `v1.26.3`"; `:35` the `go get`;
+  `:181` the publish workflow pin, now the commit
+  `1dffdc9dee24a7534513dc51c9039408be37c09b` with the comment `v1.26.3`.
+* `docs/architecture.md:37-38`: the current release `v1.26.3` and its
+  commit.
+* `docs/guides/building-releases.md`: `:27` "pin `v1.26.3`'s"; `:180`,
+  `:292` the build workflow pins, `:191` the publish workflow pin; `:205`
+  the `ls-remote` line (`'refs/tags/v1.26.3^{}'`).
+* `docs/guides/migrating-from-mcplib-selfupdate.md`: the 22 `go get …@v1.26.2`
+  lines (first at `:35`) and the 20 "gives `v1.26.2`" checks (the last, in
+  the "Check" under the new section, at `:2207`) now say `v1.26.3`; `:38`
+  "`v1.26.3` is the current release"; `:163` the workflow pin; `:183`
+  "and from `v1.26.3` with 1.27.4" added; `:187-188` "`v1.17.2` to
+  `v1.26.3` nothing; the example pins `v1.26.3`"; `:196` the `ls-remote`
+  line; `:242` the `go.mod` adoption line, now "`v1.26.3`, with
+  `go 1.26.11`" (the row P1 left open).
+* **Left, as history:** `README.md:26`; guide `:17`, `:108-109`, `:111`,
+  `:2145-2158` (the whole "From v1.26.1 to v1.26.2" section),
+  `:2177-2180` (the new section's references to `v1.26.2`); the changelog
+  and the records.
+* **Gate and checks:** `make gate` through `run-heavy` on this Mac,
+  `SELFUPDATE_REQUIRE_PYTHON=1`: queued 20:21:34 UTC, started 20:29:54,
+  ended 20:37:46, exit 0, every step `rc=0`, `apicheck` "compatible with
+  v1.26.3", `vuln` "No vulnerabilities found.", links "1032 links in 119
+  files, 0 broken", `overall=0`. The version-agreement script (its
+  changelog check now reads the newest entry, since `## Unreleased` is
+  gone) exits 0.
+
+**Step 6, the proxy** (read-only, a scratch module cache):
+
+* `go list -m -json github.com/maccavelli/go-selfupdate-lib@v1.26.3`:
+  `Version` `v1.26.3`, `Time` 2026-11-17T20:01:01Z, `GoVersion` `1.26.11`,
+  `Origin.Hash` `1dffdc9dee24a7534513dc51c9039408be37c09b`, `Ref`
+  `refs/tags/v1.26.3`; `@latest` resolves to `v1.26.3`.
+* The proxy's `v1.26.3.mod` says `go 1.26.11` and `toolchain go1.27.4`.
+
+**The consumers** (read-only, 2026-11-17; none touched). Each adopts
+`v1.26.3` by moving its `require` and both workflow pins:
+
+| Repository | `go` line | Requires | Workflow pins (build, publish) | To adopt |
+| :--- | :--- | :--- | :--- | :--- |
+| gobble-cli | `go 1.27.4` | `v1.26.2` | `e62d77cddaf264cc6ec7bbc4f39b90322542f752`, `# v1.26.2` | `require` `v1.26.3`; both pins `1dffdc9dee24a7534513dc51c9039408be37c09b`, `# v1.26.3` |
+| magic-cli-remote | `go 1.27.4` | `v1.26.2` | the same commit, `# go-selfupdate-lib v1.26.2` | the same |
+| prepare-commit-msg | `go 1.27.3` | `v1.26.0` | `7c677842dface4b14b65b2e8b46aa0a7543bed13`, `# v1.26.0` | the same; its own `go 1.27.3` still carries GO-2026-6859 until that repository moves it |
+
+**P6, closing: the verification.**
+
+* **V1 (red):** `govulncheck` exited 3 under `go1.27.3` and `go1.26.10`
+  and 0 under `go1.27.4` and `go1.26.11` (P0, repeated from the MADR's E4).
+* **V2 (agreement):** the P2 script exited 0 on the tree at P2, and 0 after
+  the release, and non-zero on all three planted copies (P2).
+* **V3 (local):** `make gate` `overall=0` with `vuln rc=0` at P3, P5 step 2
+  and step 5; the `go126` steps passed under `GOTOOLCHAIN=go1.26.11`;
+  `govulncheck` exited 0 under `go1.27.4` and `go1.26.11`.
+* **V4 (CI):** the push of `da5a8bb` passed all 18 jobs on the toolchains
+  P4 names, and "Docs" passed.
+* **V5 (the release):** the tag's CI passed all 18 jobs on attempt 2 (the
+  attempt-1 cancellation is above), its identity legs print `v1.26.3
+  (release) 1dffdc9dee24`, and the proxy serves `v1.26.3` with the right
+  `go.mod`.
+* **V6 (the docs):** `git grep` for `1.27.3`, `go1.27.3`, `1.26.10` and
+  `go1.26.10` outside the records and the changelog finds only history and
+  comparison statements: README `:27`, `:30`; the architecture page `:24`;
+  the guide's earlier sections and its new section's description of the
+  older versions; the docs index's 0029 rows; and
+  `selfupdate/githubupdater.go:104`, kept (MADR E7). Links, identifiers,
+  records and markdownlint are clean (below).
+* The pin commit and this entry are staged for the coordinator to commit
+  and push; the plan is `complete` on the criteria above. The MADR stays
+  `accepted`.
+
+**Open, outside this plan:** the three consumers' pins (table above), the
+govulncheck pin (`v1.8.0`), and this plan's push of the pin commit.
 
 ## Deviations
 
-None yet.
+### 2026-11-17: the tag's CI, attempt 1
+
+Found: `validate (macos-15)` ran zero steps and was cancelled at 15
+minutes (20:02:14 to 20:17:14 UTC); the run concluded `failure`. The plan
+treats a failed CI run as ending the phase. Decision (the coordinator's,
+on the runner-capacity pattern it had seen four times that day, not the
+owner's): re-run that one job once. Result: attempt 2 green, 18 of 18
+jobs. No file in this plan's scope changed because of it.
