@@ -8,6 +8,22 @@ listed in the
 [migration guide](docs/guides/migrating-from-mcplib-selfupdate.md), one
 section per release, and each entry links its section and its records.
 
+## Unreleased
+
+See [the guide](docs/guides/migrating-from-mcplib-selfupdate.md#1-go-12611-or-later),
+[0045-MADR](docs/decisions/0045-MADR-move-toolchain-to-go-1-27-4-and-floor-to-1-26-11.md) and
+[0045-PLAN](docs/decisions/0045-PLAN-move-toolchain-to-go-1-27-4-and-floor-to-1-26-11.md).
+
+### Security
+
+- The module requires Go 1.26.11, not 1.26.10, and is built and tested
+  with Go 1.27.4, not 1.27.3. Both older versions carry GO-2026-6859, in
+  `net/http`, which `govulncheck` reaches through `GitHubSource`'s client.
+  CI's `go126` job tests 1.26.11. A program on exactly Go 1.26.10 moves
+  to 1.26.11 or later to take the next release.
+- For a caller that pins the next release, the publish workflow builds
+  its release tools with Go 1.27.4.
+
 ## v1.26.2 - 2026-11-10
 
 ### Fixed

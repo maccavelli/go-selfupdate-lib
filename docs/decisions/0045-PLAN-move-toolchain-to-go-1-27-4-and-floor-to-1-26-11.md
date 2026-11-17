@@ -422,6 +422,99 @@ Staged, not committed. The pair itself was committed and pushed as
    only (0028-MADR); the red the MADR predicts (E5) is therefore not yet
    observed in CI.
 
+### P1, P2 and P3 (2026-11-17)
+
+Staged, not committed. P0 was committed and pushed as `d623ec1`
+(2026-11-17); P0's "Staged, not committed" above is history. HEAD was
+`d623ec1` with a clean tree when this began, and every plan line number
+below was re-derived from it and matched.
+
+**P1, the change set.** One script (`assert` before each replace, each
+result read back) made every edit; `go mod tidy -diff` exits 0 and `go.sum`
+is unchanged.
+
+* `go.mod:3` `go 1.26.11`, `:5` `toolchain go1.27.4` (nothing else in the
+  file moved).
+* `.github/workflows/ci.yml`: the comment `:322-327` (floor 1.26.11,
+  "switching to 1.27.4", Amendments A1, A7 and A8, 0045-MADR), `:338`
+  `go-version: '1.26.11'`, `:340` the test `= go1.26.11`. The job is still
+  `go126`.
+* The ten fixtures (class in the plan's table): live pins
+  `internal/cmd/selfupdate-release/testdata/fixture/go.mod:3` and
+  `buildinfo/stamp_test.go:41`; data `installer_ps_test.go:574`,
+  `plan_test.go:214`, `internal/testproc/testproc_test.go:209`,
+  `scripts/go-fuzz_test.sh:30`, `selfupdate/archive/main_test.go:79`,
+  `selfupdate/codesign/live_darwin_test.go:49`,
+  `selfupdate/e2e_running_test.go:71`, `selfupdate/imageverify_test.go:85`;
+  each `go 1.26.10` occurred once and is now `go 1.26.11`.
+* Docs: `AGENTS.md:57-62`; `README.md:26-31` (Status; the dated claim
+  names 2026-11-17 and `govulncheck` v1.9.0, and that 1.27.3 and 1.26.10
+  carry GO-2026-6859); `SECURITY.md:41-44`; `docs/architecture.md:17`,
+  `:21-22`, `:24-28` and `:32` (the module paragraph) and `:1018`, `:1020`
+  (the `go126` bullet); the migration guide's section 1 (`:14`, `:16-18`,
+  `:21-26`: heading, floor, toolchain, 0045-MADR; no link targeted the old
+  heading's anchor); `CHANGELOG.md:11-26` (a new `## Unreleased` with a
+  "Security" entry, as 0028's and 0029's entries did).
+* **Kept, as history or data:** `selfupdate/githubupdater.go:104`; the
+  changelog's earlier releases; the guide's earlier sections (`:65`,
+  `:177`, `:1380-1396` and the rest); `stage_test.go` and
+  `buildinfo_test.go` version strings; the records.
+* **Open, for P5's pin commit:** the guide's `go.mod` adoption line
+  (`:236`, "`v1.26.2`, with `go 1.26.10`") names the current release and
+  moves with it.
+
+**P2, the version-agreement check.** The script is
+`check_versions.py` in the session scratchpad and is not added to the
+tree (the plan does not add it). It reads the floor `F` and toolchain `T`
+from `go.mod` and compares the `go126` job's pin, version test and
+comment, the ten fixtures, the stated floor and toolchain in AGENTS,
+SECURITY, README, the architecture page, the guide and the changelog
+entry, and sweeps every other file for a `1.26.y` or `1.27.y` not `F` or
+`T` outside the records, the earlier changelog entries and a short
+allowlist.
+
+* On the changed tree: `F=1.26.11 T=1.27.4`, "0 failure(s)", exit 0.
+* Planted, each on a scratch copy made by `scripts/plant-copy.sh` (the
+  copy was removed after):
+  * a wrong toolchain (`go.mod` `toolchain go1.27.3`): exit 1, first
+    failing lines "`.github/workflows/ci.yml`: the go126 comment does not
+    name floor 1.26.11 and toolchain 1.27.3", "`AGENTS.md`: missing
+    'Requires Go 1.26.11; built and tested with Go 1.27.3'", "`SECURITY.md`:
+    missing 'the Go 1.27.3 toolchain'";
+  * a wrong floor (`go.mod` `go 1.26.10`): exit 1, "`.github/workflows/ci.yml`:
+    go126 go-version is not 1.26.10", "go126 GOVERSION test is not
+    go1.26.10", "`buildinfo/stamp_test.go`: fixture go line ['1.26.11'],
+    want 1.26.10";
+  * a stray old pin (`ci.yml` `= go1.26.10`): exit 1, "go126 GOVERSION test
+    is not go1.26.11" and "stray version `.github/workflows/ci.yml:340`: run:
+    test "$(go env GOVERSION)" = go1.26.10".
+
+**P3, the gates.** Times are UTC on 2026-11-17; each exit status was
+taken before any filter. Heavy runs went through `run-heavy` on this Mac
+and `run-on-host` for the others, one at a time per host; the Linux
+runs queued behind other agents' runs and waited (931 s and 836 s) rather
+than skipping. No `-race` ran on a WSL distribution.
+
+| Gate | Host | Start | End | Exit | Result |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `make gate`, `SELFUPDATE_REQUIRE_PYTHON=1` | this Mac | 18:20:31 | 18:29:31 | 0 | every step `rc=0`, `apicheck` "compatible with v1.26.2", `vuln` "No vulnerabilities found.", links "1030 links in 119 files, 0 broken", `overall=0` |
+| the `go126` steps under `GOTOOLCHAIN=go1.26.11 GOPROXY=off`: version test (`go1.26.11`), `go build ./...`, `go vet ./...` for linux, windows and darwin, `go test -count=1 -timeout 20m ./...` | this Mac | 18:35:48 | 18:37:02 | 0 each | 22 packages `ok`, no `FAIL` |
+| `govulncheck ./...` under `go1.26.11` | this Mac | 18:36:59 | 18:37:00 | 0 | "No vulnerabilities found." |
+| `govulncheck ./...` under `go1.27.4` | this Mac | 18:37:00 | 18:37:02 | 0 | "No vulnerabilities found." |
+| `make pre-add-check` on the eight `.go` fixtures | this Mac | 18:37:17 | 18:37:57 | 0 | "8 file(s) clean (gofmt, golangci-lint, go vet, go test, govulncheck)" |
+| `go test -race -count=1 -timeout 25m ./...` | the Linux machine | run 18:38:02, started 18:53:42 | 18:56:03 | 0 | 22 packages `ok` |
+| `make gate`, `SELFUPDATE_REQUIRE_PYTHON=1` | the Linux machine | run 18:56:26, started 19:10:31 | 19:23:48 | 0 | every step `rc=0`, `overall=0` |
+| `go test -count=1 -timeout 20m ./...` under `sh -c` | the Windows laptop | 18:56:26 | 19:00:54 | 0 | 22 packages `ok` |
+| `actionlint` on `ci.yml` and `docs.yml`; `check-workflows.sh`; `check-workflows.sh --rule pins` on `ci.yml`; `check-workflows_test.sh`; `workflow-shape_test.sh` | this Mac | 18:56:31 | 18:56:39 | 0 each | "ok (all) 2 workflow(s)", "ok (pins) 1 workflow(s)", "44 passed, 0 failed", "all assertions hold" |
+
+Not done, and why: no commit, push or tag (the coordinator commits each
+phase). Go 1.26.11 was not run on the Linux machine or the Windows laptop:
+their module caches lack it, so `GOTOOLCHAIN=go1.26.11` would download it
+(MADR E3); the floor was proven on this Mac and is left to CI's `go126`
+job on Linux (P4). The `-race` and gate runs on the Linux machine used the
+installed 1.27.4. The `toolchain` line taking effect on a runner is not
+shown locally (MADR E3) and waits for P4.
+
 ## Deviations
 
 None yet.

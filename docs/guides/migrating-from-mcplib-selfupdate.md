@@ -11,15 +11,19 @@ the fixes, and the behaviour they change, are in
 Do the migration under your own repository's records. This guide is the
 checklist, not the authorization.
 
-## 1. Go 1.26.10 or later
+## 1. Go 1.26.11 or later
 
-go-selfupdate-lib requires `go 1.26.10` from `v1.17.2` (`go 1.26.9` from
-`v1.16.0` to `v1.17.1`, and `go 1.27.1` from `v1.5.0` to `v1.15.2`), so
+go-selfupdate-lib requires `go 1.26.11` from `v1.26.3` (`go 1.26.10` from
+`v1.17.2` to `v1.26.2`, `go 1.26.9` from `v1.16.0` to `v1.17.1`, and
+`go 1.27.1` from `v1.5.0` to `v1.15.2`), so
 `go get` raises your `go` directive to at least that. Move it
 deliberately first, and run your full test suite before changing
-anything else. Build and test with Go 1.27.3, a `toolchain go1.27.3`
-line, as this module is: it fixes GO-2026-6809, which 1.27.2 and 1.26.9
-carry ([From v1.17.1 to v1.17.2](#from-v1171-to-v1172)), as 1.27.2
+anything else. Build and test with Go 1.27.4, a `toolchain go1.27.4`
+line, as this module is: it fixes GO-2026-6859, in `net/http`, which 1.27.3
+and 1.26.10 carry
+([0045-MADR](../decisions/0045-MADR-move-toolchain-to-go-1-27-4-and-floor-to-1-26-11.md)),
+as 1.27.3 fixed GO-2026-6809, which 1.27.2 and 1.26.9 carry
+([From v1.17.1 to v1.17.2](#from-v1171-to-v1172)), and 1.27.2
 fixed ten earlier standard-library advisories
 ([From v1.11.0 to v1.11.1](#from-v1110-to-v1111)). A program
 that was on `go-core-lib` (`v1.4.1` and earlier) changes that import path

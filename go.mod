@@ -1,8 +1,8 @@
 module github.com/maccavelli/go-selfupdate-lib
 
-go 1.26.10
+go 1.26.11
 
-toolchain go1.27.3
+toolchain go1.27.4
 
 retract [v1.0.0, v1.4.1] // declared github.com/maccavelli/go-core-lib; use v1.5.0 or later
 
