@@ -134,3 +134,5 @@ it is the only one that leaves no exemption and no version gap:
   sanitizers quoted above.
 * [0004-PLAN-v1-1-0-core-api.md](0004-PLAN-v1-1-0-core-api.md), Step 8,
   deviation D2: the repository's only `nolint`s.
+
+* Update 2026-11-18: [0046-MADR-move-golangci-lint-to-v2-15-0.md](0046-MADR-move-golangci-lint-to-v2-15-0.md) supersedes the pin of v2.14.0 for the version only.

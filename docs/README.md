@@ -114,6 +114,8 @@ name, and the files they cite moved with the rename
 | 0044 | PLAN | [Implement test executables written under the fork lock: `testproc.WriteExecutable`, 74 sites, a source scan, and the race seen and removed](decisions/0044-PLAN-write-test-executables-under-the-fork-lock.md) | complete |
 | 0045 | MADR | [Build and test with Go 1.27.4 through the `toolchain` line, and raise the floor to `go 1.26.11`](decisions/0045-MADR-move-toolchain-to-go-1-27-4-and-floor-to-1-26-11.md) | accepted |
 | 0045 | PLAN | [Implement Go 1.27.4 as the toolchain and `go 1.26.11` as the floor, and prepare `v1.26.3`](decisions/0045-PLAN-move-toolchain-to-go-1-27-4-and-floor-to-1-26-11.md) | complete |
+| 0046 | MADR | [Move the golangci-lint pin to v2.15.0, settling the one finding at its source](decisions/0046-MADR-move-golangci-lint-to-v2-15-0.md) | accepted |
+| 0046 | PLAN | [Implement the golangci-lint v2.15.0 move](decisions/0046-PLAN-move-golangci-lint-to-v2-15-0.md) | in-progress |
 
 ## I want to…
 
