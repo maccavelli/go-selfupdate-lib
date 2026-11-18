@@ -142,7 +142,7 @@ if [ -x "$GOLANGCI" ]; then
   ran+=(golangci-lint)
 else
   echo "go-precheck: golangci-lint not found at $GOLANGCI." >&2
-  echo "  install: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0" >&2
+  echo "  install: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0" >&2
   fail 2
 fi
 

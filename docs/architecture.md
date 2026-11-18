@@ -987,7 +987,7 @@ D9; the threat analysis is
     it fails;
     `go vet` for `freebsd/amd64`, `openbsd/amd64` and `linux/386`;
     `go vet`, `gofmt`, `go mod tidy -diff`, `make lint` (golangci-lint
-    v2.14.0); `make apicheck` and the API gate's test; `govulncheck` v1.8.0;
+    v2.15.0); `make apicheck` and the API gate's test; `govulncheck` v1.8.0;
     `shellcheck` v0.11.0 (the latest release, pinned by SHA-256 and first
     on `PATH`, so actionlint's embedded checks use it too),
     `make markdownlint` (`markdownlint-cli2` 0.23.2) and `actionlint`

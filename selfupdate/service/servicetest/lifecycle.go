@@ -264,12 +264,18 @@ func (v *verifier) call(bound time.Duration, f func() error) (took time.Duration
 }
 
 // drain waits for the calls that outlived their bound, now that the lab
-// has removed the service, so none outlives the run.
+// has removed the service, so none outlives the run. It discards what a
+// stray returns: the check that made the call a stray has already reported
+// that it did not return within its bound, which is the violation, and an
+// error from a call the lab has since pulled the service out from under
+// says nothing about the implementation. Reporting it too would add a
+// second line for the same fault.
 func (v *verifier) drain() {
 	for _, done := range v.strays {
 		timer := time.NewTimer(v.c.StopBound + v.c.Slack)
 		select {
-		case <-done:
+		case late := <-done:
+			_ = late
 		case <-timer.C:
 			v.errs = append(v.errs, errors.New("servicetest: a call that outlived its bound still had not returned after the service was removed"))
 		}

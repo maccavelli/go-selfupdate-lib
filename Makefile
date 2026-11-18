@@ -41,7 +41,7 @@ LINT_GOOS := linux darwin windows
 lint: ## Runs golangci-lint with fleet config for linux, darwin and windows
 	@if [ -z "$(GOLANGCI_LINT)" ] || [ ! -x "$(GOLANGCI_LINT)" ]; then \
 		echo "golangci-lint not found in GOBIN, GOPATH/bin or PATH (GOLANGCI_LINT=$(GOLANGCI_LINT))"; \
-		echo "Install: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0"; \
+		echo "Install: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0"; \
 		exit 1; \
 	fi
 	@status=0; for os in $(LINT_GOOS); do \

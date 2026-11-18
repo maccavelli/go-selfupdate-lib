@@ -323,3 +323,28 @@ func TestVerifyLifecycleTakesNoWallTime(t *testing.T) {
 		t.Fatalf("the run took %s of wall time", wall)
 	}
 }
+
+// TestVerifyLifecycleStrayErrorIsNotReported: a call that outlives its bound
+// is one violation, "did not return". The error it returns after the lab has
+// removed the service is discarded by drain, so the run does not report the
+// same fault twice.
+func TestVerifyLifecycleStrayErrorIsNotReported(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		f := NewFakeService(FakeOptions{})
+		b := broken{FakeService: f}
+		b.stop = func(f *FakeService, ctx context.Context, _ string) error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			time.Sleep(2 * f.StopBound())
+			return errors.New("late stop failure")
+		}
+		err := VerifyLifecycle(context.Background(), b, fakeCase(f, f))
+		if err == nil || !strings.Contains(err.Error(), "did not return") {
+			t.Fatalf("err = %v\nwant the violation that the stop did not return", err)
+		}
+		if strings.Contains(err.Error(), "late stop failure") {
+			t.Fatalf("err = %v\nwant the stray's late error discarded", err)
+		}
+	})
+}
